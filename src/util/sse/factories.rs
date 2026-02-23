@@ -18,6 +18,7 @@ pub fn indicator_event(indicator: IndicatorType, message: Option<&str>) -> Strea
 }
 
 /// Create a text delta event for streaming LLM output.
+#[allow(dead_code)]
 pub fn text_delta_event(message_id: &str, delta: &str, sequence: u64, done: bool) -> StreamBundle {
     StreamBundle {
         event_type: EventType::TextDelta,
@@ -33,6 +34,7 @@ pub fn text_delta_event(message_id: &str, delta: &str, sequence: u64, done: bool
 }
 
 /// Create an error event.
+#[allow(dead_code)]
 pub fn error_event(code: &str, message: &str, recoverable: bool) -> StreamBundle {
     StreamBundle {
         event_type: EventType::Error,
@@ -48,6 +50,7 @@ pub fn error_event(code: &str, message: &str, recoverable: bool) -> StreamBundle
 }
 
 /// Create a heartbeat event for keep-alive.
+#[allow(dead_code)]
 pub fn heartbeat_event() -> StreamBundle {
     StreamBundle {
         event_type: EventType::Heartbeat,
@@ -59,6 +62,7 @@ pub fn heartbeat_event() -> StreamBundle {
 }
 
 /// Create a tool call start event.
+#[allow(dead_code)]
 pub fn tool_call_start_event(
     message_id: &str,
     tool_name: &str,
@@ -78,6 +82,7 @@ pub fn tool_call_start_event(
 }
 
 /// Create a tool call complete event.
+#[allow(dead_code)]
 pub fn tool_call_complete_event(
     message_id: &str,
     tool_name: &str,
@@ -127,6 +132,7 @@ pub fn conversation_closed_event(
 }
 
 /// Create an end-of-turn event.
+#[allow(dead_code)]
 pub fn end_of_turn_event(message_id: &str) -> StreamBundle {
     StreamBundle {
         event_type: EventType::EndOfTurn,

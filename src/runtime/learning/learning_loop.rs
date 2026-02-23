@@ -81,6 +81,7 @@ impl LearningLoop {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_config(&mut self, config: LearningConfig) {
         self.config = config;
     }

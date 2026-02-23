@@ -25,6 +25,7 @@ use crate::error::AppError;
 use crate::llm::embedding::LocalEmbeddingProvider;
 use crate::llm::factory::LlmProviderFactory;
 use crate::llm::ollama_manager::OllamaManager;
+use crate::llm::swappable::SwappableLlmProvider;
 use crate::llm::{EmbeddingProvider, LlmProvider};
 use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::learners::{
@@ -102,11 +103,14 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         .map_err(|e| AppError::Internal(format!("HTTP client build failed: {e}")))?;
 
     // ── LLM providers ──────────────────────────────────────────────────
-    let llm_factory = Arc::new(LlmProviderFactory::new(http_client.clone(), config.clone()));
-    let llm_provider = llm_factory.create(config.llm_backend)?;
+    let llm_factory = Arc::new(LlmProviderFactory::new(http_client.clone(), config_arc.clone()));
+    let real_provider = llm_factory.create(config.llm_backend)?;
     let vision_llm_provider = llm_factory.create_vision(config.vision_backend)?;
-    let swappable_llm: Arc<ArcSwap<Arc<dyn LlmProvider>>> =
-        Arc::new(ArcSwap::from_pointee(llm_provider.clone()));
+
+    // Wrap in SwappableLlmProvider so all consumers automatically see
+    // the latest provider after a hot-swap (no update callbacks needed).
+    let (swappable_provider, swap_handle) = SwappableLlmProvider::new(real_provider);
+    let llm_provider: Arc<dyn LlmProvider> = Arc::new(swappable_provider);
 
     // ── Embedding ──────────────────────────────────────────────────────
     let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(LocalEmbeddingProvider::new(
@@ -441,7 +445,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // ── Config manager ─────────────────────────────────────────────────
     let config_manager = Arc::new(ConfigManager::new(
         config_arc.clone(),
-        swappable_llm.clone(),
+        swap_handle,
         Some(llm_factory),
     ));
 

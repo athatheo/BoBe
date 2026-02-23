@@ -61,6 +61,7 @@ impl McpClient {
         }
     }
 
+    #[allow(dead_code)]
     pub fn server_name(&self) -> &str {
         &self.config.name
     }
@@ -77,6 +78,7 @@ impl McpClient {
         self.config.timeout_seconds
     }
 
+    #[allow(dead_code)]
     pub fn excluded_tools(&self) -> &[String] {
         &self.config.excluded_tools
     }
@@ -242,6 +244,7 @@ impl McpClient {
     }
 
     /// Health check: try listing tools or reconnect.
+    #[allow(dead_code)]
     pub async fn health_check(&self) -> bool {
         if !self.is_connected() {
             return self.connect().await.is_ok();

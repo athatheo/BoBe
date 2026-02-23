@@ -60,14 +60,17 @@ impl CaptureTrigger {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_config(&mut self, config: OrchestratorConfig) {
         self.config = config;
     }
 
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
 
+    #[allow(dead_code)]
     pub fn context_count(&self) -> usize {
         self.context_count
     }

@@ -7,6 +7,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 /// Abbreviations that end with a period but are NOT sentence boundaries.
+#[allow(dead_code)]
 const ABBREVIATIONS: &[&str] = &[
     "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "ave", "vs", "etc", "inc", "ltd", "corp",
     "dept", "univ", "gen", "gov", "sgt", "cpl", "pvt", "capt", "col", "maj", "lt", "cmdr", "adm",
@@ -15,14 +16,17 @@ const ABBREVIATIONS: &[&str] = &[
 ];
 
 /// Pattern: sentence-ending punctuation followed by whitespace.
+#[allow(dead_code)]
 static SENTENCE_END_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([.!?])(\s+)").unwrap());
 
+#[allow(dead_code)]
 pub struct SentenceAccumulator {
     buffer: String,
     pending: Vec<String>,
     min_sentence_length: usize,
 }
 
+#[allow(dead_code)]
 impl SentenceAccumulator {
     pub fn new(min_sentence_length: usize) -> Self {
         Self {

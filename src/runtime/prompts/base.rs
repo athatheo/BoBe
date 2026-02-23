@@ -7,6 +7,7 @@ pub const DEFAULT_SOUL: &str = "You are BoBe, a helpful AI assistant.";
 
 /// LLM parameters for a prompt — declared once per prompt type.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PromptConfig {
     pub temperature: f32,
     pub max_tokens: u32,

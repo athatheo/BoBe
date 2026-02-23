@@ -15,6 +15,7 @@ use crate::llm::types::{StreamChunk, StreamItem};
 
 /// Result of streaming an LLM response.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct StreamResult {
     pub full_response: String,
     pub token_count: usize,
@@ -280,6 +281,7 @@ fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {
 }
 
 /// Stream a simple text message (no LLM call needed).
+#[allow(dead_code)]
 pub fn stream_simple_message(message: &str, event_queue: &EventQueue, msg_id: Option<&str>) {
     let msg_id = msg_id
         .map(|s| s.to_owned())

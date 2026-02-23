@@ -177,6 +177,7 @@ impl CircuitBreaker {
     }
 
     /// How long until the next retry is allowed (None if closed).
+    #[allow(dead_code)]
     pub async fn time_until_retry(&self) -> Option<std::time::Duration> {
         let inner = self.inner.lock().await;
         match inner.state {
@@ -193,11 +194,13 @@ impl CircuitBreaker {
     }
 
     /// Get the current circuit state.
+    #[allow(dead_code)]
     pub async fn get_status(&self) -> CircuitState {
         self.inner.lock().await.state.clone()
     }
 
     /// Manually reset the circuit breaker to closed state.
+    #[allow(dead_code)]
     pub async fn reset(&self) {
         let mut inner = self.inner.lock().await;
         inner.state = CircuitState::Closed;
@@ -220,6 +223,7 @@ impl CircuitBreakerLlmWrapper {
         Self { provider, breaker }
     }
 
+    #[allow(dead_code)]
     pub fn circuit_breaker(&self) -> &Arc<CircuitBreaker> {
         &self.breaker
     }

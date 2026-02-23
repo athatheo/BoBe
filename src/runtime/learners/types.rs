@@ -21,6 +21,7 @@ impl LearnerObservationSource {
 
 /// Raw observation from a source, before learner processing.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LearnerObservation {
     pub source: LearnerObservationSource,
     pub timestamp: DateTime<Utc>,
@@ -70,6 +71,7 @@ pub enum LearnerError {
     Llm(String),
 
     #[error("Parse error: {0}")]
+    #[allow(dead_code)]
     Parse(String),
 
     #[error("Storage error: {0}")]
@@ -93,5 +95,6 @@ pub enum LearnerResult {
     /// Observation was stored successfully.
     Stored { observation_id: uuid::Uuid },
     /// Learning was skipped (e.g., no useful content).
+    #[allow(dead_code)]
     Skipped { reason: String },
 }

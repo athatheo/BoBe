@@ -46,6 +46,7 @@ use crate::models::types::{
 use crate::models::user_profile::UserProfile;
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait ConversationRepository: Send + Sync {
     async fn save(&self, conversation: &Conversation) -> Result<Conversation, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Conversation>, AppError>;
@@ -84,6 +85,7 @@ pub trait ConversationRepository: Send + Sync {
 }
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait MemoryRepository: Send + Sync {
     async fn save(&self, memory: &Memory) -> Result<Memory, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Memory>, AppError>;
@@ -128,6 +130,7 @@ pub trait MemoryRepository: Send + Sync {
 }
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait GoalRepository: Send + Sync {
     async fn save(&self, goal: &Goal) -> Result<Goal, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Goal>, AppError>;
@@ -200,6 +203,7 @@ pub trait ObservationRepository: Send + Sync {
 }
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait SoulRepository: Send + Sync {
     async fn save(&self, soul: &Soul) -> Result<Soul, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Soul>, AppError>;
@@ -219,6 +223,7 @@ pub trait SoulRepository: Send + Sync {
 }
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait AgentJobRepository: Send + Sync {
     async fn save(&self, job: &AgentJob) -> Result<AgentJob, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<AgentJob>, AppError>;
@@ -229,6 +234,7 @@ pub trait AgentJobRepository: Send + Sync {
 }
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait UserProfileRepository: Send + Sync {
     async fn save(&self, profile: &UserProfile) -> Result<UserProfile, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<UserProfile>, AppError>;
@@ -252,6 +258,7 @@ pub trait LearningStateRepository: Send + Sync {
 }
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait CooldownRepository: Send + Sync {
     fn last_engagement(&self) -> Option<DateTime<Utc>>;
     fn last_user_response(&self) -> Option<DateTime<Utc>>;

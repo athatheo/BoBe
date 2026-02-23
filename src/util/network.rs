@@ -17,6 +17,7 @@ fn get_hostname() -> String {
 }
 
 /// Get all local network interface IPs (IPv4 only).
+#[allow(dead_code)]
 pub fn get_local_ips() -> HashSet<String> {
     let mut ips = HashSet::new();
 
@@ -41,8 +42,10 @@ pub fn get_local_ips() -> HashSet<String> {
 }
 
 /// Information about the local network.
+#[allow(dead_code)]
 pub struct NetworkInfo;
 
+#[allow(dead_code)]
 impl NetworkInfo {
     pub fn primary_ip() -> Option<String> {
         let socket = UdpSocket::bind("0.0.0.0:0").ok()?;

@@ -33,6 +33,7 @@ pub struct PullModelRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct PullModelResponse {
     pub ok: bool,
     pub message: String,

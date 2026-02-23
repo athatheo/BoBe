@@ -8,6 +8,7 @@ use rand::RngExt;
 use tracing::{debug, info, warn};
 
 /// Simple, friendly check-in messages.
+#[allow(dead_code)]
 const CHECKIN_MESSAGES: &[&str] = &[
     "How's it going? Need any help?",
     "Just checking in. Anything I can assist with?",
@@ -21,6 +22,7 @@ const CHECKIN_MESSAGES: &[&str] = &[
     "Need a fresh perspective on anything? I'm here!",
 ];
 
+#[allow(dead_code)]
 pub fn get_random_checkin_message() -> &'static str {
     let idx = rand::rng().random_range(0..CHECKIN_MESSAGES.len());
     CHECKIN_MESSAGES[idx]
@@ -241,6 +243,7 @@ impl CheckinScheduler {
         debug!(next = %next_time.format("%Y-%m-%d %H:%M:%S"), "checkin_scheduler.scheduled_interval");
     }
 
+    #[allow(dead_code)]
     pub fn update_schedule(
         &mut self,
         times: Option<&[String]>,
@@ -282,6 +285,7 @@ impl CheckinScheduler {
         );
     }
 
+    #[allow(dead_code)]
     pub fn enable(&mut self) {
         self.enabled = true;
         let now = Utc::now();
@@ -294,6 +298,7 @@ impl CheckinScheduler {
         info!("checkin_scheduler.enabled");
     }
 
+    #[allow(dead_code)]
     pub fn disable(&mut self) {
         self.enabled = false;
         self.next_checkin = None;
@@ -301,6 +306,7 @@ impl CheckinScheduler {
         info!("checkin_scheduler.disabled");
     }
 
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }

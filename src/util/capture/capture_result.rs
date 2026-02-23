@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 
 /// Result from a screen capture operation.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CaptureResult {
     /// PNG image data (raw bytes).
     pub image: Vec<u8>,

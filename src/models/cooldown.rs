@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 /// Result of a cooldown check when cooldown is active.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CooldownInfo {
     pub remaining: Duration,
     pub cooldown_minutes: i64,

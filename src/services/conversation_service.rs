@@ -186,6 +186,7 @@ impl ConversationService {
     }
 
     /// Get the most recent turns across all conversations.
+    #[allow(dead_code)]
     pub async fn get_recent_turns(&self, limit: i64) -> Result<Vec<ConversationTurn>, AppError> {
         self.repo.get_recent_turns(limit).await
     }

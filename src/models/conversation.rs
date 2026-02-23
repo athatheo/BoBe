@@ -52,6 +52,7 @@ impl Conversation {
         self.state == ConversationState::Pending
     }
 
+    #[allow(dead_code)]
     pub fn is_active(&self) -> bool {
         self.state == ConversationState::Active
     }
@@ -61,6 +62,7 @@ impl Conversation {
     }
 
     /// Transition from PENDING to ACTIVE.
+    #[allow(dead_code)]
     pub fn activate(&mut self) -> Result<(), String> {
         if self.state != ConversationState::Pending {
             return Err(format!(
@@ -74,6 +76,7 @@ impl Conversation {
     }
 
     /// Close the conversation. Idempotent.
+    #[allow(dead_code)]
     pub fn close(&mut self, summary: Option<String>) {
         if self.is_closed() {
             return;
@@ -101,6 +104,7 @@ impl Conversation {
             .map(|t| t.created_at)
     }
 
+    #[allow(dead_code)]
     pub fn user_message_count(&self, turns: &[ConversationTurn]) -> usize {
         turns.iter().filter(|t| t.role == TurnRole::User).count()
     }
@@ -130,10 +134,12 @@ impl ConversationTurn {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_user(&self) -> bool {
         self.role == TurnRole::User
     }
 
+    #[allow(dead_code)]
     pub fn is_assistant(&self) -> bool {
         self.role == TurnRole::Assistant
     }

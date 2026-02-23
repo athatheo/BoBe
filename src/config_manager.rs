@@ -124,11 +124,13 @@ impl ConfigManager {
     }
 
     /// Get the current config.
+    #[allow(dead_code)]
     pub fn current(&self) -> arc_swap::Guard<Arc<Config>> {
         self.config.load()
     }
 
     /// Get the current LLM provider.
+    #[allow(dead_code)]
     pub fn current_llm(&self) -> arc_swap::Guard<Arc<Arc<dyn LlmProvider>>> {
         self.llm_provider.load()
     }

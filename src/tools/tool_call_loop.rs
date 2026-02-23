@@ -14,6 +14,7 @@ use crate::tools::{ToolExecutionContext, ToolExecutionNotification, ToolResult};
 
 /// Configuration for the tool call loop.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ToolCallLoopConfig {
     pub max_iterations: usize,
     pub timeout_per_tool_secs: f64,
@@ -29,12 +30,14 @@ impl Default for ToolCallLoopConfig {
 }
 
 /// Agentic loop: LLM → tool calls → results → LLM, until stop or max iterations.
+#[allow(dead_code)]
 pub struct ToolCallLoop {
     llm: Arc<dyn LlmProvider>,
     executor: Arc<ToolExecutor>,
     config: ToolCallLoopConfig,
 }
 
+#[allow(dead_code)]
 impl ToolCallLoop {
     pub fn new(
         llm: Arc<dyn LlmProvider>,

@@ -15,6 +15,7 @@ use crate::tools::{ToolCategory, ToolExecutionContext, ToolResult, ToolSource};
 const TOOL_NAME_SEPARATOR: &str = "__";
 
 /// Manages multiple MCP server connections and exposes their tools.
+#[allow(dead_code)]
 pub struct McpToolAdapter {
     clients: RwLock<HashMap<String, Arc<McpClient>>>,
     tool_to_server: RwLock<HashMap<String, String>>,

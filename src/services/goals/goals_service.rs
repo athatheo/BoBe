@@ -23,6 +23,7 @@ const MAX_GOALS_FILE_SIZE: u64 = 1024 * 1024;
 
 /// Result of syncing GOALS.md to database.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SyncResult {
     pub created: u32,
     pub updated: u32,
@@ -92,6 +93,7 @@ impl GoalsService {
     }
 
     /// Get a goal by ID.
+    #[allow(dead_code)]
     pub async fn get_by_id(&self, goal_id: Uuid) -> Result<Option<Goal>, AppError> {
         self.repo.get_by_id(goal_id).await
     }
@@ -131,6 +133,7 @@ impl GoalsService {
     }
 
     /// Update goal status (active/completed/archived).
+    #[allow(dead_code)]
     pub async fn update_status(
         &self,
         goal_id: Uuid,
@@ -176,6 +179,7 @@ impl GoalsService {
     }
 
     /// Check if a similar goal already exists (for deduplication).
+    #[allow(dead_code)]
     pub async fn find_similar(
         &self,
         content: &str,
@@ -316,6 +320,7 @@ impl GoalsService {
     }
 
     /// Create GOALS.md with template if it doesn't exist.
+    #[allow(dead_code)]
     pub fn ensure_goals_file_exists(&self) -> Result<(), AppError> {
         let goals_file = self.config.resolved_file_path();
         if goals_file.exists() {

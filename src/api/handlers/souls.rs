@@ -32,6 +32,7 @@ pub struct SoulListResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SoulCreateRequest {
     pub name: String,
     pub content: String,

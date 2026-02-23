@@ -31,6 +31,7 @@ use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
 
 /// Shared application state passed through Axum extractors.
+#[allow(dead_code)]
 pub struct AppState {
     pub db: SqlitePool,
     pub config: Arc<ArcSwap<Config>>,

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Json;
@@ -155,136 +156,93 @@ pub async fn get_settings(
 
 /// PUT /api/settings
 ///
-/// Hot-swaps configuration at runtime via ArcSwap. Most settings take effect
-/// immediately without restart.
+/// Hot-swaps configuration at runtime through ConfigManager.
+/// Changes are persisted to ~/.bobe/.env and LLM provider is rebuilt
+/// when backend/model/key fields change.
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SettingsUpdateRequest>,
 ) -> Result<Json<SettingsUpdateResponse>, AppError> {
-    let current = state.config.load();
-    let mut new_config = (**current).clone();
-    let mut applied = Vec::new();
-
-    // Apply each optional field
+    // Validate llm_backend early (before passing to ConfigManager).
     if let Some(ref v) = body.llm_backend {
-        let backend: LlmBackend = serde_json::from_value(serde_json::Value::String(v.clone()))
+        let _: LlmBackend = serde_json::from_value(serde_json::Value::String(v.clone()))
             .map_err(|_| {
                 AppError::Validation(format!(
                     "Invalid llm_backend '{v}'. Valid: ollama, openai, azure_openai, llamacpp"
                 ))
             })?;
-        new_config.llm_backend = backend;
-        applied.push("llm_backend".into());
     }
-    if let Some(ref v) = body.ollama_model {
-        new_config.ollama_model = v.clone();
-        applied.push("ollama_model".into());
+
+    // Collect all provided fields into a HashMap for ConfigManager.
+    let mut changes: HashMap<String, serde_json::Value> = HashMap::new();
+
+    macro_rules! collect_opt {
+        ($field:ident) => {
+            if let Some(ref v) = body.$field {
+                changes.insert(
+                    stringify!($field).to_owned(),
+                    serde_json::to_value(v).unwrap_or_default(),
+                );
+            }
+        };
     }
-    if let Some(ref v) = body.openai_model {
-        new_config.openai_model = v.clone();
-        applied.push("openai_model".into());
-    }
-    if let Some(ref v) = body.openai_api_key {
-        new_config.openai_api_key = v.clone();
-        applied.push("openai_api_key".into());
-    }
-    if let Some(ref v) = body.azure_openai_endpoint {
-        new_config.azure_openai_endpoint = v.clone();
-        applied.push("azure_openai_endpoint".into());
-    }
-    if let Some(ref v) = body.azure_openai_deployment {
-        new_config.azure_openai_deployment = v.clone();
-        applied.push("azure_openai_deployment".into());
-    }
-    if let Some(ref v) = body.azure_openai_api_key {
-        new_config.azure_openai_api_key = v.clone();
-        applied.push("azure_openai_api_key".into());
-    }
-    if let Some(v) = body.capture_enabled {
-        new_config.capture_enabled = v;
-        applied.push("capture_enabled".into());
-    }
-    if let Some(v) = body.capture_interval_seconds {
-        new_config.capture_interval_seconds = v;
-        applied.push("capture_interval_seconds".into());
-    }
-    if let Some(v) = body.checkin_enabled {
-        new_config.checkin_enabled = v;
-        applied.push("checkin_enabled".into());
-    }
+
+    collect_opt!(llm_backend);
+    collect_opt!(ollama_model);
+    collect_opt!(openai_model);
+    collect_opt!(openai_api_key);
+    collect_opt!(azure_openai_endpoint);
+    collect_opt!(azure_openai_deployment);
+    collect_opt!(azure_openai_api_key);
+    collect_opt!(capture_enabled);
+    collect_opt!(capture_interval_seconds);
+    collect_opt!(checkin_enabled);
+    collect_opt!(checkin_jitter_minutes);
+    collect_opt!(learning_enabled);
+    collect_opt!(learning_interval_minutes);
+    collect_opt!(conversation_inactivity_timeout_seconds);
+    collect_opt!(conversation_auto_close_minutes);
+    collect_opt!(conversation_summary_enabled);
+    collect_opt!(goal_check_interval_seconds);
+    collect_opt!(tools_enabled);
+    collect_opt!(tools_max_iterations);
+    collect_opt!(mcp_enabled);
+    collect_opt!(similarity_deduplication_threshold);
+    collect_opt!(similarity_search_recall_threshold);
+    collect_opt!(similarity_clustering_threshold);
+    collect_opt!(memory_short_term_retention_days);
+    collect_opt!(memory_long_term_retention_days);
+
+    // checkin_times needs special handling (Vec<String> -> comma-separated)
     if let Some(ref v) = body.checkin_times {
-        new_config.checkin_times = v.join(",");
-        applied.push("checkin_times".into());
-    }
-    if let Some(v) = body.checkin_jitter_minutes {
-        new_config.checkin_jitter_minutes = v;
-        applied.push("checkin_jitter_minutes".into());
-    }
-    if let Some(v) = body.learning_enabled {
-        new_config.learning_enabled = v;
-        applied.push("learning_enabled".into());
-    }
-    if let Some(v) = body.learning_interval_minutes {
-        new_config.learning_interval_minutes = v;
-        applied.push("learning_interval_minutes".into());
-    }
-    if let Some(v) = body.conversation_inactivity_timeout_seconds {
-        new_config.conversation_inactivity_timeout_seconds = v;
-        applied.push("conversation_inactivity_timeout_seconds".into());
-    }
-    if let Some(v) = body.conversation_auto_close_minutes {
-        new_config.conversation_auto_close_minutes = v;
-        applied.push("conversation_auto_close_minutes".into());
-    }
-    if let Some(v) = body.conversation_summary_enabled {
-        new_config.conversation_summary_enabled = v;
-        applied.push("conversation_summary_enabled".into());
-    }
-    if let Some(v) = body.goal_check_interval_seconds {
-        new_config.goal_check_interval_seconds = v;
-        applied.push("goal_check_interval_seconds".into());
-    }
-    if let Some(v) = body.tools_enabled {
-        new_config.tools_enabled = v;
-        applied.push("tools_enabled".into());
-    }
-    if let Some(v) = body.tools_max_iterations {
-        new_config.tools_max_iterations = v;
-        applied.push("tools_max_iterations".into());
-    }
-    if let Some(v) = body.mcp_enabled {
-        new_config.mcp_enabled = v;
-        applied.push("mcp_enabled".into());
-    }
-    if let Some(v) = body.similarity_deduplication_threshold {
-        new_config.similarity_deduplication_threshold = v;
-        applied.push("similarity_deduplication_threshold".into());
-    }
-    if let Some(v) = body.similarity_search_recall_threshold {
-        new_config.similarity_search_recall_threshold = v;
-        applied.push("similarity_search_recall_threshold".into());
-    }
-    if let Some(v) = body.similarity_clustering_threshold {
-        new_config.similarity_clustering_threshold = v;
-        applied.push("similarity_clustering_threshold".into());
-    }
-    if let Some(v) = body.memory_short_term_retention_days {
-        new_config.memory_short_term_retention_days = v;
-        applied.push("memory_short_term_retention_days".into());
-    }
-    if let Some(v) = body.memory_long_term_retention_days {
-        new_config.memory_long_term_retention_days = v;
-        applied.push("memory_long_term_retention_days".into());
+        changes.insert(
+            "checkin_times".to_owned(),
+            serde_json::Value::String(v.join(",")),
+        );
     }
 
-    // Hot-swap the config
-    state.config.store(Arc::new(new_config));
+    if changes.is_empty() {
+        return Ok(Json(SettingsUpdateResponse {
+            message: "No changes provided".into(),
+            applied_fields: vec![],
+            restart_required_fields: vec![],
+        }));
+    }
 
-    tracing::info!(fields = ?applied, "settings.updated");
+    // Route through ConfigManager: persists to .env, swaps config, rebuilds LLM.
+    let result = state.config_manager.update(&changes);
 
+    tracing::info!(
+        applied = ?result.applied_fields,
+        restart_required = ?result.restart_required_fields,
+        persist_failed = result.persist_failed,
+        "settings.updated"
+    );
+
+    let total = result.applied_fields.len() + result.restart_required_fields.len();
     Ok(Json(SettingsUpdateResponse {
-        message: format!("Updated {} setting(s)", applied.len()),
-        applied_fields: applied,
-        restart_required_fields: vec![],
+        message: format!("Updated {} setting(s)", total),
+        applied_fields: result.applied_fields,
+        restart_required_fields: result.restart_required_fields,
     }))
 }

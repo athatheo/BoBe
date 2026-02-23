@@ -178,7 +178,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::onboarding::onboarding_status),
         )
         .route(
-            "/api/onboarding/complete",
+            "/api/onboarding/mark-complete",
             post(handlers::onboarding::mark_complete),
         )
         .route(

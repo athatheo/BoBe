@@ -9,6 +9,7 @@ use crate::llm::types::{AiToolCall, ToolDefinition};
 use crate::tools::{ToolCategory, ToolExecutionContext, ToolResult, ToolSource};
 
 /// Aggregates all BoBe native tools as a single ToolSource.
+#[allow(dead_code)]
 pub struct NativeToolAdapter {
     tools: HashMap<String, Arc<dyn NativeTool>>,
     categories: Vec<ToolCategory>,
@@ -34,6 +35,7 @@ impl NativeToolAdapter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn enable_tool(&self, name: &str) -> bool {
         if !self.tools.contains_key(name) {
             return false;
@@ -42,6 +44,7 @@ impl NativeToolAdapter {
         disabled.remove(name)
     }
 
+    #[allow(dead_code)]
     pub fn disable_tool(&self, name: &str) -> bool {
         if !self.tools.contains_key(name) {
             return false;
@@ -50,6 +53,7 @@ impl NativeToolAdapter {
         disabled.insert(name.to_owned())
     }
 
+    #[allow(dead_code)]
     pub fn set_tool_enabled(&self, name: &str, enabled: bool) -> bool {
         if enabled {
             self.enable_tool(name)
@@ -58,6 +62,7 @@ impl NativeToolAdapter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_tool_enabled(&self, name: &str) -> Option<bool> {
         if !self.tools.contains_key(name) {
             return None;

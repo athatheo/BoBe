@@ -53,6 +53,7 @@ impl ScreenCapture {
     }
 
     /// Encode a CaptureResult's image as base64 PNG.
+    #[allow(dead_code)]
     pub fn encode_base64(result: &CaptureResult) -> String {
         BASE64.encode(&result.image)
     }

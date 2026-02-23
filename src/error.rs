@@ -24,6 +24,7 @@ pub enum AppError {
     Tool(String),
 
     #[error("Tool call loop error: {0}")]
+    #[allow(dead_code)]
     ToolCallLoop(String),
 
     #[error("Validation error: {0}")]

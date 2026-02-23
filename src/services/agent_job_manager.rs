@@ -61,6 +61,7 @@ fn default_true() -> bool {
 }
 
 /// In-memory state for a running subprocess.
+#[allow(dead_code)]
 struct RunningJob {
     watcher_handle: tokio::task::JoinHandle<()>,
     pid: u32,
@@ -107,6 +108,7 @@ impl AgentJobManager {
     }
 
     /// Get list of enabled agent profiles for discovery.
+    #[allow(dead_code)]
     pub fn get_available_profiles(&self) -> Vec<&AgentProfileConfig> {
         self.profiles.values().filter(|p| p.enabled).collect()
     }
@@ -246,11 +248,13 @@ impl AgentJobManager {
     }
 
     /// Check the current status of a job.
+    #[allow(dead_code)]
     pub async fn check(&self, job_id: Uuid) -> Result<Option<AgentJob>, AppError> {
         self.repo.get_by_id(job_id).await
     }
 
     /// Cancel a running job.
+    #[allow(dead_code)]
     pub async fn cancel(&self, job_id: Uuid) -> Result<bool, AppError> {
         let running = {
             let mut running = self.running_jobs.lock().await;
@@ -278,6 +282,7 @@ impl AgentJobManager {
     ///
     /// Uses the agent's session_id to resume the same session (Claude Code).
     /// For agents without session resume, starts a fresh run with context.
+    #[allow(dead_code)]
     pub async fn continue_job(
         self: &Arc<Self>,
         job_id: Uuid,
@@ -402,11 +407,13 @@ impl AgentJobManager {
         );
         Ok(Some(job))
     }
+    #[allow(dead_code)]
     pub async fn poll_completed_unreported(&self) -> Result<Vec<AgentJob>, AppError> {
         self.repo.find_unreported_terminal().await
     }
 
     /// Kill all running agents on server shutdown.
+    #[allow(dead_code)]
     pub async fn cleanup_on_shutdown(&self) {
         let jobs_to_kill: Vec<(Uuid, u32)> = {
             let mut running = self.running_jobs.lock().await;
@@ -428,6 +435,7 @@ impl AgentJobManager {
     }
 
     /// Mark orphaned running/pending jobs as failed on startup.
+    #[allow(dead_code)]
     pub async fn recover_orphaned_jobs(&self) -> Result<u32, AppError> {
         let mut count = 0u32;
 

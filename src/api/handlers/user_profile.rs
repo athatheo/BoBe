@@ -32,6 +32,7 @@ pub struct UserProfileListResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct UserProfileCreateRequest {
     pub name: String,
     pub content: String,

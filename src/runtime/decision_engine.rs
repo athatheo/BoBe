@@ -43,12 +43,9 @@ impl DecisionEngine {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_config(&mut self, config: OrchestratorConfig) {
         self.config = config;
-    }
-
-    pub fn update_llm(&mut self, llm: Arc<dyn LlmProvider>) {
-        self.llm = llm;
     }
 
     /// Route to appropriate decision logic based on trigger type.
@@ -398,6 +395,7 @@ impl DecisionEngine {
     }
 
     /// User messages always get a response.
+    #[allow(dead_code)]
     pub async fn decide_for_message(&self, _user_message: &str) -> Decision {
         Decision::Engage
     }

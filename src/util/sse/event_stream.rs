@@ -10,11 +10,13 @@ use super::types::StreamBundle;
 /// Composes EventQueue + SseConnectionManager. Designed for ONE SSE
 /// client (the shell). If a second client connects, the first is
 /// considered disconnected.
+#[allow(dead_code)]
 pub struct EventStream {
     queue: Arc<EventQueue>,
     connection_manager: Arc<SseConnectionManager>,
 }
 
+#[allow(dead_code)]
 impl EventStream {
     pub fn new(queue: Arc<EventQueue>, connection_manager: Arc<SseConnectionManager>) -> Self {
         Self {
@@ -58,6 +60,7 @@ impl EventStream {
 /// data: <json>
 ///
 /// ```
+#[allow(dead_code)]
 pub fn format_sse_event(bundle: &StreamBundle) -> String {
     let data = serde_json::to_string(bundle).unwrap_or_default();
     format!("data: {data}\n\n")

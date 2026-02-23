@@ -7,6 +7,7 @@ use std::path::PathBuf;
 /// Database is the source of truth for all goals.
 /// GOALS.md can optionally seed initial goals on first startup.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct GoalConfig {
     /// Path to GOALS.md file. Defaults to ~/.bobe/GOALS.md if None.
     pub file_path: Option<PathBuf>,

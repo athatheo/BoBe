@@ -41,12 +41,9 @@ impl MemoryConsolidator {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_config(&mut self, config: LearningConfig) {
         self.config = config;
-    }
-
-    pub fn update_llm(&mut self, llm: Arc<dyn LlmProvider>) {
-        self.llm = llm;
     }
 
     /// Consolidate short-term memories into long-term.

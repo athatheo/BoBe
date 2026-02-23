@@ -44,6 +44,7 @@ impl GoalTrigger {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_config(&mut self, config: OrchestratorConfig) {
         self.config = config;
     }

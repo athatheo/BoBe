@@ -103,11 +103,13 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
 }
 
 /// Format an inferred goal for appending to GOALS.md.
+#[allow(dead_code)]
 pub fn format_inferred_goal(content: &str, reason: &str, goal_date: NaiveDate) -> String {
     format!("- [ ] {content}\n  > {reason} ({})\n", goal_date)
 }
 
 /// Format a complete GOALS.md file.
+#[allow(dead_code)]
 pub fn format_goals_file(
     high_priority: &[(String, bool)],
     medium_priority: &[(String, bool)],

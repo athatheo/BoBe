@@ -47,6 +47,7 @@ impl ToolRegistry {
     }
 
     /// Unregister a tool source.
+    #[allow(dead_code)]
     pub async fn unregister(&self, source_name: &str) {
         self.sources.write().await.remove(source_name);
         let mut t2s = self.tool_to_source.write().await;
@@ -70,6 +71,7 @@ impl ToolRegistry {
     }
 
     /// Get tools filtered by categories.
+    #[allow(dead_code)]
     pub async fn get_tools_by_category(&self, categories: &[ToolCategory]) -> Vec<ToolDefinition> {
         let sources = self.sources.read().await;
         let mut result = Vec::new();
@@ -94,21 +96,25 @@ impl ToolRegistry {
     }
 
     /// Get a source by name.
+    #[allow(dead_code)]
     pub async fn get_source(&self, name: &str) -> Option<Arc<dyn ToolSource>> {
         self.sources.read().await.get(name).cloned()
     }
 
     /// Get all registered source names.
+    #[allow(dead_code)]
     pub async fn source_names(&self) -> Vec<String> {
         self.sources.read().await.keys().cloned().collect()
     }
 
     /// Get the source name for a given tool.
+    #[allow(dead_code)]
     pub async fn get_source_name_for_tool(&self, tool_name: &str) -> Option<String> {
         self.tool_to_source.read().await.get(tool_name).cloned()
     }
 
     /// Health check all sources.
+    #[allow(dead_code)]
     pub async fn health_check_all(&self) -> HashMap<String, bool> {
         let sources = self.sources.read().await;
         let mut results = HashMap::new();

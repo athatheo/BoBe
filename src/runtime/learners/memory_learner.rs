@@ -49,12 +49,9 @@ impl MemoryLearner {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_config(&mut self, config: LearningConfig) {
         self.config = config;
-    }
-
-    pub fn update_llm(&mut self, llm: Arc<dyn LlmProvider>) {
-        self.llm = llm;
     }
 
     /// Extract memories from accumulated observations.

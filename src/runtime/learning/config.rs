@@ -2,6 +2,7 @@
 
 /// Thresholds for similarity operations.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SimilarityConfig {
     /// Strict duplicate detection.
     pub deduplication_threshold: f64,
@@ -23,6 +24,7 @@ impl Default for SimilarityConfig {
 
 /// Configuration for the LearningLoop.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LearningConfig {
     pub enabled: bool,
     pub interval_minutes: u64,

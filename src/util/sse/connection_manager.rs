@@ -61,10 +61,12 @@ impl SseConnectionManager {
         *self.on_disconnect.write().await = Some(on_disconnect);
     }
 
+    #[allow(dead_code)]
     pub async fn is_connected(&self) -> bool {
         self.state.lock().await.connected
     }
 
+    #[allow(dead_code)]
     pub async fn current_indicator(&self) -> IndicatorType {
         self.state.lock().await.current_indicator
     }

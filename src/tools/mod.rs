@@ -104,5 +104,6 @@ pub trait ToolSource: Send + Sync {
     ) -> ToolResult;
 
     /// Check if source is available.
+    #[allow(dead_code)]
     async fn health_check(&self) -> bool;
 }

@@ -16,6 +16,7 @@ use crate::db::SoulRepository;
 
 const DEFAULT_SOUL: &str = "You are BoBe, a helpful AI assistant.";
 
+#[allow(dead_code)]
 pub struct SoulService {
     soul_file: Option<PathBuf>,
     soul_repo: Option<Arc<dyn SoulRepository>>,
@@ -32,6 +33,7 @@ impl SoulService {
     }
 
     /// Get soul content synchronously (file-based fallback).
+    #[allow(dead_code)]
     pub fn get_soul(&self) -> String {
         self.load_soul_from_file()
     }
@@ -49,6 +51,7 @@ impl SoulService {
     }
 
     /// Force reload the soul from file.
+    #[allow(dead_code)]
     pub fn reload(&self) -> String {
         let content = self.load_soul_from_file();
         // Clear cache so next async call re-fetches from DB
@@ -59,6 +62,7 @@ impl SoulService {
     }
 
     /// Force reload the soul, preferring database.
+    #[allow(dead_code)]
     pub async fn reload_async(&self) -> Result<String, AppError> {
         {
             let mut cached = self.cached_content.write().await;

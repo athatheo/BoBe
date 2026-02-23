@@ -38,6 +38,7 @@ pub struct McpConfigFile {
 
 /// Parsed and validated MCP server configuration.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct McpParsedServer {
     pub name: String,
     pub command: String,

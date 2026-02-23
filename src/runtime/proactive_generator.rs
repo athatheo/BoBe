@@ -60,10 +60,6 @@ impl ProactiveGenerator {
         }
     }
 
-    pub fn update_llm(&mut self, llm: Arc<dyn LlmProvider>) {
-        self.llm = llm;
-    }
-
     /// Complete proactive flow: conversation setup → generate → record engagement.
     pub async fn generate_proactive_response(
         &self,
@@ -76,6 +72,7 @@ impl ProactiveGenerator {
     }
 
     /// Send a simple check-in message.
+    #[allow(dead_code)]
     pub async fn send_proactive_checkin(&self, message: &str, auto_close_minutes: i64) {
         let (target, _) = self.ensure_conversation(auto_close_minutes).await;
         self.send_checkin(message, target).await;
@@ -250,6 +247,7 @@ impl ProactiveGenerator {
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
+    #[allow(dead_code)]
     async fn send_checkin(&self, message: &str, target_conversation: Option<Conversation>) {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 

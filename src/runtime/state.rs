@@ -25,6 +25,7 @@ pub enum TriggerType {
 
 /// Context for a triggered proactive action.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TriggerContext {
     pub trigger_type: TriggerType,
     pub context_text: String,
@@ -36,6 +37,7 @@ pub struct TriggerContext {
 
 /// Configuration for the orchestrator (immutable per cycle).
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct OrchestratorConfig {
     pub capture_enabled: bool,
     pub capture_interval_seconds: u64,

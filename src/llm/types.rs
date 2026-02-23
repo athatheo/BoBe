@@ -76,6 +76,7 @@ impl AiMessage {
         }
     }
 
+    #[allow(dead_code)]
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             role: "assistant".into(),
@@ -117,6 +118,7 @@ pub struct TokenUsage {
 
 /// Canonical LLM response.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AiResponse {
     pub message: AiMessage,
     pub finish_reason: String,
@@ -174,6 +176,7 @@ pub struct ResponseFormat {
 }
 
 impl ResponseFormat {
+    #[allow(dead_code)]
     pub fn text() -> Self {
         Self {
             format_type: "text".into(),

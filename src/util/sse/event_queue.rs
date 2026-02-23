@@ -75,10 +75,12 @@ impl EventQueue {
     }
 
     /// Number of events currently in the queue.
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.inner.lock().unwrap().len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.inner.lock().unwrap().is_empty()
     }

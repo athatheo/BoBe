@@ -34,6 +34,7 @@ pub struct GoalListResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct GoalCreateRequest {
     pub content: String,
     #[serde(default = "default_priority")]

@@ -65,12 +65,9 @@ impl MessageHandler {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_config(&mut self, config: OrchestratorConfig) {
         self.config = config;
-    }
-
-    pub fn update_llm(&mut self, llm: Arc<dyn LlmProvider>) {
-        self.llm = llm;
     }
 
     /// Handle a user message. Returns message ID for tracking.

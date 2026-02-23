@@ -109,6 +109,7 @@ impl AssembledContext {
         (context, personality)
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.souls.is_empty()
             && self.goals.is_empty()
@@ -255,6 +256,7 @@ impl ContextAssembler {
     // ── Individual retrieval methods for tools ──────────────────────────
 
     /// Search memories semantically.
+    #[allow(dead_code)]
     pub async fn get_memories(&self, query: &str, limit: i64, min_score: f64) -> Vec<Memory> {
         let emb = match self.embedding.embed(query).await {
             Ok(v) => v,
@@ -277,6 +279,7 @@ impl ContextAssembler {
     }
 
     /// Get all active goals ordered by priority.
+    #[allow(dead_code)]
     pub async fn get_active_goals(&self) -> Vec<Goal> {
         match self.goal_repo.find_active(true).await {
             Ok(goals) => goals,
@@ -299,6 +302,7 @@ impl ContextAssembler {
     }
 
     /// Get recent observations, optionally filtered by semantic relevance.
+    #[allow(dead_code)]
     pub async fn get_recent_observations(
         &self,
         query: Option<&str>,

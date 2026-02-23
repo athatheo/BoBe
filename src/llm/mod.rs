@@ -5,6 +5,7 @@ pub mod factory;
 pub mod shared;
 pub mod ollama_manager;
 pub mod embedding;
+pub mod swappable;
 
 // ─── Trait definitions ──────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ pub trait LlmProvider: Send + Sync {
     fn supports_vision(&self) -> bool;
 
     /// Whether this provider supports tool/function calling.
+    #[allow(dead_code)]
     fn supports_tools(&self) -> bool;
 }
 
@@ -60,8 +62,10 @@ pub trait EmbeddingProvider: Send + Sync {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, AppError>;
 
     /// Embed multiple texts efficiently (batched).
+    #[allow(dead_code)]
     async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, AppError>;
 
     /// Get the dimension of embeddings produced by this provider.
+    #[allow(dead_code)]
     fn dimension(&self) -> usize;
 }
