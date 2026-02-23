@@ -145,15 +145,21 @@ impl RuntimeSession {
                 self.log_heartbeat(loop_counter).await;
             }
 
-            // CheckinTrigger (error-safe)
-            match std::panic::AssertUnwindSafe(async {
-                let mut checkin = self.checkin_trigger.lock().await;
-                checkin.fire().await
-            }).await {
-                decision if decision == Decision::Engage => {
+            // CheckinTrigger (with timeout)
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                async {
+                    let mut checkin = self.checkin_trigger.lock().await;
+                    checkin.fire().await
+                },
+            ).await {
+                Ok(Decision::Engage) => {
                     info!(trigger = "checkin", "runtime_session.reach_out");
                 }
-                _ => {}
+                Ok(_) => {}
+                Err(_) => {
+                    warn!("runtime_session.checkin_trigger_timeout");
+                }
             }
 
             // Stale conversation cleanup

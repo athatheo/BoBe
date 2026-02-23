@@ -76,24 +76,39 @@ impl ObservationRepository for SqliteObservationRepo {
         since: Option<chrono::DateTime<Utc>>,
         limit: Option<i64>,
     ) -> Result<Vec<Observation>, AppError> {
-        let mut sql = String::from("SELECT * FROM observations");
-        if since.is_some() {
-            sql.push_str(" WHERE created_at > ?1");
-        }
-        sql.push_str(" ORDER BY created_at ASC");
-        if let Some(lim) = limit {
-            sql.push_str(&format!(" LIMIT {lim}"));
-        }
-
-        let rows = if let Some(s) = since {
-            sqlx::query_as::<_, Observation>(&sql)
+        let rows = match (since, limit) {
+            (Some(s), Some(lim)) => {
+                sqlx::query_as::<_, Observation>(
+                    "SELECT * FROM observations WHERE created_at > ?1 ORDER BY created_at ASC LIMIT ?2",
+                )
+                .bind(s)
+                .bind(lim)
+                .fetch_all(&self.pool)
+                .await
+            }
+            (Some(s), None) => {
+                sqlx::query_as::<_, Observation>(
+                    "SELECT * FROM observations WHERE created_at > ?1 ORDER BY created_at ASC",
+                )
                 .bind(s)
                 .fetch_all(&self.pool)
                 .await
-        } else {
-            sqlx::query_as::<_, Observation>(&sql)
+            }
+            (None, Some(lim)) => {
+                sqlx::query_as::<_, Observation>(
+                    "SELECT * FROM observations ORDER BY created_at ASC LIMIT ?1",
+                )
+                .bind(lim)
                 .fetch_all(&self.pool)
                 .await
+            }
+            (None, None) => {
+                sqlx::query_as::<_, Observation>(
+                    "SELECT * FROM observations ORDER BY created_at ASC",
+                )
+                .fetch_all(&self.pool)
+                .await
+            }
         }
         .map_err(AppError::Database)?;
 

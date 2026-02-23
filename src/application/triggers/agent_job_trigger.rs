@@ -175,7 +175,12 @@ impl AgentJobTrigger {
             Some(&job.working_directory),
             job.conversation_id,
         ).await {
-            Ok(_) => {}
+            Ok(mut new_job) => {
+                new_job.continuation_count = job.continuation_count + 1;
+                if let Err(e) = self.agent_job_repo.save(&new_job).await {
+                    warn!(error = %e, "agent_job.continuation_count_update_failed");
+                }
+            }
             Err(e) => {
                 warn!(error = %e, "agent_job.continue_failed");
                 self.notify_job(job).await;

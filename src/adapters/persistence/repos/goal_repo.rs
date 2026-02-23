@@ -251,20 +251,23 @@ impl GoalRepository for SqliteGoalRepo {
         if statuses.is_empty() {
             return Ok(0);
         }
-        let placeholders: Vec<&str> = statuses.iter().map(|s| s.as_str()).collect();
-        // SQLite doesn't support array binds, so build a safe IN clause
-        let in_clause = placeholders.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(",");
+        // Build parameterized IN clause: WHERE status IN (?, ?, ?)
+        let params: Vec<&str> = statuses.iter().map(|s| s.as_str()).collect();
+        let placeholders = (0..params.len())
+            .map(|i| format!("?{}", i + 2))
+            .collect::<Vec<_>>()
+            .join(",");
         let sql = format!(
-            "DELETE FROM goals WHERE status IN ({in_clause}) AND updated_at < ?1"
+            "DELETE FROM goals WHERE status IN ({placeholders}) AND updated_at < ?1"
         );
-        let result = sqlx::query(&sql)
-            .bind(older_than)
-            .execute(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+        let mut query = sqlx::query(&sql).bind(older_than);
+        for status_str in &params {
+            query = query.bind(*status_str);
+        }
+        let result = query.execute(&self.pool).await.map_err(AppError::Database)?;
         let deleted = result.rows_affected();
         if deleted > 0 {
-            info!(deleted, statuses = ?placeholders, "goal_repo.stale_goals_deleted");
+            info!(deleted, statuses = ?params, "goal_repo.stale_goals_deleted");
         }
         Ok(deleted)
     }
@@ -319,16 +322,19 @@ impl GoalRepository for SqliteGoalRepo {
         }
         let now = chrono::Utc::now();
         let status_str = status.as_str();
-        let placeholders = goal_ids.iter().map(|id| format!("'{id}'")).collect::<Vec<_>>().join(",");
-        let query = format!(
+        // Build parameterized IN clause
+        let placeholders = (0..goal_ids.len())
+            .map(|i| format!("?{}", i + 3))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
             "UPDATE goals SET status = ?1, updated_at = ?2 WHERE id IN ({placeholders})"
         );
-        let result = sqlx::query(&query)
-            .bind(status_str)
-            .bind(now)
-            .execute(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+        let mut query = sqlx::query(&sql).bind(status_str).bind(now);
+        for id in goal_ids {
+            query = query.bind(id.to_string());
+        }
+        let result = query.execute(&self.pool).await.map_err(AppError::Database)?;
         let count = result.rows_affected();
         tracing::info!(count, status = %status_str, "goal_repo.bulk_update_status");
         Ok(count)

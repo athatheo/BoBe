@@ -153,6 +153,11 @@ impl LlmProvider for LlamaCppProvider {
 
                 buffer.push_str(&String::from_utf8_lossy(&bytes));
 
+                if buffer.len() > 1_048_576 {
+                    yield Err(AppError::Llm("SSE buffer exceeded 1MB limit".into()));
+                    return;
+                }
+
                 while let Some(line_end) = buffer.find('\n') {
                     let line = buffer[..line_end].trim().to_owned();
                     buffer = buffer[line_end + 1..].to_owned();

@@ -8,7 +8,7 @@ use tracing::{debug, info};
 use crate::error::AppError;
 use capture_result::CaptureResult;
 
-const CAPTURE_PATH: &str = "/tmp/bobe_capture.png";
+const CAPTURE_DIR: &str = "/tmp";
 
 /// Screen capture service for taking screenshots on macOS.
 ///
@@ -67,11 +67,13 @@ impl Default for ScreenCapture {
 
 /// Take a screenshot using macOS `screencapture` (blocking).
 fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
+    let capture_path = format!("{}/bobe_capture_{}.png", CAPTURE_DIR, uuid::Uuid::new_v4());
     let output = std::process::Command::new("screencapture")
-        .args(["-x", CAPTURE_PATH])
+        .args(["-x", &capture_path])
         .output()?;
 
     if !output.status.success() {
+        let _ = std::fs::remove_file(&capture_path);
         return Err(std::io::Error::other(
             format!(
                 "screencapture exited with {}: {}",
@@ -81,9 +83,10 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
         ));
     }
 
-    let data = std::fs::read(CAPTURE_PATH)?;
-    // Clean up temp file
-    let _ = std::fs::remove_file(CAPTURE_PATH);
+    let data = std::fs::read(&capture_path)?;
+    if let Err(e) = std::fs::remove_file(&capture_path) {
+        tracing::warn!(path = %capture_path, error = %e, "capture.temp_file_cleanup_failed");
+    }
     Ok(data)
 }
 

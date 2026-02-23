@@ -146,6 +146,8 @@ pub async fn list_memories(
     Query(params): Query<MemoryListQuery>,
 ) -> Result<Json<MemoryListResponse>, AppError> {
     let repo = state.memory_repo.clone();
+    let limit = params.limit.clamp(1, 1000);
+    let offset = params.offset.max(0);
 
     let (memories, total) = repo
         .find_all(
@@ -153,8 +155,8 @@ pub async fn list_memories(
             params.category.as_deref(),
             params.source.as_deref(),
             params.enabled_only,
-            params.limit,
-            params.offset,
+            limit,
+            offset,
         )
         .await?;
 
@@ -311,10 +313,12 @@ pub async fn search_memories(
         return Err(AppError::Validation("query must not be empty".into()));
     }
 
-    tracing::info!(query = %body.query, limit = body.limit, "memory.search_requested");
+    let limit = body.limit.clamp(1, 100);
+
+    tracing::info!(query = %body.query, limit, "memory.search_requested");
 
     let embedding = state.embedding_provider.embed(&body.query).await?;
-    let results = state.memory_repo.find_similar(&embedding, body.limit, true, 0.0).await?;
+    let results = state.memory_repo.find_similar(&embedding, limit, true, 0.0).await?;
 
     let memories: Vec<MemorySearchHit> = results
         .into_iter()

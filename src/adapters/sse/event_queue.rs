@@ -42,13 +42,15 @@ impl EventQueue {
     /// Pop the next event, or wait until one is available.
     pub async fn pop(&self) -> StreamBundle {
         loop {
+            // Register for notification BEFORE checking queue to avoid race
+            let notified = self.notify.notified();
             {
                 let mut queue = self.inner.lock().unwrap();
                 if let Some(event) = queue.pop_front() {
                     return event;
                 }
             }
-            self.notify.notified().await;
+            notified.await;
         }
     }
 
@@ -57,9 +59,19 @@ impl EventQueue {
         *self.current_indicator.lock().unwrap()
     }
 
-    /// Set the current indicator state.
+    /// Set the current indicator state and push an indicator event.
     pub fn set_indicator(&self, indicator: IndicatorType) {
         *self.current_indicator.lock().unwrap() = indicator;
+        // Push indicator event so ConnectionManager stays in sync
+        use super::types::EventType;
+        let event = StreamBundle {
+            event_type: EventType::Indicator,
+            message_id: String::new(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            description: format!("{:?}", indicator),
+            payload: serde_json::json!({ "indicator": indicator }),
+        };
+        self.push(event);
     }
 
     /// Number of events currently in the queue.

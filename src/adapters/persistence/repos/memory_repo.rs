@@ -96,19 +96,22 @@ impl MemoryRepository for SqliteMemoryRepo {
     }
 
     async fn find_enabled(&self, limit: Option<i64>) -> Result<Vec<Memory>, AppError> {
-        let sql = if let Some(lim) = limit {
-            format!(
-                "SELECT * FROM memories WHERE enabled = 1 ORDER BY created_at DESC LIMIT {}",
-                lim
+        if let Some(lim) = limit {
+            sqlx::query_as::<_, Memory>(
+                "SELECT * FROM memories WHERE enabled = 1 ORDER BY created_at DESC LIMIT ?1",
             )
-        } else {
-            "SELECT * FROM memories WHERE enabled = 1 ORDER BY created_at DESC".to_string()
-        };
-
-        sqlx::query_as::<_, Memory>(&sql)
+            .bind(lim)
             .fetch_all(&self.pool)
             .await
             .map_err(AppError::Database)
+        } else {
+            sqlx::query_as::<_, Memory>(
+                "SELECT * FROM memories WHERE enabled = 1 ORDER BY created_at DESC",
+            )
+            .fetch_all(&self.pool)
+            .await
+            .map_err(AppError::Database)
+        }
     }
 
     async fn find_all(

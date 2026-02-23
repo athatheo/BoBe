@@ -189,16 +189,26 @@ impl ConversationRepository for SqliteConversationRepo {
         let id = turn.id.to_string();
         let conv_id = turn.conversation_id.to_string();
 
-        // Verify conversation exists and is not closed
-        let conv = self.get_by_id(turn.conversation_id).await?;
-        match conv {
+        // Atomic: verify not closed + insert turn + touch timestamp
+        let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
+
+        // Check conversation state inside transaction to prevent TOCTOU race
+        let conv_state: Option<(String,)> = sqlx::query_as(
+            "SELECT state FROM conversations WHERE id = ?1",
+        )
+        .bind(&conv_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(AppError::Database)?;
+
+        match conv_state {
             None => {
                 warn!(conversation_id = %conv_id, "conversation_repo.add_turn_not_found");
                 return Err(AppError::NotFound(format!(
                     "Conversation {conv_id} not found"
                 )));
             }
-            Some(c) if c.is_closed() => {
+            Some((state,)) if state == "closed" => {
                 warn!(conversation_id = %conv_id, role = %turn.role, "conversation_repo.add_turn_closed");
                 return Err(AppError::Validation(format!(
                     "Cannot add turn to closed conversation {conv_id}"
@@ -206,9 +216,6 @@ impl ConversationRepository for SqliteConversationRepo {
             }
             _ => {}
         }
-
-        // Atomic: insert turn + touch conversation timestamp
-        let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
 
         sqlx::query(
             r#"INSERT INTO conversation_turns (id, role, content, conversation_id, created_at, updated_at)

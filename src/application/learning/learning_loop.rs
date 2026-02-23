@@ -220,11 +220,15 @@ impl LearningLoop {
         let mut total_goals = 0usize;
         let mut all_memories = existing_memories;
         let mut all_goals = existing_goals;
+        let mut processed_closed_times: Vec<chrono::DateTime<chrono::Utc>> = Vec::new();
 
         for conv in &conversations {
             let turns = match self.conversation.get_conversation_turns(conv.id, 100).await {
                 Ok(t) => t,
-                Err(_) => continue,
+                Err(e) => {
+                    warn!(conversation_id = %conv.id, error = %e, "learning_loop.conversation_turns_failed");
+                    continue;
+                }
             };
 
             let turn_tuples: Vec<(String, String)> = turns
@@ -233,6 +237,10 @@ impl LearningLoop {
                 .collect();
 
             if turn_tuples.is_empty() {
+                // Empty conversation — still mark as processed
+                if let Some(closed) = conv.closed_at {
+                    processed_closed_times.push(closed);
+                }
                 continue;
             }
 
@@ -249,15 +257,16 @@ impl LearningLoop {
                 .await;
             total_goals += goals.len();
             all_goals.extend(goals);
+
+            // Only advance timestamp for successfully processed conversations
+            if let Some(closed) = conv.closed_at {
+                processed_closed_times.push(closed);
+            }
         }
 
-        // Update state
+        // Update state only based on successfully processed conversations
         let mut changed = false;
-        let closed_times: Vec<_> = conversations
-            .iter()
-            .filter_map(|c| c.closed_at)
-            .collect();
-        if let Some(&latest) = closed_times.iter().max() {
+        if let Some(&latest) = processed_closed_times.iter().max() {
             state.last_conversation_processed_at = Some(latest);
             changed = true;
         }
@@ -298,12 +307,14 @@ impl LearningLoop {
             .distill_from_observations(to_process, &existing_memories, &goals)
             .await;
 
-        // Update state
+        // Only advance state if processing actually produced results
         let mut changed = false;
-        let created_times: Vec<_> = to_process.iter().map(|o| o.created_at).collect();
-        if let Some(&latest) = created_times.iter().max() {
-            state.last_context_processed_at = Some(latest);
-            changed = true;
+        if !memories.is_empty() {
+            let created_times: Vec<_> = to_process.iter().map(|o| o.created_at).collect();
+            if let Some(&latest) = created_times.iter().max() {
+                state.last_context_processed_at = Some(latest);
+                changed = true;
+            }
         }
 
         (to_process.len(), memories.len(), changed)

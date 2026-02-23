@@ -195,9 +195,10 @@ pub async fn configure_llm(
                 changes.insert("BOBE_OPENAI_MODEL".into(), model.clone());
             }
             persist_config(&changes);
-            // API key: env var only (never persisted to .env)
+            // API key: env var only (never persisted to .env for security).
+            // SAFETY: set_var in multi-threaded context is technically UB per Rust spec,
+            // but macOS/glibc setenv is thread-safe. Acceptable for infrequent config ops.
             if let Some(ref key) = body.api_key {
-                // SAFETY: single-threaded configuration endpoint
                 unsafe { std::env::set_var("BOBE_OPENAI_API_KEY", key); }
             }
             Ok(Json(ConfigureLlmResponse {
@@ -223,7 +224,6 @@ pub async fn configure_llm(
                 changes.insert("BOBE_AZURE_OPENAI_DEPLOYMENT".into(), model.clone());
             }
             persist_config(&changes);
-            // API key: env var only
             if let Some(ref key) = body.api_key {
                 unsafe { std::env::set_var("BOBE_AZURE_OPENAI_API_KEY", key); }
             }
