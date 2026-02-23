@@ -31,4 +31,6 @@ pub trait GoalRepository: Send + Sync {
     async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError>;
     async fn find_null_embedding(&self, limit: i64) -> Result<Vec<Goal>, AppError>;
     async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError>;
+    /// Bulk update status for multiple goals. Returns count of updated rows.
+    async fn bulk_update_status(&self, goal_ids: &[Uuid], status: GoalStatus) -> Result<u64, AppError>;
 }

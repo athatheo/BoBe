@@ -44,7 +44,10 @@ impl AssembledContext {
             let lines: Vec<String> = self
                 .goals
                 .iter()
-                .map(|g| format!("- {} (priority: {})", g.content, g.priority))
+                .map(|g| {
+                    let priority = if g.priority.is_empty() { "medium" } else { &g.priority };
+                    format!("- {} (priority: {})", g.content, priority)
+                })
                 .collect();
             sections.insert("current_goals".into(), lines.join("\n"));
         }
@@ -60,12 +63,15 @@ impl AssembledContext {
                 .observations
                 .iter()
                 .map(|o| {
-                    let summary = if o.content.len() > 100 {
-                        &o.content[..100]
-                    } else {
-                        &o.content
-                    };
-                    format!("- [{}] {}", o.category, summary)
+                    // Check metadata for pre-computed summary
+                    let summary = o.metadata.as_ref()
+                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                        .and_then(|v| v.get("summary").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                        .unwrap_or_else(|| {
+                            if o.content.len() > 100 { o.content[..100].to_string() } else { o.content.clone() }
+                        });
+                    let category = if o.category.is_empty() { "general" } else { &o.category };
+                    format!("- [{}] {}", category, summary)
                 })
                 .collect();
             sections.insert("recent_context".into(), lines.join("\n"));

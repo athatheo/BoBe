@@ -106,6 +106,8 @@ pub struct Container {
     pub native_adapter: Arc<NativeToolAdapter>,
     /// MCP tool adapter — registered with tool_registry during bootstrap.
     pub mcp_adapter: Arc<McpToolAdapter>,
+    /// Agent job trigger — optional, for event callback registration.
+    pub agent_job_trigger: Option<Arc<AgentJobTrigger>>,
 }
 
 impl Container {
@@ -376,6 +378,7 @@ impl Container {
             decision_engine,
             proactive_generator.clone(),
             Some(cooldown_repo.clone()),
+            event_queue.clone(),
             orch_config.clone(),
         ));
 
@@ -390,13 +393,14 @@ impl Container {
                 config.coding_agent_max_concurrent as usize,
                 config.coding_agent_max_runtime_seconds,
             ));
-            Some(Arc::new(AgentJobTrigger::new(
+            let trigger = Arc::new(AgentJobTrigger::new(
                 agent_job_manager,
                 agent_job_repo.clone(),
                 proactive_generator,
                 orch_config.clone(),
                 Some(llm_provider.clone()),
-            )))
+            ));
+            Some(trigger)
         } else {
             None
         };
@@ -422,7 +426,7 @@ impl Container {
             Some(cooldown_repo.clone()),
             event_queue.clone(),
             orch_config,
-            agent_job_trigger,
+            agent_job_trigger.clone(),
         ));
 
         // ── LearningLoop (optional) ────────────────────────────────────
@@ -501,6 +505,7 @@ impl Container {
             swappable_llm,
             native_adapter,
             mcp_adapter,
+            agent_job_trigger,
         })
     }
 }

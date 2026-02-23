@@ -182,6 +182,11 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         info!("bootstrap.sse_callbacks_wired");
     }
 
+    // 10b. Register agent job trigger callback for immediate job completion handling
+    if let Some(ref trigger) = container.agent_job_trigger {
+        trigger.register_callback().await;
+    }
+
     // 11. Build AppState from the container
     let state = Arc::new(AppState {
         db: container.db,

@@ -201,6 +201,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/tools", get(controllers::tools::list_tools))
         .route(
+            "/api/tools/{tool_name}",
+            axum::routing::patch(controllers::tools::update_tool),
+        )
+        .route(
             "/api/tools/{tool_name}/enable",
             post(controllers::tools::enable_tool),
         )

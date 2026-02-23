@@ -13,12 +13,16 @@ pub async fn health_check(
         .await
         .is_ok();
 
-    let status = if db_ok { "healthy" } else { "unhealthy" };
+    let llm_ok = state.llm_provider.health_check().await;
+
+    let all_ok = db_ok && llm_ok;
+    let status = if all_ok { "healthy" } else { "degraded" };
 
     Json(json!({
         "status": status,
         "services": {
             "database": if db_ok { "ok" } else { "error" },
+            "llm": if llm_ok { "ok" } else { "error" },
         },
         "version": env!("CARGO_PKG_VERSION"),
     }))

@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use tracing::{debug, info, warn};
 
+use crate::adapters::sse::event_queue::EventQueue;
+use crate::adapters::sse::types::IndicatorType;
 use crate::application::runtime::decision_engine::DecisionEngine;
 use crate::application::runtime::proactive_generator::ProactiveGenerator;
 use crate::application::runtime::state::{Decision, OrchestratorConfig, TriggerContext, TriggerType};
@@ -17,6 +19,7 @@ pub struct GoalTrigger {
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    event_queue: Arc<EventQueue>,
     config: OrchestratorConfig,
 }
 
@@ -26,6 +29,7 @@ impl GoalTrigger {
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        event_queue: Arc<EventQueue>,
         config: OrchestratorConfig,
     ) -> Self {
         Self {
@@ -33,6 +37,7 @@ impl GoalTrigger {
             decision_engine,
             generator,
             cooldown_repo,
+            event_queue,
             config,
         }
     }
@@ -72,6 +77,8 @@ impl GoalTrigger {
         info!(goal_count = goals.len(), "goal_trigger.checking_goals");
 
         for goal in &goals {
+            self.event_queue.set_indicator(IndicatorType::Thinking);
+
             let context = TriggerContext {
                 trigger_type: TriggerType::Goal,
                 context_text: goal.content.clone(),
@@ -93,6 +100,8 @@ impl GoalTrigger {
                 ).await;
                 return Decision::Engage;
             }
+
+            self.event_queue.set_indicator(IndicatorType::Idle);
         }
 
         debug!("goal_trigger.no_engagement");

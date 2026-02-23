@@ -156,16 +156,26 @@ pub async fn mark_complete(
 
 /// POST /api/onboarding/configure-llm
 ///
-/// Validates the LLM configuration request and returns success.
+/// Validates and persists the LLM configuration to ~/.bobe/.env.
+/// API keys are set as env vars for the running process but NOT written to disk.
 pub async fn configure_llm(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigureLlmRequest>,
 ) -> Result<Json<ConfigureLlmResponse>, AppError> {
+    use crate::composition::config_persistence::persist_config;
+    use std::collections::BTreeMap;
+
     let cfg = state.config();
     let mode = body.mode.as_str();
 
     match mode {
         "ollama" => {
+            let mut changes = BTreeMap::new();
+            changes.insert("BOBE_LLM_BACKEND".into(), "ollama".into());
+            if let Some(ref model) = body.model {
+                changes.insert("BOBE_OLLAMA_MODEL".into(), model.clone());
+            }
+            persist_config(&changes);
             let model = body.model.unwrap_or_else(|| cfg.ollama_model.clone());
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
@@ -178,6 +188,17 @@ pub async fn configure_llm(
                     ok: false,
                     message: "API key required for OpenAI".into(),
                 }));
+            }
+            let mut changes = BTreeMap::new();
+            changes.insert("BOBE_LLM_BACKEND".into(), "openai".into());
+            if let Some(ref model) = body.model {
+                changes.insert("BOBE_OPENAI_MODEL".into(), model.clone());
+            }
+            persist_config(&changes);
+            // API key: env var only (never persisted to .env)
+            if let Some(ref key) = body.api_key {
+                // SAFETY: single-threaded configuration endpoint
+                unsafe { std::env::set_var("BOBE_OPENAI_API_KEY", key); }
             }
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
@@ -193,15 +214,36 @@ pub async fn configure_llm(
                     message: "API key and endpoint required for Azure OpenAI".into(),
                 }));
             }
+            let mut changes = BTreeMap::new();
+            changes.insert("BOBE_LLM_BACKEND".into(), "azure_openai".into());
+            if let Some(ref endpoint) = body.endpoint {
+                changes.insert("BOBE_AZURE_OPENAI_ENDPOINT".into(), endpoint.clone());
+            }
+            if let Some(ref model) = body.model {
+                changes.insert("BOBE_AZURE_OPENAI_DEPLOYMENT".into(), model.clone());
+            }
+            persist_config(&changes);
+            // API key: env var only
+            if let Some(ref key) = body.api_key {
+                unsafe { std::env::set_var("BOBE_AZURE_OPENAI_API_KEY", key); }
+            }
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
                 message: "Configured Azure OpenAI".into(),
             }))
         }
-        "local" => Ok(Json(ConfigureLlmResponse {
-            ok: true,
-            message: "Configured local llama.cpp".into(),
-        })),
+        "local" => {
+            let mut changes = BTreeMap::new();
+            changes.insert("BOBE_LLM_BACKEND".into(), "local".into());
+            if let Some(ref url) = body.model {
+                changes.insert("BOBE_LLAMA_URL".into(), url.clone());
+            }
+            persist_config(&changes);
+            Ok(Json(ConfigureLlmResponse {
+                ok: true,
+                message: "Configured local llama.cpp".into(),
+            }))
+        }
         other => Ok(Json(ConfigureLlmResponse {
             ok: false,
             message: format!("Unknown mode: {other}"),

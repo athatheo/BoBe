@@ -270,9 +270,13 @@ async fn run_streaming_loop(
         max_tokens,
     );
 
+    let mut final_has_tool_calls = false;
     while let Some(chunk_result) = final_stream.next().await {
         match chunk_result {
             Ok(chunk) => {
+                if !chunk.tool_calls.is_empty() {
+                    final_has_tool_calls = true;
+                }
                 if tx.send(Ok(StreamItem::Chunk(chunk))).await.is_err() {
                     return Ok(());
                 }
@@ -284,10 +288,15 @@ async fn run_streaming_loop(
         }
     }
 
+    if final_has_tool_calls {
+        warn!("LLM still requesting tools after max iterations on final response");
+    }
+
     Ok(())
 }
 
 /// Execute tools in parallel, returning start/complete notifications and results.
+/// Each tool is tracked individually with its own error handling and duration.
 async fn execute_tools_with_notifications(
     executor: &ToolExecutor,
     tool_calls: &[crate::ports::llm_types::AiToolCall],
@@ -307,20 +316,34 @@ async fn execute_tools_with_notifications(
         });
     }
 
-    // Execute in parallel
-    let start = std::time::Instant::now();
+    // Execute in parallel, tracking per-tool timing
+    let start_times: Vec<std::time::Instant> = tool_calls.iter().map(|_| std::time::Instant::now()).collect();
     let batch_results = executor.execute_batch(tool_calls, context).await;
 
-    // Emit completion notifications
-    for result in &batch_results {
-        let duration = start.elapsed();
+    // Emit completion notifications with per-tool duration
+    for (i, result) in batch_results.iter().enumerate() {
+        let duration_ms = if i < start_times.len() {
+            start_times[i].elapsed().as_secs_f64() * 1000.0
+        } else {
+            0.0
+        };
+
+        if !result.success {
+            warn!(
+                tool = %result.tool_name,
+                error = ?result.error,
+                duration_ms = format!("{duration_ms:.1}"),
+                "tool_call.execution_failed"
+            );
+        }
+
         notifications.push(ToolExecutionNotification {
             notification_type: "complete".into(),
             tool_name: result.tool_name.clone(),
             tool_call_id: result.tool_call_id.clone(),
             success: Some(result.success),
             error: result.error.clone(),
-            duration_ms: Some(duration.as_secs_f64() * 1000.0),
+            duration_ms: Some(duration_ms),
         });
     }
 

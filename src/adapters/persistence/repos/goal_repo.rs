@@ -312,6 +312,27 @@ impl GoalRepository for SqliteGoalRepo {
             .map_err(AppError::Database)?;
         Ok(())
     }
+
+    async fn bulk_update_status(&self, goal_ids: &[Uuid], status: GoalStatus) -> Result<u64, AppError> {
+        if goal_ids.is_empty() {
+            return Ok(0);
+        }
+        let now = chrono::Utc::now();
+        let status_str = status.as_str();
+        let placeholders = goal_ids.iter().map(|id| format!("'{id}'")).collect::<Vec<_>>().join(",");
+        let query = format!(
+            "UPDATE goals SET status = ?1, updated_at = ?2 WHERE id IN ({placeholders})"
+        );
+        let result = sqlx::query(&query)
+            .bind(status_str)
+            .bind(now)
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
+        let count = result.rows_affected();
+        tracing::info!(count, status = %status_str, "goal_repo.bulk_update_status");
+        Ok(count)
+    }
 }
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {

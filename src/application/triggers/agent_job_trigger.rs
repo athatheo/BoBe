@@ -43,6 +43,33 @@ impl AgentJobTrigger {
         }
     }
 
+    /// Register event-driven callback with the job manager.
+    /// Must be called after wrapping self in Arc.
+    pub async fn register_callback(self: &Arc<Self>) {
+        let trigger = Arc::clone(self);
+        let callback = Arc::new(move |job: AgentJob| {
+            let trigger = Arc::clone(&trigger);
+            Box::pin(async move {
+                trigger.on_job_complete(job).await;
+            }) as futures::future::BoxFuture<'static, ()>
+        });
+        self.manager.set_on_job_complete(callback).await;
+        info!("agent_job_trigger.callback_registered");
+    }
+
+    /// Callback fired immediately when a subprocess exits.
+    async fn on_job_complete(&self, job: AgentJob) {
+        let should_continue = self.should_continue(&job).await;
+        if should_continue {
+            self.continue_agent(&job).await;
+        } else {
+            self.notify_job(&job).await;
+            if let Err(e) = self.agent_job_repo.mark_reported(job.id).await {
+                warn!(error = %e, "agent_job_trigger.mark_reported_failed");
+            }
+        }
+    }
+
     pub fn update_config(&mut self, config: OrchestratorConfig) {
         self.config = config;
     }

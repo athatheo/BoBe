@@ -21,6 +21,7 @@ pub struct StreamResult {
     pub duration_ms: f64,
     pub success: bool,
     pub error: Option<String>,
+    pub first_token_ms: Option<f64>,
 }
 
 /// Stream a mixed LLM + tool notification stream to SSE event queue.
@@ -42,10 +43,14 @@ pub async fn stream_response(
     let mut full_response = String::new();
     let mut error_msg: Option<String> = None;
     let mut success = true;
+    let mut first_token_time: Option<Instant> = None;
 
     while let Some(item) = stream.next().await {
         match item {
             Ok(StreamItem::Chunk(chunk)) => {
+                if first_token_time.is_none() && !chunk.delta.is_empty() {
+                    first_token_time = Some(Instant::now());
+                }
                 if !handle_stream_chunk(&chunk, &msg_id, &mut sequence, &mut full_response, event_queue) {
                     break;
                 }
@@ -57,7 +62,9 @@ pub async fn stream_response(
                 success = false;
                 error_msg = Some(e.to_string());
                 error!(error = %e, chunks = sequence, "stream_response.error");
-                push_error_event(&msg_id, &e, event_queue);
+                // Classify error: tool system errors are non-recoverable
+                let (code, recoverable) = classify_error(&e);
+                push_error_event_classified(&msg_id, &e, code, recoverable, event_queue);
                 break;
             }
         }
@@ -66,6 +73,7 @@ pub async fn stream_response(
     push_done_event(&msg_id, sequence, event_queue);
 
     let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+    let first_token_ms = first_token_time.map(|t| (t - start_time).as_secs_f64() * 1000.0);
 
     StreamResult {
         full_response,
@@ -73,6 +81,7 @@ pub async fn stream_response(
         duration_ms,
         success,
         error: error_msg,
+        first_token_ms,
     }
 }
 
@@ -93,10 +102,14 @@ pub async fn stream_llm_response(
     let mut full_response = String::new();
     let mut error_msg: Option<String> = None;
     let mut success = true;
+    let mut first_token_time: Option<Instant> = None;
 
     while let Some(item) = stream.next().await {
         match item {
             Ok(chunk) => {
+                if first_token_time.is_none() && !chunk.delta.is_empty() {
+                    first_token_time = Some(Instant::now());
+                }
                 if !handle_stream_chunk(&chunk, &msg_id, &mut sequence, &mut full_response, event_queue) {
                     break;
                 }
@@ -114,6 +127,7 @@ pub async fn stream_llm_response(
     push_done_event(&msg_id, sequence, event_queue);
 
     let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+    let first_token_ms = first_token_time.map(|t| (t - start_time).as_secs_f64() * 1000.0);
 
     StreamResult {
         full_response,
@@ -121,6 +135,7 @@ pub async fn stream_llm_response(
         duration_ms,
         success,
         error: error_msg,
+        first_token_ms,
     }
 }
 
@@ -197,17 +212,35 @@ fn handle_tool_notification(
 }
 
 fn push_error_event(msg_id: &str, error: &AppError, event_queue: &EventQueue) {
+    let (code, recoverable) = classify_error(error);
+    push_error_event_classified(msg_id, error, code, recoverable, event_queue);
+}
+
+fn push_error_event_classified(msg_id: &str, error: &AppError, code: &str, recoverable: bool, event_queue: &EventQueue) {
     event_queue.push(StreamBundle {
         event_type: EventType::Error,
         message_id: msg_id.to_owned(),
         timestamp: chrono::Utc::now().to_rfc3339(),
         description: "stream_error".into(),
         payload: serde_json::json!({
-            "code": "RESPONSE_ERROR",
+            "code": code,
             "message": error.to_string(),
-            "recoverable": true,
+            "recoverable": recoverable,
         }),
     });
+}
+
+/// Classify an error for SSE reporting.
+/// Tool system errors are non-recoverable; LLM errors are recoverable.
+fn classify_error(error: &AppError) -> (&'static str, bool) {
+    let msg = error.to_string().to_lowercase();
+    if msg.contains("tool") {
+        ("TOOL_SYSTEM_ERROR", false)
+    } else if msg.contains("timeout") {
+        ("LLM_TIMEOUT", true)
+    } else {
+        ("RESPONSE_ERROR", true)
+    }
 }
 
 fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {

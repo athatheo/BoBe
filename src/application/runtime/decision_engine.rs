@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use serde_json::Value;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::application::prompts::decision::DecisionPrompt;
 use crate::application::prompts::goal_decision::GoalDecisionPrompt;
@@ -79,6 +79,12 @@ impl DecisionEngine {
                 );
                 return Decision::Idle;
             }
+            // Conversation is stale but we proceed
+            debug!(
+                conversation_id = %active.id,
+                stale_seconds = time_since.num_seconds(),
+                "decision_engine.conversation_stale_allowing_reachout"
+            );
         }
 
         // Get recent AI messages
@@ -87,43 +93,33 @@ impl DecisionEngine {
             .await
             .unwrap_or_default();
 
-        // Get similar observations via semantic search (fallback to recent)
-        let similar_observations = match embedding {
-            Some(emb) => {
-                match self.observation_repo
-                    .find_similar(emb, self.config.semantic_search_limit)
-                    .await
-                {
-                    Ok(results) => {
-                        debug!(
-                            result_count = results.len(),
-                            "decision_engine.semantic_search_complete"
-                        );
-                        results.into_iter().map(|(obs, _score)| obs).collect()
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "decision_engine.semantic_search_failed");
-                        self.observation_repo.find_recent(10).await.unwrap_or_default()
-                    }
-                }
-            }
-            None => {
-                debug!("decision_engine.no_embedding_fallback");
-                self.observation_repo.find_recent(10).await.unwrap_or_default()
-            }
-        };
+        // Get similar observations via semantic search with cascading fallback
+        let similar_observations = self.get_similar_observations(embedding).await;
 
         // Check LLM health
-        if !self.llm.health_check().await {
-            warn!("decision_engine.llm_unhealthy");
-            return Decision::Idle;
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            self.llm.health_check(),
+        ).await {
+            Ok(true) => {}
+            Ok(false) => {
+                warn!("decision_engine.llm_unhealthy");
+                return Decision::Idle;
+            }
+            Err(_) => {
+                warn!("decision_engine.llm_health_timeout");
+                return Decision::Idle;
+            }
         }
 
-        // Build context
+        // Build context using observation summaries
         let context_lines: Vec<String> = similar_observations
             .iter()
             .take(5)
-            .map(|obs| format!("- [{}] {}", obs.category, &obs.content[..obs.content.len().min(100)]))
+            .map(|obs| {
+                let summary = self.get_observation_summary(obs);
+                format!("- [{}] {}", obs.category, summary)
+            })
             .collect();
         let context_summary = if context_lines.is_empty() {
             "No recent context".into()
@@ -192,7 +188,10 @@ impl DecisionEngine {
         let context_lines: Vec<String> = recent_observations
             .iter()
             .take(5)
-            .map(|obs| format!("- [{}] {}", obs.category, &obs.content[..obs.content.len().min(100)]))
+            .map(|obs| {
+                let summary = self.get_observation_summary(obs);
+                format!("- [{}] {}", obs.category, summary)
+            })
             .collect();
         let context_summary = if context_lines.is_empty() {
             "No recent context".into()
@@ -247,6 +246,10 @@ impl DecisionEngine {
     }
 
     fn parse_decision_response(&self, content: &str) -> Decision {
+        if content.is_empty() {
+            debug!("decision_engine.empty_content_idle");
+            return Decision::Idle;
+        }
         let content = content.trim();
 
         // Try JSON
@@ -256,7 +259,7 @@ impl DecisionEngine {
 
             debug!(
                 decision = %decision_value,
-                reasoning = &reasoning[..reasoning.len().min(100)],
+                reasoning = &reasoning[..reasoning.len().min(150)],
                 "decision_engine.parsed_json"
             );
 
@@ -267,6 +270,9 @@ impl DecisionEngine {
             };
         }
 
+        // JSON parse failed
+        warn!("decision_engine.json_parse_failed");
+
         // Fallback: text parsing
         let lower = content.to_lowercase();
         if lower.contains("reach_out") {
@@ -275,6 +281,80 @@ impl DecisionEngine {
             Decision::NeedMoreInfo
         } else {
             Decision::Idle
+        }
+    }
+
+    /// Get similar observations via semantic search with cascading fallback.
+    /// Fallback 1: recent observations (10 minutes). Fallback 2: empty.
+    async fn get_similar_observations(&self, embedding: Option<&[f32]>) -> Vec<crate::domain::observation::Observation> {
+        match embedding {
+            Some(emb) => {
+                let start = std::time::Instant::now();
+                match self.observation_repo
+                    .find_similar(emb, self.config.semantic_search_limit)
+                    .await
+                {
+                    Ok(results) => {
+                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                        if !results.is_empty() {
+                            let top_scores: Vec<f64> = results.iter().take(3).map(|(_, s)| (*s * 1000.0).round() / 1000.0).collect();
+                            info!(
+                                result_count = results.len(),
+                                top_scores = ?top_scores,
+                                duration_ms = format!("{duration_ms:.1}"),
+                                "decision_engine.semantic_search_complete"
+                            );
+                        } else {
+                            debug!(
+                                duration_ms = format!("{duration_ms:.1}"),
+                                "decision_engine.semantic_search_empty"
+                            );
+                        }
+                        results.into_iter().map(|(obs, _score)| obs).collect()
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "decision_engine.semantic_search_failed");
+                        // Fallback 1: recent observations
+                        match self.observation_repo.find_recent(10).await {
+                            Ok(obs) => {
+                                debug!(count = obs.len(), "decision_engine.fallback_recent_observations");
+                                obs
+                            }
+                            Err(_) => Vec::new(),
+                        }
+                    }
+                }
+            }
+            None => {
+                debug!("decision_engine.no_embedding_fallback");
+                match self.observation_repo.find_recent(10).await {
+                    Ok(obs) => obs,
+                    Err(e) => {
+                        warn!(error = %e, "decision_engine.get_recent_failed");
+                        Vec::new()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Extract summary from observation metadata, or truncate content.
+    fn get_observation_summary(&self, obs: &crate::domain::observation::Observation) -> String {
+        // Check metadata for pre-computed summary
+        if let Some(ref meta) = obs.metadata
+            && let Ok(parsed) = serde_json::from_str::<Value>(meta)
+            && let Some(summary) = parsed.get("summary").and_then(|s| s.as_str()) {
+                let summary = summary.to_string();
+                if summary.len() < 200 {
+                    return summary;
+                }
+                return summary[..200].to_string();
+        }
+        // Fallback: truncate content
+        if obs.content.len() > 100 {
+            obs.content[..100].to_string()
+        } else {
+            obs.content.clone()
         }
     }
 

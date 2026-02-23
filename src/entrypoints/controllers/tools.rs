@@ -43,6 +43,7 @@ pub struct McpServerResponse {
     pub env: HashMap<String, String>,
     pub enabled: bool,
     pub connected: bool,
+    pub tool_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
 }
@@ -213,24 +214,73 @@ pub async fn disable_tool(
     }))
 }
 
+/// PATCH /api/tools/:tool_name — update tool configuration (enable/disable).
+pub async fn update_tool(
+    State(state): State<Arc<AppState>>,
+    Path(tool_name): Path<String>,
+    Json(body): Json<ToolUpdateRequest>,
+) -> Result<Json<ToolUpdateResponse>, AppError> {
+    let _ = state.tool_registry.refresh_index().await;
+
+    let success = if body.enabled {
+        state.tool_registry.enable_tool(&tool_name).await
+    } else {
+        state.tool_registry.disable_tool(&tool_name).await
+    };
+
+    if !success {
+        return Err(AppError::NotFound(format!(
+            "Tool '{}' not found",
+            tool_name
+        )));
+    }
+
+    tracing::info!(tool_name = %tool_name, enabled = body.enabled, "tools.updated");
+
+    Ok(Json(ToolUpdateResponse {
+        name: tool_name.clone(),
+        enabled: body.enabled,
+        message: format!(
+            "Tool '{}' {}",
+            tool_name,
+            if body.enabled { "enabled" } else { "disabled" }
+        ),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToolUpdateRequest {
+    pub enabled: bool,
+}
+
 /// GET /api/tools/mcp
 pub async fn list_mcp_servers(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<McpServerListResponse>, AppError> {
     let configs = state.mcp_config_repo.get_all().await?;
 
-    let servers: Vec<McpServerResponse> = configs
-        .iter()
-        .map(|cfg| McpServerResponse {
+    let mut servers = Vec::new();
+    for cfg in &configs {
+        // Get runtime tool count and error from adapter if available
+        let (tool_count, runtime_error) = if let Some(ref adapter) = state.mcp_tool_adapter {
+            let tools = adapter.get_tools_for_server(&cfg.server_name).await.unwrap_or_default();
+            let error = adapter.get_server_error(&cfg.server_name).await;
+            (tools.len(), error)
+        } else {
+            (0, None)
+        };
+
+        servers.push(McpServerResponse {
             name: cfg.server_name.clone(),
             command: cfg.command.clone(),
             args: cfg.args_vec(),
             env: cfg.env_map(),
             enabled: cfg.enabled,
-            connected: cfg.last_connected_at.is_some() && cfg.last_error.is_none(),
-            last_error: cfg.last_error.clone(),
-        })
-        .collect();
+            connected: cfg.last_connected_at.is_some() && runtime_error.is_none(),
+            tool_count,
+            last_error: runtime_error.or_else(|| cfg.last_error.clone()),
+        });
+    }
 
     let count = servers.len();
 
@@ -250,6 +300,10 @@ pub async fn add_mcp_server(
     if body.command.is_empty() {
         return Err(AppError::Validation("command must not be empty".into()));
     }
+
+    // Security validation
+    crate::adapters::tools::mcp::security::validate_mcp_command(&body.command)?;
+    crate::adapters::tools::mcp::security::validate_mcp_env(&body.env)?;
 
     let repo = state.mcp_config_repo.clone();
 

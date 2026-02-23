@@ -244,14 +244,14 @@ impl MemoryLearner {
         existing_embeddings: &[(&Memory, Vec<f32>)],
     ) -> bool {
         // Find similar existing memories
-        let mut similar: Vec<(&str, &str, f64)> = Vec::new();
+        let mut similar: Vec<(&uuid::Uuid, &str, &str, f64)> = Vec::new();
         for (mem, existing_vec) in existing_embeddings {
             let sim = cosine_similarity(embedding, existing_vec);
             if sim >= SIMILARITY_SEARCH_THRESHOLD {
-                similar.push((&mem.content, &mem.category, sim));
+                similar.push((&mem.id, &mem.content, &mem.category, sim));
             }
         }
-        similar.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        similar.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
         similar.truncate(5);
 
         if similar.is_empty() {
@@ -260,7 +260,7 @@ impl MemoryLearner {
 
         let existing_data: Vec<(String, String, String)> = similar
             .iter()
-            .map(|(content, cat, _)| ("id".into(), content.to_string(), cat.to_string()))
+            .map(|(id, content, cat, _)| (id.to_string(), content.to_string(), cat.to_string()))
             .collect();
 
         let messages = MemoryDeduplicationPrompt::messages(content, category, &existing_data);

@@ -77,26 +77,77 @@ pub async fn list_models(
 
 /// POST /api/models/pull
 ///
-/// Pull (download) a model by name. Delegates to OllamaManager which streams
-/// the download internally and returns when complete.
+/// Pull (download) a model by name. Returns SSE stream with progress events.
 pub async fn pull_model(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PullModelRequest>,
-) -> Result<Json<PullModelResponse>, AppError> {
+) -> axum::response::Sse<std::pin::Pin<Box<dyn futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> + Send>>> {
+    use axum::response::sse::Event;
+    use tokio_stream::StreamExt;
+
     let cfg = state.config();
     if cfg.llm_backend != "ollama" {
-        return Ok(Json(PullModelResponse {
-            ok: false,
-            message: "Model pull only supported for Ollama backend".into(),
-        }));
+        let stream = async_stream::stream! {
+            yield Ok::<_, std::convert::Infallible>(
+                Event::default()
+                    .data(serde_json::json!({"status": "error", "detail": "Model pull only supported for Ollama backend"}).to_string())
+            );
+        };
+        return axum::response::Sse::new(Box::pin(stream));
     }
 
-    state.ollama_manager.pull_model(&body.name).await?;
+    let ollama_url = cfg.ollama_url.clone();
+    let model_name = body.name.clone();
 
-    Ok(Json(PullModelResponse {
-        ok: true,
-        message: format!("Model '{}' pulled successfully", body.name),
-    }))
+    let stream = async_stream::stream! {
+        let url = format!("{}/api/pull", ollama_url);
+        let client = reqwest::Client::new();
+        match client.post(&url)
+            .json(&serde_json::json!({"name": model_name, "stream": true}))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                let mut byte_stream = response.bytes_stream();
+                while let Some(chunk) = byte_stream.next().await {
+                    match chunk {
+                        Ok(bytes) => {
+                            for line in String::from_utf8_lossy(&bytes).lines() {
+                                let line = line.trim();
+                                if line.is_empty() { continue; }
+                                if let Ok(data) = serde_json::from_str::<serde_json::Value>(line) {
+                                    let status = data.get("status").and_then(|s| s.as_str()).unwrap_or("pulling");
+                                    let mut event_data = serde_json::json!({"status": status});
+                                    if let Some(total) = data.get("total").and_then(|t| t.as_u64()) {
+                                        let completed = data.get("completed").and_then(|c| c.as_u64()).unwrap_or(0);
+                                        let progress = if total > 0 { (completed as f64 / total as f64 * 100.0) as u64 } else { 0 };
+                                        event_data["progress"] = serde_json::json!(progress);
+                                        event_data["completed"] = serde_json::json!(completed);
+                                        event_data["total"] = serde_json::json!(total);
+                                    }
+                                    yield Ok::<_, std::convert::Infallible>(Event::default().data(event_data.to_string()));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            yield Ok(Event::default().data(
+                                serde_json::json!({"status": "error", "detail": e.to_string()}).to_string()
+                            ));
+                            break;
+                        }
+                    }
+                }
+                yield Ok(Event::default().data(serde_json::json!({"status": "complete"}).to_string()));
+            }
+            Err(e) => {
+                yield Ok(Event::default().data(
+                    serde_json::json!({"status": "error", "detail": e.to_string()}).to_string()
+                ));
+            }
+        }
+    };
+
+    axum::response::Sse::new(Box::pin(stream))
 }
 
 /// DELETE /api/models/{model_name}

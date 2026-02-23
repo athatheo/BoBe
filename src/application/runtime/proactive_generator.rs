@@ -184,17 +184,31 @@ impl ProactiveGenerator {
             };
 
             if let Some(ref target) = target_conversation {
-                match self.conversation.add_turn(target.id, TurnRole::Assistant, &result.full_response).await {
+                // Re-fetch conversation to guard against race conditions
+                match self.conversation.get_conversation(target.id).await {
+                    Ok(Some(conv)) if !conv.is_closed() => {
+                        match self.conversation.add_turn(target.id, TurnRole::Assistant, &result.full_response).await {
+                            Ok(Some(_)) => {
+                                info!(
+                                    tokens = result.token_count,
+                                    ms = result.duration_ms as u64,
+                                    tps = format!("{tokens_per_sec:.1}"),
+                                    first_token_ms = ?result.first_token_ms.map(|v| v as u64),
+                                    "proactive_generator.complete"
+                                );
+                            }
+                            Ok(None) => warn!("proactive_generator.turn_failed"),
+                            Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
+                        }
+                    }
                     Ok(Some(_)) => {
-                        info!(
-                            tokens = result.token_count,
-                            ms = result.duration_ms as u64,
-                            tps = format!("{tokens_per_sec:.1}"),
-                            "proactive_generator.complete"
+                        warn!(
+                            conversation_id = %target.id,
+                            "proactive_generator.conversation_closed_before_persist"
                         );
                     }
-                    Ok(None) => warn!("proactive_generator.turn_failed"),
-                    Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
+                    Ok(None) => error!(conversation_id = %target.id, "proactive_generator.conversation_not_found"),
+                    Err(e) => error!(error = %e, "proactive_generator.conversation_refetch_failed"),
                 }
             } else {
                 match self.conversation.create_pending(&result.full_response).await {
