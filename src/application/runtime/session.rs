@@ -275,8 +275,8 @@ impl RuntimeSession {
     }
 
     /// Handle user message — delegates to MessageHandler.
-    pub async fn handle_user_message(&self, content: &str) -> String {
-        self.message_handler.handle_message(content).await
+    pub async fn handle_user_message(&self, content: &str, message_id: &str) {
+        self.message_handler.handle_message(content, message_id).await;
     }
 
     /// Get current status for the API.

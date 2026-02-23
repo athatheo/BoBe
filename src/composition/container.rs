@@ -263,6 +263,8 @@ impl Container {
         let native_adapter = Arc::new(NativeToolAdapter::new(native_tools));
         let mcp_adapter = Arc::new(McpToolAdapter::new(
             if config.mcp_enabled { Some(mcp_config_repo.clone()) } else { None },
+            config.mcp_blocked_commands_vec(),
+            config.mcp_dangerous_env_keys_vec(),
         ));
         // Registration happens async in bootstrap after build
 

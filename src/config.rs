@@ -124,6 +124,9 @@ pub struct Config {
 
     // ── Database seeding ────────────────────────────────────────────────
     pub seed_default_documents: bool,
+
+    // ── CORS ────────────────────────────────────────────────────────────
+    pub cors_origins: String,
 }
 
 impl Default for Config {
@@ -202,6 +205,7 @@ impl Default for Config {
             coding_agent_max_concurrent: 2,
             coding_agent_max_runtime_seconds: 1800,
             seed_default_documents: true,
+            cors_origins: "http://localhost:5173".into(),
         }
     }
 }
@@ -248,6 +252,15 @@ impl Config {
     /// Parse MCP dangerous env keys from comma-separated string.
     pub fn mcp_dangerous_env_keys_vec(&self) -> Vec<String> {
         self.mcp_dangerous_env_keys
+            .split(',')
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
+    /// Parse CORS origins from comma-separated string.
+    pub fn cors_origins_vec(&self) -> Vec<String> {
+        self.cors_origins
             .split(',')
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty())

@@ -176,8 +176,8 @@ async fn run_streaming_loop(
     for iteration in 0..max_iterations {
         debug!(iteration, "Streaming tool call loop iteration");
 
-        // Stream from LLM (with tools on all but possibly final iteration)
-        let current_tools = if iteration < max_iterations {
+        // Withhold tools on the final iteration to force a text response
+        let current_tools = if iteration < max_iterations - 1 {
             Some(&tools[..])
         } else {
             None

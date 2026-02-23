@@ -22,8 +22,8 @@ pub async fn stream_events(
     let runtime_session = state.runtime_session.clone();
 
     // Establish connection — ConnectionManager sends initial indicator event
+    // and fires the on_connect callback (which calls runtime_session.on_connection)
     let conn_id = connection_manager.connect().await;
-    runtime_session.on_connection().await;
     tracing::info!(connection_id = %conn_id, "sse.connected");
 
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);

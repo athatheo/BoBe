@@ -74,9 +74,7 @@ impl MessageHandler {
     }
 
     /// Handle a user message. Returns message ID for tracking.
-    pub async fn handle_message(&self, content: &str) -> String {
-        let msg_id = format!("msg_{}", Uuid::new_v4().simple());
-
+    pub async fn handle_message(&self, content: &str, message_id: &str) {
         // 1. Record user activity for cooldown
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Err(e) = cooldown_repo.update_last_user_response(Utc::now()).await {
@@ -87,7 +85,7 @@ impl MessageHandler {
         let conversation_id = self.ensure_active_conversation(content).await;
         let Some(conversation_id) = conversation_id else {
             error!("message_handler.conversation_failed");
-            return msg_id;
+            return;
         };
 
         // 3. Learning - store message with embedding (fire-and-forget)
@@ -97,9 +95,7 @@ impl MessageHandler {
         }
 
         // 4. Generate response
-        self.respond_to_message(&msg_id, content, conversation_id).await;
-
-        msg_id
+        self.respond_to_message(message_id, content, conversation_id).await;
     }
 
     async fn ensure_active_conversation(&self, user_content: &str) -> Option<Uuid> {

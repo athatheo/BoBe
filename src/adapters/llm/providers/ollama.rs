@@ -30,7 +30,7 @@ impl OllamaProvider {
             client,
             base_url,
             model: model.into(),
-            think_tag_re: Regex::new(r"(?s)<think>.*?</think>").unwrap(),
+            think_tag_re: Regex::new(r"(?s)<think>.*?</think>").expect("hardcoded think tag regex"),
         }
     }
 
@@ -245,32 +245,28 @@ impl LlmProvider for OllamaProvider {
 
 /// Filter `<think>...</think>` tags from streaming text, tracking state across chunks.
 fn filter_think_tags_streaming(delta: &str, inside_think: &mut bool) -> String {
-    let mut result = String::new();
-    let mut chars = delta.chars().peekable();
+    let mut result = String::with_capacity(delta.len());
+    let bytes = delta.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
 
-    while let Some(&ch) = chars.peek() {
+    while i < len {
         if *inside_think {
-            // Look for </think>
-            let remaining: String = chars.clone().collect();
-            if remaining.starts_with("</think>") {
-                // Skip past the closing tag
-                for _ in 0.."</think>".len() {
-                    chars.next();
-                }
+            // Look for </think> closing tag (8 bytes)
+            if i + 8 <= len && &bytes[i..i + 8] == b"</think>" {
+                i += 8;
                 *inside_think = false;
             } else {
-                chars.next();
+                i += 1;
             }
         } else {
-            let remaining: String = chars.clone().collect();
-            if remaining.starts_with("<think>") {
-                for _ in 0.."<think>".len() {
-                    chars.next();
-                }
+            // Look for <think> opening tag (7 bytes)
+            if i + 7 <= len && &bytes[i..i + 7] == b"<think>" {
+                i += 7;
                 *inside_think = true;
             } else {
-                result.push(ch);
-                chars.next();
+                result.push(bytes[i] as char);
+                i += 1;
             }
         }
     }

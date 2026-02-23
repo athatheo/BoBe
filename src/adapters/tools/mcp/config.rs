@@ -49,7 +49,11 @@ pub struct McpParsedServer {
 }
 
 /// Load and parse MCP configuration from a file.
-pub fn load_mcp_config(path: &Path) -> Result<Vec<McpParsedServer>, AppError> {
+pub fn load_mcp_config(
+    path: &Path,
+    blocked_commands: &[String],
+    dangerous_env_keys: &[String],
+) -> Result<Vec<McpParsedServer>, AppError> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| AppError::Config(format!("Cannot read MCP config {}: {e}", path.display())))?;
 
@@ -58,10 +62,8 @@ pub fn load_mcp_config(path: &Path) -> Result<Vec<McpParsedServer>, AppError> {
 
     let mut servers = Vec::new();
     for (name, entry) in config.mcp_servers {
-        // Validate command against blocklist
-        validate_mcp_command(&entry.command)?;
-        // Validate environment variables
-        validate_mcp_env(&entry.env)?;
+        validate_mcp_command(&entry.command, blocked_commands)?;
+        validate_mcp_env(&entry.env, dangerous_env_keys)?;
 
         servers.push(McpParsedServer {
             name,
@@ -77,10 +79,21 @@ pub fn load_mcp_config(path: &Path) -> Result<Vec<McpParsedServer>, AppError> {
 }
 
 /// Load the default MCP config from ~/.bobe/mcp.json.
-pub fn load_default_mcp_config() -> Vec<McpParsedServer> {
+pub fn load_default_mcp_config(
+    blocked_commands: &[String],
+    dangerous_env_keys: &[String],
+) -> Vec<McpParsedServer> {
     let path = default_config_path();
     match path {
-        Some(p) if p.exists() => load_mcp_config(&p).unwrap_or_default(),
+        Some(p) if p.exists() => {
+            match load_mcp_config(&p, blocked_commands, dangerous_env_keys) {
+                Ok(servers) => servers,
+                Err(e) => {
+                    tracing::warn!(error = %e, path = %p.display(), "mcp.config_parse_failed");
+                    Vec::new()
+                }
+            }
+        }
         _ => Vec::new(),
     }
 }

@@ -307,14 +307,13 @@ impl LearningLoop {
             .distill_from_observations(to_process, &existing_memories, &goals)
             .await;
 
-        // Only advance state if processing actually produced results
+        // Always advance timestamp after processing — observations are consumed
+        // regardless of whether the learner produced memories from them
         let mut changed = false;
-        if !memories.is_empty() {
-            let created_times: Vec<_> = to_process.iter().map(|o| o.created_at).collect();
-            if let Some(&latest) = created_times.iter().max() {
-                state.last_context_processed_at = Some(latest);
-                changed = true;
-            }
+        let created_times: Vec<_> = to_process.iter().map(|o| o.created_at).collect();
+        if let Some(&latest) = created_times.iter().max() {
+            state.last_context_processed_at = Some(latest);
+            changed = true;
         }
 
         (to_process.len(), memories.len(), changed)

@@ -21,16 +21,24 @@ pub struct McpToolAdapter {
     server_configs: RwLock<HashMap<String, McpParsedServer>>,
     config_repo: Option<Arc<dyn McpConfigRepository>>,
     categories: Vec<ToolCategory>,
+    blocked_commands: Vec<String>,
+    dangerous_env_keys: Vec<String>,
 }
 
 impl McpToolAdapter {
-    pub fn new(config_repo: Option<Arc<dyn McpConfigRepository>>) -> Self {
+    pub fn new(
+        config_repo: Option<Arc<dyn McpConfigRepository>>,
+        blocked_commands: Vec<String>,
+        dangerous_env_keys: Vec<String>,
+    ) -> Self {
         Self {
             clients: RwLock::new(HashMap::new()),
             tool_to_server: RwLock::new(HashMap::new()),
             server_configs: RwLock::new(HashMap::new()),
             config_repo,
             categories: vec![ToolCategory::Mcp],
+            blocked_commands,
+            dangerous_env_keys,
         }
     }
 
@@ -187,7 +195,7 @@ impl McpToolAdapter {
                     .collect();
             }
         // Fall back to file
-        load_default_mcp_config()
+        load_default_mcp_config(&self.blocked_commands, &self.dangerous_env_keys)
     }
 
     async fn connect_server(&self, config: McpParsedServer) -> Result<(), AppError> {

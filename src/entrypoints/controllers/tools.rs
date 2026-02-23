@@ -301,9 +301,12 @@ pub async fn add_mcp_server(
         return Err(AppError::Validation("command must not be empty".into()));
     }
 
-    // Security validation
-    crate::adapters::tools::mcp::security::validate_mcp_command(&body.command)?;
-    crate::adapters::tools::mcp::security::validate_mcp_env(&body.env)?;
+    // Security validation (use configurable blocklists)
+    let cfg = state.config.load();
+    let blocked_cmds: Vec<String> = cfg.mcp_blocked_commands_vec();
+    let dangerous_keys: Vec<String> = cfg.mcp_dangerous_env_keys_vec();
+    crate::adapters::tools::mcp::security::validate_mcp_command(&body.command, &blocked_cmds)?;
+    crate::adapters::tools::mcp::security::validate_mcp_env(&body.env, &dangerous_keys)?;
 
     let repo = state.mcp_config_repo.clone();
 

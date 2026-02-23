@@ -11,10 +11,13 @@ use super::middleware::{AllowedHosts, host_validation};
 pub fn build_router(state: Arc<AppState>) -> Router {
     let cfg = state.config();
 
+    let origins: Vec<axum::http::HeaderValue> = cfg.cors_origins_vec()
+        .iter()
+        .filter_map(|o| o.parse().ok())
+        .collect();
+
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::exact(
-            "http://localhost:5173".parse().unwrap(),
-        ))
+        .allow_origin(AllowOrigin::list(origins))
         .allow_methods([
             axum::http::Method::GET,
             axum::http::Method::POST,
@@ -22,7 +25,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             axum::http::Method::PATCH,
             axum::http::Method::DELETE,
         ])
-        .allow_headers([axum::http::header::CONTENT_TYPE]);
+        .allow_headers([axum::http::header::CONTENT_TYPE])
+        .allow_credentials(true);
 
     let allowed_hosts = AllowedHosts::new(&cfg.host, cfg.port);
 

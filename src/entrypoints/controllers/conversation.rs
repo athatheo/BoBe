@@ -41,23 +41,15 @@ pub async fn send_message(
     let session = state.runtime_session.clone();
     let content = body.content.clone();
 
+    // Generate message ID upfront so it can be returned immediately
+    let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let msg_id = message_id.clone();
+
     // Fire-and-forget: spawn the message handling so HTTP returns immediately.
     // The response streams via SSE events to the client.
-    let msg_id_holder = Arc::new(tokio::sync::OnceCell::new());
-    let msg_id_holder_clone = msg_id_holder.clone();
-
     tokio::spawn(async move {
-        let msg_id = session.handle_user_message(&content).await;
-        let _ = msg_id_holder_clone.set(msg_id);
+        session.handle_user_message(&content, &msg_id).await;
     });
-
-    // Give the handler a moment to generate the message ID
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    let message_id = msg_id_holder
-        .get()
-        .cloned()
-        .unwrap_or_else(|| format!("msg_{}", uuid::Uuid::new_v4().simple()));
 
     tracing::info!(message_id = %message_id, "api.message_accepted");
 
