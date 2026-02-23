@@ -1,1 +1,13 @@
 pub mod health;
+pub mod conversation;
+pub mod capture;
+pub mod goals;
+pub mod memories;
+pub mod souls;
+pub mod user_profile;
+pub mod mcp_configs;
+pub mod settings;
+pub mod models;
+pub mod onboarding;
+pub mod tools;
+pub mod events;

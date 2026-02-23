@@ -1,47 +1,36 @@
 use std::sync::Arc;
 use arc_swap::ArcSwap;
+use reqwest::Client;
 use sqlx::sqlite::SqlitePool;
 
-use crate::config::Config;
+use crate::adapters::capture::ScreenCapture;
+use crate::adapters::llm::ollama_manager::OllamaManager;
+use crate::adapters::sse::connection_manager::SseConnectionManager;
 use crate::adapters::sse::event_queue::EventQueue;
-use crate::error::AppError;
+use crate::composition::config_manager::ConfigManager;
+use crate::config::Config;
+use crate::ports::embedding::EmbeddingProvider;
+use crate::ports::llm::LlmProvider;
+use crate::ports::repos::soul_repo::SoulRepository;
+use crate::ports::repos::user_profile_repo::UserProfileRepository;
 
 /// Shared application state passed through Axum extractors.
 pub struct AppState {
     pub db: SqlitePool,
     pub config: Arc<ArcSwap<Config>>,
+    pub http_client: Client,
     pub event_queue: Arc<EventQueue>,
+    pub connection_manager: Arc<SseConnectionManager>,
+    pub llm_provider: Arc<dyn LlmProvider>,
+    pub embedding_provider: Arc<dyn EmbeddingProvider>,
+    pub soul_repo: Arc<dyn SoulRepository>,
+    pub user_profile_repo: Arc<dyn UserProfileRepository>,
+    pub screen_capture: Arc<ScreenCapture>,
+    pub ollama_manager: Arc<OllamaManager>,
+    pub config_manager: Arc<ConfigManager>,
 }
 
 impl AppState {
-    pub async fn new(config: Config) -> Result<Arc<Self>, AppError> {
-        // Ensure data directory exists
-        let db_url = &config.database_url;
-        if let Some(path) = db_url.strip_prefix("sqlite:") {
-            if let Some(parent) = std::path::Path::new(path).parent() {
-                tokio::fs::create_dir_all(parent).await?;
-            }
-        }
-
-        let pool = SqlitePool::connect(db_url)
-            .await
-            .map_err(AppError::Database)?;
-
-        // Run migrations
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .map_err(|e| AppError::Database(e.into()))?;
-
-        let state = Arc::new(Self {
-            db: pool,
-            config: Arc::new(ArcSwap::from_pointee(config)),
-            event_queue: Arc::new(EventQueue::new(100)),
-        });
-
-        Ok(state)
-    }
-
     pub fn config(&self) -> arc_swap::Guard<Arc<Config>> {
         self.config.load()
     }

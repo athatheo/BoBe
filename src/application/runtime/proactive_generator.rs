@@ -1,0 +1,290 @@
+//! Proactive generator — generates proactive responses and check-in messages.
+//!
+//! Owns the complete proactive response lifecycle:
+//! conversation setup, LLM generation, engagement recording.
+
+use std::sync::Arc;
+
+use chrono::Utc;
+use tracing::{error, info, warn};
+use uuid::Uuid;
+
+use crate::adapters::sse::event_queue::EventQueue;
+use crate::adapters::sse::types::IndicatorType;
+use crate::application::prompts::response::ProactiveResponsePrompt;
+use crate::application::prompts::summary::ConversationSummaryPrompt;
+use crate::application::runtime::response_streamer::{stream_llm_response, stream_simple_message};
+use crate::application::services::conversation_service::ConversationService;
+use crate::application::services::context_assembler::{BuildContextOptions, ContextAssembler};
+use crate::domain::conversation::Conversation;
+use crate::domain::types::TurnRole;
+use crate::ports::llm::LlmProvider;
+use crate::ports::repos::cooldown_repo::CooldownRepository;
+
+pub struct ProactiveGenerator {
+    llm: Arc<dyn LlmProvider>,
+    context_assembler: Arc<ContextAssembler>,
+    conversation: Arc<ConversationService>,
+    event_queue: Arc<EventQueue>,
+    summary_enabled: bool,
+    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+}
+
+impl ProactiveGenerator {
+    pub fn new(
+        llm: Arc<dyn LlmProvider>,
+        context_assembler: Arc<ContextAssembler>,
+        conversation: Arc<ConversationService>,
+        event_queue: Arc<EventQueue>,
+        summary_enabled: bool,
+        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    ) -> Self {
+        Self {
+            llm,
+            context_assembler,
+            conversation,
+            event_queue,
+            summary_enabled,
+            cooldown_repo,
+        }
+    }
+
+    pub fn update_llm(&mut self, llm: Arc<dyn LlmProvider>) {
+        self.llm = llm;
+    }
+
+    /// Complete proactive flow: conversation setup → generate → record engagement.
+    pub async fn generate_proactive_response(
+        &self,
+        auto_close_minutes: i64,
+        context_summary: Option<String>,
+    ) {
+        let (target, previous_summary) = self.ensure_conversation(auto_close_minutes).await;
+        self.generate_response(target, previous_summary, context_summary).await;
+    }
+
+    /// Send a simple check-in message.
+    pub async fn send_proactive_checkin(
+        &self,
+        message: &str,
+        auto_close_minutes: i64,
+    ) {
+        let (target, _) = self.ensure_conversation(auto_close_minutes).await;
+        self.send_checkin(message, target).await;
+    }
+
+    async fn ensure_conversation(
+        &self,
+        auto_close_minutes: i64,
+    ) -> (Option<Conversation>, Option<String>) {
+        let existing = self.conversation.get_pending_or_active().await.ok().flatten();
+
+        if let Some(ref conv) = existing {
+            // Check staleness by getting turns
+            if let Ok(turns) = self.conversation.get_conversation_turns(conv.id, 100).await {
+                if conv.is_stale(auto_close_minutes, &turns) {
+                    let old_id = conv.id;
+                    let (new_conv, summary) = self.transition_conversation(conv).await;
+                    return (Some(new_conv), summary);
+                }
+            }
+            return (existing, None);
+        }
+
+        let last_closed = self.conversation.get_last_closed_conversation().await.ok().flatten();
+        let previous_summary = last_closed.and_then(|c| c.summary);
+        (None, previous_summary)
+    }
+
+    async fn generate_response(
+        &self,
+        target_conversation: Option<Conversation>,
+        previous_summary: Option<String>,
+        context_summary: Option<String>,
+    ) {
+        self.event_queue.set_indicator(IndicatorType::Streaming);
+
+        // Build context
+        let mut assembled_context = String::new();
+        let mut soul: Option<String> = None;
+        let query = context_summary.as_deref().unwrap_or("");
+
+        let assembled = self.context_assembler.build_context(query, BuildContextOptions {
+            include_memories: true,
+            include_goals: true,
+            include_souls: true,
+            include_observations: true,
+            observation_limit: 5,
+            ..BuildContextOptions::default()
+        }).await;
+
+        let (ctx, s) = assembled.to_context_string();
+        assembled_context = ctx;
+        soul = s;
+
+        let final_context = match &context_summary {
+            Some(cs) => format!("{cs}\n\n{assembled_context}"),
+            None => assembled_context,
+        };
+
+        let msg_id = format!("msg_{}", Uuid::new_v4().simple());
+        let current_time = Utc::now().format("%A, %B %d %Y %H:%M").to_string();
+
+        let messages = ProactiveResponsePrompt::messages(
+            &final_context,
+            soul.as_deref(),
+            previous_summary.as_deref(),
+            Some(&current_time),
+        );
+        let config = ProactiveResponsePrompt::config();
+
+        let stream = self.llm.stream(
+            messages,
+            None,
+            config.response_format,
+            config.temperature,
+            config.max_tokens,
+        );
+
+        let result = stream_llm_response(stream, &self.event_queue, Some(&msg_id)).await;
+
+        if result.success && !result.full_response.is_empty() {
+            let tokens_per_sec = if result.duration_ms > 0.0 {
+                result.token_count as f64 / (result.duration_ms / 1000.0)
+            } else {
+                0.0
+            };
+
+            if let Some(ref target) = target_conversation {
+                match self.conversation.add_turn(target.id, TurnRole::Assistant, &result.full_response).await {
+                    Ok(Some(_)) => {
+                        info!(
+                            tokens = result.token_count,
+                            ms = result.duration_ms as u64,
+                            tps = format!("{tokens_per_sec:.1}"),
+                            "proactive_generator.complete"
+                        );
+                    }
+                    Ok(None) => warn!("proactive_generator.turn_failed"),
+                    Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
+                }
+            } else {
+                match self.conversation.create_pending(&result.full_response).await {
+                    Ok(conv) => {
+                        info!(
+                            conversation_id = &conv.id.to_string()[..8],
+                            tokens = result.token_count,
+                            "proactive_generator.conversation_created"
+                        );
+                    }
+                    Err(e) => error!(error = %e, "proactive_generator.create_failed"),
+                }
+            }
+
+            self.record_engagement().await;
+        }
+
+        self.event_queue.set_indicator(IndicatorType::Idle);
+    }
+
+    async fn send_checkin(
+        &self,
+        message: &str,
+        target_conversation: Option<Conversation>,
+    ) {
+        self.event_queue.set_indicator(IndicatorType::Streaming);
+
+        let msg_id = format!("msg_{}", Uuid::new_v4().simple());
+        stream_simple_message(message, &self.event_queue, Some(&msg_id));
+
+        if let Some(ref target) = target_conversation {
+            if let Err(e) = self.conversation.add_turn(target.id, TurnRole::Assistant, message).await {
+                warn!(error = %e, "proactive_generator.checkin_save_failed");
+            }
+        } else {
+            if let Err(e) = self.conversation.create_pending(message).await {
+                warn!(error = %e, "proactive_generator.checkin_create_failed");
+            }
+        }
+
+        self.record_engagement().await;
+        self.event_queue.set_indicator(IndicatorType::Idle);
+    }
+
+    async fn record_engagement(&self) {
+        if let Some(ref cooldown_repo) = self.cooldown_repo {
+            if let Err(e) = cooldown_repo.update_last_engagement(Utc::now()).await {
+                warn!(error = %e, "proactive_generator.cooldown_update_failed");
+            }
+        }
+    }
+
+    async fn transition_conversation(
+        &self,
+        old_conversation: &Conversation,
+    ) -> (Conversation, Option<String>) {
+        let mut summary: Option<String> = None;
+
+        if self.summary_enabled {
+            if let Ok(turns) = self.conversation.get_conversation_turns(old_conversation.id, 50).await {
+                if turns.len() >= 2 {
+                    summary = self.generate_summary(&turns).await;
+                }
+            }
+        }
+
+        match self.conversation.close_and_start_new(old_conversation.id, summary.clone()).await {
+            Ok(new_conv) => {
+                info!(
+                    old_id = &old_conversation.id.to_string()[..8],
+                    new_id = &new_conv.id.to_string()[..8],
+                    had_summary = summary.is_some(),
+                    "proactive_generator.conversation_transitioned"
+                );
+                (new_conv, summary)
+            }
+            Err(e) => {
+                error!(error = %e, "proactive_generator.transition_failed");
+                // Return a new pending conversation as fallback
+                let fallback = Conversation::new_pending();
+                (fallback, None)
+            }
+        }
+    }
+
+    async fn generate_summary(
+        &self,
+        turns: &[crate::domain::conversation::ConversationTurn],
+    ) -> Option<String> {
+        let turn_tuples: Vec<(String, String)> = turns
+            .iter()
+            .map(|t| (t.role.clone(), t.content.clone()))
+            .collect();
+
+        let turn_refs: Vec<(&str, &str)> = turn_tuples
+            .iter()
+            .map(|(r, c)| (r.as_str(), c.as_str()))
+            .collect();
+
+        let messages = ConversationSummaryPrompt::messages(&turn_refs);
+        let config = ConversationSummaryPrompt::config();
+
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(240),
+            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
+        ).await {
+            Ok(Ok(response)) => {
+                let content = response.message.content.text_or_empty().trim().to_string();
+                if content.is_empty() { None } else { Some(content) }
+            }
+            Ok(Err(e)) => {
+                warn!(error = %e, "proactive_generator.summary_failed");
+                None
+            }
+            Err(_) => {
+                warn!("proactive_generator.summary_timeout");
+                None
+            }
+        }
+    }
+}

@@ -56,8 +56,8 @@ async fn main() -> anyhow::Result<()> {
 
             tracing::info!("Starting BoBe on {}:{}", config.host, config.port);
 
-            // Build and run the application
-            let state = app_state::AppState::new(config.clone()).await?;
+            // Bootstrap: create pool, run migrations, seed, wire deps, build state
+            let state = composition::bootstrap::run(config.clone()).await?;
             let app = entrypoints::app::build_router(state);
 
             let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
