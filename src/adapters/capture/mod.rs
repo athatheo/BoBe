@@ -1,6 +1,5 @@
 pub mod capture_result;
 
-
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::Utc;
 use tracing::{debug, info};
@@ -74,13 +73,11 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
 
     if !output.status.success() {
         let _ = std::fs::remove_file(&capture_path);
-        return Err(std::io::Error::other(
-            format!(
-                "screencapture exited with {}: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr)
-            ),
-        ));
+        return Err(std::io::Error::other(format!(
+            "screencapture exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
 
     let data = std::fs::read(&capture_path)?;
@@ -102,11 +99,7 @@ fn get_active_window() -> Option<String> {
 
     if output.status.success() {
         let title = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        if title.is_empty() {
-            None
-        } else {
-            Some(title)
-        }
+        if title.is_empty() { None } else { Some(title) }
     } else {
         None
     }

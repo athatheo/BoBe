@@ -9,9 +9,7 @@ use tracing::{info, warn};
 
 use crate::error::AppError;
 use crate::ports::llm::LlmProvider;
-use crate::ports::llm_types::{
-    AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition,
-};
+use crate::ports::llm_types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
 /// Circuit breaker states following the standard pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,8 +98,7 @@ impl CircuitBreaker {
                         );
                         Ok(())
                     } else {
-                        let remaining =
-                            inner.current_recovery_timeout - last_failure.elapsed();
+                        let remaining = inner.current_recovery_timeout - last_failure.elapsed();
                         Err(AppError::CircuitOpen(format!(
                             "Circuit '{}' is open, retry after {:.1}s",
                             self.name,

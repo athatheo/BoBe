@@ -1,13 +1,13 @@
 //! Memory consolidation prompts for merging short-term into long-term memories.
 
-use once_cell::sync::Lazy;
 use serde_json::json;
+use std::sync::LazyLock;
 
 use crate::application::prompts::base::PromptConfig;
 use crate::ports::llm_types::{AiMessage, ResponseFormat};
 
 /// JSON Schema for memory consolidation output.
-pub static MEMORY_CONSOLIDATION_SCHEMA: Lazy<serde_json::Value> = Lazy::new(|| {
+pub static MEMORY_CONSOLIDATION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {

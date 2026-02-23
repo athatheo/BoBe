@@ -102,10 +102,7 @@ impl Conversation {
     }
 
     pub fn user_message_count(&self, turns: &[ConversationTurn]) -> usize {
-        turns
-            .iter()
-            .filter(|t| t.role == TurnRole::User)
-            .count()
+        turns.iter().filter(|t| t.role == TurnRole::User).count()
     }
 }
 

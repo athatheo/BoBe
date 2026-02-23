@@ -19,12 +19,10 @@ impl SqliteLearningStateRepo {
 #[async_trait]
 impl LearningStateRepository for SqliteLearningStateRepo {
     async fn get_or_create(&self) -> Result<LearningState, AppError> {
-        let row = sqlx::query_as::<_, LearningState>(
-            "SELECT * FROM learning_state LIMIT 1",
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        let row = sqlx::query_as::<_, LearningState>("SELECT * FROM learning_state LIMIT 1")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
 
         if let Some(state) = row {
             info!(
@@ -39,15 +37,13 @@ impl LearningStateRepository for SqliteLearningStateRepo {
         }
 
         let new_state = LearningState::new();
-        sqlx::query(
-            "INSERT INTO learning_state (id, created_at, updated_at) VALUES (?1, ?2, ?3)",
-        )
-        .bind(new_state.id)
-        .bind(new_state.created_at)
-        .bind(new_state.updated_at)
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        sqlx::query("INSERT INTO learning_state (id, created_at, updated_at) VALUES (?1, ?2, ?3)")
+            .bind(new_state.id)
+            .bind(new_state.created_at)
+            .bind(new_state.updated_at)
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
 
         info!(state_id = %new_state.id, "learning_state_repo.created");
         Ok(new_state)

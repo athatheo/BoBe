@@ -101,7 +101,10 @@ impl OllamaManager {
         }
 
         if !self.auto_pull {
-            warn!(model = model_name, "ollama.model_not_available, auto_pull disabled");
+            warn!(
+                model = model_name,
+                "ollama.model_not_available, auto_pull disabled"
+            );
             return Ok(false);
         }
 
@@ -114,7 +117,13 @@ impl OllamaManager {
     /// Check if Ollama API is reachable.
     pub async fn health_check(&self) -> bool {
         let url = format!("{}/api/tags", self.base_url);
-        match self.client.get(&url).timeout(std::time::Duration::from_secs(5)).send().await {
+        match self
+            .client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
             Ok(resp) => resp.status().is_success(),
             Err(_) => false,
         }
@@ -123,7 +132,13 @@ impl OllamaManager {
     /// Check if a model is available locally.
     pub async fn has_model(&self, model_name: &str) -> bool {
         let url = format!("{}/api/tags", self.base_url);
-        let resp = match self.client.get(&url).timeout(std::time::Duration::from_secs(10)).send().await {
+        let resp = match self
+            .client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => r,
             _ => return false,
         };
@@ -141,8 +156,7 @@ impl OllamaManager {
                 if model.name == model_name {
                     return true;
                 }
-            } else if model.name == model_name || model.name.starts_with(&format!("{base_name}:"))
-            {
+            } else if model.name == model_name || model.name.starts_with(&format!("{base_name}:")) {
                 return true;
             }
         }
@@ -177,28 +191,30 @@ impl OllamaManager {
                 continue;
             }
             if let Ok(progress) = serde_json::from_str::<PullProgress>(line)
-                && let Some(status) = &progress.status {
-                    if status == "success" {
-                        return Ok(());
-                    }
-                    if let Some(err) = &progress.error {
-                        return Err(AppError::LlmUnavailable(format!(
-                            "Ollama pull error: {err}"
-                        )));
-                    }
-                    if let (Some(completed), Some(total)) = (progress.completed, progress.total)
-                        && total > 0 {
-                            let pct = (completed as f64 / total as f64 * 100.0) as i64;
-                            if pct >= last_logged_pct + 10 {
-                                last_logged_pct = (pct / 10) * 10;
-                                info!(
-                                    model = model_name,
-                                    progress = format!("{pct}%"),
-                                    "ollama.pull_progress"
-                                );
-                            }
-                        }
+                && let Some(status) = &progress.status
+            {
+                if status == "success" {
+                    return Ok(());
                 }
+                if let Some(err) = &progress.error {
+                    return Err(AppError::LlmUnavailable(format!(
+                        "Ollama pull error: {err}"
+                    )));
+                }
+                if let (Some(completed), Some(total)) = (progress.completed, progress.total)
+                    && total > 0
+                {
+                    let pct = (completed as f64 / total as f64 * 100.0) as i64;
+                    if pct >= last_logged_pct + 10 {
+                        last_logged_pct = (pct / 10) * 10;
+                        info!(
+                            model = model_name,
+                            progress = format!("{pct}%"),
+                            "ollama.pull_progress"
+                        );
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -209,10 +225,12 @@ impl OllamaManager {
         let ollama_path = self
             .binary_path
             .clone()
-            .or_else(|| which::which("ollama").ok().map(|p| p.to_string_lossy().into_owned()))
-            .ok_or_else(|| {
-                AppError::LlmUnavailable("Ollama binary not found in PATH".into())
-            })?;
+            .or_else(|| {
+                which::which("ollama")
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+            })
+            .ok_or_else(|| AppError::LlmUnavailable("Ollama binary not found in PATH".into()))?;
 
         let child = tokio::process::Command::new(&ollama_path)
             .arg("serve")
@@ -242,6 +260,7 @@ impl OllamaManager {
     }
 
     /// Stop Ollama if we started it.
+    #[allow(unsafe_code)]
     pub async fn stop(&self) {
         let started = *self.started_by_us.lock().unwrap();
         if !started {
@@ -250,7 +269,8 @@ impl OllamaManager {
 
         if let Some(pid) = self.child.lock().unwrap().take() {
             info!(pid = pid, "ollama.stopping");
-            // Send SIGTERM
+            // SAFETY: libc::kill with a valid PID is safe; we obtained this PID
+            // from a child process we spawned and hold under a lock.
             unsafe {
                 libc::kill(pid as i32, libc::SIGTERM);
             }

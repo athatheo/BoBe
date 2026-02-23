@@ -41,11 +41,17 @@ impl SqliteCooldownRepo {
 #[async_trait]
 impl CooldownRepository for SqliteCooldownRepo {
     fn last_engagement(&self) -> Option<DateTime<Utc>> {
-        self.state.try_lock().ok().and_then(|s| s.as_ref()?.last_engagement)
+        self.state
+            .try_lock()
+            .ok()
+            .and_then(|s| s.as_ref()?.last_engagement)
     }
 
     fn last_user_response(&self) -> Option<DateTime<Utc>> {
-        self.state.try_lock().ok().and_then(|s| s.as_ref()?.last_user_response)
+        self.state
+            .try_lock()
+            .ok()
+            .and_then(|s| s.as_ref()?.last_user_response)
     }
 
     fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo> {
@@ -56,12 +62,10 @@ impl CooldownRepository for SqliteCooldownRepo {
     }
 
     async fn load_or_create(&self) -> Result<(), AppError> {
-        let row = sqlx::query_as::<_, Cooldown>(
-            "SELECT * FROM cooldown_state LIMIT 1",
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        let row = sqlx::query_as::<_, Cooldown>("SELECT * FROM cooldown_state LIMIT 1")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
 
         let state = if let Some(existing) = row {
             info!(

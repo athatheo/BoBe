@@ -100,17 +100,17 @@ impl MemoryRepository for SqliteMemoryRepo {
                     NULL as embedding, source_observation_id, source_conversation_id, \
                     created_at, updated_at";
         if let Some(lim) = limit {
-            sqlx::query_as::<_, Memory>(
-                &format!("SELECT {cols} FROM memories WHERE enabled = 1 ORDER BY created_at DESC LIMIT ?1"),
-            )
+            sqlx::query_as::<_, Memory>(&format!(
+                "SELECT {cols} FROM memories WHERE enabled = 1 ORDER BY created_at DESC LIMIT ?1"
+            ))
             .bind(lim)
             .fetch_all(&self.pool)
             .await
             .map_err(AppError::Database)
         } else {
-            sqlx::query_as::<_, Memory>(
-                &format!("SELECT {cols} FROM memories WHERE enabled = 1 ORDER BY created_at DESC"),
-            )
+            sqlx::query_as::<_, Memory>(&format!(
+                "SELECT {cols} FROM memories WHERE enabled = 1 ORDER BY created_at DESC"
+            ))
             .fetch_all(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -263,10 +263,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         }
         sets.push("updated_at = ?");
 
-        let sql = format!(
-            "UPDATE memories SET {} WHERE id = ?",
-            sets.join(", ")
-        );
+        let sql = format!("UPDATE memories SET {} WHERE id = ?", sets.join(", "));
         let mut q = sqlx::query(&sql);
         if let Some(c) = content {
             q = q.bind(c);
@@ -296,14 +293,12 @@ impl MemoryRepository for SqliteMemoryRepo {
         memory_type: MemoryType,
         older_than: DateTime<Utc>,
     ) -> Result<i64, AppError> {
-        let result = sqlx::query(
-            "DELETE FROM memories WHERE memory_type = ?1 AND created_at < ?2",
-        )
-        .bind(memory_type.as_str())
-        .bind(older_than)
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        let result = sqlx::query("DELETE FROM memories WHERE memory_type = ?1 AND created_at < ?2")
+            .bind(memory_type.as_str())
+            .bind(older_than)
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
 
         let count = result.rows_affected() as i64;
         info!(
@@ -358,7 +353,11 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| *x as f64 * *y as f64).sum();
+    let dot: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| *x as f64 * *y as f64)
+        .sum();
     let norm_a: f64 = a.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     let norm_b: f64 = b.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     if norm_a == 0.0 || norm_b == 0.0 {

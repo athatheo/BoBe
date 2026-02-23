@@ -84,8 +84,7 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
             continue;
         }
 
-        let is_completed =
-            checkbox.eq_ignore_ascii_case("x") || in_completed_section;
+        let is_completed = checkbox.eq_ignore_ascii_case("x") || in_completed_section;
         let priority = if in_completed_section {
             "medium".to_owned()
         } else {

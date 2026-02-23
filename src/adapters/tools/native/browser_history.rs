@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -30,8 +30,7 @@ impl BrowserHistoryTool {
     }
 
     fn firefox_profile_dir() -> Option<PathBuf> {
-        dirs::home_dir()
-            .map(|h| h.join("Library/Application Support/Firefox/Profiles"))
+        dirs::home_dir().map(|h| h.join("Library/Application Support/Firefox/Profiles"))
     }
 }
 
@@ -100,23 +99,26 @@ impl NativeTool for BrowserHistoryTool {
         // Search Chrome
         if let Some(chrome_path) = Self::chrome_history_path()
             && chrome_path.exists()
-                && let Ok(r) = search_chrome(&chrome_path, &query, days, max_results).await {
-                    all_results.extend(r);
-                }
+            && let Ok(r) = search_chrome(&chrome_path, &query, days, max_results).await
+        {
+            all_results.extend(r);
+        }
 
         // Search Safari
         if let Some(safari_path) = Self::safari_history_path()
             && safari_path.exists()
-                && let Ok(r) = search_safari(&safari_path, &query, days, max_results).await {
-                    all_results.extend(r);
-                }
+            && let Ok(r) = search_safari(&safari_path, &query, days, max_results).await
+        {
+            all_results.extend(r);
+        }
 
         // Search Firefox
         if let Some(firefox_dir) = Self::firefox_profile_dir()
             && firefox_dir.exists()
-                && let Ok(r) = search_firefox(&firefox_dir, &query, days, max_results).await {
-                    all_results.extend(r);
-                }
+            && let Ok(r) = search_firefox(&firefox_dir, &query, days, max_results).await
+        {
+            all_results.extend(r);
+        }
 
         // Sort by timestamp (newest first) and limit
         all_results.sort_by(|a, b| b.2.cmp(&a.2));
@@ -144,11 +146,7 @@ impl NativeTool for BrowserHistoryTool {
 
 /// Run a SQL query against an SQLite DB using the sqlite3 CLI.
 /// Copies the DB to a temp file to avoid locking the browser's DB.
-async fn query_sqlite(
-    db_path: &PathBuf,
-    temp_name: &str,
-    sql: &str,
-) -> Result<String, AppError> {
+async fn query_sqlite(db_path: &PathBuf, temp_name: &str, sql: &str) -> Result<String, AppError> {
     let temp = std::env::temp_dir().join(temp_name);
     tokio::fs::copy(db_path, &temp)
         .await
@@ -201,9 +199,8 @@ async fn search_chrome(
 ) -> Result<Vec<(String, String, String)>, AppError> {
     // Chrome epoch offset: microseconds from 1601-01-01 to 1970-01-01
     let chrome_epoch_offset: i64 = 11_644_473_600_000_000;
-    let cutoff_us =
-        (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000
-            + chrome_epoch_offset;
+    let cutoff_us = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000
+        + chrome_epoch_offset;
 
     let escaped = query.replace('\'', "''");
     let sql = format!(
@@ -227,8 +224,8 @@ async fn search_safari(
 ) -> Result<Vec<(String, String, String)>, AppError> {
     // Safari uses Core Data epoch (seconds from Jan 1 2001)
     let core_data_offset: f64 = 978_307_200.0;
-    let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() as f64
-        - core_data_offset;
+    let cutoff =
+        (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() as f64 - core_data_offset;
 
     let escaped = query.replace('\'', "''");
     let sql = format!(
@@ -274,8 +271,7 @@ async fn search_firefox(
     };
 
     // Firefox uses microseconds since Unix epoch
-    let cutoff_us =
-        (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000;
+    let cutoff_us = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000;
 
     let escaped = query.replace('\'', "''");
     let sql = format!(

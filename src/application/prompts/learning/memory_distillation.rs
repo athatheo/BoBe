@@ -1,13 +1,13 @@
 //! Memory distillation prompts for extracting memories from context.
 
-use once_cell::sync::Lazy;
 use serde_json::json;
+use std::sync::LazyLock;
 
 use crate::application::prompts::base::PromptConfig;
 use crate::ports::llm_types::{AiMessage, ResponseFormat};
 
 /// JSON Schema for memory extraction output.
-pub static MEMORY_EXTRACTION_SCHEMA: Lazy<serde_json::Value> = Lazy::new(|| {
+pub static MEMORY_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {
@@ -159,10 +159,7 @@ Return an empty memories array if the conversation doesn't reveal lasting insigh
         }
     }
 
-    pub fn messages(
-        conversation_turns: &[String],
-        existing_memories: &[String],
-    ) -> Vec<AiMessage> {
+    pub fn messages(conversation_turns: &[String], existing_memories: &[String]) -> Vec<AiMessage> {
         let conversation_text = conversation_turns.join("\n");
 
         let memories_text = if existing_memories.is_empty() {

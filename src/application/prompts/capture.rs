@@ -34,8 +34,7 @@ Be concrete: say \"editing capture_learner.py line 385, function _update_visual_
 Say \"browsing GitHub issue #1234: Fix memory pipeline\" NOT \"looking at a website\".
 If you can read text on screen, quote it. If you can see file names, list them.";
 
-    const USER: &str =
-        "Describe exactly what is on this screen. Reference specific text and content you can read.";
+    const USER: &str = "Describe exactly what is on this screen. Reference specific text and content you can read.";
 
     pub fn config() -> PromptConfig {
         PromptConfig {
@@ -127,9 +126,6 @@ Specificity rules (critical):
              Return the complete updated diary."
         );
 
-        vec![
-            AiMessage::system(Self::SYSTEM),
-            AiMessage::user(user_text),
-        ]
+        vec![AiMessage::system(Self::SYSTEM), AiMessage::user(user_text)]
     }
 }

@@ -137,9 +137,18 @@ impl ToolCallLoop {
 
         tokio::spawn(async move {
             if let Err(e) = run_streaming_loop(
-                llm, executor, tx.clone(), messages, tools,
-                temperature, max_tokens, max_iterations, context,
-            ).await {
+                llm,
+                executor,
+                tx.clone(),
+                messages,
+                tools,
+                temperature,
+                max_tokens,
+                max_iterations,
+                context,
+            )
+            .await
+            {
                 let _ = tx.send(Err(e)).await;
             }
         });
@@ -230,9 +239,11 @@ async fn run_streaming_loop(
         }
 
         // Add assistant message with accumulated content + tool calls
-        let mut assistant_msg = AiMessage::assistant_with_tool_calls(accumulated_tool_calls.clone());
+        let mut assistant_msg =
+            AiMessage::assistant_with_tool_calls(accumulated_tool_calls.clone());
         if !accumulated_content.is_empty() {
-            assistant_msg.content = crate::ports::llm_types::MessageContent::Text(accumulated_content);
+            assistant_msg.content =
+                crate::ports::llm_types::MessageContent::Text(accumulated_content);
         }
         current_messages.push(assistant_msg);
 
@@ -242,7 +253,11 @@ async fn run_streaming_loop(
 
         // Yield all notifications
         for notification in notifications {
-            if tx.send(Ok(StreamItem::ToolNotification(notification))).await.is_err() {
+            if tx
+                .send(Ok(StreamItem::ToolNotification(notification)))
+                .await
+                .is_err()
+            {
                 return Ok(());
             }
         }
@@ -262,13 +277,7 @@ async fn run_streaming_loop(
     // Max iterations reached — stream final response without tools
     warn!("Streaming tool call loop hit max iterations");
 
-    let mut final_stream = llm.stream(
-        current_messages,
-        None,
-        None,
-        temperature,
-        max_tokens,
-    );
+    let mut final_stream = llm.stream(current_messages, None, None, temperature, max_tokens);
 
     let mut final_has_tool_calls = false;
     while let Some(chunk_result) = final_stream.next().await {
@@ -317,7 +326,10 @@ async fn execute_tools_with_notifications(
     }
 
     // Execute in parallel, tracking per-tool timing
-    let start_times: Vec<std::time::Instant> = tool_calls.iter().map(|_| std::time::Instant::now()).collect();
+    let start_times: Vec<std::time::Instant> = tool_calls
+        .iter()
+        .map(|_| std::time::Instant::now())
+        .collect();
     let batch_results = executor.execute_batch(tool_calls, context).await;
 
     // Emit completion notifications with per-tool duration

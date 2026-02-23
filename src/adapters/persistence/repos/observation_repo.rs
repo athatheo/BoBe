@@ -76,7 +76,8 @@ impl ObservationRepository for SqliteObservationRepo {
         limit: Option<i64>,
     ) -> Result<Vec<Observation>, AppError> {
         // Exclude embedding blob — callers need content, not vectors
-        let cols = "id, source, content, category, NULL as embedding, metadata, created_at, updated_at";
+        let cols =
+            "id, source, content, category, NULL as embedding, metadata, created_at, updated_at";
         let rows = match (since, limit) {
             (Some(s), Some(lim)) => {
                 sqlx::query_as::<_, Observation>(
@@ -158,7 +159,11 @@ impl ObservationRepository for SqliteObservationRepo {
             .map_err(AppError::Database)?;
 
         let count = result.rows_affected() as i64;
-        info!(days, deleted_count = count, "observation_repo.deleted_older_than");
+        info!(
+            days,
+            deleted_count = count,
+            "observation_repo.deleted_older_than"
+        );
         Ok(count)
     }
 
@@ -205,7 +210,11 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| *x as f64 * *y as f64).sum();
+    let dot: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| *x as f64 * *y as f64)
+        .sum();
     let norm_a: f64 = a.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     let norm_b: f64 = b.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     if norm_a == 0.0 || norm_b == 0.0 {

@@ -1,14 +1,14 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::config::LlmBackend;
 use crate::app_state::AppState;
+use crate::config::LlmBackend;
 use crate::error::AppError;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -77,7 +77,14 @@ pub async fn list_models(
 pub async fn pull_model(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PullModelRequest>,
-) -> axum::response::Sse<std::pin::Pin<Box<dyn futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> + Send>>> {
+) -> axum::response::Sse<
+    std::pin::Pin<
+        Box<
+            dyn futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>
+                + Send,
+        >,
+    >,
+> {
     use axum::response::sse::Event;
     use tokio_stream::StreamExt;
 
@@ -174,7 +181,9 @@ pub async fn delete_model(
     } else {
         let status = resp.status();
         tracing::error!(model = %model_name, status = %status, "models.delete_failed");
-        Err(AppError::Internal(format!("Failed to delete: HTTP {status}")))
+        Err(AppError::Internal(format!(
+            "Failed to delete: HTTP {status}"
+        )))
     }
 }
 
@@ -192,13 +201,14 @@ pub async fn list_registry_models() -> Json<ModelsListResponse> {
 
     // Return cached if fresh
     if let (Some(ref models), Some(ref ts)) = *guard
-        && ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS {
-            return Json(ModelsListResponse {
-                backend: LlmBackend::Ollama,
-                models: models.clone(),
-                supports_pull: true,
-            });
-        }
+        && ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS
+    {
+        return Json(ModelsListResponse {
+            backend: LlmBackend::Ollama,
+            models: models.clone(),
+            supports_pull: true,
+        });
+    }
 
     // Fetch from ollama.com
     match fetch_registry_models().await {

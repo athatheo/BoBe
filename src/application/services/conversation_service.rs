@@ -123,9 +123,7 @@ impl ConversationService {
     }
 
     /// Get the most recently closed conversation with its summary.
-    pub async fn get_last_closed_conversation(
-        &self,
-    ) -> Result<Option<Conversation>, AppError> {
+    pub async fn get_last_closed_conversation(&self) -> Result<Option<Conversation>, AppError> {
         self.repo.get_last_closed().await
     }
 
@@ -188,10 +186,7 @@ impl ConversationService {
     }
 
     /// Get the most recent turns across all conversations.
-    pub async fn get_recent_turns(
-        &self,
-        limit: i64,
-    ) -> Result<Vec<ConversationTurn>, AppError> {
+    pub async fn get_recent_turns(&self, limit: i64) -> Result<Vec<ConversationTurn>, AppError> {
         self.repo.get_recent_turns(limit).await
     }
 
@@ -204,9 +199,7 @@ impl ConversationService {
     }
 
     /// Get last 2 turns from previous closed conversation for cross-conversation context.
-    pub async fn get_previous_conversation_context(
-        &self,
-    ) -> Vec<(String, String)> {
+    pub async fn get_previous_conversation_context(&self) -> Vec<(String, String)> {
         let last_closed = match self.get_last_closed_conversation().await {
             Ok(Some(c)) => c,
             _ => return Vec::new(),

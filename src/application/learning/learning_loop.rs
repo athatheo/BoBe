@@ -87,7 +87,8 @@ impl LearningLoop {
 
     /// Main learning loop. Runs until stop() is called.
     pub async fn run(&self) {
-        self.running.store(true, std::sync::atomic::Ordering::Release);
+        self.running
+            .store(true, std::sync::atomic::Ordering::Release);
         info!(
             interval_minutes = self.config.interval_minutes,
             daily_consolidation_hour = self.config.daily_consolidation_hour,
@@ -124,11 +125,15 @@ impl LearningLoop {
     /// Gracefully stop the learning loop.
     pub fn stop(&self) {
         info!("learning_loop.stopping");
-        self.running.store(false, std::sync::atomic::Ordering::Release);
+        self.running
+            .store(false, std::sync::atomic::Ordering::Release);
         self.stop_notify.notify_one();
     }
 
-    async fn learning_cycle(&self, state: &mut LearningState) -> Result<(), crate::error::AppError> {
+    async fn learning_cycle(
+        &self,
+        state: &mut LearningState,
+    ) -> Result<(), crate::error::AppError> {
         let start = std::time::Instant::now();
         debug!("learning_loop.cycle_start");
 
@@ -142,22 +147,19 @@ impl LearningLoop {
         }
 
         // 2. Process accumulated context
-        let (ctx_items, ctx_memories, ctx_changed) =
-            self.process_accumulated_context(state).await;
+        let (ctx_items, ctx_memories, ctx_changed) = self.process_accumulated_context(state).await;
         if ctx_changed {
             state_changed = true;
         }
 
         // 3. Daily consolidation
-        let (consolidated, consolidation_changed) =
-            self.daily_consolidation_if_needed(state).await;
+        let (consolidated, consolidation_changed) = self.daily_consolidation_if_needed(state).await;
         if consolidation_changed {
             state_changed = true;
         }
 
         // 4. Scheduled pruning
-        let (pruned, pruning_changed) =
-            self.scheduled_pruning_if_needed(state).await;
+        let (pruned, pruning_changed) = self.scheduled_pruning_if_needed(state).await;
         if pruning_changed {
             state_changed = true;
         }
@@ -195,7 +197,8 @@ impl LearningLoop {
         &self,
         state: &mut LearningState,
     ) -> (usize, usize, usize, bool) {
-        let conversations = match self.conversation
+        let conversations = match self
+            .conversation
             .get_closed_since(state.last_conversation_processed_at)
             .await
         {
@@ -210,7 +213,10 @@ impl LearningLoop {
             return (0, 0, 0, false);
         }
 
-        debug!(count = conversations.len(), "learning_loop.processing_conversations");
+        debug!(
+            count = conversations.len(),
+            "learning_loop.processing_conversations"
+        );
 
         // Get existing for dedup
         let existing_memories = self.get_all_memories().await;
@@ -245,14 +251,16 @@ impl LearningLoop {
             }
 
             // Extract memories
-            let memories = self.memory_learner
+            let memories = self
+                .memory_learner
                 .distill_from_conversation(&turn_tuples, &all_memories)
                 .await;
             total_memories += memories.len();
             all_memories.extend(memories);
 
             // Extract goals
-            let goals = self.goal_learner
+            let goals = self
+                .goal_learner
                 .extract_from_conversation(&turn_tuples, &all_goals)
                 .await;
             total_goals += goals.len();
@@ -274,12 +282,13 @@ impl LearningLoop {
         (conversations.len(), total_memories, total_goals, changed)
     }
 
-    async fn process_accumulated_context(
-        &self,
-        state: &mut LearningState,
-    ) -> (usize, usize, bool) {
-        let observations = match self.observation_repo
-            .find_since(state.last_context_processed_at, Some(self.config.max_context_per_cycle as i64 * 2))
+    async fn process_accumulated_context(&self, state: &mut LearningState) -> (usize, usize, bool) {
+        let observations = match self
+            .observation_repo
+            .find_since(
+                state.last_context_processed_at,
+                Some(self.config.max_context_per_cycle as i64 * 2),
+            )
             .await
         {
             Ok(o) => o,
@@ -292,18 +301,24 @@ impl LearningLoop {
         // Filter out already-processed sources
         let observations: Vec<_> = observations
             .into_iter()
-            .filter(|obs| obs.source != ObservationSource::UserMessage && obs.source != ObservationSource::Screen)
+            .filter(|obs| {
+                obs.source != ObservationSource::UserMessage
+                    && obs.source != ObservationSource::Screen
+            })
             .collect();
 
         if (observations.len() as u32) < self.config.min_context_items {
             return (0, 0, false);
         }
 
-        let to_process = &observations[..observations.len().min(self.config.max_context_per_cycle as usize)];
+        let to_process = &observations[..observations
+            .len()
+            .min(self.config.max_context_per_cycle as usize)];
         let existing_memories = self.get_all_memories().await;
         let goals = self.goals_service.get_active(100).await.unwrap_or_default();
 
-        let memories = self.memory_learner
+        let memories = self
+            .memory_learner
             .distill_from_observations(to_process, &existing_memories, &goals)
             .await;
 
@@ -319,17 +334,18 @@ impl LearningLoop {
         (to_process.len(), memories.len(), changed)
     }
 
-    async fn daily_consolidation_if_needed(
-        &self,
-        state: &mut LearningState,
-    ) -> (usize, bool) {
+    async fn daily_consolidation_if_needed(&self, state: &mut LearningState) -> (usize, bool) {
         let now = Utc::now();
 
         let should_run = match state.last_consolidation_at {
-            None => now.format("%H").to_string().parse::<u32>().unwrap_or(0) == self.config.daily_consolidation_hour,
+            None => {
+                now.format("%H").to_string().parse::<u32>().unwrap_or(0)
+                    == self.config.daily_consolidation_hour
+            }
             Some(last) => {
                 last.date_naive() < now.date_naive()
-                    && now.format("%H").to_string().parse::<u32>().unwrap_or(0) >= self.config.daily_consolidation_hour
+                    && now.format("%H").to_string().parse::<u32>().unwrap_or(0)
+                        >= self.config.daily_consolidation_hour
             }
         };
 
@@ -339,7 +355,8 @@ impl LearningLoop {
 
         info!("learning_loop.starting_consolidation");
 
-        let short_term = self.memory_repo
+        let short_term = self
+            .memory_repo
             .find_by_type(MemoryType::ShortTerm, false, None)
             .await
             .unwrap_or_default();
@@ -367,10 +384,7 @@ impl LearningLoop {
         (long_term.len(), true)
     }
 
-    async fn scheduled_pruning_if_needed(
-        &self,
-        state: &mut LearningState,
-    ) -> (usize, bool) {
+    async fn scheduled_pruning_if_needed(&self, state: &mut LearningState) -> (usize, bool) {
         if !self.retention_config.pruning_enabled {
             return (0, false);
         }
@@ -378,34 +392,42 @@ impl LearningLoop {
         let now = Utc::now();
 
         if let Some(last) = state.last_pruning_at
-            && last.date_naive() >= now.date_naive() {
-                return (0, false);
-            }
+            && last.date_naive() >= now.date_naive()
+        {
+            return (0, false);
+        }
 
         info!("learning_loop.starting_pruning");
 
-        let obs_deleted = self.observation_repo
+        let obs_deleted = self
+            .observation_repo
             .delete_older_than(self.retention_config.raw_context_days as i64)
             .await
             .unwrap_or(0);
 
         let st_cutoff = now - Duration::days(self.retention_config.short_term_memory_days as i64);
-        let st_deleted = self.memory_repo
+        let st_deleted = self
+            .memory_repo
             .delete_by_criteria(MemoryType::ShortTerm, st_cutoff)
             .await
             .unwrap_or(0);
 
         let lt_cutoff = now - Duration::days(self.retention_config.long_term_memory_days as i64);
-        let lt_deleted = self.memory_repo
+        let lt_deleted = self
+            .memory_repo
             .delete_by_criteria(MemoryType::LongTerm, lt_cutoff)
             .await
             .unwrap_or(0);
 
         // Delete stale archived/completed goals
         let goal_cutoff = now - Duration::days(self.retention_config.goal_retention_days as i64);
-        let goals_deleted = self.goal_repo
+        let goals_deleted = self
+            .goal_repo
             .delete_stale_goals(
-                &[crate::domain::types::GoalStatus::Archived, crate::domain::types::GoalStatus::Completed],
+                &[
+                    crate::domain::types::GoalStatus::Archived,
+                    crate::domain::types::GoalStatus::Completed,
+                ],
                 goal_cutoff,
             )
             .await
@@ -480,7 +502,11 @@ impl LearningLoop {
             }
             match self.embedding.embed(&record.content).await {
                 Ok(emb) if !emb.is_empty() => {
-                    if let Err(e) = self.observation_repo.update_embedding(record.id, &emb).await {
+                    if let Err(e) = self
+                        .observation_repo
+                        .update_embedding(record.id, &emb)
+                        .await
+                    {
                         warn!(error = %e, id = %record.id, "learning_loop.re_embed_observation_update_failed");
                         skipped += 1;
                     } else {
@@ -575,10 +601,18 @@ impl LearningLoop {
 
     async fn get_all_memories(&self) -> Vec<crate::domain::memory::Memory> {
         let mut all = Vec::new();
-        if let Ok(st) = self.memory_repo.find_by_type(MemoryType::ShortTerm, false, None).await {
+        if let Ok(st) = self
+            .memory_repo
+            .find_by_type(MemoryType::ShortTerm, false, None)
+            .await
+        {
             all.extend(st);
         }
-        if let Ok(lt) = self.memory_repo.find_by_type(MemoryType::LongTerm, false, None).await {
+        if let Ok(lt) = self
+            .memory_repo
+            .find_by_type(MemoryType::LongTerm, false, None)
+            .await
+        {
             all.extend(lt);
         }
         all

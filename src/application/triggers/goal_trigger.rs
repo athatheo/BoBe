@@ -10,7 +10,9 @@ use crate::adapters::sse::event_queue::EventQueue;
 use crate::adapters::sse::types::IndicatorType;
 use crate::application::runtime::decision_engine::DecisionEngine;
 use crate::application::runtime::proactive_generator::ProactiveGenerator;
-use crate::application::runtime::state::{Decision, OrchestratorConfig, TriggerContext, TriggerType};
+use crate::application::runtime::state::{
+    Decision, OrchestratorConfig, TriggerContext, TriggerType,
+};
 use crate::ports::repos::cooldown_repo::CooldownRepository;
 use crate::ports::repos::goal_repo::GoalRepository;
 
@@ -53,13 +55,14 @@ impl GoalTrigger {
             && let Some(cooldown) = cooldown_repo.check_cooldown(
                 self.config.decision_cooldown_minutes,
                 self.config.decision_extended_cooldown_minutes,
-            ) {
-                debug!(
-                    remaining_s = cooldown.remaining.num_seconds(),
-                    "goal_trigger.cooldown_active"
-                );
-                return Decision::Idle;
-            }
+            )
+        {
+            debug!(
+                remaining_s = cooldown.remaining.num_seconds(),
+                "goal_trigger.cooldown_active"
+            );
+            return Decision::Idle;
+        }
 
         let goals = match self.goal_repo.find_active(true).await {
             Ok(g) => g,
@@ -94,10 +97,12 @@ impl GoalTrigger {
                     goal_content = &goal.content[..goal.content.len().min(50)],
                     "goal_trigger.engagement_triggered"
                 );
-                self.generator.generate_proactive_response(
-                    self.config.conversation_auto_close_minutes as i64,
-                    Some(format!("User's goal: {}", goal.content)),
-                ).await;
+                self.generator
+                    .generate_proactive_response(
+                        self.config.conversation_auto_close_minutes as i64,
+                        Some(format!("User's goal: {}", goal.content)),
+                    )
+                    .await;
                 return Decision::Engage;
             }
 

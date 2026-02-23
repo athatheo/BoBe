@@ -3,22 +3,19 @@
 //! Splits streaming LLM text output at sentence boundaries so each sentence
 //! can be dispatched individually. Purely synchronous, no async.
 
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 /// Abbreviations that end with a period but are NOT sentence boundaries.
 const ABBREVIATIONS: &[&str] = &[
-    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "ave", "vs", "etc",
-    "inc", "ltd", "corp", "dept", "univ", "gen", "gov", "sgt", "cpl", "pvt",
-    "capt", "col", "maj", "lt", "cmdr", "adm", "rev", "hon", "pres",
-    "approx", "est", "min", "max", "misc", "vol", "fig", "eq", "no", "op",
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "ave", "vs", "etc", "inc", "ltd", "corp",
+    "dept", "univ", "gen", "gov", "sgt", "cpl", "pvt", "capt", "col", "maj", "lt", "cmdr", "adm",
+    "rev", "hon", "pres", "approx", "est", "min", "max", "misc", "vol", "fig", "eq", "no", "op",
     "pt", "i.e", "e.g",
 ];
 
 /// Pattern: sentence-ending punctuation followed by whitespace.
-static SENTENCE_END_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"([.!?])(\s+)").unwrap()
-});
+static SENTENCE_END_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([.!?])(\s+)").unwrap());
 
 pub struct SentenceAccumulator {
     buffer: String,

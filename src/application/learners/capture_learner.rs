@@ -13,7 +13,9 @@ use tracing::{debug, info, warn};
 use crate::application::learners::types::{
     LearnerError, LearnerObservation, LearnerObservationSource, LearnerResult,
 };
-use crate::application::prompts::capture::{VisionAnalysisPrompt, VisualMemoryConsolidationPrompt, ALLOWED_CATEGORIES};
+use crate::application::prompts::capture::{
+    ALLOWED_CATEGORIES, VisionAnalysisPrompt, VisualMemoryConsolidationPrompt,
+};
 use crate::domain::memory::Memory;
 use crate::domain::observation::Observation;
 use crate::domain::types::{MemorySource, MemoryType, ObservationSource};
@@ -25,33 +27,91 @@ use crate::ports::repos::observation_repo::ObservationRepository;
 
 /// Keyword → category mapping for simple inference (no LLM needed).
 static CATEGORY_KEYWORDS: &[(&str, &[&str])] = &[
-    ("coding", &[
-        "vscode", "vs code", "visual studio", "intellij", "pycharm", "neovim",
-        "vim", "emacs", "sublime", "cursor", ".py", ".ts", ".js", ".rs", ".go",
-        "def ", "function ", "class ", "import ",
-    ]),
-    ("terminal", &[
-        "terminal", "iterm", "wezterm", "alacritty", "kitty", "command line",
-        "shell", "bash", "zsh", "fish", "$ ", "❯",
-    ]),
-    ("browsing", &[
-        "chrome", "firefox", "safari", "brave", "edge", "browser",
-        "http://", "https://", "www.",
-    ]),
-    ("documentation", &[
-        "docs", "documentation", "readme", "wiki", "notion", "confluence",
-        "man page", "reference",
-    ]),
-    ("communication", &[
-        "slack", "discord", "teams", "zoom", "meet", "email", "gmail",
-        "outlook", "messages", "chat",
-    ]),
-    ("design", &[
-        "figma", "sketch", "photoshop", "illustrator", "canva", "design",
-    ]),
-    ("media", &[
-        "youtube", "spotify", "netflix", "video", "music", "vlc", "podcast",
-    ]),
+    (
+        "coding",
+        &[
+            "vscode",
+            "vs code",
+            "visual studio",
+            "intellij",
+            "pycharm",
+            "neovim",
+            "vim",
+            "emacs",
+            "sublime",
+            "cursor",
+            ".py",
+            ".ts",
+            ".js",
+            ".rs",
+            ".go",
+            "def ",
+            "function ",
+            "class ",
+            "import ",
+        ],
+    ),
+    (
+        "terminal",
+        &[
+            "terminal",
+            "iterm",
+            "wezterm",
+            "alacritty",
+            "kitty",
+            "command line",
+            "shell",
+            "bash",
+            "zsh",
+            "fish",
+            "$ ",
+            "❯",
+        ],
+    ),
+    (
+        "browsing",
+        &[
+            "chrome", "firefox", "safari", "brave", "edge", "browser", "http://", "https://",
+            "www.",
+        ],
+    ),
+    (
+        "documentation",
+        &[
+            "docs",
+            "documentation",
+            "readme",
+            "wiki",
+            "notion",
+            "confluence",
+            "man page",
+            "reference",
+        ],
+    ),
+    (
+        "communication",
+        &[
+            "slack", "discord", "teams", "zoom", "meet", "email", "gmail", "outlook", "messages",
+            "chat",
+        ],
+    ),
+    (
+        "design",
+        &[
+            "figma",
+            "sketch",
+            "photoshop",
+            "illustrator",
+            "canva",
+            "design",
+        ],
+    ),
+    (
+        "media",
+        &[
+            "youtube", "spotify", "netflix", "video", "music", "vlc", "podcast",
+        ],
+    ),
 ];
 
 pub struct CaptureLearner {
@@ -81,9 +141,10 @@ impl CaptureLearner {
 
     fn effective_vision_llm(&self) -> Option<&Arc<dyn LlmProvider>> {
         if let Some(ref v) = self.vision_llm
-            && v.supports_vision() {
-                return Some(v);
-            }
+            && v.supports_vision()
+        {
+            return Some(v);
+        }
         if self.llm.supports_vision() {
             return Some(&self.llm);
         }
@@ -91,7 +152,10 @@ impl CaptureLearner {
     }
 
     /// Process a screen capture observation.
-    pub async fn learn(&self, observation: &LearnerObservation) -> Result<LearnerResult, LearnerError> {
+    pub async fn learn(
+        &self,
+        observation: &LearnerObservation,
+    ) -> Result<LearnerResult, LearnerError> {
         if observation.source != LearnerObservationSource::Capture {
             return Err(LearnerError::WrongSource {
                 expected: "capture".into(),
@@ -99,9 +163,10 @@ impl CaptureLearner {
             });
         }
 
-        let screenshot = observation.screenshot.as_ref().ok_or_else(|| {
-            LearnerError::MissingData("screenshot data required".into())
-        })?;
+        let screenshot = observation
+            .screenshot
+            .as_ref()
+            .ok_or_else(|| LearnerError::MissingData("screenshot data required".into()))?;
 
         info!(
             window = ?observation.active_window,
@@ -110,30 +175,41 @@ impl CaptureLearner {
         );
 
         // 1. Analyze screenshot
-        let analysis = self.analyze(screenshot, observation.active_window.as_deref()).await;
+        let analysis = self
+            .analyze(screenshot, observation.active_window.as_deref())
+            .await;
 
         let description = analysis.description;
         let category = analysis.category;
 
         // 2. Generate embedding
-        let embedding_vec = self.embedding.embed(&description).await.map_err(|e| {
-            LearnerError::Embedding(e.to_string())
-        })?;
+        let embedding_vec = self
+            .embedding
+            .embed(&description)
+            .await
+            .map_err(|e| LearnerError::Embedding(e.to_string()))?;
 
         // 3. Create and store observation
-        let mut obs = Observation::new(ObservationSource::Screen, description.clone(), category.clone());
-        obs.embedding = Some(serde_json::to_string(&embedding_vec).map_err(|e| {
-            LearnerError::Storage(e.to_string())
-        })?);
+        let mut obs = Observation::new(
+            ObservationSource::Screen,
+            description.clone(),
+            category.clone(),
+        );
+        obs.embedding = Some(
+            serde_json::to_string(&embedding_vec)
+                .map_err(|e| LearnerError::Storage(e.to_string()))?,
+        );
         let summary = Self::create_summary(&description, observation.active_window.as_deref());
         let mut meta = HashMap::new();
         if let Some(ref w) = observation.active_window {
-            meta.insert("active_window".to_string(), serde_json::Value::String(w.clone()));
+            meta.insert(
+                "active_window".to_string(),
+                serde_json::Value::String(w.clone()),
+            );
         }
         meta.insert("summary".to_string(), serde_json::Value::String(summary));
-        obs.metadata = Some(serde_json::to_string(&meta).map_err(|e| {
-            LearnerError::Storage(e.to_string())
-        })?);
+        obs.metadata =
+            Some(serde_json::to_string(&meta).map_err(|e| LearnerError::Storage(e.to_string()))?);
 
         let stored = self.observation_repo.save(&obs).await?;
 
@@ -144,11 +220,16 @@ impl CaptureLearner {
         );
 
         // 4. Update visual memory diary (fire-and-forget)
-        if let Err(e) = self.update_visual_memory(&description, &stored.id.to_string()).await {
+        if let Err(e) = self
+            .update_visual_memory(&description, &stored.id.to_string())
+            .await
+        {
             warn!(error = %e, "capture_learner.visual_memory_update_failed");
         }
 
-        Ok(LearnerResult::Stored { observation_id: stored.id })
+        Ok(LearnerResult::Stored {
+            observation_id: stored.id,
+        })
     }
 
     async fn analyze(&self, screenshot: &[u8], active_window: Option<&str>) -> AnalysisResult {
@@ -189,7 +270,13 @@ impl CaptureLearner {
 
         let response = tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            vision_llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
+            vision_llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
         )
         .await
         .map_err(|_| AppError::LlmTimeout("vision analysis timed out".into()))??;
@@ -203,12 +290,7 @@ impl CaptureLearner {
     }
 
     fn infer_category(description: &str, active_window: Option<&str>) -> String {
-        let text = format!(
-            "{} {}",
-            description,
-            active_window.unwrap_or("")
-        )
-        .to_lowercase();
+        let text = format!("{} {}", description, active_window.unwrap_or("")).to_lowercase();
 
         let mut best_category = "other";
         let mut best_score = 0usize;
@@ -241,7 +323,9 @@ impl CaptureLearner {
 
         // Calculate 12h window start
         let window_start_hour = if now.hour() < 12 { 0 } else { 12 };
-        let window_start = now.date_naive().and_hms_opt(window_start_hour, 0, 0)
+        let window_start = now
+            .date_naive()
+            .and_hms_opt(window_start_hour, 0, 0)
             .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
 
         // Find existing visual diary
@@ -257,9 +341,17 @@ impl CaptureLearner {
         );
         let config = VisualMemoryConsolidationPrompt::config();
 
-        let response = self.llm.complete(
-            &messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens,
-        ).await.map_err(|e| LearnerError::Llm(e.to_string()))?;
+        let response = self
+            .llm
+            .complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            )
+            .await
+            .map_err(|e| LearnerError::Llm(e.to_string()))?;
 
         let updated_diary = response.message.content.text_or_empty().trim().to_string();
         if updated_diary.is_empty() {
@@ -279,7 +371,9 @@ impl CaptureLearner {
             Some(mut diary) => {
                 diary.content = updated_diary;
                 diary.updated_at = Utc::now();
-                self.memory_repo.update(diary.id, Some(&diary.content), None, None).await?;
+                self.memory_repo
+                    .update(diary.id, Some(&diary.content), None, None)
+                    .await?;
                 debug!("capture_learner.visual_memory_updated");
             }
             None => {
@@ -298,14 +392,17 @@ impl CaptureLearner {
     }
 
     async fn find_visual_diary(&self, window_start: Option<DateTime<Utc>>) -> String {
-        let memories = self.memory_repo.find_all(
-            Some(MemoryType::ShortTerm.as_str()),
-            Some("observation"),
-            Some(MemorySource::VisualDiary.as_str()),
-            false,
-            5,
-            0,
-        ).await;
+        let memories = self
+            .memory_repo
+            .find_all(
+                Some(MemoryType::ShortTerm.as_str()),
+                Some("observation"),
+                Some(MemorySource::VisualDiary.as_str()),
+                false,
+                5,
+                0,
+            )
+            .await;
 
         match memories {
             Ok((mems, _)) => {
@@ -322,15 +419,22 @@ impl CaptureLearner {
         }
     }
 
-    async fn find_visual_diary_memory(&self, window_start: Option<DateTime<Utc>>) -> Option<Memory> {
-        let memories = self.memory_repo.find_all(
-            Some(MemoryType::ShortTerm.as_str()),
-            Some("observation"),
-            Some(MemorySource::VisualDiary.as_str()),
-            false,
-            5,
-            0,
-        ).await.ok()?;
+    async fn find_visual_diary_memory(
+        &self,
+        window_start: Option<DateTime<Utc>>,
+    ) -> Option<Memory> {
+        let memories = self
+            .memory_repo
+            .find_all(
+                Some(MemoryType::ShortTerm.as_str()),
+                Some("observation"),
+                Some(MemorySource::VisualDiary.as_str()),
+                false,
+                5,
+                0,
+            )
+            .await
+            .ok()?;
 
         let ws = window_start?;
         memories.0.into_iter().find(|m| m.created_at >= ws)
@@ -344,7 +448,11 @@ impl CaptureLearner {
         if lines.len() <= max_lines {
             return text.to_owned();
         }
-        let header = if lines[0].starts_with('#') { lines[0] } else { "" };
+        let header = if lines[0].starts_with('#') {
+            lines[0]
+        } else {
+            ""
+        };
         let tail: Vec<&str> = lines[lines.len() - max_lines..].to_vec();
         if !header.is_empty() {
             format!("{header}\n...\n{}", tail.join("\n"))

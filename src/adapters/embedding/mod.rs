@@ -24,7 +24,11 @@ pub struct LocalEmbeddingProvider {
 
 impl LocalEmbeddingProvider {
     pub fn new(client: Client, base_url: &str, model: &str, dimension: usize) -> Self {
-        info!(model = model, dimension = dimension, "embedding.provider_created");
+        info!(
+            model = model,
+            dimension = dimension,
+            "embedding.provider_created"
+        );
         Self {
             client,
             base_url: base_url.trim_end_matches('/').to_owned(),

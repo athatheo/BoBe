@@ -1,18 +1,16 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
 
 use crate::app_state::AppState;
 use crate::domain::goal::Goal;
 use crate::domain::types::{GoalPriority, GoalSource, GoalStatus};
 use crate::error::AppError;
-
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -139,7 +137,8 @@ pub async fn get_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalResponse>, AppError> {
-    let goal = state.goal_repo
+    let goal = state
+        .goal_repo
         .get_by_id(goal_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
@@ -174,7 +173,9 @@ pub async fn update_goal(
     Path(goal_id): Path<Uuid>,
     Json(body): Json<GoalUpdateRequest>,
 ) -> Result<Json<GoalResponse>, AppError> {
-    state.goal_repo.get_by_id(goal_id)
+    state
+        .goal_repo
+        .get_by_id(goal_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
@@ -185,7 +186,8 @@ pub async fn update_goal(
         .map(parse_goal_priority)
         .transpose()?;
 
-    let updated = state.goal_repo
+    let updated = state
+        .goal_repo
         .update_fields(
             goal_id,
             body.content.as_deref(),
@@ -206,11 +208,14 @@ pub async fn complete_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
-    state.goal_repo.get_by_id(goal_id)
+    state
+        .goal_repo
+        .get_by_id(goal_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
-    let updated = state.goal_repo
+    let updated = state
+        .goal_repo
         .update_status(goal_id, Some(GoalStatus::Completed), None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} could not be updated")))?;
@@ -229,11 +234,14 @@ pub async fn archive_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
-    state.goal_repo.get_by_id(goal_id)
+    state
+        .goal_repo
+        .get_by_id(goal_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
-    let updated = state.goal_repo
+    let updated = state
+        .goal_repo
         .update_status(goal_id, Some(GoalStatus::Archived), None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} could not be updated")))?;

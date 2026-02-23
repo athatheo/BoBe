@@ -6,14 +6,10 @@ use regex::Regex;
 use reqwest::Client;
 use tracing::{debug, error, warn};
 
-use crate::adapters::llm::shared::{
-    build_chat_request, parse_response, parse_stream_chunk,
-};
+use crate::adapters::llm::shared::{build_chat_request, parse_response, parse_stream_chunk};
 use crate::error::AppError;
 use crate::ports::llm::LlmProvider;
-use crate::ports::llm_types::{
-    AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition,
-};
+use crate::ports::llm_types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
 /// Ollama LLM provider using the OpenAI-compatible /v1/chat/completions endpoint.
 pub struct OllamaProvider {
@@ -102,9 +98,10 @@ impl LlmProvider for OllamaProvider {
             )));
         }
 
-        let data: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::Llm(format!("Failed to parse Ollama response: {e}"))
-        })?;
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Llm(format!("Failed to parse Ollama response: {e}")))?;
 
         let mut response = parse_response(&data)?;
         // Strip think tags from qwen3 models

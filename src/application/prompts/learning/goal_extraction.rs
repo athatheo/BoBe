@@ -1,13 +1,13 @@
 //! Goal extraction prompts for detecting user goals from conversations.
 
-use once_cell::sync::Lazy;
 use serde_json::json;
+use std::sync::LazyLock;
 
 use crate::application::prompts::base::PromptConfig;
 use crate::ports::llm_types::{AiMessage, ResponseFormat};
 
 /// JSON Schema for goal extraction output.
-pub static GOAL_EXTRACTION_SCHEMA: Lazy<serde_json::Value> = Lazy::new(|| {
+pub static GOAL_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {
@@ -76,10 +76,7 @@ Return an empty goals array if no clear goals can be inferred.";
         }
     }
 
-    pub fn messages(
-        conversation_turns: &[String],
-        existing_goals: &[String],
-    ) -> Vec<AiMessage> {
+    pub fn messages(conversation_turns: &[String], existing_goals: &[String]) -> Vec<AiMessage> {
         let conversation_text = conversation_turns.join("\n");
 
         let goals_text = if existing_goals.is_empty() {

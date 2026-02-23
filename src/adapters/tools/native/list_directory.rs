@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -126,7 +126,15 @@ impl NativeTool for ListDirectoryTool {
         let max_depth = if recursive { MAX_RECURSIVE_DEPTH } else { 0 };
         let mut entries = Vec::new();
 
-        collect_entries(&canonical, &canonical, max_depth, 0, show_hidden, &mut entries).await?;
+        collect_entries(
+            &canonical,
+            &canonical,
+            max_depth,
+            0,
+            show_hidden,
+            &mut entries,
+        )
+        .await?;
 
         // Sort: directories first, then alphabetical
         entries.sort_by(|a, b| {
@@ -166,9 +174,11 @@ async fn collect_entries(
         .await
         .map_err(|e| AppError::Tool(format!("Cannot read directory: {e}")))?;
 
-    while let Some(entry) = read_dir.next_entry().await.map_err(|e| {
-        AppError::Tool(format!("Error reading entry: {e}"))
-    })? {
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| AppError::Tool(format!("Error reading entry: {e}")))?
+    {
         let file_name = entry.file_name();
         let name = file_name.to_string_lossy();
 

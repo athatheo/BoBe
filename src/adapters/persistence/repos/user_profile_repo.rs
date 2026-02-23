@@ -62,12 +62,10 @@ impl UserProfileRepository for SqliteUserProfileRepo {
     }
 
     async fn get_default(&self) -> Result<Option<UserProfile>, AppError> {
-        sqlx::query_as::<_, UserProfile>(
-            "SELECT * FROM user_profiles WHERE is_default = 1 LIMIT 1",
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)
+        sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE is_default = 1 LIMIT 1")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::Database)
     }
 
     async fn find_enabled(&self) -> Result<Vec<UserProfile>, AppError> {
@@ -105,10 +103,7 @@ impl UserProfileRepository for SqliteUserProfileRepo {
         }
         sets.push("updated_at = ?");
 
-        let sql = format!(
-            "UPDATE user_profiles SET {} WHERE id = ?",
-            sets.join(", ")
-        );
+        let sql = format!("UPDATE user_profiles SET {} WHERE id = ?", sets.join(", "));
         let mut q = sqlx::query(&sql);
         if let Some(c) = content {
             q = q.bind(c);

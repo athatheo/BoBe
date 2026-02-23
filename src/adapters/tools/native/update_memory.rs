@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -80,13 +80,14 @@ impl NativeTool for UpdateMemoryTool {
         }
 
         if let Some(cat) = new_cat
-            && !VALID_CATEGORIES.contains(&cat) {
-                return Err(AppError::Validation(format!(
-                    "Invalid category '{}'. Must be one of: {}",
-                    cat,
-                    VALID_CATEGORIES.join(", ")
-                )));
-            }
+            && !VALID_CATEGORIES.contains(&cat)
+        {
+            return Err(AppError::Validation(format!(
+                "Invalid category '{}'. Must be one of: {}",
+                cat,
+                VALID_CATEGORIES.join(", ")
+            )));
+        }
 
         let old = self
             .memory_repo

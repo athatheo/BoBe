@@ -64,9 +64,10 @@ pub fn parse_claude_ndjson(output_path: &Path) -> AgentJobResult {
 
         if msg_type == "system"
             && let Some(sid) = msg.get("session_id").and_then(|v| v.as_str())
-                && !sid.is_empty() {
-                    session_id = Some(sid.to_owned());
-                }
+            && !sid.is_empty()
+        {
+            session_id = Some(sid.to_owned());
+        }
 
         if msg_type == "result" {
             last_result_line = Some(msg.clone());
@@ -90,17 +91,13 @@ pub fn parse_claude_ndjson(output_path: &Path) -> AgentJobResult {
             result.cost_usd = Some(cost);
         }
 
-        let subtype = rl
-            .get("subtype")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let subtype = rl.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
 
         if subtype != "success" {
             result.is_error = true;
             if let Some(errors) = rl.get("errors").and_then(|v| v.as_array()) {
                 if !errors.is_empty() {
-                    let joined: Vec<String> =
-                        errors.iter().map(|e| e.to_string()).collect();
+                    let joined: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
                     result.error_detail = Some(joined.join("; "));
                 } else {
                     result.error_detail = Some(subtype.to_owned());
@@ -143,9 +140,10 @@ fn extract_tool_calls(
                     .get("input")
                     .and_then(|v| v.get("file_path"))
                     .and_then(|v| v.as_str())
-                    && !path.is_empty() {
-                        files_seen.insert(path.to_owned());
-                    }
+                && !path.is_empty()
+            {
+                files_seen.insert(path.to_owned());
+            }
         }
     }
 }
@@ -164,9 +162,10 @@ fn extract_file_changes(msg: &Value, files_seen: &mut BTreeSet<String>) {
                 .get("input")
                 .and_then(|v| v.get("file_path"))
                 .and_then(|v| v.as_str())
-                && !path.is_empty() {
-                    files_seen.insert(path.to_owned());
-                }
+            && !path.is_empty()
+        {
+            files_seen.insert(path.to_owned());
+        }
     }
 }
 

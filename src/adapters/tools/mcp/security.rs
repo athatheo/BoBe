@@ -122,15 +122,13 @@ mod tests {
 
     #[test]
     fn test_validate_env_allows_safe() {
-        let env: HashMap<String, String> =
-            [("PATH".into(), "/usr/bin".into())].into();
+        let env: HashMap<String, String> = [("PATH".into(), "/usr/bin".into())].into();
         assert!(validate_mcp_env(&env, &[]).is_ok());
     }
 
     #[test]
     fn test_validate_env_blocks_dangerous() {
-        let env: HashMap<String, String> =
-            [("LD_PRELOAD".into(), "evil.so".into())].into();
+        let env: HashMap<String, String> = [("LD_PRELOAD".into(), "evil.so".into())].into();
         assert!(validate_mcp_env(&env, &[]).is_err());
     }
 }

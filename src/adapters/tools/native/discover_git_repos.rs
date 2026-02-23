@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +8,14 @@ use crate::error::AppError;
 use crate::ports::tools::{ToolCategory, ToolExecutionContext};
 
 const DEFAULT_SEARCH_DIRS: &[&str] = &[
-    "Repos", "Projects", "code", "src", "dev", "workspace", "github", "git",
+    "Repos",
+    "Projects",
+    "code",
+    "src",
+    "dev",
+    "workspace",
+    "github",
+    "git",
 ];
 const MAX_DEPTH: usize = 3;
 const MAX_REPOS: usize = 50;
@@ -59,17 +66,19 @@ impl NativeTool for DiscoverGitReposTool {
         arguments: HashMap<String, Value>,
         _context: Option<&ToolExecutionContext>,
     ) -> Result<String, AppError> {
-        let home = dirs::home_dir().ok_or_else(|| AppError::Tool("Cannot find home directory".into()))?;
+        let home =
+            dirs::home_dir().ok_or_else(|| AppError::Tool("Cannot find home directory".into()))?;
 
-        let search_dirs: Vec<PathBuf> = if let Some(dir) = arguments.get("search_dir").and_then(|v| v.as_str()) {
-            vec![PathBuf::from(dir)]
-        } else {
-            DEFAULT_SEARCH_DIRS
-                .iter()
-                .map(|d| home.join(d))
-                .filter(|p| p.exists())
-                .collect()
-        };
+        let search_dirs: Vec<PathBuf> =
+            if let Some(dir) = arguments.get("search_dir").and_then(|v| v.as_str()) {
+                vec![PathBuf::from(dir)]
+            } else {
+                DEFAULT_SEARCH_DIRS
+                    .iter()
+                    .map(|d| home.join(d))
+                    .filter(|p| p.exists())
+                    .collect()
+            };
 
         if search_dirs.is_empty() {
             return Ok("No standard project directories found.".into());
@@ -120,7 +129,8 @@ fn find_git_repos(dir: &Path, depth: usize, repos: &mut Vec<PathBuf>) {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
-                if !name_str.starts_with('.') && name_str != "node_modules" && name_str != "target" {
+                if !name_str.starts_with('.') && name_str != "node_modules" && name_str != "target"
+                {
                     find_git_repos(&entry.path(), depth + 1, repos);
                 }
             }

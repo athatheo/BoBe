@@ -31,7 +31,10 @@ impl MessageLearner {
     }
 
     /// Embed and store a user message observation.
-    pub async fn learn(&self, observation: &LearnerObservation) -> Result<LearnerResult, LearnerError> {
+    pub async fn learn(
+        &self,
+        observation: &LearnerObservation,
+    ) -> Result<LearnerResult, LearnerError> {
         if observation.source != LearnerObservationSource::Message {
             return Err(LearnerError::WrongSource {
                 expected: "message".into(),
@@ -39,9 +42,10 @@ impl MessageLearner {
             });
         }
 
-        let message_text = observation.text.as_ref().ok_or_else(|| {
-            LearnerError::MissingData("text content required".into())
-        })?;
+        let message_text = observation
+            .text
+            .as_ref()
+            .ok_or_else(|| LearnerError::MissingData("text content required".into()))?;
 
         info!(
             message_length = message_text.len(),
@@ -54,14 +58,13 @@ impl MessageLearner {
         );
 
         // 1. Generate embedding
-        let embedding_vec = self.embedding.embed(message_text).await.map_err(|e| {
-            LearnerError::Embedding(e.to_string())
-        })?;
+        let embedding_vec = self
+            .embedding
+            .embed(message_text)
+            .await
+            .map_err(|e| LearnerError::Embedding(e.to_string()))?;
 
-        debug!(
-            vector_dim = embedding_vec.len(),
-            "message_learner.embedded"
-        );
+        debug!(vector_dim = embedding_vec.len(), "message_learner.embedded");
 
         // 2. Create and store observation
         let mut obs = Observation::new(
@@ -70,9 +73,10 @@ impl MessageLearner {
             "conversation".into(),
         );
         obs.source = ObservationSource::UserMessage;
-        obs.embedding = Some(serde_json::to_string(&embedding_vec).map_err(|e| {
-            LearnerError::Storage(e.to_string())
-        })?);
+        obs.embedding = Some(
+            serde_json::to_string(&embedding_vec)
+                .map_err(|e| LearnerError::Storage(e.to_string()))?,
+        );
         let summary = Self::create_summary(message_text);
         let meta = serde_json::json!({ "summary": summary });
         obs.metadata = Some(meta.to_string());
@@ -85,7 +89,9 @@ impl MessageLearner {
             "message_learner.complete"
         );
 
-        Ok(LearnerResult::Stored { observation_id: stored.id })
+        Ok(LearnerResult::Stored {
+            observation_id: stored.id,
+        })
     }
 
     fn create_summary(text: &str) -> String {
@@ -98,9 +104,10 @@ impl MessageLearner {
 
         let truncated = &cleaned[..max_len];
         if let Some(last_space) = truncated.rfind(' ')
-            && last_space > 50 {
-                return format!("{}...", &truncated[..last_space]);
-            }
+            && last_space > 50
+        {
+            return format!("{}...", &truncated[..last_space]);
+        }
         format!("{truncated}...")
     }
 }

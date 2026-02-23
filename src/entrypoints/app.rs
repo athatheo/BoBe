@@ -1,17 +1,21 @@
+use axum::{
+    Router, middleware as axum_middleware,
+    routing::{delete, get, post},
+};
 use std::sync::Arc;
-use axum::{Router, routing::{delete, get, post}, middleware as axum_middleware};
-use tower_http::cors::{CorsLayer, AllowOrigin};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::app_state::AppState;
 use super::controllers;
 use super::middleware::{AllowedHosts, host_validation};
+use crate::app_state::AppState;
 
 /// Build the complete Axum router with all middleware.
 pub fn build_router(state: Arc<AppState>) -> Router {
     let cfg = state.config();
 
-    let origins: Vec<axum::http::HeaderValue> = cfg.cors_origins_vec()
+    let origins: Vec<axum::http::HeaderValue> = cfg
+        .cors_origins_vec()
         .iter()
         .filter_map(|o| o.parse().ok())
         .collect();

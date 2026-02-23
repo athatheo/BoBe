@@ -55,12 +55,16 @@ impl CheckinTrigger {
         // Skip if active non-stale conversation
         if let Ok(Some(existing)) = self.conversation.get_pending_or_active().await {
             // Get turns to check staleness
-            if let Ok(turns) = self.conversation.get_conversation_turns(existing.id, 100).await
-                && !existing.is_stale(self.config.conversation_auto_close_minutes as i64, &turns) {
-                    debug!(reason = "active_conversation", "checkin_trigger.skipped");
-                    self.scheduler.mark_checkin_done();
-                    return Decision::Idle;
-                }
+            if let Ok(turns) = self
+                .conversation
+                .get_conversation_turns(existing.id, 100)
+                .await
+                && !existing.is_stale(self.config.conversation_auto_close_minutes as i64, &turns)
+            {
+                debug!(reason = "active_conversation", "checkin_trigger.skipped");
+                self.scheduler.mark_checkin_done();
+                return Decision::Idle;
+            }
         }
 
         // Cooldown check
@@ -68,22 +72,25 @@ impl CheckinTrigger {
             && let Some(cooldown) = cooldown_repo.check_cooldown(
                 self.config.decision_cooldown_minutes,
                 self.config.decision_extended_cooldown_minutes,
-            ) {
-                debug!(
-                    remaining_s = cooldown.remaining.num_seconds(),
-                    cooldown_type = %cooldown.cooldown_type,
-                    "checkin_trigger.cooldown_skipped"
-                );
-                self.scheduler.mark_checkin_done();
-                return Decision::Idle;
-            }
+            )
+        {
+            debug!(
+                remaining_s = cooldown.remaining.num_seconds(),
+                cooldown_type = %cooldown.cooldown_type,
+                "checkin_trigger.cooldown_skipped"
+            );
+            self.scheduler.mark_checkin_done();
+            return Decision::Idle;
+        }
 
         // Generate LLM-powered check-in
         info!("checkin_trigger.started");
-        self.generator.generate_proactive_response(
-            self.config.conversation_auto_close_minutes as i64,
-            Some("Scheduled check-in".into()),
-        ).await;
+        self.generator
+            .generate_proactive_response(
+                self.config.conversation_auto_close_minutes as i64,
+                Some("Scheduled check-in".into()),
+            )
+            .await;
         self.scheduler.mark_checkin_done();
         info!("checkin_trigger.complete");
 

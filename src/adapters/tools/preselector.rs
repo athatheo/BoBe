@@ -68,13 +68,8 @@ impl ToolPreselector {
 
         let response = tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(
-                &preselector_messages,
-                None,
-                None,
-                0.0,
-                MAX_TOKENS,
-            ),
+            self.llm
+                .complete(&preselector_messages, None, None, 0.0, MAX_TOKENS),
         )
         .await;
 
@@ -171,9 +166,5 @@ fn parse_tool_names(content: &str) -> Option<Vec<String>> {
         .filter_map(|v| v.as_str().map(|s| s.to_owned()))
         .collect();
 
-    if names.is_empty() {
-        None
-    } else {
-        Some(names)
-    }
+    if names.is_empty() { None } else { Some(names) }
 }

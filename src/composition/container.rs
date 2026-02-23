@@ -23,10 +23,10 @@ use crate::adapters::persistence::repos::soul_repo::SqliteSoulRepo;
 use crate::adapters::persistence::repos::user_profile_repo::SqliteUserProfileRepo;
 use crate::adapters::sse::connection_manager::SseConnectionManager;
 use crate::adapters::sse::event_queue::EventQueue;
+use crate::adapters::tools::executor::ToolExecutor;
+use crate::adapters::tools::mcp::McpToolAdapter;
 use crate::adapters::tools::native::adapter::NativeToolAdapter;
 use crate::adapters::tools::native::base::NativeTool;
-use crate::adapters::tools::mcp::McpToolAdapter;
-use crate::adapters::tools::executor::ToolExecutor;
 use crate::adapters::tools::preselector::ToolPreselector;
 use crate::adapters::tools::registry::ToolRegistry;
 use crate::adapters::tools::tool_call_loop::{ToolCallLoop, ToolCallLoopConfig};
@@ -45,9 +45,9 @@ use crate::application::services::conversation_service::ConversationService;
 use crate::application::services::goals::goals_config::GoalConfig;
 use crate::application::services::goals::goals_service::GoalsService;
 use crate::application::services::soul_service::SoulService;
-use crate::application::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
 use crate::application::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::application::triggers::capture_trigger::CaptureTrigger;
+use crate::application::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
 use crate::config::Config;
 use crate::ports::embedding::EmbeddingProvider;
 use crate::ports::llm::LlmProvider;
@@ -115,15 +115,14 @@ impl Container {
     ///
     /// This wires all concrete implementations to trait objects.
     #[allow(clippy::too_many_lines)]
-    pub fn build(
-        config: Config,
-        pool: SqlitePool,
-    ) -> Result<Self, crate::error::AppError> {
+    pub fn build(config: Config, pool: SqlitePool) -> Result<Self, crate::error::AppError> {
         let config_arc = Arc::new(ArcSwap::from_pointee(config.clone()));
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .build()
-            .map_err(|e| crate::error::AppError::Internal(format!("HTTP client build failed: {e}")))?;
+            .map_err(|e| {
+                crate::error::AppError::Internal(format!("HTTP client build failed: {e}"))
+            })?;
 
         // ── LLM providers ───────────────────────────────────────────────
         let llm_factory = Arc::new(LlmProviderFactory::new(http_client.clone(), config.clone()));
@@ -133,30 +132,23 @@ impl Container {
             Arc::new(ArcSwap::from_pointee(llm_provider.clone()));
 
         // ── Embedding ───────────────────────────────────────────────────
-        let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(
-            LocalEmbeddingProvider::new(
-                http_client.clone(),
-                &config.ollama_url,
-                "nomic-embed-text",
-                config.embedding_dimension,
-            ),
-        );
-
-                // ── SSE ─────────────────────────────────────────────────────────
-        let event_queue = Arc::new(EventQueue::new(100));
-        let connection_manager = Arc::new(SseConnectionManager::new(
-            event_queue.clone(),
-            None,
-            None,
+        let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(LocalEmbeddingProvider::new(
+            http_client.clone(),
+            &config.ollama_url,
+            "nomic-embed-text",
+            config.embedding_dimension,
         ));
+
+        // ── SSE ─────────────────────────────────────────────────────────
+        let event_queue = Arc::new(EventQueue::new(100));
+        let connection_manager =
+            Arc::new(SseConnectionManager::new(event_queue.clone(), None, None));
 
         // ── Repos ───────────────────────────────────────────────────────
         let conversation_repo: Arc<dyn ConversationRepository> =
             Arc::new(SqliteConversationRepo::new(pool.clone()));
-        let memory_repo: Arc<dyn MemoryRepository> =
-            Arc::new(SqliteMemoryRepo::new(pool.clone()));
-        let goal_repo: Arc<dyn GoalRepository> =
-            Arc::new(SqliteGoalRepo::new(pool.clone()));
+        let memory_repo: Arc<dyn MemoryRepository> = Arc::new(SqliteMemoryRepo::new(pool.clone()));
+        let goal_repo: Arc<dyn GoalRepository> = Arc::new(SqliteGoalRepo::new(pool.clone()));
         let observation_repo: Arc<dyn ObservationRepository> =
             Arc::new(SqliteObservationRepo::new(pool.clone()));
         let cooldown_repo: Arc<dyn CooldownRepository> =
@@ -167,8 +159,7 @@ impl Container {
             Arc::new(SqliteAgentJobRepo::new(pool.clone()));
         let mcp_config_repo: Arc<dyn McpConfigRepository> =
             Arc::new(SqliteMcpConfigRepo::new(pool.clone()));
-        let soul_repo: Arc<dyn SoulRepository> =
-            Arc::new(SqliteSoulRepo::new(pool.clone()));
+        let soul_repo: Arc<dyn SoulRepository> = Arc::new(SqliteSoulRepo::new(pool.clone()));
         let user_profile_repo: Arc<dyn UserProfileRepository> =
             Arc::new(SqliteUserProfileRepo::new(pool.clone()));
 
@@ -262,7 +253,11 @@ impl Container {
         ];
         let native_adapter = Arc::new(NativeToolAdapter::new(native_tools));
         let mcp_adapter = Arc::new(McpToolAdapter::new(
-            if config.mcp_enabled { Some(mcp_config_repo.clone()) } else { None },
+            if config.mcp_enabled {
+                Some(mcp_config_repo.clone())
+            } else {
+                None
+            },
             config.mcp_blocked_commands_vec(),
             config.mcp_dangerous_env_keys_vec(),
         ));
@@ -386,8 +381,8 @@ impl Container {
 
         // Agent job trigger (optional)
         let agent_job_trigger = if config.coding_agents_enabled {
-            let profiles: HashMap<String, _> = serde_json::from_str(&config.coding_agent_profiles)
-                .unwrap_or_default();
+            let profiles: HashMap<String, _> =
+                serde_json::from_str(&config.coding_agent_profiles).unwrap_or_default();
             let agent_job_manager = Arc::new(AgentJobManager::new(
                 agent_job_repo.clone(),
                 profiles,

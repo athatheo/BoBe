@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -49,8 +49,7 @@ impl SearchFilesTool {
                 "Pattern too complex: max 5 quantifiers allowed".into(),
             ));
         }
-        Regex::new(pattern)
-            .map_err(|e| AppError::Validation(format!("Invalid regex: {e}")))?;
+        Regex::new(pattern).map_err(|e| AppError::Validation(format!("Invalid regex: {e}")))?;
         Ok(())
     }
 }
@@ -167,14 +166,18 @@ impl NativeTool for SearchFilesTool {
             }
         };
 
-        let re = Regex::new(&pattern)
-            .map_err(|e| AppError::Tool(format!("Pattern error: {e}")))?;
+        let re = Regex::new(&pattern).map_err(|e| AppError::Tool(format!("Pattern error: {e}")))?;
 
         // Search via tokio::task::spawn_blocking for heavy IO
         let re_clone = re.clone();
         let file_pattern_clone = file_pattern.clone();
         let results = tokio::task::spawn_blocking(move || {
-            search_directory(&canonical, &re_clone, file_pattern_clone.as_deref(), max_results)
+            search_directory(
+                &canonical,
+                &re_clone,
+                file_pattern_clone.as_deref(),
+                max_results,
+            )
         })
         .await
         .map_err(|e| AppError::Tool(format!("Search task failed: {e}")))?;
@@ -211,9 +214,10 @@ fn search_directory(
         let path = entry.path();
         if let Some(pattern) = file_pattern
             && let Some(name) = path.file_name().and_then(|n| n.to_str())
-                && !glob_match(pattern, name) {
-                    continue;
-                }
+            && !glob_match(pattern, name)
+        {
+            continue;
+        }
 
         // Skip binary files
         if let Ok(content) = std::fs::read_to_string(path) {

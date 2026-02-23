@@ -128,18 +128,10 @@ impl ToolSource for NativeToolAdapter {
         debug!(tool = %tool_call.name, "Executing native tool");
 
         match tool.execute(tool_call.arguments.clone(), context).await {
-            Ok(content) => ToolResult::ok(
-                tool_call.id.clone(),
-                tool_call.name.clone(),
-                content,
-            ),
+            Ok(content) => ToolResult::ok(tool_call.id.clone(), tool_call.name.clone(), content),
             Err(e) => {
                 warn!(tool = %tool_call.name, error = %e, "Native tool execution failed");
-                ToolResult::err(
-                    tool_call.id.clone(),
-                    tool_call.name.clone(),
-                    e.to_string(),
-                )
+                ToolResult::err(tool_call.id.clone(), tool_call.name.clone(), e.to_string())
             }
         }
     }

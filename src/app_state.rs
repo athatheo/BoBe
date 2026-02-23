@@ -1,7 +1,7 @@
-use std::sync::Arc;
 use arc_swap::ArcSwap;
 use reqwest::Client;
 use sqlx::sqlite::SqlitePool;
+use std::sync::Arc;
 
 use crate::adapters::capture::ScreenCapture;
 use crate::adapters::llm::ollama_manager::OllamaManager;

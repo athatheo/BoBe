@@ -41,7 +41,12 @@ impl MemoryLearner {
         memory_repo: Arc<dyn MemoryRepository>,
         config: LearningConfig,
     ) -> Self {
-        Self { llm, embedding, memory_repo, config }
+        Self {
+            llm,
+            embedding,
+            memory_repo,
+            config,
+        }
     }
 
     pub fn update_config(&mut self, config: LearningConfig) {
@@ -67,16 +72,28 @@ impl MemoryLearner {
             .iter()
             .map(|obs| format!("[{}] {}", obs.category, obs.content))
             .collect();
-        let memory_strings: Vec<String> = existing_memories.iter().map(|m| m.content.clone()).collect();
+        let memory_strings: Vec<String> = existing_memories
+            .iter()
+            .map(|m| m.content.clone())
+            .collect();
         let goal_strings: Vec<String> = goals.iter().map(|g| g.content.clone()).collect();
 
-        let messages = MemoryDistillationPrompt::messages(&context_strings, &memory_strings, &goal_strings);
+        let messages =
+            MemoryDistillationPrompt::messages(&context_strings, &memory_strings, &goal_strings);
         let config = MemoryDistillationPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
                 warn!(error = %e, "memory_learner.llm_error");
@@ -94,14 +111,19 @@ impl MemoryLearner {
         }
 
         let raw_memories = match serde_json::from_str::<Value>(&content) {
-            Ok(data) => data.get("memories").and_then(|m| m.as_array()).cloned().unwrap_or_default(),
+            Ok(data) => data
+                .get("memories")
+                .and_then(|m| m.as_array())
+                .cloned()
+                .unwrap_or_default(),
             Err(e) => {
                 warn!(error = %e, "memory_learner.json_parse_error");
                 return Vec::new();
             }
         };
 
-        self.deduplicate_and_store(&raw_memories, existing_memories).await
+        self.deduplicate_and_store(&raw_memories, existing_memories)
+            .await
     }
 
     /// Extract memories from a closed conversation.
@@ -118,15 +140,26 @@ impl MemoryLearner {
             .iter()
             .map(|(role, content)| format!("{role}: {content}"))
             .collect();
-        let memory_strings: Vec<String> = existing_memories.iter().map(|m| m.content.clone()).collect();
+        let memory_strings: Vec<String> = existing_memories
+            .iter()
+            .map(|m| m.content.clone())
+            .collect();
 
         let messages = ConversationMemoryPrompt::messages(&turn_strings, &memory_strings);
         let config = ConversationMemoryPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
                 warn!(error = %e, "memory_learner.llm_error");
@@ -144,14 +177,19 @@ impl MemoryLearner {
         }
 
         let raw_memories = match serde_json::from_str::<Value>(&content) {
-            Ok(data) => data.get("memories").and_then(|m| m.as_array()).cloned().unwrap_or_default(),
+            Ok(data) => data
+                .get("memories")
+                .and_then(|m| m.as_array())
+                .cloned()
+                .unwrap_or_default(),
             Err(e) => {
                 warn!(error = %e, "memory_learner.json_parse_error");
                 return Vec::new();
             }
         };
 
-        self.deduplicate_and_store(&raw_memories, existing_memories).await
+        self.deduplicate_and_store(&raw_memories, existing_memories)
+            .await
     }
 
     async fn deduplicate_and_store(
@@ -163,9 +201,9 @@ impl MemoryLearner {
         let existing_embeddings: Vec<(&Memory, Vec<f32>)> = existing_memories
             .iter()
             .filter_map(|mem| {
-                mem.embedding.as_ref().and_then(|e| {
-                    serde_json::from_str::<Vec<f32>>(e).ok().map(|v| (mem, v))
-                })
+                mem.embedding
+                    .as_ref()
+                    .and_then(|e| serde_json::from_str::<Vec<f32>>(e).ok().map(|v| (mem, v)))
             })
             .collect();
 
@@ -177,12 +215,19 @@ impl MemoryLearner {
                 break;
             }
 
-            let content = raw.get("content").and_then(|c| c.as_str()).unwrap_or("").trim();
+            let content = raw
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .trim();
             if content.is_empty() {
                 continue;
             }
 
-            let mut category = raw.get("category").and_then(|c| c.as_str()).unwrap_or("fact");
+            let mut category = raw
+                .get("category")
+                .and_then(|c| c.as_str())
+                .unwrap_or("fact");
             if !VALID_CATEGORIES.contains(&category) {
                 category = "fact";
             }
@@ -197,15 +242,18 @@ impl MemoryLearner {
             };
 
             // Check batch duplicates
-            let is_batch_dup = created.iter().any(|m| {
-                m.content.to_lowercase().trim() == content.to_lowercase().trim()
-            });
+            let is_batch_dup = created
+                .iter()
+                .any(|m| m.content.to_lowercase().trim() == content.to_lowercase().trim());
             if is_batch_dup {
                 continue;
             }
 
             // LLM-based deduplication
-            if !self.should_create_memory(content, category, &new_embedding, &existing_embeddings).await {
+            if !self
+                .should_create_memory(content, category, &new_embedding, &existing_embeddings)
+                .await
+            {
                 continue;
             }
 
@@ -268,8 +316,16 @@ impl MemoryLearner {
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(r)) => r,
             _ => return true, // Default to create on error
         };
@@ -277,7 +333,10 @@ impl MemoryLearner {
         let resp_content = response.message.content.text_or_empty().to_string();
         match serde_json::from_str::<Value>(&resp_content) {
             Ok(data) => {
-                let decision = data.get("decision").and_then(|d| d.as_str()).unwrap_or("CREATE");
+                let decision = data
+                    .get("decision")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("CREATE");
                 decision.to_uppercase() == "CREATE"
             }
             Err(_) => true,
@@ -289,7 +348,11 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| (*x as f64) * (*y as f64)).sum();
+    let dot: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| (*x as f64) * (*y as f64))
+        .sum();
     let norm_a: f64 = a.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     let norm_b: f64 = b.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     let denom = norm_a * norm_b;

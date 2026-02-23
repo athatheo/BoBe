@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::AppError;
 use crate::ports::llm_types::{
@@ -72,22 +72,23 @@ pub fn build_chat_request(
     });
 
     if let Some(tools) = tools
-        && !tools.is_empty() {
-            let tool_defs: Vec<Value> = tools
-                .iter()
-                .map(|t| {
-                    json!({
-                        "type": "function",
-                        "function": {
-                            "name": t.name,
-                            "description": t.description,
-                            "parameters": t.parameters,
-                        }
-                    })
+        && !tools.is_empty()
+    {
+        let tool_defs: Vec<Value> = tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    }
                 })
-                .collect();
-            body["tools"] = json!(tool_defs);
-        }
+            })
+            .collect();
+        body["tools"] = json!(tool_defs);
+    }
 
     if let Some(rf) = response_format {
         let mut fmt = json!({"type": rf.format_type});
@@ -163,18 +164,12 @@ pub fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
         .to_owned();
 
     let usage = data.get("usage").map(|u| TokenUsage {
-        prompt_tokens: u
-            .get("prompt_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32,
+        prompt_tokens: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
         completion_tokens: u
             .get("completion_tokens")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as u32,
-        total_tokens: u
-            .get("total_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32,
+        total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
     });
 
     Ok(AiResponse {
@@ -248,7 +243,12 @@ pub fn extract_tool_call_deltas(data: &Value) -> Vec<ToolCallDelta> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_owned();
-            Some(ToolCallDelta { index, id, name, arguments })
+            Some(ToolCallDelta {
+                index,
+                id,
+                name,
+                arguments,
+            })
         })
         .collect()
 }

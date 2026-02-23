@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+use std::sync::Arc;
 
 use crate::app_state::AppState;
 
@@ -21,13 +21,8 @@ pub struct ServiceHealth {
     llm: &'static str,
 }
 
-pub async fn health_check(
-    State(state): State<Arc<AppState>>,
-) -> Json<HealthResponse> {
-    let db_ok = sqlx::query("SELECT 1")
-        .fetch_one(&state.db)
-        .await
-        .is_ok();
+pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let db_ok = sqlx::query("SELECT 1").fetch_one(&state.db).await.is_ok();
 
     let llm_ok = state.llm_provider.health_check().await;
 
@@ -45,10 +40,10 @@ pub async fn health_check(
 }
 
 /// GET /api/status — runtime status for the UI.
-pub async fn get_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<Value> {
+pub async fn get_status(State(state): State<Arc<AppState>>) -> Json<Value> {
     let mut status = state.runtime_session.get_status();
-    if let Some(obj) = status.as_object_mut() { obj.insert("version".to_owned(), json!(env!("CARGO_PKG_VERSION"))); }
+    if let Some(obj) = status.as_object_mut() {
+        obj.insert("version".to_owned(), json!(env!("CARGO_PKG_VERSION")));
+    }
     Json(status)
 }

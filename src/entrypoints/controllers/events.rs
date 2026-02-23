@@ -71,6 +71,5 @@ pub async fn stream_events(
         }
     });
 
-    Sse::new(ReceiverStream::new(rx))
-        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+    Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }

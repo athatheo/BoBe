@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
@@ -72,10 +72,7 @@ pub async fn onboarding_status(
     let mut steps = std::collections::HashMap::new();
 
     // Check database
-    let db_ok = sqlx::query("SELECT 1")
-        .fetch_one(&state.db)
-        .await
-        .is_ok();
+    let db_ok = sqlx::query("SELECT 1").fetch_one(&state.db).await.is_ok();
 
     steps.insert(
         "database".into(),
@@ -157,6 +154,7 @@ pub async fn mark_complete(
 ///
 /// Validates and persists the LLM configuration to ~/.bobe/.env.
 /// API keys are set as env vars for the running process but NOT written to disk.
+#[allow(unsafe_code)]
 pub async fn configure_llm(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigureLlmRequest>,
@@ -195,10 +193,12 @@ pub async fn configure_llm(
             }
             persist_config(&changes);
             // API key: env var only (never persisted to .env for security).
-            // SAFETY: set_var in multi-threaded context is technically UB per Rust spec,
-            // but macOS/glibc setenv is thread-safe. Acceptable for infrequent config ops.
+            // SAFETY: set_var is technically UB in multi-threaded Rust, but macOS/glibc
+            // setenv is thread-safe. Acceptable for infrequent config ops.
             if let Some(ref key) = body.api_key {
-                unsafe { std::env::set_var("BOBE_OPENAI_API_KEY", key); }
+                unsafe {
+                    std::env::set_var("BOBE_OPENAI_API_KEY", key);
+                }
             }
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
@@ -223,8 +223,12 @@ pub async fn configure_llm(
                 changes.insert("BOBE_AZURE_OPENAI_DEPLOYMENT".into(), model.clone());
             }
             persist_config(&changes);
+            // SAFETY: same rationale as OpenAI key above — infrequent config op,
+            // macOS/glibc setenv is thread-safe.
             if let Some(ref key) = body.api_key {
-                unsafe { std::env::set_var("BOBE_AZURE_OPENAI_API_KEY", key); }
+                unsafe {
+                    std::env::set_var("BOBE_AZURE_OPENAI_API_KEY", key);
+                }
             }
             Ok(Json(ConfigureLlmResponse {
                 ok: true,

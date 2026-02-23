@@ -22,9 +22,10 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // 1. Ensure data directory exists
     let db_url = &config.database_url;
     if let Some(path) = db_url.strip_prefix("sqlite:")
-        && let Some(parent) = std::path::Path::new(path).parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
+        && let Some(parent) = std::path::Path::new(path).parent()
+    {
+        tokio::fs::create_dir_all(parent).await?;
+    }
 
     // 2. Create pool with WAL mode and foreign keys, then run migrations
     let connect_options: SqliteConnectOptions = db_url
@@ -69,7 +70,9 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
                 .await
             {
                 Ok(true) => info!(model = %config.vision_ollama_model, "ollama.vision_ready"),
-                Ok(false) => warn!(model = %config.vision_ollama_model, "ollama.vision_model_unavailable"),
+                Ok(false) => {
+                    warn!(model = %config.vision_ollama_model, "ollama.vision_model_unavailable")
+                }
                 Err(e) => warn!(error = %e, "ollama.vision_model_check_failed"),
             }
         }
@@ -108,7 +111,9 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             Ok(()) => {
                 container
                     .tool_registry
-                    .register(container.mcp_adapter.clone() as Arc<dyn crate::ports::tools::ToolSource>)
+                    .register(
+                        container.mcp_adapter.clone() as Arc<dyn crate::ports::tools::ToolSource>
+                    )
                     .await;
                 info!("bootstrap.mcp_tools_registered");
             }
@@ -161,7 +166,10 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             }
         }
         if total_cleaned > 0 {
-            info!(total_rows = total_cleaned, "bootstrap.corrupt_embeddings_cleaned");
+            info!(
+                total_rows = total_cleaned,
+                "bootstrap.corrupt_embeddings_cleaned"
+            );
         }
     }
 
@@ -183,16 +191,19 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     {
         let rs = container.runtime_session.clone();
         let rs2 = container.runtime_session.clone();
-        container.connection_manager.set_callbacks(
-            Box::new(move || {
-                let rs = rs.clone();
-                tokio::spawn(async move { rs.on_connection().await });
-            }),
-            Box::new(move || {
-                let rs = rs2.clone();
-                tokio::spawn(async move { rs.on_disconnection().await });
-            }),
-        ).await;
+        container
+            .connection_manager
+            .set_callbacks(
+                Box::new(move || {
+                    let rs = rs.clone();
+                    tokio::spawn(async move { rs.on_connection().await });
+                }),
+                Box::new(move || {
+                    let rs = rs2.clone();
+                    tokio::spawn(async move { rs.on_disconnection().await });
+                }),
+            )
+            .await;
         info!("bootstrap.sse_callbacks_wired");
     }
 

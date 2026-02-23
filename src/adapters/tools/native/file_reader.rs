@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -92,9 +92,9 @@ impl NativeTool for FileReaderTool {
         let path = Path::new(path_str);
         let canonical = Self::validate_path(path)?;
 
-        let metadata = tokio::fs::metadata(&canonical).await.map_err(|e| {
-            AppError::Tool(format!("Cannot read file metadata: {e}"))
-        })?;
+        let metadata = tokio::fs::metadata(&canonical)
+            .await
+            .map_err(|e| AppError::Tool(format!("Cannot read file metadata: {e}")))?;
 
         if !metadata.is_file() {
             return Err(AppError::Tool(format!(
@@ -111,14 +111,18 @@ impl NativeTool for FileReaderTool {
             )));
         }
 
-        let content = tokio::fs::read_to_string(&canonical).await.map_err(|e| {
-            AppError::Tool(format!("Cannot read file: {e}"))
-        })?;
+        let content = tokio::fs::read_to_string(&canonical)
+            .await
+            .map_err(|e| AppError::Tool(format!("Cannot read file: {e}")))?;
 
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
         let truncated = total_lines > max_lines;
-        let display_lines = if truncated { &lines[..max_lines] } else { &lines[..] };
+        let display_lines = if truncated {
+            &lines[..max_lines]
+        } else {
+            &lines[..]
+        };
 
         let mut output = display_lines.join("\n");
         if truncated {

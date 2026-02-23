@@ -1,0 +1,48 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo build",
+      "type": "shell",
+      "command": "cargo build",
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo clippy",
+      "type": "shell",
+      "command": "cargo clippy --all-targets -- -D warnings",
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo test",
+      "type": "shell",
+      "command": "cargo nextest run",
+      "group": "test",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo fmt check",
+      "type": "shell",
+      "command": "cargo fmt -- --check",
+      "problemMatcher": []
+    },
+    {
+      "label": "cargo audit",
+      "type": "shell",
+      "command": "cargo audit",
+      "problemMatcher": []
+    },
+    {
+      "label": "full check",
+      "type": "shell",
+      "command": "cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo nextest run && cargo audit",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": ["$rustc"]
+    }
+  ]
+}

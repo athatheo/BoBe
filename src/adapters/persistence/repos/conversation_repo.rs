@@ -46,13 +46,11 @@ impl ConversationRepository for SqliteConversationRepo {
     }
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Conversation>, AppError> {
-        let row = sqlx::query_as::<_, Conversation>(
-            "SELECT * FROM conversations WHERE id = ?1",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        let row = sqlx::query_as::<_, Conversation>("SELECT * FROM conversations WHERE id = ?1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
         Ok(row)
     }
 
@@ -188,25 +186,26 @@ impl ConversationRepository for SqliteConversationRepo {
         let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
 
         // Check conversation state inside transaction to prevent TOCTOU race
-        let conv_state: Option<(String,)> = sqlx::query_as(
-            "SELECT state FROM conversations WHERE id = ?1",
-        )
-        .bind(turn.conversation_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(AppError::Database)?;
+        let conv_state: Option<(String,)> =
+            sqlx::query_as("SELECT state FROM conversations WHERE id = ?1")
+                .bind(turn.conversation_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
 
         match conv_state {
             None => {
                 warn!(conversation_id = %turn.conversation_id, "conversation_repo.add_turn_not_found");
                 return Err(AppError::NotFound(format!(
-                    "Conversation {} not found", turn.conversation_id
+                    "Conversation {} not found",
+                    turn.conversation_id
                 )));
             }
             Some((state,)) if state == "closed" => {
                 warn!(conversation_id = %turn.conversation_id, role = %turn.role, "conversation_repo.add_turn_closed");
                 return Err(AppError::Validation(format!(
-                    "Cannot add turn to closed conversation {}", turn.conversation_id
+                    "Cannot add turn to closed conversation {}",
+                    turn.conversation_id
                 )));
             }
             _ => {}

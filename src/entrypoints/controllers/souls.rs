@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-
 use crate::app_state::AppState;
 use crate::domain::soul::Soul;
 use crate::error::AppError;
-
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -106,7 +104,8 @@ pub async fn get_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let soul = state.soul_repo
+    let soul = state
+        .soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
@@ -153,7 +152,8 @@ pub async fn update_soul(
     Path(soul_id): Path<Uuid>,
     Json(body): Json<SoulUpdateRequest>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let soul = state.soul_repo
+    let soul = state
+        .soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
@@ -166,7 +166,8 @@ pub async fn update_soul(
         let edited_name = format!("{original_name} (edited)");
 
         // Rename + apply edits in one update
-        let updated = state.soul_repo
+        let updated = state
+            .soul_repo
             .update(
                 soul_id,
                 body.content.as_deref(),
@@ -196,12 +197,13 @@ pub async fn update_soul(
 
         updated
     } else {
-        state.soul_repo.update(soul_id, body.content.as_deref(), body.enabled, None, None)
+        state
+            .soul_repo
+            .update(soul_id, body.content.as_deref(), body.enabled, None, None)
             .await?
     };
 
-    let updated =
-        updated.ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
+    let updated = updated.ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
 
     tracing::info!(soul_id = %soul_id, "soul.updated");
     Ok(Json(soul_to_response(&updated)))
@@ -212,7 +214,8 @@ pub async fn get_soul_by_name(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let soul = state.soul_repo
+    let soul = state
+        .soul_repo
         .get_by_name(&name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul '{name}' not found")))?;
@@ -225,12 +228,16 @@ pub async fn enable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let soul = state.soul_repo
+    let soul = state
+        .soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
 
-    state.soul_repo.update(soul_id, None, Some(true), None, None).await?;
+    state
+        .soul_repo
+        .update(soul_id, None, Some(true), None, None)
+        .await?;
     tracing::info!(soul_id = %soul_id, "soul.enabled");
 
     Ok(Json(SoulActionResponse {
@@ -246,12 +253,16 @@ pub async fn disable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let soul = state.soul_repo
+    let soul = state
+        .soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
 
-    state.soul_repo.update(soul_id, None, Some(false), None, None).await?;
+    state
+        .soul_repo
+        .update(soul_id, None, Some(false), None, None)
+        .await?;
     tracing::info!(soul_id = %soul_id, "soul.disabled");
 
     Ok(Json(SoulActionResponse {
@@ -267,7 +278,8 @@ pub async fn delete_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let soul = state.soul_repo
+    let soul = state
+        .soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;

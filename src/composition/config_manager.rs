@@ -15,10 +15,10 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use tracing::{error, info, warn};
 
+use super::config_persistence;
 use crate::adapters::llm::factory::LlmProviderFactory;
 use crate::config::Config;
 use crate::ports::llm::LlmProvider;
-use super::config_persistence;
 
 /// Settings that require a server restart (cannot be hot-swapped).
 static STATIC_SETTINGS: &[&str] = &[
@@ -42,10 +42,7 @@ static LLM_FIELDS: &[&str] = &[
 ];
 
 /// API key fields — set in env, never written to .env file.
-static LLM_API_KEY_FIELDS: &[&str] = &[
-    "openai_api_key",
-    "azure_openai_api_key",
-];
+static LLM_API_KEY_FIELDS: &[&str] = &["openai_api_key", "azure_openai_api_key"];
 
 /// Orchestrator config fields (hot-swappable).
 static ORCH_FIELDS: &[&str] = &[
@@ -120,7 +117,11 @@ impl ConfigManager {
         llm_provider: Arc<ArcSwap<Arc<dyn LlmProvider>>>,
         llm_factory: Option<Arc<LlmProviderFactory>>,
     ) -> Self {
-        Self { config, llm_provider, llm_factory }
+        Self {
+            config,
+            llm_provider,
+            llm_factory,
+        }
     }
 
     /// Get the current config.
@@ -134,6 +135,7 @@ impl ConfigManager {
     }
 
     /// Apply settings changes: classify, rebuild config, rebuild LLM if needed, persist.
+    #[allow(unsafe_code)]
     pub fn update(&self, changes: &HashMap<String, serde_json::Value>) -> UpdateResult {
         let mut result = UpdateResult {
             applied_fields: Vec::new(),
@@ -164,15 +166,21 @@ impl ConfigManager {
             } else if api_key_set.contains(k) {
                 // API keys: set in env, never persisted to .env
                 has_llm_changes = true;
-                unsafe { std::env::set_var(format!("BOBE_{}", key.to_uppercase()), &str_val); }
+                // SAFETY: set_var is technically UB in multi-threaded Rust, but macOS/glibc
+                // setenv is thread-safe. This is an infrequent config operation.
+                unsafe {
+                    std::env::set_var(format!("BOBE_{}", key.to_uppercase()), &str_val);
+                }
                 result.applied_fields.push(key.clone());
             } else if llm_set.contains(k) {
                 has_llm_changes = true;
                 has_config_changes = true;
                 env_vars.insert(format!("BOBE_{}", key.to_uppercase()), str_val);
                 result.applied_fields.push(key.clone());
-            } else if orch_set.contains(k) || learning_set.contains(k)
-                || similarity_set.contains(k) || retention_set.contains(k)
+            } else if orch_set.contains(k)
+                || learning_set.contains(k)
+                || similarity_set.contains(k)
+                || retention_set.contains(k)
             {
                 has_config_changes = true;
                 env_vars.insert(format!("BOBE_{}", key.to_uppercase()), str_val);
@@ -226,8 +234,10 @@ impl ConfigManager {
 
         let config = self.config.load();
         let backend = if let Some(v) = changes.get("llm_backend").and_then(|v| v.as_str()) {
-            serde_json::from_value::<crate::config::LlmBackend>(serde_json::Value::String(v.to_owned()))
-                .unwrap_or(config.llm_backend)
+            serde_json::from_value::<crate::config::LlmBackend>(serde_json::Value::String(
+                v.to_owned(),
+            ))
+            .unwrap_or(config.llm_backend)
         } else {
             config.llm_backend
         };

@@ -1,18 +1,16 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
 
 use crate::app_state::AppState;
 use crate::domain::memory::Memory;
 use crate::domain::types::{MemorySource, MemoryType};
 use crate::error::AppError;
-
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -149,7 +147,8 @@ pub async fn list_memories(
     let limit = params.limit.clamp(1, 1000);
     let offset = params.offset.max(0);
 
-    let (memories, total) = state.memory_repo
+    let (memories, total) = state
+        .memory_repo
         .find_all(
             params.memory_type.as_deref(),
             params.category.as_deref(),
@@ -172,7 +171,8 @@ pub async fn get_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryResponse>, AppError> {
-    let memory = state.memory_repo
+    let memory = state
+        .memory_repo
         .get_by_id(memory_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
@@ -218,11 +218,14 @@ pub async fn update_memory(
     Path(memory_id): Path<Uuid>,
     Json(body): Json<MemoryUpdateRequest>,
 ) -> Result<Json<MemoryResponse>, AppError> {
-    state.memory_repo.get_by_id(memory_id)
+    state
+        .memory_repo
+        .get_by_id(memory_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
 
-    let updated = state.memory_repo
+    let updated = state
+        .memory_repo
         .update(
             memory_id,
             body.content.as_deref(),
@@ -242,9 +245,7 @@ pub async fn delete_memory(
     Path(memory_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     if !state.memory_repo.delete(memory_id).await? {
-        return Err(AppError::NotFound(format!(
-            "Memory {memory_id} not found"
-        )));
+        return Err(AppError::NotFound(format!("Memory {memory_id} not found")));
     }
 
     tracing::info!(memory_id = %memory_id, "memory.deleted");
@@ -257,7 +258,8 @@ pub async fn enable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
-    let updated = state.memory_repo
+    let updated = state
+        .memory_repo
         .update(memory_id, None, Some(true), None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
@@ -276,7 +278,8 @@ pub async fn disable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
-    let updated = state.memory_repo
+    let updated = state
+        .memory_repo
         .update(memory_id, None, Some(false), None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
@@ -304,7 +307,10 @@ pub async fn search_memories(
     tracing::info!(query = %body.query, limit, "memory.search_requested");
 
     let embedding = state.embedding_provider.embed(&body.query).await?;
-    let results = state.memory_repo.find_similar(&embedding, limit, true, 0.0).await?;
+    let results = state
+        .memory_repo
+        .find_similar(&embedding, limit, true, 0.0)
+        .await?;
 
     let memories: Vec<MemorySearchHit> = results
         .into_iter()

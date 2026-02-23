@@ -125,9 +125,7 @@ impl GoalsService {
 
         debug!(
             results = goals.len(),
-            limit,
-            min_score,
-            "goals_service.get_by_embedding"
+            limit, min_score, "goals_service.get_by_embedding"
         );
         Ok(goals)
     }
@@ -187,9 +185,10 @@ impl GoalsService {
         let results = self.repo.find_similar(&embedding_vec, 1, true).await?;
 
         if let Some((goal, score)) = results.into_iter().next()
-            && score >= threshold {
-                return Ok(Some(goal));
-            }
+            && score >= threshold
+        {
+            return Ok(Some(goal));
+        }
         Ok(None)
     }
 
@@ -260,9 +259,7 @@ impl GoalsService {
 
             if let Some(existing) = existing_by_content.get(&content_key) {
                 // Update existing goal if status or priority changed
-                if existing.status != status
-                    || existing.priority != priority
-                {
+                if existing.status != status || existing.priority != priority {
                     self.repo
                         .update_fields(
                             existing.id,
@@ -279,8 +276,7 @@ impl GoalsService {
                 // Create new goal with embedding
                 match self.embedding.embed(&parsed.content).await {
                     Ok(embedding_vec) => {
-                        let mut new_goal =
-                            Goal::new(parsed.content.clone(), source, priority);
+                        let mut new_goal = Goal::new(parsed.content.clone(), source, priority);
                         new_goal.status = status;
                         new_goal.embedding = Some(serde_json::to_string(&embedding_vec)?);
                         self.repo.save(&new_goal).await?;
@@ -299,9 +295,7 @@ impl GoalsService {
 
         // Archive goals not in file (user removed them)
         for (content_key, existing) in &existing_by_content {
-            if !seen_contents.contains(content_key)
-                && existing.status != GoalStatus::Archived
-            {
+            if !seen_contents.contains(content_key) && existing.status != GoalStatus::Archived {
                 self.repo
                     .update_status(existing.id, Some(GoalStatus::Archived), None)
                     .await?;
@@ -316,9 +310,7 @@ impl GoalsService {
         };
         info!(
             created,
-            updated,
-            archived,
-            "goals_service.sync_from_file.complete"
+            updated, archived, "goals_service.sync_from_file.complete"
         );
         Ok(result)
     }

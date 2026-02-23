@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 use super::client::{McpClient, McpToolInfo};
-use super::config::{load_default_mcp_config, McpParsedServer};
+use super::config::{McpParsedServer, load_default_mcp_config};
 use crate::domain::mcp_server_config::McpServerConfig;
 use crate::error::AppError;
 use crate::ports::llm_types::{AiToolCall, ToolDefinition};
@@ -188,12 +188,13 @@ impl McpToolAdapter {
     async fn load_enabled_servers(&self) -> Vec<McpParsedServer> {
         // Try DB first
         if let Some(repo) = &self.config_repo
-            && let Ok(configs) = repo.find_enabled().await {
-                return configs
-                    .into_iter()
-                    .map(|c| db_config_to_parsed(&c))
-                    .collect();
-            }
+            && let Ok(configs) = repo.find_enabled().await
+        {
+            return configs
+                .into_iter()
+                .map(|c| db_config_to_parsed(&c))
+                .collect();
+        }
         // Fall back to file
         load_default_mcp_config(&self.blocked_commands, &self.dangerous_env_keys)
     }
@@ -338,11 +339,9 @@ impl ToolSource for McpToolAdapter {
             Ok(Ok((false, content))) => {
                 ToolResult::err(tool_call.id.clone(), tool_call.name.clone(), content)
             }
-            Ok(Err(e)) => ToolResult::err(
-                tool_call.id.clone(),
-                tool_call.name.clone(),
-                e.to_string(),
-            ),
+            Ok(Err(e)) => {
+                ToolResult::err(tool_call.id.clone(), tool_call.name.clone(), e.to_string())
+            }
             Err(_) => ToolResult::err(
                 tool_call.id.clone(),
                 tool_call.name.clone(),

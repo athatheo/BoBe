@@ -33,7 +33,12 @@ impl MemoryConsolidator {
         memory_repo: Arc<dyn MemoryRepository>,
         config: LearningConfig,
     ) -> Self {
-        Self { llm, embedding, memory_repo, config }
+        Self {
+            llm,
+            embedding,
+            memory_repo,
+            config,
+        }
     }
 
     pub fn update_config(&mut self, config: LearningConfig) {
@@ -62,8 +67,7 @@ impl MemoryConsolidator {
         let mut created: Vec<Memory> = Vec::new();
 
         // Separate single-item and multi-item clusters
-        let (singles, multis): (Vec<_>, Vec<_>) =
-            clusters.into_iter().partition(|c| c.len() == 1);
+        let (singles, multis): (Vec<_>, Vec<_>) = clusters.into_iter().partition(|c| c.len() == 1);
 
         // Promote single-item clusters directly
         for cluster in &singles {
@@ -145,7 +149,10 @@ impl MemoryConsolidator {
     }
 
     fn parse_embedding(memory: &Memory) -> Option<Vec<f32>> {
-        memory.embedding.as_ref().and_then(|e| serde_json::from_str(e).ok())
+        memory
+            .embedding
+            .as_ref()
+            .and_then(|e| serde_json::from_str(e).ok())
     }
 
     fn compute_centroid(memories: &[&Memory]) -> Vec<f32> {
@@ -204,8 +211,16 @@ impl MemoryConsolidator {
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
                 warn!(error = %e, "memory_consolidator.llm_error");
@@ -233,12 +248,19 @@ impl MemoryConsolidator {
         let mut created: Vec<Memory> = Vec::new();
 
         for item in &consolidated {
-            let mem_content = item.get("content").and_then(|c| c.as_str()).unwrap_or("").trim();
+            let mem_content = item
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .trim();
             if mem_content.is_empty() {
                 continue;
             }
 
-            let mut category = item.get("category").and_then(|c| c.as_str()).unwrap_or("fact");
+            let mut category = item
+                .get("category")
+                .and_then(|c| c.as_str())
+                .unwrap_or("fact");
             if !VALID_CATEGORIES.contains(&category) {
                 category = "fact";
             }
@@ -277,7 +299,11 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| (*x as f64) * (*y as f64)).sum();
+    let dot: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| (*x as f64) * (*y as f64))
+        .sum();
     let norm_a: f64 = a.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     let norm_b: f64 = b.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     let denom = norm_a * norm_b;

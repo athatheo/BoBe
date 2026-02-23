@@ -44,16 +44,17 @@ impl AssembledContext {
             let lines: Vec<String> = self
                 .goals
                 .iter()
-                .map(|g| {
-                    format!("- {} (priority: {})", g.content, g.priority)
-                })
+                .map(|g| format!("- {} (priority: {})", g.content, g.priority))
                 .collect();
             sections.insert("current_goals".into(), lines.join("\n"));
         }
 
         if !self.memories.is_empty() {
-            let lines: Vec<String> =
-                self.memories.iter().map(|m| format!("- {}", m.content)).collect();
+            let lines: Vec<String> = self
+                .memories
+                .iter()
+                .map(|m| format!("- {}", m.content))
+                .collect();
             sections.insert("relevant_memories".into(), lines.join("\n"));
         }
 
@@ -63,13 +64,27 @@ impl AssembledContext {
                 .iter()
                 .map(|o| {
                     // Check metadata for pre-computed summary
-                    let summary = o.metadata.as_ref()
+                    let summary = o
+                        .metadata
+                        .as_ref()
                         .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                        .and_then(|v| v.get("summary").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                        .and_then(|v| {
+                            v.get("summary")
+                                .and_then(|s| s.as_str())
+                                .map(|s| s.to_string())
+                        })
                         .unwrap_or_else(|| {
-                            if o.content.len() > 100 { o.content[..100].to_string() } else { o.content.clone() }
+                            if o.content.len() > 100 {
+                                o.content[..100].to_string()
+                            } else {
+                                o.content.clone()
+                            }
                         });
-                    let category = if o.category.is_empty() { "general" } else { &o.category };
+                    let category = if o.category.is_empty() {
+                        "general"
+                    } else {
+                        &o.category
+                    };
                     format!("- [{}] {}", category, summary)
                 })
                 .collect();
@@ -157,16 +172,11 @@ impl ContextAssembler {
     }
 
     /// Build complete context for an LLM prompt.
-    pub async fn build_context(
-        &self,
-        query: &str,
-        opts: BuildContextOptions,
-    ) -> AssembledContext {
+    pub async fn build_context(&self, query: &str, opts: BuildContextOptions) -> AssembledContext {
         let mut results = AssembledContext::default();
 
         // Generate embedding once, reuse for all semantic searches
-        let embedding = if !query.is_empty()
-            && (opts.include_memories || opts.include_observations)
+        let embedding = if !query.is_empty() && (opts.include_memories || opts.include_observations)
         {
             match self.embedding.embed(query).await {
                 Ok(v) => Some(v),
@@ -194,22 +204,27 @@ impl ContextAssembler {
         }
 
         if opts.include_memories
-            && let Some(ref emb) = embedding {
-                match self
-                    .memory_repo
-                    .find_similar(emb, opts.memory_limit, true, opts.memory_min_score)
-                    .await
-                {
-                    Ok(pairs) => {
-                        results.memories = pairs.into_iter().map(|(m, _)| m).collect();
-                    }
-                    Err(e) => error!(error = %e, "context_assembler.memories_failed"),
+            && let Some(ref emb) = embedding
+        {
+            match self
+                .memory_repo
+                .find_similar(emb, opts.memory_limit, true, opts.memory_min_score)
+                .await
+            {
+                Ok(pairs) => {
+                    results.memories = pairs.into_iter().map(|(m, _)| m).collect();
                 }
+                Err(e) => error!(error = %e, "context_assembler.memories_failed"),
             }
+        }
 
         if opts.include_observations {
             if let Some(ref emb) = embedding {
-                match self.observation_repo.find_similar(emb, opts.observation_limit).await {
+                match self
+                    .observation_repo
+                    .find_similar(emb, opts.observation_limit)
+                    .await
+                {
                     Ok(pairs) => {
                         results.observations = pairs.into_iter().map(|(o, _)| o).collect();
                     }
@@ -240,12 +255,7 @@ impl ContextAssembler {
     // ── Individual retrieval methods for tools ──────────────────────────
 
     /// Search memories semantically.
-    pub async fn get_memories(
-        &self,
-        query: &str,
-        limit: i64,
-        min_score: f64,
-    ) -> Vec<Memory> {
+    pub async fn get_memories(&self, query: &str, limit: i64, min_score: f64) -> Vec<Memory> {
         let emb = match self.embedding.embed(query).await {
             Ok(v) => v,
             Err(e) => {
@@ -253,7 +263,11 @@ impl ContextAssembler {
                 return Vec::new();
             }
         };
-        match self.memory_repo.find_similar(&emb, limit, true, min_score).await {
+        match self
+            .memory_repo
+            .find_similar(&emb, limit, true, min_score)
+            .await
+        {
             Ok(pairs) => pairs.into_iter().map(|(m, _)| m).collect(),
             Err(e) => {
                 error!(error = %e, "context_assembler.get_memories_failed");

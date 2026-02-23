@@ -70,28 +70,23 @@ impl ToolRegistry {
     }
 
     /// Get tools filtered by categories.
-    pub async fn get_tools_by_category(
-        &self,
-        categories: &[ToolCategory],
-    ) -> Vec<ToolDefinition> {
+    pub async fn get_tools_by_category(&self, categories: &[ToolCategory]) -> Vec<ToolDefinition> {
         let sources = self.sources.read().await;
         let mut result = Vec::new();
 
         for source in sources.values() {
             let source_cats = source.categories();
             if source_cats.iter().any(|c| categories.contains(c))
-                && let Ok(tools) = source.get_tools(false).await {
-                    result.extend(tools);
-                }
+                && let Ok(tools) = source.get_tools(false).await
+            {
+                result.extend(tools);
+            }
         }
         result
     }
 
     /// Find the source that provides a given tool.
-    pub async fn get_source_for_tool(
-        &self,
-        tool_name: &str,
-    ) -> Option<Arc<dyn ToolSource>> {
+    pub async fn get_source_for_tool(&self, tool_name: &str) -> Option<Arc<dyn ToolSource>> {
         let t2s = self.tool_to_source.read().await;
         let source_name = t2s.get(tool_name)?;
         let sources = self.sources.read().await;

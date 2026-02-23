@@ -25,7 +25,10 @@ impl LlmProviderFactory {
     /// Create a provider (wrapped with a circuit breaker) for the given backend string.
     ///
     /// Supported backends: `"ollama"`, `"openai"`, `"llamacpp"`.
-    pub fn create(&self, backend: LlmBackend) -> Result<Arc<dyn LlmProvider>, crate::error::AppError> {
+    pub fn create(
+        &self,
+        backend: LlmBackend,
+    ) -> Result<Arc<dyn LlmProvider>, crate::error::AppError> {
         let (provider, name) = self.create_raw(backend)?;
 
         let breaker = Arc::new(CircuitBreaker::new(
@@ -39,7 +42,10 @@ impl LlmProviderFactory {
     }
 
     /// Create a vision-specific provider using vision model names from config.
-    pub fn create_vision(&self, backend: LlmBackend) -> Result<Arc<dyn LlmProvider>, crate::error::AppError> {
+    pub fn create_vision(
+        &self,
+        backend: LlmBackend,
+    ) -> Result<Arc<dyn LlmProvider>, crate::error::AppError> {
         let (provider, name): (Arc<dyn LlmProvider>, String) = match backend {
             LlmBackend::Ollama => {
                 let p = OllamaProvider::new(
@@ -63,7 +69,9 @@ impl LlmProviderFactory {
                 (Arc::new(p), "openai-vision".into())
             }
             LlmBackend::AzureOpenai => {
-                if self.config.azure_openai_endpoint.is_empty() || self.config.azure_openai_api_key.is_empty() {
+                if self.config.azure_openai_endpoint.is_empty()
+                    || self.config.azure_openai_api_key.is_empty()
+                {
                     return Err(crate::error::AppError::Config(
                         "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY required for Azure vision".into(),
                     ));
@@ -93,7 +101,10 @@ impl LlmProviderFactory {
             CircuitBreakerConfig::default(),
         ));
 
-        info!(backend = name, "Created vision LLM provider with circuit breaker");
+        info!(
+            backend = name,
+            "Created vision LLM provider with circuit breaker"
+        );
         Ok(Arc::new(CircuitBreakerLlmWrapper::new(provider, breaker)))
     }
 
@@ -125,15 +136,14 @@ impl LlmProviderFactory {
                 Ok((Arc::new(provider), "openai".into()))
             }
             LlmBackend::LlamaCpp => {
-                let provider = LlamaCppProvider::new(
-                    self.client.clone(),
-                    &self.config.llama_url,
-                    "default",
-                );
+                let provider =
+                    LlamaCppProvider::new(self.client.clone(), &self.config.llama_url, "default");
                 Ok((Arc::new(provider), "llamacpp".into()))
             }
             LlmBackend::AzureOpenai => {
-                if self.config.azure_openai_endpoint.is_empty() || self.config.azure_openai_api_key.is_empty() {
+                if self.config.azure_openai_endpoint.is_empty()
+                    || self.config.azure_openai_api_key.is_empty()
+                {
                     return Err(crate::error::AppError::Config(
                         "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY are required for Azure OpenAI backend".into(),
                     ));

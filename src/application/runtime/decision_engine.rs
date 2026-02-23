@@ -10,7 +10,9 @@ use tracing::{debug, info, warn};
 
 use crate::application::prompts::decision::DecisionPrompt;
 use crate::application::prompts::goal_decision::GoalDecisionPrompt;
-use crate::application::runtime::state::{Decision, OrchestratorConfig, TriggerContext, TriggerType};
+use crate::application::runtime::state::{
+    Decision, OrchestratorConfig, TriggerContext, TriggerType,
+};
 use crate::application::services::context_assembler::ContextAssembler;
 use crate::application::services::conversation_service::ConversationService;
 use crate::ports::llm::LlmProvider;
@@ -53,10 +55,13 @@ impl DecisionEngine {
     pub async fn decide(&self, context: &TriggerContext) -> Decision {
         match context.trigger_type {
             TriggerType::Capture => {
-                let embedding = context.observation.as_ref()
+                let embedding = context
+                    .observation
+                    .as_ref()
                     .and_then(|obs| obs.embedding.as_ref())
                     .and_then(|e| serde_json::from_str::<Vec<f32>>(e).ok());
-                self.decide_on_capture(&context.context_text, embedding.as_deref()).await
+                self.decide_on_capture(&context.context_text, embedding.as_deref())
+                    .await
             }
             TriggerType::Goal => self.decide_on_goal(&context.context_text).await,
             TriggerType::Checkin => Decision::Engage,
@@ -70,7 +75,8 @@ impl DecisionEngine {
     async fn decide_on_capture(&self, current_text: &str, embedding: Option<&[f32]>) -> Decision {
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout = Duration::seconds(self.config.conversation_inactivity_timeout_seconds as i64);
+            let timeout =
+                Duration::seconds(self.config.conversation_inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!(
@@ -88,7 +94,8 @@ impl DecisionEngine {
         }
 
         // Get recent AI messages
-        let recent_ai_messages = self.conversation
+        let recent_ai_messages = self
+            .conversation
             .get_recent_ai_messages(self.config.recent_ai_messages_limit)
             .await
             .unwrap_or_default();
@@ -97,10 +104,9 @@ impl DecisionEngine {
         let similar_observations = self.get_similar_observations(embedding).await;
 
         // Check LLM health
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            self.llm.health_check(),
-        ).await {
+        match tokio::time::timeout(std::time::Duration::from_secs(10), self.llm.health_check())
+            .await
+        {
             Ok(true) => {}
             Ok(false) => {
                 warn!("decision_engine.llm_unhealthy");
@@ -133,7 +139,11 @@ impl DecisionEngine {
             let msgs: Vec<String> = recent_ai_messages
                 .iter()
                 .map(|msg| {
-                    let truncated = if msg.len() > 100 { format!("{}...", &msg[..100]) } else { msg.clone() };
+                    let truncated = if msg.len() > 100 {
+                        format!("{}...", &msg[..100])
+                    } else {
+                        msg.clone()
+                    };
                     format!("- {truncated}")
                 })
                 .collect();
@@ -166,7 +176,8 @@ impl DecisionEngine {
     async fn decide_on_goal(&self, goal_content: &str) -> Decision {
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout = Duration::seconds(self.config.conversation_inactivity_timeout_seconds as i64);
+            let timeout =
+                Duration::seconds(self.config.conversation_inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!("decision_engine.goal_blocked_by_conversation");
@@ -175,7 +186,8 @@ impl DecisionEngine {
         }
 
         // Get recent observations for context
-        let recent_observations = self.observation_repo
+        let recent_observations = self
+            .observation_repo
             .find_recent(30)
             .await
             .unwrap_or_default();
@@ -216,7 +228,11 @@ impl DecisionEngine {
     async fn get_soul_content(&self) -> Option<String> {
         if let Some(ref ctx_asm) = self.context_assembler {
             let content = ctx_asm.get_soul_content().await;
-            if content.is_empty() { None } else { Some(content) }
+            if content.is_empty() {
+                None
+            } else {
+                Some(content)
+            }
         } else {
             None
         }
@@ -229,8 +245,16 @@ impl DecisionEngine {
     ) -> Decision {
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
                 warn!(error = %e, "decision_engine.llm_error");
@@ -254,7 +278,10 @@ impl DecisionEngine {
 
         // Try JSON
         if let Ok(data) = serde_json::from_str::<Value>(content) {
-            let decision_value = data.get("decision").and_then(|d| d.as_str()).unwrap_or("idle");
+            let decision_value = data
+                .get("decision")
+                .and_then(|d| d.as_str())
+                .unwrap_or("idle");
             let reasoning = data.get("reasoning").and_then(|r| r.as_str()).unwrap_or("");
 
             debug!(
@@ -286,18 +313,26 @@ impl DecisionEngine {
 
     /// Get similar observations via semantic search with cascading fallback.
     /// Fallback 1: recent observations (10 minutes). Fallback 2: empty.
-    async fn get_similar_observations(&self, embedding: Option<&[f32]>) -> Vec<crate::domain::observation::Observation> {
+    async fn get_similar_observations(
+        &self,
+        embedding: Option<&[f32]>,
+    ) -> Vec<crate::domain::observation::Observation> {
         match embedding {
             Some(emb) => {
                 let start = std::time::Instant::now();
-                match self.observation_repo
+                match self
+                    .observation_repo
                     .find_similar(emb, self.config.semantic_search_limit)
                     .await
                 {
                     Ok(results) => {
                         let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                         if !results.is_empty() {
-                            let top_scores: Vec<f64> = results.iter().take(3).map(|(_, s)| (*s * 1000.0).round() / 1000.0).collect();
+                            let top_scores: Vec<f64> = results
+                                .iter()
+                                .take(3)
+                                .map(|(_, s)| (*s * 1000.0).round() / 1000.0)
+                                .collect();
                             info!(
                                 result_count = results.len(),
                                 top_scores = ?top_scores,
@@ -317,7 +352,10 @@ impl DecisionEngine {
                         // Fallback 1: recent observations
                         match self.observation_repo.find_recent(10).await {
                             Ok(obs) => {
-                                debug!(count = obs.len(), "decision_engine.fallback_recent_observations");
+                                debug!(
+                                    count = obs.len(),
+                                    "decision_engine.fallback_recent_observations"
+                                );
                                 obs
                             }
                             Err(_) => Vec::new(),
@@ -343,12 +381,13 @@ impl DecisionEngine {
         // Check metadata for pre-computed summary
         if let Some(ref meta) = obs.metadata
             && let Ok(parsed) = serde_json::from_str::<Value>(meta)
-            && let Some(summary) = parsed.get("summary").and_then(|s| s.as_str()) {
-                let summary = summary.to_string();
-                if summary.len() < 200 {
-                    return summary;
-                }
-                return summary[..200].to_string();
+            && let Some(summary) = parsed.get("summary").and_then(|s| s.as_str())
+        {
+            let summary = summary.to_string();
+            if summary.len() < 200 {
+                return summary;
+            }
+            return summary[..200].to_string();
         }
         // Fallback: truncate content
         if obs.content.len() > 100 {

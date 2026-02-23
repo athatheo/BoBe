@@ -256,14 +256,15 @@ impl GoalRepository for SqliteGoalRepo {
             .map(|i| format!("?{}", i + 2))
             .collect::<Vec<_>>()
             .join(",");
-        let sql = format!(
-            "DELETE FROM goals WHERE status IN ({placeholders}) AND updated_at < ?1"
-        );
+        let sql = format!("DELETE FROM goals WHERE status IN ({placeholders}) AND updated_at < ?1");
         let mut query = sqlx::query(&sql).bind(older_than);
         for status_str in &params {
             query = query.bind(*status_str);
         }
-        let result = query.execute(&self.pool).await.map_err(AppError::Database)?;
+        let result = query
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
         let deleted = result.rows_affected();
         if deleted > 0 {
             info!(deleted, statuses = ?params, "goal_repo.stale_goals_deleted");
@@ -318,7 +319,11 @@ impl GoalRepository for SqliteGoalRepo {
         Ok(())
     }
 
-    async fn bulk_update_status(&self, goal_ids: &[Uuid], status: GoalStatus) -> Result<u64, AppError> {
+    async fn bulk_update_status(
+        &self,
+        goal_ids: &[Uuid],
+        status: GoalStatus,
+    ) -> Result<u64, AppError> {
         if goal_ids.is_empty() {
             return Ok(0);
         }
@@ -329,14 +334,16 @@ impl GoalRepository for SqliteGoalRepo {
             .map(|i| format!("?{}", i + 3))
             .collect::<Vec<_>>()
             .join(",");
-        let sql = format!(
-            "UPDATE goals SET status = ?1, updated_at = ?2 WHERE id IN ({placeholders})"
-        );
+        let sql =
+            format!("UPDATE goals SET status = ?1, updated_at = ?2 WHERE id IN ({placeholders})");
         let mut query = sqlx::query(&sql).bind(status_str).bind(now);
         for id in goal_ids {
             query = query.bind(*id);
         }
-        let result = query.execute(&self.pool).await.map_err(AppError::Database)?;
+        let result = query
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
         let count = result.rows_affected();
         tracing::info!(count, status = %status_str, "goal_repo.bulk_update_status");
         Ok(count)
@@ -347,7 +354,11 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| *x as f64 * *y as f64).sum();
+    let dot: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| *x as f64 * *y as f64)
+        .sum();
     let norm_a: f64 = a.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     let norm_b: f64 = b.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
     if norm_a == 0.0 || norm_b == 0.0 {

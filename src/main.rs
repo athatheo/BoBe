@@ -2,16 +2,16 @@
 
 use clap::{Parser, Subcommand};
 
+mod adapters;
+mod app_state;
+mod application;
+mod composition;
 mod config;
-mod error;
 mod domain;
+mod entrypoints;
+mod error;
 mod ports;
 mod shared;
-mod adapters;
-mod application;
-mod entrypoints;
-mod composition;
-mod app_state;
 
 #[derive(Parser)]
 #[command(name = "bobe", about = "BoBe - Local-first proactive AI companion")]
@@ -47,12 +47,17 @@ enum Commands {
     Version,
 }
 
+#[allow(unsafe_code)]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { host, port, log_level } => {
+        Commands::Serve {
+            host,
+            port,
+            log_level,
+        } => {
             // SAFETY: set_var is called before any threads are spawned.
             unsafe {
                 std::env::set_var("BOBE_HOST", &host);
@@ -122,7 +127,8 @@ async fn main() -> anyhow::Result<()> {
             });
 
             // ── Serve with graceful shutdown ────────────────────────────
-            let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
+            let listener =
+                tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
             tracing::info!("BoBe listening on {}:{}", config.host, config.port);
 
             axum::serve(listener, app)
@@ -141,8 +147,9 @@ async fn main() -> anyhow::Result<()> {
                 tracing::error!(error = %e, "runtime session task panicked");
             }
             if let Some(h) = learning_handle
-                && let Err(e) = h.await {
-                    tracing::error!(error = %e, "learning loop task panicked");
+                && let Err(e) = h.await
+            {
+                tracing::error!(error = %e, "learning loop task panicked");
             }
 
             // Graceful shutdown: stop services in order (mDNS → MCP → Ollama → DB)
@@ -151,18 +158,21 @@ async fn main() -> anyhow::Result<()> {
 
             if let Some(ref mcp) = state.mcp_tool_adapter {
                 tracing::info!("Stopping MCP servers...");
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(2),
-                    mcp.shutdown(),
-                ).await.ok();
+                tokio::time::timeout(std::time::Duration::from_secs(2), mcp.shutdown())
+                    .await
+                    .ok();
             }
 
-            if config.llm_backend == crate::config::LlmBackend::Ollama || config.vision_backend == crate::config::LlmBackend::Ollama {
+            if config.llm_backend == crate::config::LlmBackend::Ollama
+                || config.vision_backend == crate::config::LlmBackend::Ollama
+            {
                 tracing::info!("Stopping Ollama (if managed)...");
                 tokio::time::timeout(
                     std::time::Duration::from_secs(2),
                     state.ollama_manager.stop(),
-                ).await.ok();
+                )
+                .await
+                .ok();
             }
 
             tracing::info!("Closing database pool...");
@@ -189,7 +199,11 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
 
     println!("\nChecking BoBe setup status...\n");
 
-    let resp = match client.get(format!("{base_url}/api/onboarding/status")).send().await {
+    let resp = match client
+        .get(format!("{base_url}/api/onboarding/status"))
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(_) => {
             eprintln!("Cannot connect to BoBe at {base_url}");
@@ -258,29 +272,41 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
         let body = pull_resp.text().await?;
         for line in body.lines() {
             if let Some(data) = line.strip_prefix("data: ")
-                && let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
-                    match val.get("status").and_then(|s| s.as_str()) {
-                        Some("complete") => println!("✓ Model downloaded"),
-                        Some("error") => {
-                            let detail = val.get("detail").and_then(|d| d.as_str()).unwrap_or("unknown");
-                            eprintln!("Error: {detail}");
-                            std::process::exit(1);
-                        }
-                        Some("pulling") => {
-                            let progress = val.get("progress").and_then(|p| p.as_f64()).unwrap_or(0.0);
-                            print!("\r  Downloading: {progress:.0}%    ");
-                        }
-                        _ => {}
+                && let Ok(val) = serde_json::from_str::<serde_json::Value>(data)
+            {
+                match val.get("status").and_then(|s| s.as_str()) {
+                    Some("complete") => println!("✓ Model downloaded"),
+                    Some("error") => {
+                        let detail = val
+                            .get("detail")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("unknown");
+                        eprintln!("Error: {detail}");
+                        std::process::exit(1);
                     }
+                    Some("pulling") => {
+                        let progress = val.get("progress").and_then(|p| p.as_f64()).unwrap_or(0.0);
+                        print!("\r  Downloading: {progress:.0}%    ");
+                    }
+                    _ => {}
                 }
+            }
         }
         println!();
     } else {
-        let default_model = if mode == "openai" { "gpt-4o-mini" } else { "claude-sonnet-4-5-20250929" };
+        let default_model = if mode == "openai" {
+            "gpt-4o-mini"
+        } else {
+            "claude-sonnet-4-5-20250929"
+        };
 
         let api_key = prompt("API Key: ").unwrap_or_default();
         let model_input = prompt(&format!("Model [{default_model}]: ")).unwrap_or_default();
-        let model = if model_input.trim().is_empty() { default_model } else { model_input.trim() };
+        let model = if model_input.trim().is_empty() {
+            default_model
+        } else {
+            model_input.trim()
+        };
 
         client
             .post(format!("{base_url}/api/onboarding/configure-llm"))
@@ -291,7 +317,10 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
     }
 
     // Mark complete
-    client.post(format!("{base_url}/api/onboarding/mark-complete")).send().await?;
+    client
+        .post(format!("{base_url}/api/onboarding/mark-complete"))
+        .send()
+        .await?;
     println!("\n✓ BoBe is ready!\n");
 
     Ok(())
@@ -304,5 +333,9 @@ fn prompt(message: &str) -> Option<String> {
     let mut input = String::new();
     std::io::stdin().read_line(&mut input).ok()?;
     let trimmed = input.trim().to_string();
-    if trimmed.is_empty() { None } else { Some(trimmed) }
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }

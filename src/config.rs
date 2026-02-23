@@ -25,8 +25,6 @@ impl fmt::Display for LlmBackend {
     }
 }
 
-
-
 /// Application configuration loaded from BOBE_* environment variables.
 ///
 /// All fields have sensible defaults. Override via env vars or .env file.
@@ -202,8 +200,11 @@ impl Default for Config {
             tools_allowed_file_dirs: String::new(),
             mcp_enabled: true,
             mcp_config_file: None,
-            mcp_blocked_commands: "rm,rmdir,dd,mkfs,fdisk,sudo,su,chmod,chown,kill,killall,shutdown,reboot,halt".into(),
-            mcp_dangerous_env_keys: "LD_PRELOAD,LD_LIBRARY_PATH,DYLD_INSERT_LIBRARIES,DYLD_LIBRARY_PATH".into(),
+            mcp_blocked_commands:
+                "rm,rmdir,dd,mkfs,fdisk,sudo,su,chmod,chown,kill,killall,shutdown,reboot,halt"
+                    .into(),
+            mcp_dangerous_env_keys:
+                "LD_PRELOAD,LD_LIBRARY_PATH,DYLD_INSERT_LIBRARIES,DYLD_LIBRARY_PATH".into(),
             learning_enabled: true,
             learning_interval_minutes: 30,
             learning_min_context_items: 5,

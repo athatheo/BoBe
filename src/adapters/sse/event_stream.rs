@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-
 use super::connection_manager::SseConnectionManager;
 use super::event_queue::EventQueue;
 use super::factories;

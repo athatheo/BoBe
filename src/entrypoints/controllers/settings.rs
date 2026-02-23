@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::{Deserialize, Serialize};
 
-use crate::config::LlmBackend;
 use crate::app_state::AppState;
+use crate::config::LlmBackend;
 use crate::error::AppError;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -168,9 +168,11 @@ pub async fn update_settings(
     // Apply each optional field
     if let Some(ref v) = body.llm_backend {
         let backend: LlmBackend = serde_json::from_value(serde_json::Value::String(v.clone()))
-            .map_err(|_| AppError::Validation(format!(
-                "Invalid llm_backend '{v}'. Valid: ollama, openai, azure_openai, llamacpp"
-            )))?;
+            .map_err(|_| {
+                AppError::Validation(format!(
+                    "Invalid llm_backend '{v}'. Valid: ollama, openai, azure_openai, llamacpp"
+                ))
+            })?;
         new_config.llm_backend = backend;
         applied.push("llm_backend".into());
     }

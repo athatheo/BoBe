@@ -1,13 +1,13 @@
 //! Goal-triggered decision prompts.
 
-use once_cell::sync::Lazy;
 use serde_json::json;
+use std::sync::LazyLock;
 
-use crate::application::prompts::base::{PromptConfig, DEFAULT_SOUL};
+use crate::application::prompts::base::{DEFAULT_SOUL, PromptConfig};
 use crate::ports::llm_types::{AiMessage, ResponseFormat};
 
 /// JSON Schema for structured goal decision output.
-pub static GOAL_DECISION_SCHEMA: Lazy<serde_json::Value> = Lazy::new(|| {
+pub static GOAL_DECISION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {
@@ -69,8 +69,7 @@ Being helpful means knowing when NOT to interrupt. Default to IDLE when uncertai
         soul: Option<&str>,
         current_time: Option<&str>,
     ) -> Vec<AiMessage> {
-        let system_content =
-            Self::SYSTEM_TEMPLATE.replace("{soul}", soul.unwrap_or(DEFAULT_SOUL));
+        let system_content = Self::SYSTEM_TEMPLATE.replace("{soul}", soul.unwrap_or(DEFAULT_SOUL));
 
         let time_line = match current_time {
             Some(t) => format!("Current time: {t}\n\n"),

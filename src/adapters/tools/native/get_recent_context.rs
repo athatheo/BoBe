@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -57,10 +57,7 @@ impl NativeTool for GetRecentContextTool {
             .unwrap_or(5)
             .clamp(1, 20);
 
-        let observations = self
-            .observation_repo
-            .find_since(None, Some(limit))
-            .await?;
+        let observations = self.observation_repo.find_since(None, Some(limit)).await?;
 
         if observations.is_empty() {
             return Ok("No recent observations available.".into());

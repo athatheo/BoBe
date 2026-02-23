@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-
 use crate::app_state::AppState;
 use crate::domain::user_profile::UserProfile;
 use crate::error::AppError;
-
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -115,7 +113,12 @@ pub async fn create_profile(
         ));
     }
 
-    if state.user_profile_repo.get_by_name(&body.name).await?.is_some() {
+    if state
+        .user_profile_repo
+        .get_by_name(&body.name)
+        .await?
+        .is_some()
+    {
         return Err(AppError::Validation(format!(
             "User profile with name '{}' already exists",
             body.name
@@ -135,7 +138,8 @@ pub async fn get_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    let profile = state.user_profile_repo
+    let profile = state
+        .user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
@@ -148,7 +152,8 @@ pub async fn get_profile_by_name(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    let profile = state.user_profile_repo
+    let profile = state
+        .user_profile_repo
         .get_by_name(&name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile '{name}' not found")))?;
@@ -162,11 +167,14 @@ pub async fn update_profile(
     Path(profile_id): Path<Uuid>,
     Json(body): Json<UserProfileUpdateRequest>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    state.user_profile_repo.get_by_id(profile_id)
+    state
+        .user_profile_repo
+        .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
 
-    let updated = state.user_profile_repo
+    let updated = state
+        .user_profile_repo
         .update(profile_id, body.content.as_deref(), body.enabled)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
@@ -180,12 +188,16 @@ pub async fn enable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    let profile = state.user_profile_repo
+    let profile = state
+        .user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
 
-    state.user_profile_repo.update(profile_id, None, Some(true)).await?;
+    state
+        .user_profile_repo
+        .update(profile_id, None, Some(true))
+        .await?;
     tracing::info!(profile_id = %profile_id, "user_profile.enabled");
 
     Ok(Json(UserProfileActionResponse {
@@ -201,12 +213,16 @@ pub async fn disable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    let profile = state.user_profile_repo
+    let profile = state
+        .user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
 
-    state.user_profile_repo.update(profile_id, None, Some(false)).await?;
+    state
+        .user_profile_repo
+        .update(profile_id, None, Some(false))
+        .await?;
     tracing::info!(profile_id = %profile_id, "user_profile.disabled");
 
     Ok(Json(UserProfileActionResponse {
@@ -222,7 +238,8 @@ pub async fn delete_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let profile = state.user_profile_repo
+    let profile = state
+        .user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;

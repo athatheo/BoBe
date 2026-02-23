@@ -217,7 +217,10 @@ impl McpClient {
             )
             .await?;
 
-        let is_error = result.get("isError").and_then(|e| e.as_bool()).unwrap_or(false);
+        let is_error = result
+            .get("isError")
+            .and_then(|e| e.as_bool())
+            .unwrap_or(false);
 
         let content_parts = result
             .get("content")
@@ -246,11 +249,7 @@ impl McpClient {
         self.list_tools().await.is_ok()
     }
 
-    async fn send_request(
-        &self,
-        method: &str,
-        params: Option<Value>,
-    ) -> Result<Value, AppError> {
+    async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, AppError> {
         let id = self.request_id.fetch_add(1, Ordering::Relaxed);
 
         let request = JsonRpcRequest {
@@ -269,28 +268,25 @@ impl McpClient {
             .ok_or_else(|| AppError::Mcp("MCP server not connected".into()))?;
 
         // Write request
-        writeln!(process.stdin, "{}", request_str).map_err(|e| {
-            AppError::Mcp(format!("Failed to write to MCP server: {e}"))
-        })?;
-        process.stdin.flush().map_err(|e| {
-            AppError::Mcp(format!("Failed to flush MCP server stdin: {e}"))
-        })?;
+        writeln!(process.stdin, "{}", request_str)
+            .map_err(|e| AppError::Mcp(format!("Failed to write to MCP server: {e}")))?;
+        process
+            .stdin
+            .flush()
+            .map_err(|e| AppError::Mcp(format!("Failed to flush MCP server stdin: {e}")))?;
 
         // Read response (blocking in this context — caller should use timeout)
         let mut line = String::new();
-        process.reader.read_line(&mut line).map_err(|e| {
-            AppError::Mcp(format!("Failed to read from MCP server: {e}"))
-        })?;
+        process
+            .reader
+            .read_line(&mut line)
+            .map_err(|e| AppError::Mcp(format!("Failed to read from MCP server: {e}")))?;
 
-        let response: JsonRpcResponse = serde_json::from_str(line.trim()).map_err(|e| {
-            AppError::Mcp(format!("Invalid JSON-RPC response: {e}"))
-        })?;
+        let response: JsonRpcResponse = serde_json::from_str(line.trim())
+            .map_err(|e| AppError::Mcp(format!("Invalid JSON-RPC response: {e}")))?;
 
         if let Some(err) = response.error {
-            return Err(AppError::Mcp(format!(
-                "MCP server error: {}",
-                err.message
-            )));
+            return Err(AppError::Mcp(format!("MCP server error: {}", err.message)));
         }
 
         response
@@ -298,11 +294,7 @@ impl McpClient {
             .ok_or_else(|| AppError::Mcp("Empty response from MCP server".into()))
     }
 
-    async fn send_notification(
-        &self,
-        method: &str,
-        params: Option<Value>,
-    ) -> Result<(), AppError> {
+    async fn send_notification(&self, method: &str, params: Option<Value>) -> Result<(), AppError> {
         let notification = serde_json::json!({
             "jsonrpc": "2.0",
             "method": method,
@@ -317,12 +309,12 @@ impl McpClient {
             .as_mut()
             .ok_or_else(|| AppError::Mcp("MCP server not connected".into()))?;
 
-        writeln!(process.stdin, "{}", notification_str).map_err(|e| {
-            AppError::Mcp(format!("Failed to write notification: {e}"))
-        })?;
-        process.stdin.flush().map_err(|e| {
-            AppError::Mcp(format!("Failed to flush notification: {e}"))
-        })?;
+        writeln!(process.stdin, "{}", notification_str)
+            .map_err(|e| AppError::Mcp(format!("Failed to write notification: {e}")))?;
+        process
+            .stdin
+            .flush()
+            .map_err(|e| AppError::Mcp(format!("Failed to flush notification: {e}")))?;
 
         Ok(())
     }
@@ -332,10 +324,11 @@ impl Drop for McpClient {
     fn drop(&mut self) {
         // Best-effort cleanup
         if let Ok(mut proc) = self.process.try_lock()
-            && let Some(mut p) = proc.take() {
-                let _ = p.child.kill();
-                let _ = p.child.wait();
-            }
+            && let Some(mut p) = proc.take()
+        {
+            let _ = p.child.kill();
+            let _ = p.child.wait();
+        }
     }
 }
 

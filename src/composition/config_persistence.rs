@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// Get the BoBe configuration directory (~/.bobe).
 fn bobe_dir() -> PathBuf {
@@ -15,6 +15,7 @@ fn bobe_dir() -> PathBuf {
 /// API keys must NOT be written here — use OS keychain instead.
 ///
 /// Returns true on success, false on failure.
+#[allow(unsafe_code)]
 pub fn persist_config(changes: &BTreeMap<String, String>) -> bool {
     // Sanitize values
     for (key, value) in changes {
@@ -23,7 +24,11 @@ pub fn persist_config(changes: &BTreeMap<String, String>) -> bool {
             return false;
         }
         if value.len() > 10_000 {
-            error!(key = key.as_str(), length = value.len(), "config_persistence.value_too_long");
+            error!(
+                key = key.as_str(),
+                length = value.len(),
+                "config_persistence.value_too_long"
+            );
             return false;
         }
     }
@@ -64,10 +69,7 @@ pub fn persist_config(changes: &BTreeMap<String, String>) -> bool {
     }
 
     // Atomic write
-    let lines: Vec<String> = existing
-        .iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect();
+    let lines: Vec<String> = existing.iter().map(|(k, v)| format!("{k}={v}")).collect();
     let content = lines.join("\n") + "\n";
 
     if let Err(e) = std::fs::write(&tmp_path, &content) {
@@ -82,7 +84,8 @@ pub fn persist_config(changes: &BTreeMap<String, String>) -> bool {
 
     // Set on running process
     for (k, v) in changes {
-        // SAFETY: called from single-threaded bootstrap before server starts
+        // SAFETY: called during bootstrap or infrequent config ops; macOS/glibc
+        // setenv is thread-safe. Acceptable for these low-frequency mutations.
         unsafe {
             std::env::set_var(k, v);
         }

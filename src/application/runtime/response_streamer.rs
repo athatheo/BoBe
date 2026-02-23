@@ -30,7 +30,9 @@ pub struct StreamResult {
 /// (tool execution start/complete events). This is the primary streaming function
 /// used when tools are enabled.
 pub async fn stream_response(
-    mut stream: std::pin::Pin<Box<dyn futures::Stream<Item = Result<StreamItem, AppError>> + Send + '_>>,
+    mut stream: std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<StreamItem, AppError>> + Send + '_>,
+    >,
     event_queue: &EventQueue,
     msg_id: Option<&str>,
 ) -> StreamResult {
@@ -51,7 +53,13 @@ pub async fn stream_response(
                 if first_token_time.is_none() && !chunk.delta.is_empty() {
                     first_token_time = Some(Instant::now());
                 }
-                if !handle_stream_chunk(&chunk, &msg_id, &mut sequence, &mut full_response, event_queue) {
+                if !handle_stream_chunk(
+                    &chunk,
+                    &msg_id,
+                    &mut sequence,
+                    &mut full_response,
+                    event_queue,
+                ) {
                     break;
                 }
             }
@@ -89,7 +97,9 @@ pub async fn stream_response(
 ///
 /// Used when tools are disabled — the stream only contains `StreamChunk` items.
 pub async fn stream_llm_response(
-    mut stream: std::pin::Pin<Box<dyn futures::Stream<Item = Result<StreamChunk, AppError>> + Send + '_>>,
+    mut stream: std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<StreamChunk, AppError>> + Send + '_>,
+    >,
     event_queue: &EventQueue,
     msg_id: Option<&str>,
 ) -> StreamResult {
@@ -110,7 +120,13 @@ pub async fn stream_llm_response(
                 if first_token_time.is_none() && !chunk.delta.is_empty() {
                     first_token_time = Some(Instant::now());
                 }
-                if !handle_stream_chunk(&chunk, &msg_id, &mut sequence, &mut full_response, event_queue) {
+                if !handle_stream_chunk(
+                    &chunk,
+                    &msg_id,
+                    &mut sequence,
+                    &mut full_response,
+                    event_queue,
+                ) {
                     break;
                 }
             }
@@ -216,7 +232,13 @@ fn push_error_event(msg_id: &str, error: &AppError, event_queue: &EventQueue) {
     push_error_event_classified(msg_id, error, code, recoverable, event_queue);
 }
 
-fn push_error_event_classified(msg_id: &str, error: &AppError, code: &str, recoverable: bool, event_queue: &EventQueue) {
+fn push_error_event_classified(
+    msg_id: &str,
+    error: &AppError,
+    code: &str,
+    recoverable: bool,
+    event_queue: &EventQueue,
+) {
     event_queue.push(StreamBundle {
         event_type: EventType::Error,
         message_id: msg_id.to_owned(),
@@ -258,11 +280,7 @@ fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {
 }
 
 /// Stream a simple text message (no LLM call needed).
-pub fn stream_simple_message(
-    message: &str,
-    event_queue: &EventQueue,
-    msg_id: Option<&str>,
-) {
+pub fn stream_simple_message(message: &str, event_queue: &EventQueue, msg_id: Option<&str>) {
     let msg_id = msg_id
         .map(|s| s.to_owned())
         .unwrap_or_else(|| format!("msg_{}", Uuid::new_v4().simple()));

@@ -21,7 +21,7 @@ use crate::domain::types::AgentJobStatus;
 use crate::error::AppError;
 use crate::ports::repos::agent_job_repo::AgentJobRepository;
 
-use super::agent_output_parsers::{parse_claude_ndjson, parse_text_output, AgentJobResult};
+use super::agent_output_parsers::{AgentJobResult, parse_claude_ndjson, parse_text_output};
 
 /// Safety: max output file size (10 MB).
 const MAX_OUTPUT_BYTES: usize = 10 * 1024 * 1024;
@@ -73,7 +73,9 @@ pub struct AgentJobManager {
     max_concurrent: usize,
     max_runtime_seconds: u64,
     running_jobs: Mutex<HashMap<Uuid, RunningJob>>,
-    on_job_complete: Mutex<Option<Arc<dyn Fn(AgentJob) -> futures::future::BoxFuture<'static, ()> + Send + Sync>>>,
+    on_job_complete: Mutex<
+        Option<Arc<dyn Fn(AgentJob) -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
+    >,
 }
 
 impl AgentJobManager {
@@ -119,10 +121,9 @@ impl AgentJobManager {
         working_directory: Option<&str>,
         conversation_id: Option<Uuid>,
     ) -> Result<AgentJob, AppError> {
-        let profile = self
-            .profiles
-            .get(profile_name)
-            .ok_or_else(|| AppError::Validation(format!("Unknown agent profile: {profile_name}")))?;
+        let profile = self.profiles.get(profile_name).ok_or_else(|| {
+            AppError::Validation(format!("Unknown agent profile: {profile_name}"))
+        })?;
 
         if !profile.enabled {
             return Err(AppError::Validation(format!(
@@ -193,13 +194,11 @@ impl AgentJobManager {
             .current_dir(&cwd_path)
             .envs(env)
             .spawn()
-            .map_err(|e| {
-                AppError::Internal(format!("Failed to start subprocess: {e}"))
-            })?;
+            .map_err(|e| AppError::Internal(format!("Failed to start subprocess: {e}")))?;
 
-        let pid = child.id().ok_or_else(|| {
-            AppError::Internal("Subprocess started but has no PID".into())
-        })?;
+        let pid = child
+            .id()
+            .ok_or_else(|| AppError::Internal("Subprocess started but has no PID".into()))?;
 
         job.mark_running(pid as i64);
         let job = self.repo.save(&job).await?;
@@ -208,21 +207,32 @@ impl AgentJobManager {
         let manager = Arc::clone(self);
         let job_id = job.id;
         let output_format = profile.output_format.clone();
-        let max_runtime = profile.max_runtime_seconds.unwrap_or(self.max_runtime_seconds);
+        let max_runtime = profile
+            .max_runtime_seconds
+            .unwrap_or(self.max_runtime_seconds);
         let output_path_clone = output_path.clone();
 
         let watcher_handle = tokio::spawn(async move {
             manager
-                .watch_process(job_id, child, output_path_clone, &output_format, max_runtime)
+                .watch_process(
+                    job_id,
+                    child,
+                    output_path_clone,
+                    &output_format,
+                    max_runtime,
+                )
                 .await;
         });
 
         {
             let mut running = self.running_jobs.lock().await;
-            running.insert(job_id, RunningJob {
-                watcher_handle,
-                pid,
-            });
+            running.insert(
+                job_id,
+                RunningJob {
+                    watcher_handle,
+                    pid,
+                },
+            );
         }
 
         info!(
@@ -254,12 +264,13 @@ impl AgentJobManager {
 
         // Mark as cancelled in DB
         if let Some(mut job) = self.repo.get_by_id(job_id).await?
-            && !job.is_terminal() {
-                job.mark_cancelled(Some("user request".to_owned()));
-                self.repo.save(&job).await?;
-                info!(job_id = %job_id, "agent_job.cancelled");
-                return Ok(true);
-            }
+            && !job.is_terminal()
+        {
+            job.mark_cancelled(Some("user request".to_owned()));
+            self.repo.save(&job).await?;
+            info!(job_id = %job_id, "agent_job.cancelled");
+            return Ok(true);
+        }
         Ok(false)
     }
 
@@ -295,7 +306,12 @@ impl AgentJobManager {
         ) {
             // Claude Code: resume the existing session
             let mut args = profile.args.clone();
-            args.extend(["--resume".into(), session_id.clone(), "--".into(), continuation_prompt.to_owned()]);
+            args.extend([
+                "--resume".into(),
+                session_id.clone(),
+                "--".into(),
+                continuation_prompt.to_owned(),
+            ]);
             args
         } else {
             build_command(&profile, continuation_prompt)
@@ -350,21 +366,32 @@ impl AgentJobManager {
         let manager = Arc::clone(self);
         let new_job_id = job.id;
         let output_format = profile.output_format.clone();
-        let max_runtime = profile.max_runtime_seconds.unwrap_or(self.max_runtime_seconds);
+        let max_runtime = profile
+            .max_runtime_seconds
+            .unwrap_or(self.max_runtime_seconds);
         let output_path_clone = output_path.clone();
 
         let watcher_handle = tokio::spawn(async move {
             manager
-                .watch_process(new_job_id, child, output_path_clone, &output_format, max_runtime)
+                .watch_process(
+                    new_job_id,
+                    child,
+                    output_path_clone,
+                    &output_format,
+                    max_runtime,
+                )
                 .await;
         });
 
         {
             let mut running = self.running_jobs.lock().await;
-            running.insert(new_job_id, RunningJob {
-                watcher_handle,
-                pid,
-            });
+            running.insert(
+                new_job_id,
+                RunningJob {
+                    watcher_handle,
+                    pid,
+                },
+            );
         }
 
         info!(
@@ -383,10 +410,7 @@ impl AgentJobManager {
     pub async fn cleanup_on_shutdown(&self) {
         let jobs_to_kill: Vec<(Uuid, u32)> = {
             let mut running = self.running_jobs.lock().await;
-            let items: Vec<(Uuid, u32)> = running
-                .iter()
-                .map(|(id, rj)| (*id, rj.pid))
-                .collect();
+            let items: Vec<(Uuid, u32)> = running.iter().map(|(id, rj)| (*id, rj.pid)).collect();
             running.clear();
             items
         };
@@ -395,10 +419,11 @@ impl AgentJobManager {
             info!(job_id = %job_id, "agent_job.shutdown_kill");
             kill_process(pid).await;
             if let Ok(Some(mut job)) = self.repo.get_by_id(job_id).await
-                && !job.is_terminal() {
-                    job.mark_cancelled(Some("server shutdown".to_owned()));
-                    let _ = self.repo.save(&job).await;
-                }
+                && !job.is_terminal()
+            {
+                job.mark_cancelled(Some("server shutdown".to_owned()));
+                let _ = self.repo.save(&job).await;
+            }
         }
     }
 
@@ -489,19 +514,17 @@ impl AgentJobManager {
         if let Err(e) = write_result {
             error!(job_id = %job_id, error = %e, "agent_job.watcher_error");
             if let Ok(Some(mut job)) = self.repo.get_by_id(job_id).await
-                && !job.is_terminal() {
-                    job.mark_failed(format!("Watcher error: {e}"), None);
-                    let _ = self.repo.save(&job).await;
-                }
+                && !job.is_terminal()
+            {
+                job.mark_failed(format!("Watcher error: {e}"), None);
+                let _ = self.repo.save(&job).await;
+            }
             return;
         }
 
         // Wait for process exit
         let exit_status = child.wait().await;
-        let exit_code = exit_status
-            .ok()
-            .and_then(|s| s.code())
-            .unwrap_or(-1);
+        let exit_code = exit_status.ok().and_then(|s| s.code()).unwrap_or(-1);
 
         // Remove from running jobs
         {
@@ -597,17 +620,20 @@ fn parse_output(output_path: &std::path::Path, output_format: &str) -> AgentJobR
     }
 }
 
+#[allow(unsafe_code)]
 async fn kill_process(pid: u32) {
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     // Send SIGTERM
     #[cfg(unix)]
     {
+        // SAFETY: libc::kill with a valid PID is safe; we obtained this PID from a
+        // child process we spawned and tracked in the job registry.
         unsafe {
             libc::kill(pid as i32, libc::SIGTERM);
         }
         sleep(Duration::from_secs(KILL_GRACE_SECONDS)).await;
-        // Check if still alive and SIGKILL
+        // SAFETY: Same as above — SIGKILL as a fallback if the process did not exit.
         unsafe {
             libc::kill(pid as i32, libc::SIGKILL);
         }

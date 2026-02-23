@@ -49,8 +49,7 @@ impl ToolExecutor {
             "Executing tool"
         );
 
-        let result =
-            tokio::time::timeout(timeout, source.execute(tool_call, context)).await;
+        let result = tokio::time::timeout(timeout, source.execute(tool_call, context)).await;
 
         let duration = start.elapsed();
 

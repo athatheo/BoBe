@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug: bobe serve",
+      "cargo": {
+        "args": ["build", "--bin=bobe"],
+        "filter": {
+          "name": "bobe",
+          "kind": "bin"
+        }
+      },
+      "args": ["serve"],
+      "env": {
+        "RUST_LOG": "debug,sqlx=warn,hyper=warn",
+        "BOBE_HOST": "127.0.0.1",
+        "BOBE_PORT": "8766"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug: unit tests",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib"],
+        "filter": {
+          "name": "bobe",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

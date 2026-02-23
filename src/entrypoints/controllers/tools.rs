@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
@@ -108,11 +108,27 @@ pub async fn list_tools(
 
     if cfg.tools_enabled {
         let native_tools = [
-            ("search_memories", "Search memories by semantic similarity", "memory"),
-            ("search_context", "Search recent observations/context", "memory"),
-            ("search_goal", "Search goals by semantic similarity", "goals"),
+            (
+                "search_memories",
+                "Search memories by semantic similarity",
+                "memory",
+            ),
+            (
+                "search_context",
+                "Search recent observations/context",
+                "memory",
+            ),
+            (
+                "search_goal",
+                "Search goals by semantic similarity",
+                "goals",
+            ),
             ("get_goals", "Get all active goals", "goals"),
-            ("get_souls", "Get active personality documents", "personality"),
+            (
+                "get_souls",
+                "Get active personality documents",
+                "personality",
+            ),
             ("get_recent_context", "Get recent observations", "context"),
             ("create_memory", "Create a new memory", "memory"),
             ("update_memory", "Update an existing memory", "memory"),
@@ -126,10 +142,26 @@ pub async fn list_tools(
             ("fetch_url", "Fetch a URL and extract text", "web"),
             ("browser_history", "Search browser history", "web"),
             ("discover_git_repos", "Discover Git repositories", "code"),
-            ("discover_installed_tools", "Discover installed dev tools", "code"),
-            ("launch_coding_agent", "Launch an autonomous coding agent", "agents"),
-            ("check_coding_agent", "Check status of a coding agent", "agents"),
-            ("cancel_coding_agent", "Cancel a running coding agent", "agents"),
+            (
+                "discover_installed_tools",
+                "Discover installed dev tools",
+                "code",
+            ),
+            (
+                "launch_coding_agent",
+                "Launch an autonomous coding agent",
+                "agents",
+            ),
+            (
+                "check_coding_agent",
+                "Check status of a coding agent",
+                "agents",
+            ),
+            (
+                "cancel_coding_agent",
+                "Cancel a running coding agent",
+                "agents",
+            ),
             ("list_coding_agents", "List all coding agents", "agents"),
         ];
 
@@ -263,7 +295,10 @@ pub async fn list_mcp_servers(
     for cfg in &configs {
         // Get runtime tool count and error from adapter if available
         let (tool_count, runtime_error) = if let Some(ref adapter) = state.mcp_tool_adapter {
-            let tools = adapter.get_tools_for_server(&cfg.server_name).await.unwrap_or_default();
+            let tools = adapter
+                .get_tools_for_server(&cfg.server_name)
+                .await
+                .unwrap_or_default();
             let error = adapter.get_server_error(&cfg.server_name).await;
             (tools.len(), error)
         } else {
@@ -293,9 +328,7 @@ pub async fn add_mcp_server(
     Json(body): Json<McpServerCreateRequest>,
 ) -> Result<Json<McpServerCreateResponse>, AppError> {
     if body.server_name.is_empty() {
-        return Err(AppError::Validation(
-            "server_name must not be empty".into(),
-        ));
+        return Err(AppError::Validation("server_name must not be empty".into()));
     }
     if body.command.is_empty() {
         return Err(AppError::Validation("command must not be empty".into()));

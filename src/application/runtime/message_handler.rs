@@ -13,8 +13,8 @@ use crate::adapters::sse::types::IndicatorType;
 use crate::adapters::tools::preselector::ToolPreselector;
 use crate::adapters::tools::registry::ToolRegistry;
 use crate::adapters::tools::tool_call_loop::ToolCallLoop;
-use crate::application::learners::types::LearnerObservation;
 use crate::application::learners::MessageLearner;
+use crate::application::learners::types::LearnerObservation;
 use crate::application::prompts::response::UserResponsePrompt;
 use crate::application::runtime::response_streamer::{stream_llm_response, stream_response};
 use crate::application::runtime::state::OrchestratorConfig;
@@ -77,9 +77,10 @@ impl MessageHandler {
     pub async fn handle_message(&self, content: &str, message_id: &str) {
         // 1. Record user activity for cooldown
         if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.update_last_user_response(Utc::now()).await {
-                warn!(error = %e, "message_handler.cooldown_update_failed");
-            }
+            && let Err(e) = cooldown_repo.update_last_user_response(Utc::now()).await
+        {
+            warn!(error = %e, "message_handler.cooldown_update_failed");
+        }
 
         // 2. Conversation lifecycle
         let conversation_id = self.ensure_active_conversation(content).await;
@@ -95,7 +96,8 @@ impl MessageHandler {
         }
 
         // 4. Generate response
-        self.respond_to_message(message_id, content, conversation_id).await;
+        self.respond_to_message(message_id, content, conversation_id)
+            .await;
     }
 
     async fn ensure_active_conversation(&self, user_content: &str) -> Option<Uuid> {
@@ -106,17 +108,19 @@ impl MessageHandler {
                 self.conversation.activate(conv.id).await.ok();
             }
 
-            match self.conversation.add_turn(conv.id, TurnRole::User, user_content).await {
+            match self
+                .conversation
+                .add_turn(conv.id, TurnRole::User, user_content)
+                .await
+            {
                 Ok(Some(_)) => Some(conv.id),
-                _ => {
-                    match self.conversation.create_active(user_content).await {
-                        Ok(new_conv) => Some(new_conv.id),
-                        Err(e) => {
-                            error!(error = %e, "message_handler.create_conversation_failed");
-                            None
-                        }
+                _ => match self.conversation.create_active(user_content).await {
+                    Ok(new_conv) => Some(new_conv.id),
+                    Err(e) => {
+                        error!(error = %e, "message_handler.create_conversation_failed");
+                        None
                     }
-                }
+                },
             }
         } else {
             match self.conversation.create_active(user_content).await {
@@ -133,34 +137,52 @@ impl MessageHandler {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
         // Get context (gracefully degrade on failure)
-        let assembled = self.context_assembler.build_context(user_content, BuildContextOptions {
-            include_memories: true,
-            include_goals: true,
-            include_souls: true,
-            include_observations: true,
-            memory_limit: 5,
-            observation_limit: 5,
-            ..BuildContextOptions::default()
-        }).await;
+        let assembled = self
+            .context_assembler
+            .build_context(
+                user_content,
+                BuildContextOptions {
+                    include_memories: true,
+                    include_goals: true,
+                    include_souls: true,
+                    include_observations: true,
+                    memory_limit: 5,
+                    observation_limit: 5,
+                    ..BuildContextOptions::default()
+                },
+            )
+            .await;
 
         let (context_summary, soul) = assembled.to_context_string();
 
         // Get conversation history (gracefully degrade on failure)
         let mut conversation_history: Vec<(String, String)> = Vec::new();
-        match self.conversation.get_conversation_turns(conversation_id, 20).await {
+        match self
+            .conversation
+            .get_conversation_turns(conversation_id, 20)
+            .await
+        {
             Ok(turns) => {
                 // Fresh conversation — load previous context for continuity
                 if turns.len() <= 1 {
                     let previous = self.conversation.get_previous_conversation_context().await;
                     if !previous.is_empty() {
-                        info!(previous_turns = previous.len(), "message_handler.loaded_previous_context");
+                        info!(
+                            previous_turns = previous.len(),
+                            "message_handler.loaded_previous_context"
+                        );
                     }
                     conversation_history.extend(previous);
                 }
 
-                let slice = if turns.is_empty() { &[] } else { &turns[..turns.len() - 1] };
+                let slice = if turns.is_empty() {
+                    &[]
+                } else {
+                    &turns[..turns.len() - 1]
+                };
                 for turn in slice {
-                    conversation_history.push((turn.role.as_str().to_owned(), turn.content.clone()));
+                    conversation_history
+                        .push((turn.role.as_str().to_owned(), turn.content.clone()));
                 }
             }
             Err(e) => {
@@ -180,7 +202,11 @@ impl MessageHandler {
         let messages = UserResponsePrompt::messages(
             user_content,
             &context_summary,
-            if history_refs.is_empty() { None } else { Some(&history_refs) },
+            if history_refs.is_empty() {
+                None
+            } else {
+                Some(&history_refs)
+            },
             soul.as_deref(),
         );
         let config = UserResponsePrompt::config();
@@ -228,9 +254,11 @@ impl MessageHandler {
         if result.success && !result.full_response.is_empty() {
             match self.conversation.get_conversation(conversation_id).await {
                 Ok(Some(conv)) if !conv.is_closed() => {
-                    if let Err(e) = self.conversation.add_turn(
-                        conversation_id, TurnRole::Assistant, &result.full_response,
-                    ).await {
+                    if let Err(e) = self
+                        .conversation
+                        .add_turn(conversation_id, TurnRole::Assistant, &result.full_response)
+                        .await
+                    {
                         error!(error = %e, "message_handler.persist_failed");
                     } else {
                         let tokens_per_sec = if result.duration_ms > 0.0 {
@@ -265,7 +293,10 @@ impl MessageHandler {
     }
 
     /// Get available tools, optionally preselected based on conversation context.
-    async fn get_tools(&self, messages: &[crate::ports::llm_types::AiMessage]) -> Vec<crate::ports::llm_types::ToolDefinition> {
+    async fn get_tools(
+        &self,
+        messages: &[crate::ports::llm_types::AiMessage],
+    ) -> Vec<crate::ports::llm_types::ToolDefinition> {
         let Some(ref registry) = self.tool_registry else {
             return Vec::new();
         };

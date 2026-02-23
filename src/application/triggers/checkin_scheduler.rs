@@ -68,9 +68,10 @@ impl CheckinScheduler {
             let parts: Vec<&str> = time_str.split(':').collect();
             if parts.len() == 2 {
                 if let (Ok(hour), Ok(minute)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>())
-                    && let Some(t) = NaiveTime::from_hms_opt(hour, minute, 0) {
-                        parsed.push(t);
-                    }
+                    && let Some(t) = NaiveTime::from_hms_opt(hour, minute, 0)
+                {
+                    parsed.push(t);
+                }
             } else {
                 warn!(time = %time_str, "checkin_scheduler.invalid_time_format");
             }
@@ -96,15 +97,15 @@ impl CheckinScheduler {
             }
             if let Some(next) = self.next_checkin
                 && now >= next
-                    && (self.last_checkin.is_none() || self.last_checkin.unwrap() < next)
-                {
-                    info!(
-                        trigger_type = "scheduled_time",
-                        scheduled = %next,
-                        "checkin_scheduler.triggered"
-                    );
-                    return true;
-                }
+                && (self.last_checkin.is_none() || self.last_checkin.unwrap() < next)
+            {
+                info!(
+                    trigger_type = "scheduled_time",
+                    scheduled = %next,
+                    "checkin_scheduler.triggered"
+                );
+                return true;
+            }
         }
 
         // Check interval-based
@@ -113,14 +114,15 @@ impl CheckinScheduler {
                 self.schedule_next_interval(now);
             }
             if let Some(next) = self.next_interval_checkin
-                && now >= next {
-                    info!(
-                        trigger_type = "interval",
-                        scheduled = %next,
-                        "checkin_scheduler.triggered"
-                    );
-                    return true;
-                }
+                && now >= next
+            {
+                info!(
+                    trigger_type = "interval",
+                    scheduled = %next,
+                    "checkin_scheduler.triggered"
+                );
+                return true;
+            }
         }
 
         false
@@ -210,10 +212,11 @@ impl CheckinScheduler {
 
         // Add jitter
         if let Some(ref mut t) = next_time
-            && self.jitter_minutes > 0 {
-                let jitter = rand::rng().random_range(-self.jitter_minutes..=self.jitter_minutes);
-                *t += Duration::minutes(jitter as i64);
-            }
+            && self.jitter_minutes > 0
+        {
+            let jitter = rand::rng().random_range(-self.jitter_minutes..=self.jitter_minutes);
+            *t += Duration::minutes(jitter as i64);
+        }
 
         self.next_checkin = next_time;
         if let Some(t) = next_time {

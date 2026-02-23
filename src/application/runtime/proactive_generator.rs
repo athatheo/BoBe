@@ -16,9 +16,11 @@ use crate::adapters::tools::registry::ToolRegistry;
 use crate::adapters::tools::tool_call_loop::ToolCallLoop;
 use crate::application::prompts::response::ProactiveResponsePrompt;
 use crate::application::prompts::summary::ConversationSummaryPrompt;
-use crate::application::runtime::response_streamer::{stream_llm_response, stream_response, stream_simple_message};
-use crate::application::services::conversation_service::ConversationService;
+use crate::application::runtime::response_streamer::{
+    stream_llm_response, stream_response, stream_simple_message,
+};
 use crate::application::services::context_assembler::{BuildContextOptions, ContextAssembler};
+use crate::application::services::conversation_service::ConversationService;
 use crate::domain::conversation::Conversation;
 use crate::domain::types::TurnRole;
 use crate::ports::llm::LlmProvider;
@@ -69,15 +71,12 @@ impl ProactiveGenerator {
         context_summary: Option<String>,
     ) {
         let (target, previous_summary) = self.ensure_conversation(auto_close_minutes).await;
-        self.generate_response(target, previous_summary, context_summary).await;
+        self.generate_response(target, previous_summary, context_summary)
+            .await;
     }
 
     /// Send a simple check-in message.
-    pub async fn send_proactive_checkin(
-        &self,
-        message: &str,
-        auto_close_minutes: i64,
-    ) {
+    pub async fn send_proactive_checkin(&self, message: &str, auto_close_minutes: i64) {
         let (target, _) = self.ensure_conversation(auto_close_minutes).await;
         self.send_checkin(message, target).await;
     }
@@ -86,26 +85,37 @@ impl ProactiveGenerator {
         &self,
         auto_close_minutes: i64,
     ) -> (Option<Conversation>, Option<String>) {
-        let existing = self.conversation.get_pending_or_active().await.ok().flatten();
+        let existing = self
+            .conversation
+            .get_pending_or_active()
+            .await
+            .ok()
+            .flatten();
 
         if let Some(ref conv) = existing {
             if let Ok(turns) = self.conversation.get_conversation_turns(conv.id, 100).await
-                && conv.is_stale(auto_close_minutes, &turns) {
-                    let old_id = conv.id.to_string();
-                    let old_turn_count = turns.len() as u32;
-                    let (new_conv, summary) = self.transition_conversation(conv).await;
-                    // Notify clients that the old conversation was closed
-                    self.event_queue.push(conversation_closed_event(
-                        &old_id,
-                        "inactivity_timeout",
-                        old_turn_count,
-                    ));
-                    return (Some(new_conv), summary);
-                }
+                && conv.is_stale(auto_close_minutes, &turns)
+            {
+                let old_id = conv.id.to_string();
+                let old_turn_count = turns.len() as u32;
+                let (new_conv, summary) = self.transition_conversation(conv).await;
+                // Notify clients that the old conversation was closed
+                self.event_queue.push(conversation_closed_event(
+                    &old_id,
+                    "inactivity_timeout",
+                    old_turn_count,
+                ));
+                return (Some(new_conv), summary);
+            }
             return (existing, None);
         }
 
-        let last_closed = self.conversation.get_last_closed_conversation().await.ok().flatten();
+        let last_closed = self
+            .conversation
+            .get_last_closed_conversation()
+            .await
+            .ok()
+            .flatten();
         let previous_summary = last_closed.and_then(|c| c.summary);
         (None, previous_summary)
     }
@@ -121,14 +131,20 @@ impl ProactiveGenerator {
         // Build context
         let query = context_summary.as_deref().unwrap_or("");
 
-        let assembled = self.context_assembler.build_context(query, BuildContextOptions {
-            include_memories: true,
-            include_goals: true,
-            include_souls: true,
-            include_observations: true,
-            observation_limit: 5,
-            ..BuildContextOptions::default()
-        }).await;
+        let assembled = self
+            .context_assembler
+            .build_context(
+                query,
+                BuildContextOptions {
+                    include_memories: true,
+                    include_goals: true,
+                    include_souls: true,
+                    include_observations: true,
+                    observation_limit: 5,
+                    ..BuildContextOptions::default()
+                },
+            )
+            .await;
 
         let (assembled_context, soul) = assembled.to_context_string();
 
@@ -157,13 +173,8 @@ impl ProactiveGenerator {
 
         // Use tool call loop if tools are available, otherwise plain LLM stream
         let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
-            let tool_stream = tcl.stream(
-                messages,
-                tools,
-                config.temperature,
-                config.max_tokens,
-                None,
-            );
+            let tool_stream =
+                tcl.stream(messages, tools, config.temperature, config.max_tokens, None);
             stream_response(tool_stream, &self.event_queue, Some(&msg_id)).await
         } else {
             let stream = self.llm.stream(
@@ -187,7 +198,11 @@ impl ProactiveGenerator {
                 // Re-fetch conversation to guard against race conditions
                 match self.conversation.get_conversation(target.id).await {
                     Ok(Some(conv)) if !conv.is_closed() => {
-                        match self.conversation.add_turn(target.id, TurnRole::Assistant, &result.full_response).await {
+                        match self
+                            .conversation
+                            .add_turn(target.id, TurnRole::Assistant, &result.full_response)
+                            .await
+                        {
                             Ok(Some(_)) => {
                                 info!(
                                     tokens = result.token_count,
@@ -207,11 +222,17 @@ impl ProactiveGenerator {
                             "proactive_generator.conversation_closed_before_persist"
                         );
                     }
-                    Ok(None) => error!(conversation_id = %target.id, "proactive_generator.conversation_not_found"),
+                    Ok(None) => {
+                        error!(conversation_id = %target.id, "proactive_generator.conversation_not_found")
+                    }
                     Err(e) => error!(error = %e, "proactive_generator.conversation_refetch_failed"),
                 }
             } else {
-                match self.conversation.create_pending(&result.full_response).await {
+                match self
+                    .conversation
+                    .create_pending(&result.full_response)
+                    .await
+                {
                     Ok(conv) => {
                         info!(
                             conversation_id = &conv.id.to_string()[..8],
@@ -229,18 +250,18 @@ impl ProactiveGenerator {
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
-    async fn send_checkin(
-        &self,
-        message: &str,
-        target_conversation: Option<Conversation>,
-    ) {
+    async fn send_checkin(&self, message: &str, target_conversation: Option<Conversation>) {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
         let msg_id = format!("msg_{}", Uuid::new_v4().simple());
         stream_simple_message(message, &self.event_queue, Some(&msg_id));
 
         if let Some(ref target) = target_conversation {
-            if let Err(e) = self.conversation.add_turn(target.id, TurnRole::Assistant, message).await {
+            if let Err(e) = self
+                .conversation
+                .add_turn(target.id, TurnRole::Assistant, message)
+                .await
+            {
                 warn!(error = %e, "proactive_generator.checkin_save_failed");
             }
         } else if let Err(e) = self.conversation.create_pending(message).await {
@@ -253,9 +274,10 @@ impl ProactiveGenerator {
 
     async fn record_engagement(&self) {
         if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.update_last_engagement(Utc::now()).await {
-                warn!(error = %e, "proactive_generator.cooldown_update_failed");
-            }
+            && let Err(e) = cooldown_repo.update_last_engagement(Utc::now()).await
+        {
+            warn!(error = %e, "proactive_generator.cooldown_update_failed");
+        }
     }
 
     async fn transition_conversation(
@@ -265,12 +287,20 @@ impl ProactiveGenerator {
         let mut summary: Option<String> = None;
 
         if self.summary_enabled
-            && let Ok(turns) = self.conversation.get_conversation_turns(old_conversation.id, 50).await
-                && turns.len() >= 2 {
-                    summary = self.generate_summary(&turns).await;
-                }
+            && let Ok(turns) = self
+                .conversation
+                .get_conversation_turns(old_conversation.id, 50)
+                .await
+            && turns.len() >= 2
+        {
+            summary = self.generate_summary(&turns).await;
+        }
 
-        match self.conversation.close_and_start_new(old_conversation.id, summary.clone()).await {
+        match self
+            .conversation
+            .close_and_start_new(old_conversation.id, summary.clone())
+            .await
+        {
             Ok(new_conv) => {
                 info!(
                     old_id = &old_conversation.id.to_string()[..8],
@@ -308,11 +338,23 @@ impl ProactiveGenerator {
 
         match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(response)) => {
                 let content = response.message.content.text_or_empty().trim().to_string();
-                if content.is_empty() { None } else { Some(content) }
+                if content.is_empty() {
+                    None
+                } else {
+                    Some(content)
+                }
             }
             Ok(Err(e)) => {
                 warn!(error = %e, "proactive_generator.summary_failed");

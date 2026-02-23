@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -95,10 +95,7 @@ impl NativeTool for SearchGoalTool {
             .map(|s| s.to_owned());
 
         let embedding = self.embedding_provider.embed(query).await?;
-        let results = self
-            .goal_repo
-            .find_similar(&embedding, limit, true)
-            .await?;
+        let results = self.goal_repo.find_similar(&embedding, limit, true).await?;
 
         let filtered: Vec<_> = results
             .into_iter()

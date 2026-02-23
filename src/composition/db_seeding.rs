@@ -39,9 +39,7 @@ fn load_default_asset(filename: &str) -> Option<&'static str> {
 }
 
 /// Seed default souls into the database.
-pub async fn seed_default_souls(
-    soul_repo: &dyn SoulRepository,
-) -> Result<SeedResult, AppError> {
+pub async fn seed_default_souls(soul_repo: &dyn SoulRepository) -> Result<SeedResult, AppError> {
     let mut result = SeedResult {
         created: 0,
         updated: 0,
@@ -118,7 +116,10 @@ pub async fn seed_default_user_profiles(
         let content = match load_default_asset(filename) {
             Some(c) => c,
             None => {
-                warn!(filename = filename, "db_seeding.user_profile_asset_not_found");
+                warn!(
+                    filename = filename,
+                    "db_seeding.user_profile_asset_not_found"
+                );
                 result.errors += 1;
                 continue;
             }
@@ -136,10 +137,7 @@ pub async fn seed_default_user_profiles(
                 }
             }
             Ok(Some(existing)) if existing.is_default => {
-                if let Err(e) = profile_repo
-                    .update(existing.id, Some(content), None)
-                    .await
-                {
+                if let Err(e) = profile_repo.update(existing.id, Some(content), None).await {
                     warn!(name = name, error = %e, "db_seeding.profile_update_failed");
                     result.errors += 1;
                 } else {

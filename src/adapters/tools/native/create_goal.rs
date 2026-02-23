@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -99,14 +99,15 @@ impl NativeTool for CreateGoalTool {
         let embedding = self.embedding_provider.embed(content).await?;
         let similar = self.goal_repo.find_similar(&embedding, 1, true).await?;
         if let Some((existing, score)) = similar.first()
-            && *score > 0.85 {
-                return Ok(format!(
-                    "A similar goal already exists (similarity: {:.0}%):\n[{}] {}\nNo new goal created.",
-                    score * 100.0,
-                    existing.id,
-                    existing.content,
-                ));
-            }
+            && *score > 0.85
+        {
+            return Ok(format!(
+                "A similar goal already exists (similarity: {:.0}%):\n[{}] {}\nNo new goal created.",
+                score * 100.0,
+                existing.id,
+                existing.content,
+            ));
+        }
 
         let mut goal = Goal::new(content.to_owned(), GoalSource::User, priority);
         goal.embedding = Some(serde_json::to_string(&embedding)?);

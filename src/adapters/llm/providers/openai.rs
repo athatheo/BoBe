@@ -6,13 +6,11 @@ use reqwest::Client;
 use tracing::{debug, error, warn};
 
 use crate::adapters::llm::shared::{
-    build_chat_request, parse_response, parse_stream_chunk, ToolCallAccumulator,
+    ToolCallAccumulator, build_chat_request, parse_response, parse_stream_chunk,
 };
 use crate::error::AppError;
 use crate::ports::llm::LlmProvider;
-use crate::ports::llm_types::{
-    AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition,
-};
+use crate::ports::llm_types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
 /// OpenAI API provider.
 pub struct OpenAiProvider {
@@ -23,11 +21,7 @@ pub struct OpenAiProvider {
 }
 
 impl OpenAiProvider {
-    pub fn new(
-        client: Client,
-        api_key: impl Into<String>,
-        model: impl Into<String>,
-    ) -> Self {
+    pub fn new(client: Client, api_key: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             client,
             base_url: "https://api.openai.com".to_owned(),
@@ -109,9 +103,10 @@ impl LlmProvider for OpenAiProvider {
             )));
         }
 
-        let data: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::Llm(format!("Failed to parse OpenAI response: {e}"))
-        })?;
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Llm(format!("Failed to parse OpenAI response: {e}")))?;
 
         parse_response(&data)
     }

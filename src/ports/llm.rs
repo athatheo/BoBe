@@ -2,9 +2,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 
-use super::llm_types::{
-    AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition,
-};
+use super::llm_types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 use crate::error::AppError;
 
 /// Protocol for LLM providers.

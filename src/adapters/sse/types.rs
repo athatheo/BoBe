@@ -28,7 +28,6 @@ pub enum IndicatorType {
     Streaming,
 }
 
-
 /// Wire format for SSE events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamBundle {

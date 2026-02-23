@@ -10,9 +10,11 @@ use crate::adapters::capture::ScreenCapture;
 use crate::adapters::sse::event_queue::EventQueue;
 use crate::adapters::sse::factories::indicator_event;
 use crate::adapters::sse::types::IndicatorType;
-use crate::application::learners::types::LearnerObservation;
 use crate::application::learners::CaptureLearner;
-use crate::application::runtime::state::{Decision, OrchestratorConfig, TriggerContext, TriggerType};
+use crate::application::learners::types::LearnerObservation;
+use crate::application::runtime::state::{
+    Decision, OrchestratorConfig, TriggerContext, TriggerType,
+};
 use crate::domain::observation::Observation;
 use crate::ports::repos::cooldown_repo::CooldownRepository;
 use crate::ports::repos::observation_repo::ObservationRepository;
@@ -92,18 +94,21 @@ impl CaptureTrigger {
             && let Some(cooldown) = cooldown_repo.check_cooldown(
                 self.config.decision_cooldown_minutes,
                 self.config.decision_extended_cooldown_minutes,
-            ) {
-                debug!(
-                    remaining_s = cooldown.remaining.num_seconds(),
-                    cooldown_type = %cooldown.cooldown_type,
-                    "capture_trigger.cooldown_active"
-                );
-                self.event_queue.push(indicator_event(IndicatorType::Idle, None));
-                return Decision::Idle;
-            }
+            )
+        {
+            debug!(
+                remaining_s = cooldown.remaining.num_seconds(),
+                cooldown_type = %cooldown.cooldown_type,
+                "capture_trigger.cooldown_active"
+            );
+            self.event_queue
+                .push(indicator_event(IndicatorType::Idle, None));
+            return Decision::Idle;
+        }
 
         // Decision
-        self.event_queue.push(indicator_event(IndicatorType::Thinking, None));
+        self.event_queue
+            .push(indicator_event(IndicatorType::Thinking, None));
         let context = TriggerContext {
             trigger_type: TriggerType::Capture,
             context_text: obs.content.clone(),
@@ -112,13 +117,16 @@ impl CaptureTrigger {
         };
 
         let decision = self.decision_engine.decide(&context).await;
-        self.event_queue.push(indicator_event(IndicatorType::Idle, None));
+        self.event_queue
+            .push(indicator_event(IndicatorType::Idle, None));
 
         if decision == Decision::Engage {
-            self.generator.generate_proactive_response(
-                self.config.conversation_auto_close_minutes as i64,
-                None,
-            ).await;
+            self.generator
+                .generate_proactive_response(
+                    self.config.conversation_auto_close_minutes as i64,
+                    None,
+                )
+                .await;
         }
 
         decision
@@ -129,38 +137,43 @@ impl CaptureTrigger {
         info!(cycle = cycle_num, "capture_trigger.cycle_start");
 
         // 1. Capture screenshot
-        self.event_queue.push(indicator_event(IndicatorType::ScreenCapture, None));
+        self.event_queue
+            .push(indicator_event(IndicatorType::ScreenCapture, None));
         let capture_result = match self.screen_capture.capture_screen().await {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, cycle = cycle_num, "capture_trigger.screenshot_failed");
-                self.event_queue.push(indicator_event(IndicatorType::Idle, None));
+                self.event_queue
+                    .push(indicator_event(IndicatorType::Idle, None));
                 return None;
             }
         };
 
         // 2. Analyze screenshot via learner
-        self.event_queue.push(indicator_event(IndicatorType::Thinking, None));
-        let observation = LearnerObservation::capture(capture_result.image, capture_result.active_window);
+        self.event_queue
+            .push(indicator_event(IndicatorType::Thinking, None));
+        let observation =
+            LearnerObservation::capture(capture_result.image, capture_result.active_window);
         match self.capture_learner.learn(&observation).await {
             Ok(result) => {
                 self.context_count += 1;
                 debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
-                self.event_queue.push(indicator_event(IndicatorType::Idle, None));
+                self.event_queue
+                    .push(indicator_event(IndicatorType::Idle, None));
                 match result {
-                    crate::application::learners::types::LearnerResult::Stored { observation_id } => {
-                        match self.observation_repo.get_by_id(observation_id).await {
-                            Ok(Some(obs)) => Some(obs),
-                            Ok(None) => {
-                                debug!("capture_trigger.observation_not_found_after_store");
-                                None
-                            }
-                            Err(e) => {
-                                error!(error = %e, "capture_trigger.observation_fetch_failed");
-                                None
-                            }
+                    crate::application::learners::types::LearnerResult::Stored {
+                        observation_id,
+                    } => match self.observation_repo.get_by_id(observation_id).await {
+                        Ok(Some(obs)) => Some(obs),
+                        Ok(None) => {
+                            debug!("capture_trigger.observation_not_found_after_store");
+                            None
                         }
-                    }
+                        Err(e) => {
+                            error!(error = %e, "capture_trigger.observation_fetch_failed");
+                            None
+                        }
+                    },
                     crate::application::learners::types::LearnerResult::Skipped { reason } => {
                         debug!(reason = %reason, "capture_trigger.observation_skipped");
                         None
@@ -169,7 +182,8 @@ impl CaptureTrigger {
             }
             Err(e) => {
                 error!(error = %e, cycle = cycle_num, "capture_trigger.cycle_failed");
-                self.event_queue.push(indicator_event(IndicatorType::Idle, None));
+                self.event_queue
+                    .push(indicator_event(IndicatorType::Idle, None));
                 None
             }
         }

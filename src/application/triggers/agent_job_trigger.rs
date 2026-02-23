@@ -133,9 +133,23 @@ impl AgentJobTrigger {
         );
         let config = AgentJobEvaluationPrompt::config();
 
-        match llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens).await {
+        match llm
+            .complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            )
+            .await
+        {
             Ok(response) => {
-                let content = response.message.content.text_or_empty().trim().to_uppercase();
+                let content = response
+                    .message
+                    .content
+                    .text_or_empty()
+                    .trim()
+                    .to_uppercase();
                 info!(
                     job_id = %job.id,
                     verdict = %content,
@@ -170,12 +184,16 @@ impl AgentJobTrigger {
         }
 
         // Continue by launching a new job with the continuation prompt
-        match self.manager.launch(
-            &job.profile_name,
-            &continuation_prompt,
-            Some(&job.working_directory),
-            job.conversation_id,
-        ).await {
+        match self
+            .manager
+            .launch(
+                &job.profile_name,
+                &continuation_prompt,
+                Some(&job.working_directory),
+                job.conversation_id,
+            )
+            .await
+        {
             Ok(mut new_job) => {
                 new_job.continuation_count = job.continuation_count + 1;
                 if let Err(e) = self.agent_job_repo.save(&new_job).await {
@@ -190,8 +208,15 @@ impl AgentJobTrigger {
     }
 
     async fn notify_job(&self, job: &AgentJob) {
-        let status_word = if job.status == AgentJobStatus::Completed { "completed" } else { "failed" };
-        let mut parts = vec![format!("Coding agent '{}' {status_word}.", job.profile_name)];
+        let status_word = if job.status == AgentJobStatus::Completed {
+            "completed"
+        } else {
+            "failed"
+        };
+        let mut parts = vec![format!(
+            "Coding agent '{}' {status_word}.",
+            job.profile_name
+        )];
 
         if let Some(ref summary) = job.result_summary {
             let s = if summary.len() > 500 {
@@ -225,9 +250,11 @@ impl AgentJobTrigger {
 
         info!(profile = %job.profile_name, "agent_job.notifying");
 
-        self.generator.generate_proactive_response(
-            self.config.conversation_auto_close_minutes as i64,
-            Some(context_summary),
-        ).await;
+        self.generator
+            .generate_proactive_response(
+                self.config.conversation_auto_close_minutes as i64,
+                Some(context_summary),
+            )
+            .await;
     }
 }

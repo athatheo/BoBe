@@ -51,7 +51,12 @@ impl GoalLearner {
         goals: Arc<GoalsService>,
         config: LearningConfig,
     ) -> Self {
-        Self { llm, embedding, goals, config }
+        Self {
+            llm,
+            embedding,
+            goals,
+            config,
+        }
     }
 
     pub fn update_config(&mut self, config: LearningConfig) {
@@ -83,8 +88,16 @@ impl GoalLearner {
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
                 warn!(error = %e, "goal_learner.llm_error");
@@ -102,7 +115,11 @@ impl GoalLearner {
         }
 
         let raw_goals = match serde_json::from_str::<Value>(&content) {
-            Ok(data) => data.get("goals").and_then(|g| g.as_array()).cloned().unwrap_or_default(),
+            Ok(data) => data
+                .get("goals")
+                .and_then(|g| g.as_array())
+                .cloned()
+                .unwrap_or_default(),
             Err(e) => {
                 warn!(error = %e, "goal_learner.json_parse_error");
                 return Vec::new();
@@ -125,13 +142,24 @@ impl GoalLearner {
                 break;
             }
 
-            let content = raw.get("content").and_then(|c| c.as_str()).unwrap_or("").trim();
+            let content = raw
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .trim();
             if content.is_empty() {
                 continue;
             }
 
-            let priority_str = raw.get("priority").and_then(|p| p.as_str()).unwrap_or("medium");
-            let priority_str = if VALID_PRIORITIES.contains(&priority_str) { priority_str } else { "medium" };
+            let priority_str = raw
+                .get("priority")
+                .and_then(|p| p.as_str())
+                .unwrap_or("medium");
+            let priority_str = if VALID_PRIORITIES.contains(&priority_str) {
+                priority_str
+            } else {
+                "medium"
+            };
 
             let inference_reason = raw
                 .get("inference_reason")
@@ -140,9 +168,9 @@ impl GoalLearner {
                 .to_owned();
 
             // Batch duplicate check
-            let is_batch_dup = created.iter().any(|g| {
-                g.content.to_lowercase().trim() == content.to_lowercase().trim()
-            });
+            let is_batch_dup = created
+                .iter()
+                .any(|g| g.content.to_lowercase().trim() == content.to_lowercase().trim());
             if is_batch_dup {
                 continue;
             }
@@ -152,11 +180,20 @@ impl GoalLearner {
 
             match decision {
                 DeduplicationDecision::Skip => {
-                    debug!(content_preview = &content[..content.len().min(50)], "goal_learner.skipped");
+                    debug!(
+                        content_preview = &content[..content.len().min(50)],
+                        "goal_learner.skipped"
+                    );
                     continue;
                 }
-                DeduplicationDecision::Update { existing_goal_id, updated_content } => {
-                    if let Err(e) = self.update_existing_goal(existing_goal_id, &updated_content).await {
+                DeduplicationDecision::Update {
+                    existing_goal_id,
+                    updated_content,
+                } => {
+                    if let Err(e) = self
+                        .update_existing_goal(existing_goal_id, &updated_content)
+                        .await
+                    {
                         warn!(error = %e, "goal_learner.update_failed");
                     } else {
                         info!(goal_id = %existing_goal_id, "goal_learner.goal_updated");
@@ -170,7 +207,16 @@ impl GoalLearner {
                         _ => GoalPriority::Medium,
                     };
 
-                    match self.goals.create(content, GoalSource::Inferred, priority, Some(inference_reason)).await {
+                    match self
+                        .goals
+                        .create(
+                            content,
+                            GoalSource::Inferred,
+                            priority,
+                            Some(inference_reason),
+                        )
+                        .await
+                    {
                         Ok(goal) => {
                             info!(goal_id = %goal.id, "goal_learner.goal_stored");
                             created.push(goal);
@@ -196,12 +242,11 @@ impl GoalLearner {
             }
         };
 
-        let similar_goals = match self.goals.get_by_embedding(
-            &query_embedding,
-            5,
-            SIMILARITY_SEARCH_THRESHOLD,
-            None,
-        ).await {
+        let similar_goals = match self
+            .goals
+            .get_by_embedding(&query_embedding, 5, SIMILARITY_SEARCH_THRESHOLD, None)
+            .await
+        {
             Ok(g) => g,
             Err(_) => return DeduplicationDecision::Create,
         };
@@ -212,7 +257,13 @@ impl GoalLearner {
 
         let existing_data: Vec<(String, String, String)> = similar_goals
             .iter()
-            .map(|g| (g.id.to_string(), g.content.clone(), g.priority.as_str().to_owned()))
+            .map(|g| {
+                (
+                    g.id.to_string(),
+                    g.content.clone(),
+                    g.priority.as_str().to_owned(),
+                )
+            })
             .collect();
 
         let messages = GoalDeduplicationPrompt::messages(content, &existing_data);
@@ -220,8 +271,16 @@ impl GoalLearner {
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
-            self.llm.complete(&messages, None, config.response_format.as_ref(), config.temperature, config.max_tokens),
-        ).await {
+            self.llm.complete(
+                &messages,
+                None,
+                config.response_format.as_ref(),
+                config.temperature,
+                config.max_tokens,
+            ),
+        )
+        .await
+        {
             Ok(Ok(r)) => r,
             _ => return DeduplicationDecision::Create,
         };
@@ -232,7 +291,11 @@ impl GoalLearner {
             Err(_) => return DeduplicationDecision::Create,
         };
 
-        let decision = data.get("decision").and_then(|d| d.as_str()).unwrap_or("CREATE").to_uppercase();
+        let decision = data
+            .get("decision")
+            .and_then(|d| d.as_str())
+            .unwrap_or("CREATE")
+            .to_uppercase();
 
         match decision.as_str() {
             "SKIP" => DeduplicationDecision::Skip,
@@ -241,23 +304,22 @@ impl GoalLearner {
                 let updated_content = data.get("updated_content").and_then(|v| v.as_str());
 
                 match (raw_id, updated_content) {
-                    (Some(id_str), Some(uc)) => {
-                        match Uuid::parse_str(id_str) {
-                            Ok(goal_id) => {
-                                let valid_ids: Vec<String> = existing_data.iter().map(|(id, _, _)| id.clone()).collect();
-                                if valid_ids.contains(&goal_id.to_string()) {
-                                    let truncated = &uc[..uc.len().min(MAX_GOAL_CONTENT_LENGTH)];
-                                    DeduplicationDecision::Update {
-                                        existing_goal_id: goal_id,
-                                        updated_content: truncated.trim().to_owned(),
-                                    }
-                                } else {
-                                    DeduplicationDecision::Create
+                    (Some(id_str), Some(uc)) => match Uuid::parse_str(id_str) {
+                        Ok(goal_id) => {
+                            let valid_ids: Vec<String> =
+                                existing_data.iter().map(|(id, _, _)| id.clone()).collect();
+                            if valid_ids.contains(&goal_id.to_string()) {
+                                let truncated = &uc[..uc.len().min(MAX_GOAL_CONTENT_LENGTH)];
+                                DeduplicationDecision::Update {
+                                    existing_goal_id: goal_id,
+                                    updated_content: truncated.trim().to_owned(),
                                 }
+                            } else {
+                                DeduplicationDecision::Create
                             }
-                            Err(_) => DeduplicationDecision::Create,
                         }
-                    }
+                        Err(_) => DeduplicationDecision::Create,
+                    },
                     _ => DeduplicationDecision::Create,
                 }
             }

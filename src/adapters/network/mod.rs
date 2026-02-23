@@ -20,9 +20,10 @@ pub fn get_local_ips() -> HashSet<String> {
 
     if let Ok(socket) = UdpSocket::bind("0.0.0.0:0")
         && socket.connect("10.255.255.255:1").is_ok()
-            && let Ok(local_addr) = socket.local_addr() {
-                ips.insert(local_addr.ip().to_string());
-            }
+        && let Ok(local_addr) = socket.local_addr()
+    {
+        ips.insert(local_addr.ip().to_string());
+    }
 
     debug!(count = ips.len(), "network.local_ips_discovered");
     ips
@@ -93,7 +94,11 @@ impl MdnsAnnouncer {
 
                 match daemon.register(service_info) {
                     Ok(_) => {
-                        info!(port = self.port, service_type = SERVICE_TYPE, "mdns.advertising");
+                        info!(
+                            port = self.port,
+                            service_type = SERVICE_TYPE,
+                            "mdns.advertising"
+                        );
                         *self.daemon.lock().await = Some(daemon);
                     }
                     Err(e) => {

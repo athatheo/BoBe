@@ -14,11 +14,9 @@ use crate::adapters::sse::types::{EventType, IndicatorType, StreamBundle};
 use crate::application::runtime::message_handler::MessageHandler;
 use crate::application::runtime::state::{Decision, OrchestratorConfig};
 use crate::application::services::conversation_service::ConversationService;
-use crate::application::triggers::{
-    CheckinTrigger, GoalTrigger,
-};
 use crate::application::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::application::triggers::capture_trigger::CaptureTrigger;
+use crate::application::triggers::{CheckinTrigger, GoalTrigger};
 use crate::ports::repos::cooldown_repo::CooldownRepository;
 
 pub struct RuntimeSession {
@@ -72,7 +70,8 @@ impl RuntimeSession {
 
     /// Enable screen capture.
     pub async fn start_capture(&self) {
-        self.capture_enabled.store(true, std::sync::atomic::Ordering::Release);
+        self.capture_enabled
+            .store(true, std::sync::atomic::Ordering::Release);
         let mut trigger = self.capture_trigger.lock().await;
         trigger.start().await;
         info!("runtime_session.capture_started");
@@ -80,7 +79,8 @@ impl RuntimeSession {
 
     /// Disable screen capture.
     pub async fn stop_capture(&self) {
-        self.capture_enabled.store(false, std::sync::atomic::Ordering::Release);
+        self.capture_enabled
+            .store(false, std::sync::atomic::Ordering::Release);
         let mut trigger = self.capture_trigger.lock().await;
         trigger.stop().await;
         info!("runtime_session.capture_stopped");
@@ -104,19 +104,22 @@ impl RuntimeSession {
     }
 
     pub async fn start(&self) {
-        self.running.store(true, std::sync::atomic::Ordering::Release);
+        self.running
+            .store(true, std::sync::atomic::Ordering::Release);
 
         if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.load_or_create().await {
-                warn!(error = %e, "runtime_session.cooldown_load_failed");
-            }
+            && let Err(e) = cooldown_repo.load_or_create().await
+        {
+            warn!(error = %e, "runtime_session.cooldown_load_failed");
+        }
 
         info!("runtime_session.started");
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
     pub async fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::Release);
+        self.running
+            .store(false, std::sync::atomic::Ordering::Release);
         info!("runtime_session.stopped");
     }
 
@@ -146,13 +149,12 @@ impl RuntimeSession {
             }
 
             // CheckinTrigger (with timeout)
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(60),
-                async {
-                    let mut checkin = self.checkin_trigger.lock().await;
-                    checkin.fire().await
-                },
-            ).await {
+            match tokio::time::timeout(std::time::Duration::from_secs(60), async {
+                let mut checkin = self.checkin_trigger.lock().await;
+                checkin.fire().await
+            })
+            .await
+            {
                 Ok(Decision::Engage) => {
                     info!(trigger = "checkin", "runtime_session.reach_out");
                 }
@@ -173,7 +175,9 @@ impl RuntimeSession {
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(300),
                     self.goal_trigger.fire(),
-                ).await {
+                )
+                .await
+                {
                     Ok(Decision::Engage) => {
                         info!(trigger = "goal", "runtime_session.reach_out");
                     }
@@ -186,16 +190,18 @@ impl RuntimeSession {
             }
 
             // CaptureTrigger (error-safe)
-            if self.capture_enabled.load(std::sync::atomic::Ordering::Acquire) {
+            if self
+                .capture_enabled
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
                 if time_since_capture >= self.config.capture_interval_seconds {
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(300),
-                        async {
-                            let mut ct = self.capture_trigger.lock().await;
-                            ct.fire().await
-                        },
-                    ).await {
+                    match tokio::time::timeout(std::time::Duration::from_secs(300), async {
+                        let mut ct = self.capture_trigger.lock().await;
+                        ct.fire().await
+                    })
+                    .await
+                    {
                         Ok(Decision::Engage) => {
                             info!(trigger = "capture", "runtime_session.reach_out");
                         }
@@ -211,10 +217,9 @@ impl RuntimeSession {
 
             // AgentJobTrigger (error-safe)
             if let Some(ref agent_trigger) = self.agent_job_trigger {
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(60),
-                    agent_trigger.fire(),
-                ).await {
+                match tokio::time::timeout(std::time::Duration::from_secs(60), agent_trigger.fire())
+                    .await
+                {
                     Ok(Decision::Engage) => {
                         info!(trigger = "agent_job", "runtime_session.reach_out");
                     }
@@ -237,7 +242,10 @@ impl RuntimeSession {
             return Ok(());
         };
 
-        let turns = self.conversation.get_conversation_turns(existing.id, 100).await?;
+        let turns = self
+            .conversation
+            .get_conversation_turns(existing.id, 100)
+            .await?;
         if !existing.is_stale(self.config.conversation_auto_close_minutes as i64, &turns) {
             return Ok(());
         }
@@ -248,7 +256,10 @@ impl RuntimeSession {
             return Ok(());
         };
 
-        let turns = self.conversation.get_conversation_turns(refetched.id, 100).await?;
+        let turns = self
+            .conversation
+            .get_conversation_turns(refetched.id, 100)
+            .await?;
         if !refetched.is_stale(self.config.conversation_auto_close_minutes as i64, &turns) {
             return Ok(());
         }
@@ -276,7 +287,9 @@ impl RuntimeSession {
 
     /// Handle user message — delegates to MessageHandler.
     pub async fn handle_user_message(&self, content: &str, message_id: &str) {
-        self.message_handler.handle_message(content, message_id).await;
+        self.message_handler
+            .handle_message(content, message_id)
+            .await;
     }
 
     /// Get current status for the API.

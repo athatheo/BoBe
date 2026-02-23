@@ -1,10 +1,10 @@
+pub mod agent_job_repo;
 pub mod conversation_repo;
 pub mod cooldown_repo;
 pub mod goal_repo;
+pub mod learning_state_repo;
+pub mod mcp_config_repo;
 pub mod memory_repo;
 pub mod observation_repo;
 pub mod soul_repo;
 pub mod user_profile_repo;
-pub mod learning_state_repo;
-pub mod agent_job_repo;
-pub mod mcp_config_repo;

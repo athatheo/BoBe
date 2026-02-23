@@ -72,17 +72,18 @@ impl SseConnectionManager {
     /// Track indicator state from events being pushed.
     pub async fn track_indicator(&self, event: &StreamBundle) {
         if event.event_type == super::types::EventType::Indicator
-            && let Some(ind) = event.payload.get("indicator").and_then(|v| v.as_str()) {
-                let mut st = self.state.lock().await;
-                st.current_indicator = match ind {
-                    "idle" => IndicatorType::Idle,
-                    "screen_capture" => IndicatorType::ScreenCapture,
-                    "thinking" => IndicatorType::Thinking,
-                    "tool_calling" => IndicatorType::ToolCalling,
-                    "streaming" => IndicatorType::Streaming,
-                    _ => IndicatorType::Idle,
-                };
-            }
+            && let Some(ind) = event.payload.get("indicator").and_then(|v| v.as_str())
+        {
+            let mut st = self.state.lock().await;
+            st.current_indicator = match ind {
+                "idle" => IndicatorType::Idle,
+                "screen_capture" => IndicatorType::ScreenCapture,
+                "thinking" => IndicatorType::Thinking,
+                "tool_calling" => IndicatorType::ToolCalling,
+                "streaming" => IndicatorType::Streaming,
+                _ => IndicatorType::Idle,
+            };
+        }
     }
 
     /// Handle SSE connection establishment. Returns connection ID.
@@ -99,32 +100,31 @@ impl SseConnectionManager {
         let conn_id = format!("conn_{}", &Uuid::new_v4().to_string()[..8]);
         st.connection_id = Some(conn_id.clone());
 
-        if was_disconnected
-            && let Some(disconnect_time) = st.disconnect_time {
-                let disconnect_duration = (Utc::now() - disconnect_time).num_seconds();
-                info!(
-                    disconnect_seconds = disconnect_duration,
-                    connection_id = %conn_id,
-                    "connection_manager.reconnected"
-                );
+        if was_disconnected && let Some(disconnect_time) = st.disconnect_time {
+            let disconnect_duration = (Utc::now() - disconnect_time).num_seconds();
+            info!(
+                disconnect_seconds = disconnect_duration,
+                connection_id = %conn_id,
+                "connection_manager.reconnected"
+            );
 
-                if disconnect_duration >= STALE_THRESHOLD_SECONDS {
-                    drop(st);
-                    self.trim_stale_events().await;
-                    let mut st = self.state.lock().await;
-                    st.disconnect_time = None;
+            if disconnect_duration >= STALE_THRESHOLD_SECONDS {
+                drop(st);
+                self.trim_stale_events().await;
+                let mut st = self.state.lock().await;
+                st.disconnect_time = None;
 
-                    let indicator = st.current_indicator;
-                    drop(st);
-                    self.queue.push(indicator_event(indicator, None));
+                let indicator = st.current_indicator;
+                drop(st);
+                self.queue.push(indicator_event(indicator, None));
 
-                    info!(connection_id = %conn_id, "connection_manager.connected");
-                    if let Some(cb) = self.on_connect.read().await.as_ref() {
-                        cb();
-                    }
-                    return conn_id;
+                info!(connection_id = %conn_id, "connection_manager.connected");
+                if let Some(cb) = self.on_connect.read().await.as_ref() {
+                    cb();
                 }
+                return conn_id;
             }
+        }
 
         st.disconnect_time = None;
         let indicator = st.current_indicator;
@@ -146,14 +146,15 @@ impl SseConnectionManager {
 
         // Ignore disconnect from old connection that was replaced
         if let Some(cid) = connection_id
-            && st.connection_id.as_deref() != Some(cid) {
-                debug!(
-                    stale_id = cid,
-                    current_id = ?st.connection_id,
-                    "connection_manager.ignored_stale_disconnect"
-                );
-                return;
-            }
+            && st.connection_id.as_deref() != Some(cid)
+        {
+            debug!(
+                stale_id = cid,
+                current_id = ?st.connection_id,
+                "connection_manager.ignored_stale_disconnect"
+            );
+            return;
+        }
 
         st.connected = false;
         st.disconnect_time = Some(Utc::now());

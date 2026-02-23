@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 
 /// Shared allowed-hosts set for the middleware layer.
 #[derive(Clone)]

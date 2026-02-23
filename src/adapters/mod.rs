@@ -1,8 +1,8 @@
-pub mod llm;
-pub mod persistence;
-pub mod embedding;
 pub mod capture;
-pub mod tools;
-pub mod sse;
+pub mod embedding;
+pub mod llm;
 pub mod logging;
 pub mod network;
+pub mod persistence;
+pub mod sse;
+pub mod tools;

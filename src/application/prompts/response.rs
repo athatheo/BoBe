@@ -1,6 +1,6 @@
 //! Response generation prompts.
 
-use crate::application::prompts::base::{PromptConfig, DEFAULT_SOUL};
+use crate::application::prompts::base::{DEFAULT_SOUL, PromptConfig};
 use crate::ports::llm_types::AiMessage;
 
 /// Prompt for generating proactive suggestions to the user.
@@ -25,8 +25,7 @@ impl ProactiveResponsePrompt {
         previous_conversation_summary: Option<&str>,
         current_time: Option<&str>,
     ) -> Vec<AiMessage> {
-        let system_content =
-            Self::SYSTEM_TEMPLATE.replace("{soul}", soul.unwrap_or(DEFAULT_SOUL));
+        let system_content = Self::SYSTEM_TEMPLATE.replace("{soul}", soul.unwrap_or(DEFAULT_SOUL));
 
         let mut user_content_parts: Vec<String> = Vec::new();
 
@@ -35,9 +34,7 @@ impl ProactiveResponsePrompt {
         }
 
         if let Some(summary) = previous_conversation_summary {
-            user_content_parts.push(format!(
-                "Earlier conversation summary:\n{summary}\n"
-            ));
+            user_content_parts.push(format!("Earlier conversation summary:\n{summary}\n"));
         }
 
         user_content_parts.push(format!("Recent activity:\n{context}"));

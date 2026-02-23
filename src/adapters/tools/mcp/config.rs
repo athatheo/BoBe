@@ -85,15 +85,13 @@ pub fn load_default_mcp_config(
 ) -> Vec<McpParsedServer> {
     let path = default_config_path();
     match path {
-        Some(p) if p.exists() => {
-            match load_mcp_config(&p, blocked_commands, dangerous_env_keys) {
-                Ok(servers) => servers,
-                Err(e) => {
-                    tracing::warn!(error = %e, path = %p.display(), "mcp.config_parse_failed");
-                    Vec::new()
-                }
+        Some(p) if p.exists() => match load_mcp_config(&p, blocked_commands, dangerous_env_keys) {
+            Ok(servers) => servers,
+            Err(e) => {
+                tracing::warn!(error = %e, path = %p.display(), "mcp.config_parse_failed");
+                Vec::new()
             }
-        }
+        },
         _ => Vec::new(),
     }
 }

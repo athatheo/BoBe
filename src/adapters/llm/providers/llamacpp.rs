@@ -6,13 +6,11 @@ use reqwest::Client;
 use tracing::{debug, error, warn};
 
 use crate::adapters::llm::shared::{
-    build_chat_request, parse_response, parse_stream_chunk, ToolCallAccumulator,
+    ToolCallAccumulator, build_chat_request, parse_response, parse_stream_chunk,
 };
 use crate::error::AppError;
 use crate::ports::llm::LlmProvider;
-use crate::ports::llm_types::{
-    AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition,
-};
+use crate::ports::llm_types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
 /// llama.cpp server provider using its OpenAI-compatible endpoint.
 pub struct LlamaCppProvider {
@@ -22,11 +20,7 @@ pub struct LlamaCppProvider {
 }
 
 impl LlamaCppProvider {
-    pub fn new(
-        client: Client,
-        base_url: impl Into<String>,
-        model: impl Into<String>,
-    ) -> Self {
+    pub fn new(client: Client, base_url: impl Into<String>, model: impl Into<String>) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_owned();
         Self {
             client,
@@ -86,9 +80,10 @@ impl LlmProvider for LlamaCppProvider {
             )));
         }
 
-        let data: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::Llm(format!("Failed to parse llama.cpp response: {e}"))
-        })?;
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Llm(format!("Failed to parse llama.cpp response: {e}")))?;
 
         parse_response(&data)
     }
