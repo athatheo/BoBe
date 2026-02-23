@@ -1,0 +1,83 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "off",
+    "style": "off",
+    "pedantic": "off",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "plugins": ["typescript", "react", "unicorn", "import", "oxc"],
+  "rules": {
+    // TypeScript
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-non-null-assertion": "off",
+    "typescript/no-this-alias": "off",
+    "typescript/consistent-type-imports": "warn",
+
+    // React
+    "react/react-in-jsx-scope": "off",
+    "react/exhaustive-deps": "warn",
+    "react/no-danger": "warn",
+    "react/jsx-no-target-blank": "error",
+    "react/no-children-prop": "error",
+    "react/no-deprecated": "error",
+    "react/self-closing-comp": "warn",
+    "react/no-array-index-key": "off",
+
+    // Import
+    "import/no-duplicates": "warn",
+    "import/no-unassigned-import": "off",
+    "import/no-named-as-default": "off",
+
+    // Unicorn - keep useful, disable noisy
+    "unicorn/prefer-node-protocol": "warn",
+    "unicorn/no-useless-spread": "warn",
+    "unicorn/prefer-set-has": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "unicorn/require-module-specifiers": "off",
+
+    // Core ESLint
+    "no-console": "off",
+    "no-debugger": "warn",
+    "no-alert": "off",
+    "no-var": "error",
+    "no-shadow": "off",
+    "prefer-const": "warn",
+    "eqeqeq": "warn",
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-await-in-loop": "off",
+    "no-constant-binary-expression": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["electron/**/*.ts"],
+      "rules": {
+        "no-console": "off",
+        "unicorn/prefer-node-protocol": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "e2e/**/*.ts"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "no-console": "off",
+        "no-constant-binary-expression": "off",
+        "no-empty-pattern": "off"
+      }
+    },
+    {
+      "files": ["*.config.ts", "*.config.js", "build/**/*.js", "scripts/**/*.ts"],
+      "rules": {
+        "no-console": "off",
+        "unicorn/prefer-node-protocol": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["out/", "dist/", "node_modules/", "packaging/"]
+}

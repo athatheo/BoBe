@@ -1,0 +1,150 @@
+{
+  "name": "bobe-desktop",
+  "version": "0.1.0",
+  "description": "Bobe - Local proactive AI companion desktop client",
+  "main": "./out/main/index.js",
+  "packageManager": "pnpm@10.30.0",
+  "scripts": {
+    "dev": "electron-vite dev --config electron-vite.config.ts",
+    "build": "electron-vite build --config electron-vite.config.ts",
+    "preview": "electron-vite preview --config electron-vite.config.ts",
+    "pack": "electron-vite build --config electron-vite.config.ts && electron-builder --mac --arm64 --publish never",
+    "dist": "electron-vite build --config electron-vite.config.ts && electron-builder --mac --arm64 --publish never",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:app": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck": "pnpm typecheck:node && pnpm typecheck:app",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "pnpm build && pnpm exec playwright test",
+    "test:e2e:headed": "pnpm build && pnpm exec playwright test --headed",
+    "test:e2e:debug": "pnpm build && pnpm exec playwright test --debug",
+    "test:e2e:ui": "pnpm build && pnpm exec playwright test --ui",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "lint:type-aware": "oxlint --type-aware",
+    "knip": "knip",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "audit": "pnpm audit",
+    "preinstall": "npx only-allow pnpm",
+    "prepare": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec lint-staged"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "oxlint"
+    ],
+    "*.{ts,tsx,js,json,md,css,html}": [
+      "prettier --write"
+    ]
+  },
+  "keywords": [
+    "electron",
+    "ai",
+    "companion",
+    "desktop"
+  ],
+  "author": "Bobe Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@electron/fuses": "^2.0.0",
+    "@electron/notarize": "^3.1.1",
+    "@playwright/test": "^1.58.2",
+    "@tailwindcss/vite": "^4.2.0",
+    "@types/node": "^25.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "electron": "^40.6.0",
+    "electron-builder": "^26.8.1",
+    "electron-playwright-helpers": "^2.1.0",
+    "electron-vite": "^5.0.0",
+    "jsdom": "^28.1.0",
+    "knip": "^5.84.1",
+    "lint-staged": "^16.2.7",
+    "oxlint": "^1.48.0",
+    "oxlint-tsgolint": "^0.14.1",
+    "prettier": "^3.8.1",
+    "simple-git-hooks": "^2.13.1",
+    "tailwindcss": "^4.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.34.2",
+    "lucide-react": "^0.575.0",
+    "monaco-editor": "^0.55.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwind-merge": "^3.5.0"
+  },
+  "build": {
+    "appId": "com.bobe.app",
+    "productName": "BoBe",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "BoBe uses the microphone for voice input. Audio is transcribed locally and never sent externally.",
+        "NSScreenCaptureUsageDescription": "BoBe captures your screen to understand your work context and provide proactive assistance. Screenshots are analyzed locally.",
+        "NSAppleEventsUsageDescription": "BoBe detects which application you are using so it can provide contextually relevant assistance."
+      },
+      "extraResources": [
+        {
+          "from": "packaging/.build/python-bundle",
+          "to": "python",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "afterPack": "build/afterPack.js",
+    "afterSign": "build/notarize.js"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "simple-git-hooks"
+    ]
+  }
+}
