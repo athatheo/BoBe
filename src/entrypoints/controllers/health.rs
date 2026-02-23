@@ -1,13 +1,29 @@
 use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
+use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::app_state::AppState;
 
+// ── Schemas ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct HealthResponse {
+    status: &'static str,
+    services: ServiceHealth,
+    version: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ServiceHealth {
+    database: &'static str,
+    llm: &'static str,
+}
+
 pub async fn health_check(
     State(state): State<Arc<AppState>>,
-) -> Json<Value> {
+) -> Json<HealthResponse> {
     let db_ok = sqlx::query("SELECT 1")
         .fetch_one(&state.db)
         .await
@@ -18,14 +34,14 @@ pub async fn health_check(
     let all_ok = db_ok && llm_ok;
     let status = if all_ok { "healthy" } else { "degraded" };
 
-    Json(json!({
-        "status": status,
-        "services": {
-            "database": if db_ok { "ok" } else { "error" },
-            "llm": if llm_ok { "ok" } else { "error" },
+    Json(HealthResponse {
+        status,
+        services: ServiceHealth {
+            database: if db_ok { "ok" } else { "error" },
+            llm: if llm_ok { "ok" } else { "error" },
         },
-        "version": env!("CARGO_PKG_VERSION"),
-    }))
+        version: env!("CARGO_PKG_VERSION"),
+    })
 }
 
 /// GET /api/status — runtime status for the UI.

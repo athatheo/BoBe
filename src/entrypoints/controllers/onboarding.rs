@@ -91,14 +91,13 @@ pub async fn onboarding_status(
 
     // Check LLM backend configuration
     let cfg = state.config();
-    let llm_configured = match cfg.llm_backend.as_str() {
-        "ollama" => true,
-        "openai" => !cfg.openai_api_key.is_empty(),
-        "azure_openai" => {
+    let llm_configured = match cfg.llm_backend {
+        crate::config::LlmBackend::Ollama => true,
+        crate::config::LlmBackend::Openai => !cfg.openai_api_key.is_empty(),
+        crate::config::LlmBackend::AzureOpenai => {
             !cfg.azure_openai_api_key.is_empty() && !cfg.azure_openai_endpoint.is_empty()
         }
-        "local" => true,
-        _ => false,
+        crate::config::LlmBackend::LlamaCpp => true,
     };
 
     steps.insert(
@@ -119,7 +118,7 @@ pub async fn onboarding_status(
     );
 
     // Check Ollama models if backend is Ollama
-    if cfg.llm_backend == "ollama" {
+    if cfg.llm_backend == crate::config::LlmBackend::Ollama {
         let model_url = format!("{}/api/tags", cfg.ollama_url);
         let models_ok = reqwest::get(&model_url).await.is_ok();
 

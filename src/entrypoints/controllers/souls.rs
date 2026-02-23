@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -85,12 +86,10 @@ pub async fn list_souls(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SoulListQuery>,
 ) -> Result<Json<SoulListResponse>, AppError> {
-    let repo = state.soul_repo.clone();
-
     let souls = if params.enabled_only {
-        repo.find_enabled().await?
+        state.soul_repo.find_enabled().await?
     } else {
-        repo.get_all().await?
+        state.soul_repo.get_all().await?
     };
 
     let enabled_count = souls.iter().filter(|s| s.enabled).count();
@@ -107,8 +106,7 @@ pub async fn get_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let repo = state.soul_repo.clone();
-    let soul = repo
+    let soul = state.soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
@@ -120,7 +118,7 @@ pub async fn get_soul(
 pub async fn create_soul(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SoulCreateRequest>,
-) -> Result<Json<SoulResponse>, AppError> {
+) -> Result<(StatusCode, Json<SoulResponse>), AppError> {
     if body.name.is_empty() {
         return Err(AppError::Validation("name must not be empty".into()));
     }
@@ -130,10 +128,8 @@ pub async fn create_soul(
         ));
     }
 
-    let repo = state.soul_repo.clone();
-
     // Check for duplicate name
-    if repo.get_by_name(&body.name).await?.is_some() {
+    if state.soul_repo.get_by_name(&body.name).await?.is_some() {
         return Err(AppError::Validation(format!(
             "Soul with name '{}' already exists",
             body.name
@@ -141,11 +137,11 @@ pub async fn create_soul(
     }
 
     let soul = Soul::new(body.name, body.content, false);
-    let saved = repo.save(&soul).await?;
+    let saved = state.soul_repo.save(&soul).await?;
 
     tracing::info!(soul_id = %saved.id, name = %saved.name, "soul.created");
 
-    Ok(Json(soul_to_response(&saved)))
+    Ok((StatusCode::CREATED, Json(soul_to_response(&saved))))
 }
 
 /// PATCH /api/souls/:id
@@ -157,9 +153,7 @@ pub async fn update_soul(
     Path(soul_id): Path<Uuid>,
     Json(body): Json<SoulUpdateRequest>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let repo = state.soul_repo.clone();
-
-    let soul = repo
+    let soul = state.soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
@@ -172,7 +166,7 @@ pub async fn update_soul(
         let edited_name = format!("{original_name} (edited)");
 
         // Rename + apply edits in one update
-        let updated = repo
+        let updated = state.soul_repo
             .update(
                 soul_id,
                 body.content.as_deref(),
@@ -192,7 +186,7 @@ pub async fn update_soul(
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        repo.save(&default_copy).await?;
+        state.soul_repo.save(&default_copy).await?;
 
         tracing::info!(
             soul_id = %soul_id,
@@ -202,7 +196,7 @@ pub async fn update_soul(
 
         updated
     } else {
-        repo.update(soul_id, body.content.as_deref(), body.enabled, None, None)
+        state.soul_repo.update(soul_id, body.content.as_deref(), body.enabled, None, None)
             .await?
     };
 
@@ -218,8 +212,7 @@ pub async fn get_soul_by_name(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let repo = state.soul_repo.clone();
-    let soul = repo
+    let soul = state.soul_repo
         .get_by_name(&name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul '{name}' not found")))?;
@@ -232,14 +225,12 @@ pub async fn enable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let repo = state.soul_repo.clone();
-
-    let soul = repo
+    let soul = state.soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
 
-    repo.update(soul_id, None, Some(true), None, None).await?;
+    state.soul_repo.update(soul_id, None, Some(true), None, None).await?;
     tracing::info!(soul_id = %soul_id, "soul.enabled");
 
     Ok(Json(SoulActionResponse {
@@ -255,14 +246,12 @@ pub async fn disable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let repo = state.soul_repo.clone();
-
-    let soul = repo
+    let soul = state.soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
 
-    repo.update(soul_id, None, Some(false), None, None).await?;
+    state.soul_repo.update(soul_id, None, Some(false), None, None).await?;
     tracing::info!(soul_id = %soul_id, "soul.disabled");
 
     Ok(Json(SoulActionResponse {
@@ -277,10 +266,8 @@ pub async fn disable_soul(
 pub async fn delete_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
-) -> Result<Json<SoulActionResponse>, AppError> {
-    let repo = state.soul_repo.clone();
-
-    let soul = repo
+) -> Result<StatusCode, AppError> {
+    let soul = state.soul_repo
         .get_by_id(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
@@ -291,16 +278,11 @@ pub async fn delete_soul(
         ));
     }
 
-    if !repo.delete(soul_id).await? {
+    if !state.soul_repo.delete(soul_id).await? {
         return Err(AppError::NotFound(format!("Soul {soul_id} not found")));
     }
 
     tracing::info!(soul_id = %soul_id, name = %soul.name, "soul.deleted");
 
-    Ok(Json(SoulActionResponse {
-        id: soul_id.to_string(),
-        name: soul.name,
-        enabled: false,
-        message: "Soul deleted".into(),
-    }))
+    Ok(StatusCode::NO_CONTENT)
 }

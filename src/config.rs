@@ -1,4 +1,31 @@
 use serde::Deserialize;
+use std::fmt;
+
+/// Supported LLM backend providers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmBackend {
+    #[default]
+    Ollama,
+    Openai,
+    #[serde(rename = "azure_openai")]
+    AzureOpenai,
+    #[serde(rename = "llamacpp")]
+    LlamaCpp,
+}
+
+impl fmt::Display for LlmBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ollama => write!(f, "ollama"),
+            Self::Openai => write!(f, "openai"),
+            Self::AzureOpenai => write!(f, "azure_openai"),
+            Self::LlamaCpp => write!(f, "llamacpp"),
+        }
+    }
+}
+
+
 
 /// Application configuration loaded from BOBE_* environment variables.
 ///
@@ -17,7 +44,7 @@ pub struct Config {
     pub database_url: String,
 
     // ── LLM ─────────────────────────────────────────────────────────────
-    pub llm_backend: String,
+    pub llm_backend: LlmBackend,
     pub llama_url: String,
     pub openai_api_key: String,
     pub openai_model: String,
@@ -35,7 +62,7 @@ pub struct Config {
     pub ollama_binary_path: Option<String>,
 
     // ── Vision LLM ──────────────────────────────────────────────────────
-    pub vision_backend: String,
+    pub vision_backend: LlmBackend,
     pub vision_ollama_model: String,
     pub vision_openai_model: String,
     pub vision_azure_openai_deployment: String,
@@ -136,7 +163,7 @@ impl Default for Config {
             port: 8765,
             mdns_enabled: false,
             database_url: expand_sqlite_path("sqlite:~/.bobe/data/bobrust.db"),
-            llm_backend: "ollama".into(),
+            llm_backend: LlmBackend::Ollama,
             llama_url: "http://localhost:8080".into(),
             openai_api_key: String::new(),
             openai_model: "gpt-4o-mini".into(),
@@ -148,7 +175,7 @@ impl Default for Config {
             ollama_auto_start: true,
             ollama_auto_pull: true,
             ollama_binary_path: None,
-            vision_backend: "ollama".into(),
+            vision_backend: LlmBackend::Ollama,
             vision_ollama_model: "qwen3-vl:8b".into(),
             vision_openai_model: "gpt-4o-mini".into(),
             vision_azure_openai_deployment: String::new(),

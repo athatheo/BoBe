@@ -68,7 +68,7 @@ impl ConversationService {
             return Ok(None);
         };
 
-        if conversation.state == ConversationState::Pending {
+        if conversation.is_pending() {
             let updated = self
                 .repo
                 .update_state(conversation_id, ConversationState::Active, None)
@@ -90,7 +90,7 @@ impl ConversationService {
             return Ok(None);
         };
 
-        if conversation.state == ConversationState::Closed {
+        if conversation.is_closed() {
             debug!(conversation_id = %conversation_id, "conversation.already_closed");
             return Ok(Some(conversation));
         }

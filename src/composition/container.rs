@@ -127,8 +127,8 @@ impl Container {
 
         // ── LLM providers ───────────────────────────────────────────────
         let llm_factory = Arc::new(LlmProviderFactory::new(http_client.clone(), config.clone()));
-        let llm_provider = llm_factory.create(&config.llm_backend)?;
-        let vision_llm_provider = llm_factory.create_vision(&config.vision_backend)?;
+        let llm_provider = llm_factory.create(config.llm_backend)?;
+        let vision_llm_provider = llm_factory.create_vision(config.vision_backend)?;
         let swappable_llm: Arc<ArcSwap<Arc<dyn LlmProvider>>> =
             Arc::new(ArcSwap::from_pointee(llm_provider.clone()));
 

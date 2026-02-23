@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -145,11 +146,10 @@ pub async fn list_memories(
     State(state): State<Arc<AppState>>,
     Query(params): Query<MemoryListQuery>,
 ) -> Result<Json<MemoryListResponse>, AppError> {
-    let repo = state.memory_repo.clone();
     let limit = params.limit.clamp(1, 1000);
     let offset = params.offset.max(0);
 
-    let (memories, total) = repo
+    let (memories, total) = state.memory_repo
         .find_all(
             params.memory_type.as_deref(),
             params.category.as_deref(),
@@ -172,8 +172,7 @@ pub async fn get_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryResponse>, AppError> {
-    let repo = state.memory_repo.clone();
-    let memory = repo
+    let memory = state.memory_repo
         .get_by_id(memory_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
@@ -185,7 +184,7 @@ pub async fn get_memory(
 pub async fn create_memory(
     State(state): State<Arc<AppState>>,
     Json(body): Json<MemoryCreateRequest>,
-) -> Result<Json<MemoryResponse>, AppError> {
+) -> Result<(StatusCode, Json<MemoryResponse>), AppError> {
     if body.content.len() < 3 {
         return Err(AppError::Validation(
             "content must be at least 3 characters".into(),
@@ -201,8 +200,7 @@ pub async fn create_memory(
         body.category,
     );
 
-    let repo = state.memory_repo.clone();
-    let saved = repo.save(&memory).await?;
+    let saved = state.memory_repo.save(&memory).await?;
 
     tracing::info!(
         memory_id = %saved.id,
@@ -211,7 +209,7 @@ pub async fn create_memory(
         "memory.created",
     );
 
-    Ok(Json(memory_to_response(&saved)))
+    Ok((StatusCode::CREATED, Json(memory_to_response(&saved))))
 }
 
 /// PUT /api/memories/:id
@@ -220,13 +218,11 @@ pub async fn update_memory(
     Path(memory_id): Path<Uuid>,
     Json(body): Json<MemoryUpdateRequest>,
 ) -> Result<Json<MemoryResponse>, AppError> {
-    let repo = state.memory_repo.clone();
-
-    repo.get_by_id(memory_id)
+    state.memory_repo.get_by_id(memory_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
 
-    let updated = repo
+    let updated = state.memory_repo
         .update(
             memory_id,
             body.content.as_deref(),
@@ -244,10 +240,8 @@ pub async fn update_memory(
 pub async fn delete_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
-) -> Result<Json<MemoryActionResponse>, AppError> {
-    let repo = state.memory_repo.clone();
-
-    if !repo.delete(memory_id).await? {
+) -> Result<StatusCode, AppError> {
+    if !state.memory_repo.delete(memory_id).await? {
         return Err(AppError::NotFound(format!(
             "Memory {memory_id} not found"
         )));
@@ -255,11 +249,7 @@ pub async fn delete_memory(
 
     tracing::info!(memory_id = %memory_id, "memory.deleted");
 
-    Ok(Json(MemoryActionResponse {
-        id: memory_id.to_string(),
-        enabled: false,
-        message: "Memory permanently deleted".into(),
-    }))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /api/memories/:id/enable
@@ -267,9 +257,7 @@ pub async fn enable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
-    let repo = state.memory_repo.clone();
-
-    let updated = repo
+    let updated = state.memory_repo
         .update(memory_id, None, Some(true), None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
@@ -288,9 +276,7 @@ pub async fn disable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
-    let repo = state.memory_repo.clone();
-
-    let updated = repo
+    let updated = state.memory_repo
         .update(memory_id, None, Some(false), None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;

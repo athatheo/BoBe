@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -85,12 +86,10 @@ pub async fn list_profiles(
     State(state): State<Arc<AppState>>,
     Query(params): Query<UserProfileListQuery>,
 ) -> Result<Json<UserProfileListResponse>, AppError> {
-    let repo = state.user_profile_repo.clone();
-
     let profiles = if params.enabled_only {
-        repo.find_enabled().await?
+        state.user_profile_repo.find_enabled().await?
     } else {
-        repo.get_all().await?
+        state.user_profile_repo.get_all().await?
     };
 
     let enabled_count = profiles.iter().filter(|p| p.enabled).count();
@@ -106,7 +105,7 @@ pub async fn list_profiles(
 pub async fn create_profile(
     State(state): State<Arc<AppState>>,
     Json(body): Json<UserProfileCreateRequest>,
-) -> Result<Json<UserProfileResponse>, AppError> {
+) -> Result<(StatusCode, Json<UserProfileResponse>), AppError> {
     if body.name.is_empty() {
         return Err(AppError::Validation("name must not be empty".into()));
     }
@@ -116,9 +115,7 @@ pub async fn create_profile(
         ));
     }
 
-    let repo = state.user_profile_repo.clone();
-
-    if repo.get_by_name(&body.name).await?.is_some() {
+    if state.user_profile_repo.get_by_name(&body.name).await?.is_some() {
         return Err(AppError::Validation(format!(
             "User profile with name '{}' already exists",
             body.name
@@ -126,11 +123,11 @@ pub async fn create_profile(
     }
 
     let profile = UserProfile::new(body.name, body.content, false);
-    let saved = repo.save(&profile).await?;
+    let saved = state.user_profile_repo.save(&profile).await?;
 
     tracing::info!(profile_id = %saved.id, name = %saved.name, "user_profile.created");
 
-    Ok(Json(profile_to_response(&saved)))
+    Ok((StatusCode::CREATED, Json(profile_to_response(&saved))))
 }
 
 /// GET /api/user-profiles/:id
@@ -138,9 +135,7 @@ pub async fn get_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    let repo = state.user_profile_repo.clone();
-
-    let profile = repo
+    let profile = state.user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
@@ -153,9 +148,7 @@ pub async fn get_profile_by_name(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    let repo = state.user_profile_repo.clone();
-
-    let profile = repo
+    let profile = state.user_profile_repo
         .get_by_name(&name)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile '{name}' not found")))?;
@@ -169,13 +162,11 @@ pub async fn update_profile(
     Path(profile_id): Path<Uuid>,
     Json(body): Json<UserProfileUpdateRequest>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    let repo = state.user_profile_repo.clone();
-
-    repo.get_by_id(profile_id)
+    state.user_profile_repo.get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
 
-    let updated = repo
+    let updated = state.user_profile_repo
         .update(profile_id, body.content.as_deref(), body.enabled)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
@@ -189,14 +180,12 @@ pub async fn enable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    let repo = state.user_profile_repo.clone();
-
-    let profile = repo
+    let profile = state.user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
 
-    repo.update(profile_id, None, Some(true)).await?;
+    state.user_profile_repo.update(profile_id, None, Some(true)).await?;
     tracing::info!(profile_id = %profile_id, "user_profile.enabled");
 
     Ok(Json(UserProfileActionResponse {
@@ -212,14 +201,12 @@ pub async fn disable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    let repo = state.user_profile_repo.clone();
-
-    let profile = repo
+    let profile = state.user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
 
-    repo.update(profile_id, None, Some(false)).await?;
+    state.user_profile_repo.update(profile_id, None, Some(false)).await?;
     tracing::info!(profile_id = %profile_id, "user_profile.disabled");
 
     Ok(Json(UserProfileActionResponse {
@@ -234,10 +221,8 @@ pub async fn disable_profile(
 pub async fn delete_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
-) -> Result<Json<UserProfileActionResponse>, AppError> {
-    let repo = state.user_profile_repo.clone();
-
-    let profile = repo
+) -> Result<StatusCode, AppError> {
+    let profile = state.user_profile_repo
         .get_by_id(profile_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
@@ -248,7 +233,7 @@ pub async fn delete_profile(
         ));
     }
 
-    let deleted = repo.delete(profile_id).await?;
+    let deleted = state.user_profile_repo.delete(profile_id).await?;
     if !deleted {
         return Err(AppError::NotFound(format!(
             "User profile {profile_id} not found"
@@ -257,10 +242,5 @@ pub async fn delete_profile(
 
     tracing::info!(profile_id = %profile_id, name = %profile.name, "user_profile.deleted");
 
-    Ok(Json(UserProfileActionResponse {
-        id: profile_id.to_string(),
-        name: profile.name,
-        enabled: false,
-        message: "User profile deleted".into(),
-    }))
+    Ok(StatusCode::NO_CONTENT)
 }

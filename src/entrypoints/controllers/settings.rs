@@ -4,6 +4,7 @@ use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use crate::config::LlmBackend;
 use crate::app_state::AppState;
 use crate::error::AppError;
 
@@ -12,7 +13,7 @@ use crate::error::AppError;
 #[derive(Debug, Serialize)]
 pub struct SettingsResponse {
     // LLM
-    pub llm_backend: String,
+    pub llm_backend: LlmBackend,
     pub ollama_model: String,
     pub openai_model: String,
     pub openai_api_key_set: bool,
@@ -123,7 +124,7 @@ pub async fn get_settings(
     let cfg = state.config();
 
     Ok(Json(SettingsResponse {
-        llm_backend: cfg.llm_backend.clone(),
+        llm_backend: cfg.llm_backend,
         ollama_model: cfg.ollama_model.clone(),
         openai_model: cfg.openai_model.clone(),
         openai_api_key_set: !cfg.openai_api_key.is_empty(),
@@ -166,7 +167,11 @@ pub async fn update_settings(
 
     // Apply each optional field
     if let Some(ref v) = body.llm_backend {
-        new_config.llm_backend = v.clone();
+        let backend: LlmBackend = serde_json::from_value(serde_json::Value::String(v.clone()))
+            .map_err(|_| AppError::Validation(format!(
+                "Invalid llm_backend '{v}'. Valid: ollama, openai, azure_openai, llamacpp"
+            )))?;
+        new_config.llm_backend = backend;
         applied.push("llm_backend".into());
     }
     if let Some(ref v) = body.ollama_model {

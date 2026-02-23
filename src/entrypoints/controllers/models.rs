@@ -2,10 +2,12 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+use crate::config::LlmBackend;
 use crate::app_state::AppState;
 use crate::error::AppError;
 
@@ -20,7 +22,7 @@ pub struct ModelInfo {
 
 #[derive(Debug, Serialize)]
 pub struct ModelsListResponse {
-    pub backend: String,
+    pub backend: LlmBackend,
     pub models: Vec<ModelInfo>,
     pub supports_pull: bool,
 }
@@ -36,12 +38,6 @@ pub struct PullModelResponse {
     pub message: String,
 }
 
-#[derive(Debug, Serialize)]
-pub struct DeleteModelResponse {
-    pub ok: bool,
-    pub message: String,
-}
-
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 /// GET /api/models
@@ -52,9 +48,9 @@ pub async fn list_models(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ModelsListResponse>, AppError> {
     let cfg = state.config();
-    let backend = cfg.llm_backend.clone();
+    let backend = cfg.llm_backend;
 
-    let (models, supports_pull) = if backend == "ollama" {
+    let (models, supports_pull) = if backend == LlmBackend::Ollama {
         // Try to fetch from Ollama API
         let ollama_url = cfg.ollama_url.clone();
         match fetch_ollama_models(&ollama_url).await {
@@ -86,7 +82,7 @@ pub async fn pull_model(
     use tokio_stream::StreamExt;
 
     let cfg = state.config();
-    if cfg.llm_backend != "ollama" {
+    if cfg.llm_backend != LlmBackend::Ollama {
         let stream = async_stream::stream! {
             yield Ok::<_, std::convert::Infallible>(
                 Event::default()
@@ -156,13 +152,12 @@ pub async fn pull_model(
 pub async fn delete_model(
     State(state): State<Arc<AppState>>,
     Path(model_name): Path<String>,
-) -> Result<Json<DeleteModelResponse>, AppError> {
+) -> Result<StatusCode, AppError> {
     let cfg = state.config();
-    if cfg.llm_backend != "ollama" {
-        return Ok(Json(DeleteModelResponse {
-            ok: false,
-            message: "Model deletion only supported for Ollama backend".into(),
-        }));
+    if cfg.llm_backend != LlmBackend::Ollama {
+        return Err(AppError::Validation(
+            "Model deletion only supported for Ollama backend".into(),
+        ));
     }
 
     let url = format!("{}/api/delete", cfg.ollama_url);
@@ -175,17 +170,11 @@ pub async fn delete_model(
 
     if resp.status().is_success() {
         tracing::info!(model = %model_name, "models.deleted");
-        Ok(Json(DeleteModelResponse {
-            ok: true,
-            message: format!("Model '{model_name}' deleted"),
-        }))
+        Ok(StatusCode::NO_CONTENT)
     } else {
         let status = resp.status();
         tracing::error!(model = %model_name, status = %status, "models.delete_failed");
-        Ok(Json(DeleteModelResponse {
-            ok: false,
-            message: format!("Failed to delete: HTTP {status}"),
-        }))
+        Err(AppError::Internal(format!("Failed to delete: HTTP {status}")))
     }
 }
 
@@ -205,7 +194,7 @@ pub async fn list_registry_models() -> Json<ModelsListResponse> {
     if let (Some(ref models), Some(ref ts)) = *guard
         && ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS {
             return Json(ModelsListResponse {
-                backend: "ollama".into(),
+                backend: LlmBackend::Ollama,
                 models: models.clone(),
                 supports_pull: true,
             });
@@ -216,7 +205,7 @@ pub async fn list_registry_models() -> Json<ModelsListResponse> {
         Ok(models) => {
             *guard = (Some(models.clone()), Some(Instant::now()));
             Json(ModelsListResponse {
-                backend: "ollama".into(),
+                backend: LlmBackend::Ollama,
                 models,
                 supports_pull: true,
             })
@@ -226,7 +215,7 @@ pub async fn list_registry_models() -> Json<ModelsListResponse> {
             // Return stale cache or empty
             let models = guard.0.clone().unwrap_or_default();
             Json(ModelsListResponse {
-                backend: "ollama".into(),
+                backend: LlmBackend::Ollama,
                 models,
                 supports_pull: true,
             })

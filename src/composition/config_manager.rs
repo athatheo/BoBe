@@ -225,18 +225,20 @@ impl ConfigManager {
         };
 
         let config = self.config.load();
-        let backend = changes
-            .get("llm_backend")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&config.llm_backend);
+        let backend = if let Some(v) = changes.get("llm_backend").and_then(|v| v.as_str()) {
+            serde_json::from_value::<crate::config::LlmBackend>(serde_json::Value::String(v.to_owned()))
+                .unwrap_or(config.llm_backend)
+        } else {
+            config.llm_backend
+        };
 
         match factory.create(backend) {
             Ok(new_provider) => {
                 self.llm_provider.store(Arc::new(new_provider));
-                info!(backend, "config_manager.llm_rebuilt");
+                info!(backend = %backend, "config_manager.llm_rebuilt");
             }
             Err(e) => {
-                error!(error = %e, backend, "config_manager.llm_rebuild_failed");
+                error!(error = %e, backend = %backend, "config_manager.llm_rebuild_failed");
                 // Mark LLM fields as requiring restart since rebuild failed
                 for key in changes.keys() {
                     if LLM_FIELDS.contains(&key.as_str()) {

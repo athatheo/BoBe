@@ -4,7 +4,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tracing::{error, info, warn};
 
 use crate::app_state::AppState;
-use crate::config::Config;
+use crate::config::{Config, LlmBackend};
 use crate::error::AppError;
 
 use super::container::Container;
@@ -51,7 +51,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let container = Container::build(config.clone(), pool)?;
 
     // 4. Ensure Ollama is running (if using Ollama backend)
-    if config.llm_backend == "ollama" || config.vision_backend == "ollama" {
+    if config.llm_backend == LlmBackend::Ollama || config.vision_backend == LlmBackend::Ollama {
         match container.ollama_manager.ensure_running().await {
             Ok(()) => info!(model = %config.ollama_model, "ollama.ready"),
             Err(e) => {
@@ -62,7 +62,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         }
 
         // Also ensure vision model if needed
-        if config.vision_backend == "ollama" {
+        if config.vision_backend == LlmBackend::Ollama {
             match container
                 .ollama_manager
                 .ensure_model(&config.vision_ollama_model)

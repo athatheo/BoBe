@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -122,8 +123,7 @@ fn config_to_response(cfg: &McpServerConfig) -> McpConfigResponse {
 pub async fn list_configs(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<McpConfigListResponse>, AppError> {
-    let repo = state.mcp_config_repo.clone();
-    let configs = repo.get_all().await?;
+    let configs = state.mcp_config_repo.get_all().await?;
     let enabled_count = configs.iter().filter(|c| c.enabled).count();
 
     Ok(Json(McpConfigListResponse {
@@ -137,7 +137,7 @@ pub async fn list_configs(
 pub async fn create_config(
     State(state): State<Arc<AppState>>,
     Json(body): Json<McpConfigCreateRequest>,
-) -> Result<Json<McpConfigResponse>, AppError> {
+) -> Result<(StatusCode, Json<McpConfigResponse>), AppError> {
     if body.server_name.is_empty() {
         return Err(AppError::Validation(
             "server_name must not be empty".into(),
@@ -147,9 +147,7 @@ pub async fn create_config(
         return Err(AppError::Validation("command must not be empty".into()));
     }
 
-    let repo = state.mcp_config_repo.clone();
-
-    if repo.get_by_name(&body.server_name).await?.is_some() {
+    if state.mcp_config_repo.get_by_name(&body.server_name).await?.is_some() {
         return Err(AppError::Validation(format!(
             "MCP config with name '{}' already exists",
             body.server_name
@@ -167,7 +165,7 @@ pub async fn create_config(
     cfg.timeout_seconds = body.timeout_seconds;
     cfg.excluded_tools = Some(excluded_json);
 
-    let saved = repo.save(&cfg).await?;
+    let saved = state.mcp_config_repo.save(&cfg).await?;
 
     tracing::info!(
         config_id = %saved.id,
@@ -175,7 +173,7 @@ pub async fn create_config(
         "mcp_config.created",
     );
 
-    Ok(Json(config_to_response(&saved)))
+    Ok((StatusCode::CREATED, Json(config_to_response(&saved))))
 }
 
 /// PUT /api/mcp-configs/:id
@@ -184,9 +182,7 @@ pub async fn update_config(
     Path(config_id): Path<Uuid>,
     Json(body): Json<McpConfigUpdateRequest>,
 ) -> Result<Json<McpConfigUpdateResponse>, AppError> {
-    let repo = state.mcp_config_repo.clone();
-
-    let _existing = repo
+    let _existing = state.mcp_config_repo
         .get_by_id(config_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("MCP config {config_id} not found")))?;
@@ -207,7 +203,7 @@ pub async fn update_config(
         .map(serde_json::to_string)
         .transpose()?;
 
-    let updated = repo
+    let updated = state.mcp_config_repo
         .update(
             config_id,
             body.command.as_deref(),
@@ -235,9 +231,7 @@ pub async fn get_config(
     State(state): State<Arc<AppState>>,
     Path(config_id): Path<Uuid>,
 ) -> Result<Json<McpConfigResponse>, AppError> {
-    let repo = state.mcp_config_repo.clone();
-
-    let cfg = repo
+    let cfg = state.mcp_config_repo
         .get_by_id(config_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("MCP config {config_id} not found")))?;
@@ -250,9 +244,7 @@ pub async fn enable_config(
     State(state): State<Arc<AppState>>,
     Path(config_id): Path<Uuid>,
 ) -> Result<Json<McpConfigUpdateResponse>, AppError> {
-    let repo = state.mcp_config_repo.clone();
-
-    let updated = repo
+    let updated = state.mcp_config_repo
         .update(config_id, None, None, None, Some(true), None, None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("MCP config {config_id} not found")))?;
@@ -272,9 +264,7 @@ pub async fn disable_config(
     State(state): State<Arc<AppState>>,
     Path(config_id): Path<Uuid>,
 ) -> Result<Json<McpConfigUpdateResponse>, AppError> {
-    let repo = state.mcp_config_repo.clone();
-
-    let updated = repo
+    let updated = state.mcp_config_repo
         .update(config_id, None, None, None, Some(false), None, None)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("MCP config {config_id} not found")))?;
@@ -299,8 +289,7 @@ pub async fn connect_server(
         .as_ref()
         .ok_or_else(|| AppError::Validation("MCP is not enabled".into()))?;
 
-    let repo = state.mcp_config_repo.clone();
-    let cfg = repo
+    let cfg = state.mcp_config_repo
         .get_by_id(config_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("MCP config {config_id} not found")))?;
@@ -338,8 +327,7 @@ pub async fn disconnect_server(
         .as_ref()
         .ok_or_else(|| AppError::Validation("MCP is not enabled".into()))?;
 
-    let repo = state.mcp_config_repo.clone();
-    let cfg = repo
+    let cfg = state.mcp_config_repo
         .get_by_id(config_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("MCP config {config_id} not found")))?;
@@ -360,25 +348,18 @@ pub async fn disconnect_server(
 pub async fn delete_config(
     State(state): State<Arc<AppState>>,
     Path(config_id): Path<Uuid>,
-) -> Result<Json<McpConfigUpdateResponse>, AppError> {
-    let repo = state.mcp_config_repo.clone();
-
-    let existing = repo.get_by_id(config_id).await?.ok_or_else(|| {
+) -> Result<StatusCode, AppError> {
+    state.mcp_config_repo.get_by_id(config_id).await?.ok_or_else(|| {
         AppError::NotFound(format!("MCP config {config_id} not found"))
     })?;
 
-    if !repo.delete(config_id).await? {
+    if !state.mcp_config_repo.delete(config_id).await? {
         return Err(AppError::NotFound(format!(
             "MCP config {config_id} not found"
         )));
     }
 
-    tracing::info!(config_id = %config_id, name = %existing.server_name, "mcp_config.deleted");
+    tracing::info!(config_id = %config_id, "mcp_config.deleted");
 
-    Ok(Json(McpConfigUpdateResponse {
-        id: config_id.to_string(),
-        server_name: existing.server_name,
-        enabled: false,
-        message: "MCP config deleted".into(),
-    }))
+    Ok(StatusCode::NO_CONTENT)
 }

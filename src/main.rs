@@ -152,7 +152,7 @@ async fn main() -> anyhow::Result<()> {
                 ).await.ok();
             }
 
-            if config.llm_backend == "ollama" || config.vision_backend == "ollama" {
+            if config.llm_backend == crate::config::LlmBackend::Ollama || config.vision_backend == crate::config::LlmBackend::Ollama {
                 tracing::info!("Stopping Ollama (if managed)...");
                 tokio::time::timeout(
                     std::time::Duration::from_secs(2),
