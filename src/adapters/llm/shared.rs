@@ -191,6 +191,10 @@ pub fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
 }
 
 /// Parse a single SSE chunk from a streaming chat-completions response.
+///
+/// Tool call arguments in streaming deltas are fragments — they are NOT parsed
+/// into `AiToolCall` here. Instead use `ToolCallAccumulator` to reconstruct
+/// complete tool calls across chunks.
 pub fn parse_stream_chunk(data: &Value) -> Option<StreamChunk> {
     let choice = data.get("choices")?.get(0)?;
     let delta = choice.get("delta")?;
@@ -201,7 +205,9 @@ pub fn parse_stream_chunk(data: &Value) -> Option<StreamChunk> {
         .unwrap_or("")
         .to_owned();
 
-    let tool_calls = parse_tool_calls(delta);
+    // Don't parse tool_calls from deltas — they're fragments.
+    // Callers should use ToolCallAccumulator instead.
+    let tool_calls = vec![];
 
     let finish_reason = choice
         .get("finish_reason")
@@ -213,4 +219,107 @@ pub fn parse_stream_chunk(data: &Value) -> Option<StreamChunk> {
         tool_calls,
         finish_reason,
     })
+}
+
+/// Extract raw tool call delta info from an SSE chunk for accumulation.
+pub fn extract_tool_call_deltas(data: &Value) -> Vec<ToolCallDelta> {
+    let Some(choice) = data.get("choices").and_then(|c| c.get(0)) else {
+        return vec![];
+    };
+    let Some(delta) = choice.get("delta") else {
+        return vec![];
+    };
+    let Some(tool_calls) = delta.get("tool_calls").and_then(|v| v.as_array()) else {
+        return vec![];
+    };
+
+    tool_calls
+        .iter()
+        .filter_map(|tc| {
+            let index = tc.get("index")?.as_u64()? as usize;
+            let id = tc.get("id").and_then(|v| v.as_str()).map(|s| s.to_owned());
+            let func = tc.get("function");
+            let name = func
+                .and_then(|f| f.get("name"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_owned());
+            let arguments = func
+                .and_then(|f| f.get("arguments"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_owned();
+            Some(ToolCallDelta { index, id, name, arguments })
+        })
+        .collect()
+}
+
+/// Raw tool call delta from a single SSE chunk.
+#[derive(Debug)]
+pub struct ToolCallDelta {
+    pub index: usize,
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub arguments: String,
+}
+
+/// Accumulates streaming tool call deltas into complete `AiToolCall` objects.
+///
+/// OpenAI/Azure send tool calls incrementally: the first chunk contains
+/// the `id` and `name`, subsequent chunks append to `arguments`.
+#[derive(Default)]
+pub struct ToolCallAccumulator {
+    pending: Vec<PendingToolCall>,
+}
+
+#[derive(Default)]
+struct PendingToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+impl ToolCallAccumulator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Feed a raw SSE data value. Extracts and buffers any tool call deltas.
+    pub fn feed(&mut self, data: &Value) {
+        for delta in extract_tool_call_deltas(data) {
+            // Grow the pending vec if needed
+            while self.pending.len() <= delta.index {
+                self.pending.push(PendingToolCall::default());
+            }
+            let entry = &mut self.pending[delta.index];
+            if let Some(id) = delta.id {
+                entry.id = id;
+            }
+            if let Some(name) = delta.name {
+                entry.name = name;
+            }
+            entry.arguments.push_str(&delta.arguments);
+        }
+    }
+
+    /// Returns true if any tool calls have been accumulated.
+    pub fn has_tool_calls(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
+    /// Finalize and return complete `AiToolCall` objects.
+    pub fn finish(self) -> Vec<AiToolCall> {
+        self.pending
+            .into_iter()
+            .filter(|tc| !tc.id.is_empty() && !tc.name.is_empty())
+            .map(|tc| {
+                let arguments: HashMap<String, Value> =
+                    serde_json::from_str(&tc.arguments).unwrap_or_default();
+                AiToolCall {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments,
+                }
+            })
+            .collect()
+    }
 }

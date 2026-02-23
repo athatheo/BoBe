@@ -140,6 +140,29 @@ async fn main() -> anyhow::Result<()> {
                 let _ = h.await;
             }
 
+            // Graceful shutdown: stop services in order (mDNS → MCP → Ollama → DB)
+            tracing::info!("Stopping mDNS...");
+            state.mdns_announcer.stop().await;
+
+            if let Some(ref mcp) = state.mcp_tool_adapter {
+                tracing::info!("Stopping MCP servers...");
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    mcp.shutdown(),
+                ).await.ok();
+            }
+
+            if config.llm_backend == "ollama" || config.vision_backend == "ollama" {
+                tracing::info!("Stopping Ollama (if managed)...");
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    state.ollama_manager.stop(),
+                ).await.ok();
+            }
+
+            tracing::info!("Closing database pool...");
+            state.db.close().await;
+
             tracing::info!("BoBe shutdown complete");
         }
         Commands::Version => {

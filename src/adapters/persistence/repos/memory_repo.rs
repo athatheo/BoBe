@@ -188,12 +188,15 @@ impl MemoryRepository for SqliteMemoryRepo {
         enabled_only: bool,
         min_score: f64,
     ) -> Result<Vec<(Memory, f64)>, AppError> {
-        // For SQLite, we do brute-force cosine similarity in Rust since
-        // sqlite-vec may not be available. Fetch all memories with embeddings.
+        // Brute-force cosine similarity in Rust. Cap the candidate set
+        // by fetching only the most recent embeddings (up to 5000) to avoid
+        // unbounded memory usage at scale.
         let sql = if enabled_only {
-            "SELECT * FROM memories WHERE embedding IS NOT NULL AND enabled = 1"
+            "SELECT * FROM memories WHERE embedding IS NOT NULL AND enabled = 1 \
+             ORDER BY updated_at DESC LIMIT 5000"
         } else {
-            "SELECT * FROM memories WHERE embedding IS NOT NULL"
+            "SELECT * FROM memories WHERE embedding IS NOT NULL \
+             ORDER BY updated_at DESC LIMIT 5000"
         };
 
         let memories = sqlx::query_as::<_, Memory>(sql)

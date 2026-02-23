@@ -106,7 +106,8 @@ impl ObservationRepository for SqliteObservationRepo {
         limit: i64,
     ) -> Result<Vec<(Observation, f64)>, AppError> {
         let observations = sqlx::query_as::<_, Observation>(
-            "SELECT * FROM observations WHERE embedding IS NOT NULL",
+            "SELECT * FROM observations WHERE embedding IS NOT NULL \
+             ORDER BY created_at DESC LIMIT 5000",
         )
         .fetch_all(&self.pool)
         .await

@@ -6,7 +6,7 @@ use reqwest::Client;
 use tracing::{debug, error, warn};
 
 use crate::adapters::llm::shared::{
-    build_chat_request, parse_response, parse_stream_chunk,
+    build_chat_request, parse_response, parse_stream_chunk, ToolCallAccumulator,
 };
 use crate::error::AppError;
 use crate::ports::llm::LlmProvider;
@@ -140,6 +140,7 @@ impl LlmProvider for LlamaCppProvider {
 
             let mut byte_stream = resp.bytes_stream();
             let mut buffer = String::new();
+            let mut tool_accumulator = ToolCallAccumulator::new();
 
             while let Some(bytes_result) = byte_stream.next().await {
                 let bytes = match bytes_result {
@@ -170,7 +171,13 @@ impl LlmProvider for LlamaCppProvider {
                         }
                     };
 
-                    if let Some(chunk) = parse_stream_chunk(&data) {
+                    tool_accumulator.feed(&data);
+
+                    if let Some(mut chunk) = parse_stream_chunk(&data) {
+                        if chunk.finish_reason.is_some() && tool_accumulator.has_tool_calls() {
+                            let acc = std::mem::take(&mut tool_accumulator);
+                            chunk.tool_calls = acc.finish();
+                        }
                         yield Ok(chunk);
                     }
                 }

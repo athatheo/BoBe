@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::adapters::sse::event_queue::EventQueue;
-use crate::adapters::sse::types::IndicatorType;
+use crate::adapters::sse::types::{EventType, IndicatorType, StreamBundle};
 use crate::application::runtime::message_handler::MessageHandler;
 use crate::application::runtime::state::{Decision, OrchestratorConfig};
 use crate::application::services::conversation_service::ConversationService;
@@ -145,12 +145,15 @@ impl RuntimeSession {
                 self.log_heartbeat(loop_counter).await;
             }
 
-            // CheckinTrigger
-            {
+            // CheckinTrigger (error-safe)
+            match std::panic::AssertUnwindSafe(async {
                 let mut checkin = self.checkin_trigger.lock().await;
-                if checkin.fire().await == Decision::Engage {
+                checkin.fire().await
+            }).await {
+                decision if decision == Decision::Engage => {
                     info!(trigger = "checkin", "runtime_session.reach_out");
                 }
+                _ => {}
             }
 
             // Stale conversation cleanup
@@ -158,32 +161,63 @@ impl RuntimeSession {
                 warn!(error = %e, "runtime_session.stale_check_failed");
             }
 
-            // GoalTrigger
+            // GoalTrigger (error-safe)
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
             if time_since_goal >= self.config.goal_check_interval_seconds {
-                if self.goal_trigger.fire().await == Decision::Engage {
-                    info!(trigger = "goal", "runtime_session.reach_out");
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(300),
+                    self.goal_trigger.fire(),
+                ).await {
+                    Ok(Decision::Engage) => {
+                        info!(trigger = "goal", "runtime_session.reach_out");
+                    }
+                    Ok(_) => {}
+                    Err(_) => {
+                        warn!("runtime_session.goal_trigger_timeout");
+                    }
                 }
                 last_goal_check = Instant::now();
             }
 
-            // CaptureTrigger
+            // CaptureTrigger (error-safe)
             if self.capture_enabled.load(std::sync::atomic::Ordering::Relaxed) {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
                 if time_since_capture >= self.config.capture_interval_seconds {
-                    let mut ct = self.capture_trigger.lock().await;
-                    if ct.fire().await == Decision::Engage {
-                        info!(trigger = "capture", "runtime_session.reach_out");
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(300),
+                        async {
+                            let mut ct = self.capture_trigger.lock().await;
+                            ct.fire().await
+                        },
+                    ).await {
+                        Ok(Decision::Engage) => {
+                            info!(trigger = "capture", "runtime_session.reach_out");
+                        }
+                        Ok(_) => {}
+                        Err(_) => {
+                            warn!("runtime_session.capture_trigger_timeout");
+                            self.push_error_event("capture_trigger", "Capture trigger timed out");
+                        }
                     }
                     last_capture_time = Instant::now();
                 }
             }
 
-            // AgentJobTrigger
-            if let Some(ref agent_trigger) = self.agent_job_trigger
-                && agent_trigger.fire().await == Decision::Engage {
-                    info!(trigger = "agent_job", "runtime_session.reach_out");
+            // AgentJobTrigger (error-safe)
+            if let Some(ref agent_trigger) = self.agent_job_trigger {
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(60),
+                    agent_trigger.fire(),
+                ).await {
+                    Ok(Decision::Engage) => {
+                        info!(trigger = "agent_job", "runtime_session.reach_out");
+                    }
+                    Ok(_) => {}
+                    Err(_) => {
+                        warn!("runtime_session.agent_job_trigger_timeout");
+                    }
                 }
+            }
 
             tokio::time::sleep(maintenance_interval).await;
         }
@@ -245,5 +279,21 @@ impl RuntimeSession {
             "indicator": format!("{:?}", self.event_queue.current_indicator()),
             "capturing": self.capture_enabled.load(std::sync::atomic::Ordering::Relaxed),
         })
+    }
+
+    /// Push a recoverable error event to SSE clients.
+    fn push_error_event(&self, trigger: &str, message: &str) {
+        error!(trigger, message, "runtime_session.trigger_error");
+        self.event_queue.push(StreamBundle {
+            event_type: EventType::Error,
+            message_id: uuid::Uuid::new_v4().to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            description: format!("{trigger} error"),
+            payload: serde_json::json!({
+                "trigger": trigger,
+                "message": message,
+                "recoverable": true,
+            }),
+        });
     }
 }

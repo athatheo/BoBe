@@ -207,6 +207,9 @@ impl ConversationRepository for SqliteConversationRepo {
             _ => {}
         }
 
+        // Atomic: insert turn + touch conversation timestamp
+        let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
+
         sqlx::query(
             r#"INSERT INTO conversation_turns (id, role, content, conversation_id, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
@@ -217,17 +220,18 @@ impl ConversationRepository for SqliteConversationRepo {
         .bind(&conv_id)
         .bind(turn.created_at)
         .bind(turn.updated_at)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(AppError::Database)?;
 
-        // Touch the conversation's updated_at
         sqlx::query("UPDATE conversations SET updated_at = ?1 WHERE id = ?2")
             .bind(Utc::now())
             .bind(&conv_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(AppError::Database)?;
+
+        tx.commit().await.map_err(AppError::Database)?;
 
         debug!(
             conversation_id = %conv_id,

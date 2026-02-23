@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sqlx::sqlite::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tracing::{error, info, warn};
 
 use crate::app_state::AppState;
@@ -26,8 +26,18 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-    // 2. Create pool and run migrations
-    let pool = SqlitePool::connect(db_url)
+    // 2. Create pool with WAL mode and foreign keys, then run migrations
+    let connect_options: SqliteConnectOptions = db_url
+        .parse::<SqliteConnectOptions>()
+        .map_err(AppError::Database)?
+        .create_if_missing(true)
+        .pragma("journal_mode", "WAL")
+        .pragma("foreign_keys", "ON")
+        .pragma("busy_timeout", "5000");
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(connect_options)
         .await
         .map_err(AppError::Database)?;
 
@@ -118,8 +128,12 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         {
             Ok(orphans) if !orphans.is_empty() => {
                 info!(count = orphans.len(), "bootstrap.orphaned_jobs_found");
-                // They will be picked up by the agent job trigger and re-evaluated.
-                // For now just log — the trigger handles stale jobs.
+                for mut job in orphans {
+                    job.mark_failed("Orphaned on restart".to_string(), None);
+                    if let Err(e) = container.agent_job_repo.save(&job).await {
+                        warn!(job_id = %job.id, error = %e, "bootstrap.orphan_mark_failed");
+                    }
+                }
             }
             Ok(_) => {}
             Err(e) => warn!(error = %e, "bootstrap.orphan_check_failed"),
@@ -217,6 +231,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         ollama_manager: container.ollama_manager,
         config_manager: container.config_manager,
         mcp_tool_adapter: Some(container.mcp_adapter),
+        mdns_announcer: container.mdns_announcer,
     });
 
     // 11. Print startup banner
