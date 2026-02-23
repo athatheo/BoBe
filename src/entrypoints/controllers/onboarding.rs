@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::error::AppError;
@@ -25,6 +25,40 @@ pub struct OnboardingStatusResponse {
 #[derive(Debug, Serialize)]
 pub struct MarkCompleteResponse {
     pub ok: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigureLlmRequest {
+    pub mode: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConfigureLlmResponse {
+    pub ok: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullModelRequest {
+    pub model: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PullModelResponse {
+    pub ok: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WarmupEmbeddingResponse {
+    pub ok: bool,
+    pub message: String,
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
@@ -118,4 +152,100 @@ pub async fn mark_complete(
 ) -> Result<Json<MarkCompleteResponse>, AppError> {
     tracing::info!("onboarding.marked_complete");
     Ok(Json(MarkCompleteResponse { ok: true }))
+}
+
+/// POST /api/onboarding/configure-llm
+///
+/// Validates the LLM configuration request and returns success.
+pub async fn configure_llm(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConfigureLlmRequest>,
+) -> Result<Json<ConfigureLlmResponse>, AppError> {
+    let cfg = state.config();
+    let mode = body.mode.as_str();
+
+    match mode {
+        "ollama" => {
+            let model = body.model.unwrap_or_else(|| cfg.ollama_model.clone());
+            Ok(Json(ConfigureLlmResponse {
+                ok: true,
+                message: format!("Configured Ollama with model {model}"),
+            }))
+        }
+        "openai" => {
+            if body.api_key.as_ref().is_none_or(|k| k.is_empty()) {
+                return Ok(Json(ConfigureLlmResponse {
+                    ok: false,
+                    message: "API key required for OpenAI".into(),
+                }));
+            }
+            Ok(Json(ConfigureLlmResponse {
+                ok: true,
+                message: "Configured OpenAI".into(),
+            }))
+        }
+        "azure_openai" => {
+            if body.api_key.as_ref().is_none_or(|k| k.is_empty())
+                || body.endpoint.as_ref().is_none_or(|e| e.is_empty())
+            {
+                return Ok(Json(ConfigureLlmResponse {
+                    ok: false,
+                    message: "API key and endpoint required for Azure OpenAI".into(),
+                }));
+            }
+            Ok(Json(ConfigureLlmResponse {
+                ok: true,
+                message: "Configured Azure OpenAI".into(),
+            }))
+        }
+        "local" => Ok(Json(ConfigureLlmResponse {
+            ok: true,
+            message: "Configured local llama.cpp".into(),
+        })),
+        other => Ok(Json(ConfigureLlmResponse {
+            ok: false,
+            message: format!("Unknown mode: {other}"),
+        })),
+    }
+}
+
+/// POST /api/onboarding/pull-model
+///
+/// Pulls an Ollama model by delegating to the OllamaManager.
+pub async fn pull_model(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<PullModelRequest>,
+) -> Result<Json<PullModelResponse>, AppError> {
+    tracing::info!(model = %body.model, "onboarding.pull_model.start");
+    state.ollama_manager.pull_model(&body.model).await?;
+    tracing::info!(model = %body.model, "onboarding.pull_model.complete");
+    Ok(Json(PullModelResponse {
+        ok: true,
+        message: format!("Model '{}' pulled successfully", body.model),
+    }))
+}
+
+/// POST /api/onboarding/warmup-embedding
+///
+/// Warms up the embedding model by generating a test embedding.
+pub async fn warmup_embedding(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<WarmupEmbeddingResponse>, AppError> {
+    tracing::info!("onboarding.warmup_embedding.start");
+    match state.embedding_provider.embed("warmup").await {
+        Ok(_) => {
+            tracing::info!("onboarding.warmup_embedding.complete");
+            Ok(Json(WarmupEmbeddingResponse {
+                ok: true,
+                message: "Embedding model ready".into(),
+            }))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "onboarding.warmup_embedding.failed");
+            Ok(Json(WarmupEmbeddingResponse {
+                ok: false,
+                message: format!("Embedding warmup failed: {e}"),
+            }))
+        }
+    }
 }

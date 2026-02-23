@@ -98,8 +98,8 @@ impl NativeTool for CreateGoalTool {
         // Check for duplicates via semantic similarity
         let embedding = self.embedding_provider.embed(content).await?;
         let similar = self.goal_repo.find_similar(&embedding, 1, true).await?;
-        if let Some((existing, score)) = similar.first() {
-            if *score > 0.85 {
+        if let Some((existing, score)) = similar.first()
+            && *score > 0.85 {
                 return Ok(format!(
                     "A similar goal already exists (similarity: {:.0}%):\n[{}] {}\nNo new goal created.",
                     score * 100.0,
@@ -107,7 +107,6 @@ impl NativeTool for CreateGoalTool {
                     existing.content,
                 ));
             }
-        }
 
         let mut goal = Goal::new(content.to_owned(), GoalSource::User, priority);
         goal.embedding = Some(serde_json::to_string(&embedding)?);

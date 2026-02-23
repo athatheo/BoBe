@@ -12,6 +12,12 @@ const MAX_LINES: usize = 500;
 
 pub struct FileReaderTool;
 
+impl Default for FileReaderTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileReaderTool {
     pub fn new() -> Self {
         Self

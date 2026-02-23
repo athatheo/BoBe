@@ -44,8 +44,8 @@ impl GoalTrigger {
     /// Execute the goal trigger. Returns `Decision::Engage` if engagement was triggered.
     pub async fn fire(&self) -> Decision {
         // Cooldown check
-        if let Some(ref cooldown_repo) = self.cooldown_repo {
-            if let Some(cooldown) = cooldown_repo.check_cooldown(
+        if let Some(ref cooldown_repo) = self.cooldown_repo
+            && let Some(cooldown) = cooldown_repo.check_cooldown(
                 self.config.decision_cooldown_minutes,
                 self.config.decision_extended_cooldown_minutes,
             ) {
@@ -55,7 +55,6 @@ impl GoalTrigger {
                 );
                 return Decision::Idle;
             }
-        }
 
         let goals = match self.goal_repo.find_active(true).await {
             Ok(g) => g,
@@ -76,6 +75,8 @@ impl GoalTrigger {
             let context = TriggerContext {
                 trigger_type: TriggerType::Goal,
                 context_text: goal.content.clone(),
+                observation: None,
+                goal: Some(goal.clone()),
             };
 
             let decision = self.decision_engine.decide(&context).await;

@@ -93,6 +93,25 @@ fn default_search_limit() -> i64 {
     20
 }
 
+#[derive(Debug, Serialize)]
+pub struct MemorySearchHit {
+    pub id: String,
+    pub content: String,
+    pub memory_type: String,
+    pub category: String,
+    pub source: String,
+    pub enabled: bool,
+    pub similarity: f64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MemorySearchResponse {
+    pub results: Vec<MemorySearchHit>,
+    pub count: usize,
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn memory_to_response(memory: &Memory) -> MemoryResponse {
@@ -241,24 +260,80 @@ pub async fn delete_memory(
     }))
 }
 
+/// POST /api/memories/:id/enable
+pub async fn enable_memory(
+    State(state): State<Arc<AppState>>,
+    Path(memory_id): Path<Uuid>,
+) -> Result<Json<MemoryActionResponse>, AppError> {
+    let repo = state.memory_repo.clone();
+
+    let updated = repo
+        .update(memory_id, None, Some(true), None)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
+
+    tracing::info!(memory_id = %memory_id, "memory.enabled");
+
+    Ok(Json(MemoryActionResponse {
+        id: updated.id.to_string(),
+        enabled: updated.enabled,
+        message: "Memory enabled".into(),
+    }))
+}
+
+/// POST /api/memories/:id/disable
+pub async fn disable_memory(
+    State(state): State<Arc<AppState>>,
+    Path(memory_id): Path<Uuid>,
+) -> Result<Json<MemoryActionResponse>, AppError> {
+    let repo = state.memory_repo.clone();
+
+    let updated = repo
+        .update(memory_id, None, Some(false), None)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
+
+    tracing::info!(memory_id = %memory_id, "memory.disabled");
+
+    Ok(Json(MemoryActionResponse {
+        id: updated.id.to_string(),
+        enabled: updated.enabled,
+        message: "Memory disabled".into(),
+    }))
+}
+
 /// POST /api/memories/search
-///
-/// Semantic search placeholder — requires embedding provider to be wired.
-/// For now returns an empty list with a message.
 pub async fn search_memories(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(body): Json<MemorySearchRequest>,
-) -> Result<Json<MemoryListResponse>, AppError> {
+) -> Result<Json<MemorySearchResponse>, AppError> {
     if body.query.is_empty() {
         return Err(AppError::Validation("query must not be empty".into()));
     }
 
-    // Full semantic search requires embedding provider; return empty for now
-    tracing::info!(query = %body.query, "memory.search_requested");
+    tracing::info!(query = %body.query, limit = body.limit, "memory.search_requested");
 
-    Ok(Json(MemoryListResponse {
-        memories: vec![],
-        count: 0,
-        total: 0,
+    let embedding = state.embedding_provider.embed(&body.query).await?;
+    let results = state.memory_repo.find_similar(&embedding, body.limit, true, 0.0).await?;
+
+    let memories: Vec<MemorySearchHit> = results
+        .into_iter()
+        .map(|(m, score)| MemorySearchHit {
+            id: m.id.to_string(),
+            content: m.content,
+            memory_type: m.memory_type,
+            category: m.category,
+            source: m.source,
+            enabled: m.enabled,
+            similarity: score,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        })
+        .collect();
+
+    let count = memories.len();
+    Ok(Json(MemorySearchResponse {
+        results: memories,
+        count,
     }))
 }

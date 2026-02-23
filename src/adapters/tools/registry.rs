@@ -11,6 +11,14 @@ use crate::ports::tools::{ToolCategory, ToolSource};
 pub struct ToolRegistry {
     sources: RwLock<HashMap<String, Arc<dyn ToolSource>>>,
     tool_to_source: RwLock<HashMap<String, String>>,
+    /// Per-tool enabled/disabled overrides.
+    enabled_overrides: RwLock<HashMap<String, bool>>,
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ToolRegistry {
@@ -18,6 +26,7 @@ impl ToolRegistry {
         Self {
             sources: RwLock::new(HashMap::new()),
             tool_to_source: RwLock::new(HashMap::new()),
+            enabled_overrides: RwLock::new(HashMap::new()),
         }
     }
 
@@ -70,11 +79,10 @@ impl ToolRegistry {
 
         for source in sources.values() {
             let source_cats = source.categories();
-            if source_cats.iter().any(|c| categories.contains(c)) {
-                if let Ok(tools) = source.get_tools(false).await {
+            if source_cats.iter().any(|c| categories.contains(c))
+                && let Ok(tools) = source.get_tools(false).await {
                     result.extend(tools);
                 }
-            }
         }
         result
     }
@@ -129,5 +137,40 @@ impl ToolRegistry {
             }
         }
         Ok(())
+    }
+
+    /// Check whether a tool is enabled (returns None if tool is unknown).
+    pub async fn is_tool_enabled(&self, tool_name: &str) -> Option<bool> {
+        let t2s = self.tool_to_source.read().await;
+        if !t2s.contains_key(tool_name) {
+            return None;
+        }
+        let overrides = self.enabled_overrides.read().await;
+        Some(overrides.get(tool_name).copied().unwrap_or(true))
+    }
+
+    /// Set the enabled state of a tool. Returns `true` if the tool exists.
+    pub async fn set_tool_enabled(&self, tool_name: &str, enabled: bool) -> bool {
+        let t2s = self.tool_to_source.read().await;
+        if !t2s.contains_key(tool_name) {
+            return false;
+        }
+        drop(t2s);
+        self.enabled_overrides
+            .write()
+            .await
+            .insert(tool_name.to_owned(), enabled);
+        debug!(tool = %tool_name, enabled, "Tool enabled state changed");
+        true
+    }
+
+    /// Enable a tool. Returns `true` if the tool exists.
+    pub async fn enable_tool(&self, tool_name: &str) -> bool {
+        self.set_tool_enabled(tool_name, true).await
+    }
+
+    /// Disable a tool. Returns `true` if the tool exists.
+    pub async fn disable_tool(&self, tool_name: &str) -> bool {
+        self.set_tool_enabled(tool_name, false).await
     }
 }

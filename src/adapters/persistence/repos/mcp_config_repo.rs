@@ -47,11 +47,11 @@ impl McpConfigRepository for SqliteMcpConfigRepo {
         .bind(config.enabled)
         .bind(config.timeout_seconds)
         .bind(config.is_default)
-        .bind(&config.last_connected_at)
+        .bind(config.last_connected_at)
         .bind(&config.last_error)
         .bind(&config.excluded_tools)
-        .bind(&config.created_at)
-        .bind(&config.updated_at)
+        .bind(config.created_at)
+        .bind(config.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;

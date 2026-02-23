@@ -12,6 +12,12 @@ const MAX_RECURSIVE_DEPTH: usize = 2;
 
 pub struct ListDirectoryTool;
 
+impl Default for ListDirectoryTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ListDirectoryTool {
     pub fn new() -> Self {
         Self

@@ -10,10 +10,13 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::adapters::sse::event_queue::EventQueue;
+use crate::adapters::sse::factories::conversation_closed_event;
 use crate::adapters::sse::types::IndicatorType;
+use crate::adapters::tools::registry::ToolRegistry;
+use crate::adapters::tools::tool_call_loop::ToolCallLoop;
 use crate::application::prompts::response::ProactiveResponsePrompt;
 use crate::application::prompts::summary::ConversationSummaryPrompt;
-use crate::application::runtime::response_streamer::{stream_llm_response, stream_simple_message};
+use crate::application::runtime::response_streamer::{stream_llm_response, stream_response, stream_simple_message};
 use crate::application::services::conversation_service::ConversationService;
 use crate::application::services::context_assembler::{BuildContextOptions, ContextAssembler};
 use crate::domain::conversation::Conversation;
@@ -28,6 +31,8 @@ pub struct ProactiveGenerator {
     event_queue: Arc<EventQueue>,
     summary_enabled: bool,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    tool_registry: Option<Arc<ToolRegistry>>,
+    tool_call_loop: Option<Arc<ToolCallLoop>>,
 }
 
 impl ProactiveGenerator {
@@ -38,6 +43,8 @@ impl ProactiveGenerator {
         event_queue: Arc<EventQueue>,
         summary_enabled: bool,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        tool_registry: Option<Arc<ToolRegistry>>,
+        tool_call_loop: Option<Arc<ToolCallLoop>>,
     ) -> Self {
         Self {
             llm,
@@ -46,6 +53,8 @@ impl ProactiveGenerator {
             event_queue,
             summary_enabled,
             cooldown_repo,
+            tool_registry,
+            tool_call_loop,
         }
     }
 
@@ -80,14 +89,19 @@ impl ProactiveGenerator {
         let existing = self.conversation.get_pending_or_active().await.ok().flatten();
 
         if let Some(ref conv) = existing {
-            // Check staleness by getting turns
-            if let Ok(turns) = self.conversation.get_conversation_turns(conv.id, 100).await {
-                if conv.is_stale(auto_close_minutes, &turns) {
-                    let old_id = conv.id;
+            if let Ok(turns) = self.conversation.get_conversation_turns(conv.id, 100).await
+                && conv.is_stale(auto_close_minutes, &turns) {
+                    let old_id = conv.id.to_string();
+                    let old_turn_count = turns.len() as u32;
                     let (new_conv, summary) = self.transition_conversation(conv).await;
+                    // Notify clients that the old conversation was closed
+                    self.event_queue.push(conversation_closed_event(
+                        &old_id,
+                        "inactivity_timeout",
+                        old_turn_count,
+                    ));
                     return (Some(new_conv), summary);
                 }
-            }
             return (existing, None);
         }
 
@@ -105,8 +119,6 @@ impl ProactiveGenerator {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
         // Build context
-        let mut assembled_context = String::new();
-        let mut soul: Option<String> = None;
         let query = context_summary.as_deref().unwrap_or("");
 
         let assembled = self.context_assembler.build_context(query, BuildContextOptions {
@@ -118,9 +130,7 @@ impl ProactiveGenerator {
             ..BuildContextOptions::default()
         }).await;
 
-        let (ctx, s) = assembled.to_context_string();
-        assembled_context = ctx;
-        soul = s;
+        let (assembled_context, soul) = assembled.to_context_string();
 
         let final_context = match &context_summary {
             Some(cs) => format!("{cs}\n\n{assembled_context}"),
@@ -138,15 +148,33 @@ impl ProactiveGenerator {
         );
         let config = ProactiveResponsePrompt::config();
 
-        let stream = self.llm.stream(
-            messages,
-            None,
-            config.response_format,
-            config.temperature,
-            config.max_tokens,
-        );
+        // Load tools if registry available
+        let tools = if let Some(ref registry) = self.tool_registry {
+            registry.get_all_tools(false).await
+        } else {
+            vec![]
+        };
 
-        let result = stream_llm_response(stream, &self.event_queue, Some(&msg_id)).await;
+        // Use tool call loop if tools are available, otherwise plain LLM stream
+        let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
+            let tool_stream = tcl.stream(
+                messages,
+                tools,
+                config.temperature,
+                config.max_tokens,
+                None,
+            );
+            stream_response(tool_stream, &self.event_queue, Some(&msg_id)).await
+        } else {
+            let stream = self.llm.stream(
+                messages,
+                None,
+                config.response_format,
+                config.temperature,
+                config.max_tokens,
+            );
+            stream_llm_response(stream, &self.event_queue, Some(&msg_id)).await
+        };
 
         if result.success && !result.full_response.is_empty() {
             let tokens_per_sec = if result.duration_ms > 0.0 {
@@ -201,10 +229,8 @@ impl ProactiveGenerator {
             if let Err(e) = self.conversation.add_turn(target.id, TurnRole::Assistant, message).await {
                 warn!(error = %e, "proactive_generator.checkin_save_failed");
             }
-        } else {
-            if let Err(e) = self.conversation.create_pending(message).await {
-                warn!(error = %e, "proactive_generator.checkin_create_failed");
-            }
+        } else if let Err(e) = self.conversation.create_pending(message).await {
+            warn!(error = %e, "proactive_generator.checkin_create_failed");
         }
 
         self.record_engagement().await;
@@ -212,11 +238,10 @@ impl ProactiveGenerator {
     }
 
     async fn record_engagement(&self) {
-        if let Some(ref cooldown_repo) = self.cooldown_repo {
-            if let Err(e) = cooldown_repo.update_last_engagement(Utc::now()).await {
+        if let Some(ref cooldown_repo) = self.cooldown_repo
+            && let Err(e) = cooldown_repo.update_last_engagement(Utc::now()).await {
                 warn!(error = %e, "proactive_generator.cooldown_update_failed");
             }
-        }
     }
 
     async fn transition_conversation(
@@ -225,13 +250,11 @@ impl ProactiveGenerator {
     ) -> (Conversation, Option<String>) {
         let mut summary: Option<String> = None;
 
-        if self.summary_enabled {
-            if let Ok(turns) = self.conversation.get_conversation_turns(old_conversation.id, 50).await {
-                if turns.len() >= 2 {
+        if self.summary_enabled
+            && let Ok(turns) = self.conversation.get_conversation_turns(old_conversation.id, 50).await
+                && turns.len() >= 2 {
                     summary = self.generate_summary(&turns).await;
                 }
-            }
-        }
 
         match self.conversation.close_and_start_new(old_conversation.id, summary.clone()).await {
             Ok(new_conv) => {

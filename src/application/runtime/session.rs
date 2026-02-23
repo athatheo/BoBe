@@ -18,11 +18,13 @@ use crate::application::triggers::{
     CheckinTrigger, GoalTrigger,
 };
 use crate::application::triggers::agent_job_trigger::AgentJobTrigger;
+use crate::application::triggers::capture_trigger::CaptureTrigger;
 use crate::ports::repos::cooldown_repo::CooldownRepository;
 
 pub struct RuntimeSession {
     checkin_trigger: Mutex<CheckinTrigger>,
     goal_trigger: Arc<GoalTrigger>,
+    capture_trigger: Mutex<CaptureTrigger>,
     message_handler: Arc<MessageHandler>,
     conversation: Arc<ConversationService>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
@@ -37,6 +39,7 @@ impl RuntimeSession {
     pub fn new(
         checkin_trigger: CheckinTrigger,
         goal_trigger: Arc<GoalTrigger>,
+        capture_trigger: CaptureTrigger,
         message_handler: Arc<MessageHandler>,
         conversation: Arc<ConversationService>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
@@ -47,6 +50,7 @@ impl RuntimeSession {
         Self {
             checkin_trigger: Mutex::new(checkin_trigger),
             goal_trigger,
+            capture_trigger: Mutex::new(capture_trigger),
             message_handler,
             conversation,
             cooldown_repo,
@@ -66,14 +70,46 @@ impl RuntimeSession {
         self.running.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// Enable screen capture.
+    pub async fn start_capture(&self) {
+        self.capture_enabled.store(true, std::sync::atomic::Ordering::Relaxed);
+        let mut trigger = self.capture_trigger.lock().await;
+        trigger.start().await;
+        info!("runtime_session.capture_started");
+    }
+
+    /// Disable screen capture.
+    pub async fn stop_capture(&self) {
+        self.capture_enabled.store(false, std::sync::atomic::Ordering::Relaxed);
+        let mut trigger = self.capture_trigger.lock().await;
+        trigger.stop().await;
+        info!("runtime_session.capture_stopped");
+    }
+
+    /// Called when an SSE client connects.
+    pub async fn on_connection(&self) {
+        info!(
+            capture_enabled = self.config.capture_enabled,
+            "runtime_session.sse_client_connected"
+        );
+        if self.config.capture_enabled {
+            self.start_capture().await;
+        }
+    }
+
+    /// Called when an SSE client disconnects.
+    pub async fn on_disconnection(&self) {
+        info!("runtime_session.sse_client_disconnected");
+        self.stop_capture().await;
+    }
+
     pub async fn start(&self) {
         self.running.store(true, std::sync::atomic::Ordering::Relaxed);
 
-        if let Some(ref cooldown_repo) = self.cooldown_repo {
-            if let Err(e) = cooldown_repo.load_or_create().await {
+        if let Some(ref cooldown_repo) = self.cooldown_repo
+            && let Err(e) = cooldown_repo.load_or_create().await {
                 warn!(error = %e, "runtime_session.cooldown_load_failed");
             }
-        }
 
         info!("runtime_session.started");
         self.event_queue.set_indicator(IndicatorType::Idle);
@@ -100,22 +136,20 @@ impl RuntimeSession {
         let mut loop_counter: u64 = 0;
         let maintenance_interval = std::time::Duration::from_secs(60);
         let mut last_goal_check = Instant::now();
+        let mut last_capture_time = Instant::now();
 
         while self.running.load(std::sync::atomic::Ordering::Relaxed) {
             loop_counter += 1;
 
-            if loop_counter % 5 == 0 {
+            if loop_counter.is_multiple_of(5) {
                 self.log_heartbeat(loop_counter).await;
             }
 
             // CheckinTrigger
             {
                 let mut checkin = self.checkin_trigger.lock().await;
-                match checkin.fire().await {
-                    Decision::Engage => {
-                        info!(trigger = "checkin", "runtime_session.reach_out");
-                    }
-                    _ => {}
+                if checkin.fire().await == Decision::Engage {
+                    info!(trigger = "checkin", "runtime_session.reach_out");
                 }
             }
 
@@ -127,24 +161,29 @@ impl RuntimeSession {
             // GoalTrigger
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
             if time_since_goal >= self.config.goal_check_interval_seconds {
-                match self.goal_trigger.fire().await {
-                    Decision::Engage => {
-                        info!(trigger = "goal", "runtime_session.reach_out");
-                    }
-                    _ => {}
+                if self.goal_trigger.fire().await == Decision::Engage {
+                    info!(trigger = "goal", "runtime_session.reach_out");
                 }
                 last_goal_check = Instant::now();
             }
 
-            // AgentJobTrigger
-            if let Some(ref agent_trigger) = self.agent_job_trigger {
-                match agent_trigger.fire().await {
-                    Decision::Engage => {
-                        info!(trigger = "agent_job", "runtime_session.reach_out");
+            // CaptureTrigger
+            if self.capture_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+                let time_since_capture = last_capture_time.elapsed().as_secs();
+                if time_since_capture >= self.config.capture_interval_seconds {
+                    let mut ct = self.capture_trigger.lock().await;
+                    if ct.fire().await == Decision::Engage {
+                        info!(trigger = "capture", "runtime_session.reach_out");
                     }
-                    _ => {}
+                    last_capture_time = Instant::now();
                 }
             }
+
+            // AgentJobTrigger
+            if let Some(ref agent_trigger) = self.agent_job_trigger
+                && agent_trigger.fire().await == Decision::Engage {
+                    info!(trigger = "agent_job", "runtime_session.reach_out");
+                }
 
             tokio::time::sleep(maintenance_interval).await;
         }

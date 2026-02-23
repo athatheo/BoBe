@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::goal::Goal;
@@ -24,6 +25,10 @@ pub trait GoalRepository: Send + Sync {
         enabled: Option<bool>,
     ) -> Result<Option<Goal>, AppError>;
     async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
+    /// Delete goals with given statuses that were updated before the cutoff.
+    async fn delete_stale_goals(&self, statuses: &[GoalStatus], older_than: DateTime<Utc>) -> Result<u64, AppError>;
     async fn find_by_content(&self, content: &str) -> Result<Option<Goal>, AppError>;
     async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError>;
+    async fn find_null_embedding(&self, limit: i64) -> Result<Vec<Goal>, AppError>;
+    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError>;
 }

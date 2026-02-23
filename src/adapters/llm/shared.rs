@@ -71,8 +71,8 @@ pub fn build_chat_request(
         "stream": stream,
     });
 
-    if let Some(tools) = tools {
-        if !tools.is_empty() {
+    if let Some(tools) = tools
+        && !tools.is_empty() {
             let tool_defs: Vec<Value> = tools
                 .iter()
                 .map(|t| {
@@ -88,7 +88,6 @@ pub fn build_chat_request(
                 .collect();
             body["tools"] = json!(tool_defs);
         }
-    }
 
     if let Some(rf) = response_format {
         let mut fmt = json!({"type": rf.format_type});

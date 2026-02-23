@@ -11,40 +11,62 @@ use crate::app_state::AppState;
 
 /// GET /api/events
 ///
-/// SSE endpoint for real-time event streaming. Streams events from the
-/// EventQueue to the connected client. Uses `event: message` with JSON
-/// payload discriminated by `type` field.
+/// SSE endpoint for real-time event streaming. Uses ConnectionManager
+/// to track client connections and handle reconnection with stale event
+/// trimming. Single-consumer model — only one client at a time.
 pub async fn stream_events(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let connection_manager = state.connection_manager.clone();
     let queue = state.event_queue.clone();
+    let runtime_session = state.runtime_session.clone();
+
+    // Establish connection — ConnectionManager sends initial indicator event
+    let conn_id = connection_manager.connect().await;
+    runtime_session.on_connection().await;
+    tracing::info!(connection_id = %conn_id, "sse.connected");
 
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
 
-    // Send initial indicator event
-    let indicator = queue.current_indicator();
-    let init_event = Event::default()
-        .event("message")
-        .json_data(serde_json::json!({
-            "type": "indicator",
-            "message_id": "",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "description": "Current indicator",
-            "payload": { "indicator": indicator },
-        }))
-        .unwrap_or_else(|_| Event::default().data("{}"));
-
-    let _ = tx.send(Ok(init_event)).await;
-
+    let conn_id_inner = conn_id.clone();
+    let cm = connection_manager.clone();
+    let rs = runtime_session.clone();
     tokio::spawn(async move {
         loop {
-            let event = queue.pop().await;
-            let sse_data = serde_json::to_string(&event).unwrap_or_default();
-            let sse_event = Event::default().event("message").data(sse_data);
-            if tx.send(Ok(sse_event)).await.is_err() {
-                // Client disconnected
-                tracing::info!("sse.client_disconnected");
+            // Check if this connection is still active
+            if !cm.is_active_connection(&conn_id_inner).await {
+                tracing::info!(
+                    connection_id = %conn_id_inner,
+                    "sse.connection_replaced"
+                );
+                rs.on_disconnection().await;
                 break;
+            }
+
+            // Pop with timeout to periodically re-check connection liveness
+            let event = tokio::time::timeout(Duration::from_secs(1), queue.pop()).await;
+
+            match event {
+                Ok(bundle) => {
+                    // Track indicator state
+                    cm.track_indicator(&bundle).await;
+
+                    let sse_data = serde_json::to_string(&bundle).unwrap_or_default();
+                    let sse_event = Event::default().event("message").data(sse_data);
+                    if tx.send(Ok(sse_event)).await.is_err() {
+                        tracing::info!(
+                            connection_id = %conn_id_inner,
+                            "sse.client_disconnected"
+                        );
+                        cm.disconnect(Some(&conn_id_inner)).await;
+                        rs.on_disconnection().await;
+                        break;
+                    }
+                }
+                Err(_) => {
+                    // Timeout — loop will re-check connection liveness
+                    continue;
+                }
             }
         }
     });

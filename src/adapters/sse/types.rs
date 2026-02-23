@@ -7,6 +7,8 @@ pub enum EventType {
     Indicator,
     TextDelta,
     ToolCall,
+    ToolCallStart,
+    ToolCallComplete,
     Error,
     Heartbeat,
     EndOfTurn,
@@ -16,7 +18,9 @@ pub enum EventType {
 /// Indicator states for the runtime session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum IndicatorType {
+    #[default]
     Idle,
     ScreenCapture,
     Thinking,
@@ -24,11 +28,6 @@ pub enum IndicatorType {
     Streaming,
 }
 
-impl Default for IndicatorType {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 /// Wire format for SSE events.
 #[derive(Debug, Clone, Serialize, Deserialize)]

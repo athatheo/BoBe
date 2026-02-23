@@ -29,8 +29,6 @@ pub async fn get_status(
     State(state): State<Arc<AppState>>,
 ) -> Json<Value> {
     let mut status = state.runtime_session.get_status();
-    status.as_object_mut().map(|obj| {
-        obj.insert("version".to_owned(), json!(env!("CARGO_PKG_VERSION")));
-    });
+    if let Some(obj) = status.as_object_mut() { obj.insert("version".to_owned(), json!(env!("CARGO_PKG_VERSION"))); }
     Json(status)
 }

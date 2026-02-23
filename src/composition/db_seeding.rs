@@ -1,4 +1,3 @@
-use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 
 use crate::domain::soul::Soul;

@@ -78,8 +78,8 @@ impl CooldownRepository for SqliteCooldownRepo {
                 "INSERT INTO cooldown_state (id, created_at, updated_at) VALUES (?1, ?2, ?3)",
             )
             .bind(&id)
-            .bind(&new_state.created_at)
-            .bind(&new_state.updated_at)
+            .bind(new_state.created_at)
+            .bind(new_state.updated_at)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;
@@ -98,8 +98,8 @@ impl CooldownRepository for SqliteCooldownRepo {
         sqlx::query(
             "UPDATE cooldown_state SET last_engagement = ?1, updated_at = ?2 WHERE id = ?3",
         )
-        .bind(&timestamp)
-        .bind(&Utc::now())
+        .bind(timestamp)
+        .bind(Utc::now())
         .bind(id.to_string())
         .execute(&self.pool)
         .await
@@ -120,8 +120,8 @@ impl CooldownRepository for SqliteCooldownRepo {
         sqlx::query(
             "UPDATE cooldown_state SET last_user_response = ?1, updated_at = ?2 WHERE id = ?3",
         )
-        .bind(&timestamp)
-        .bind(&Utc::now())
+        .bind(timestamp)
+        .bind(Utc::now())
         .bind(id.to_string())
         .execute(&self.pool)
         .await

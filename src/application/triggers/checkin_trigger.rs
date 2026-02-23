@@ -55,18 +55,17 @@ impl CheckinTrigger {
         // Skip if active non-stale conversation
         if let Ok(Some(existing)) = self.conversation.get_pending_or_active().await {
             // Get turns to check staleness
-            if let Ok(turns) = self.conversation.get_conversation_turns(existing.id, 100).await {
-                if !existing.is_stale(self.config.conversation_auto_close_minutes as i64, &turns) {
+            if let Ok(turns) = self.conversation.get_conversation_turns(existing.id, 100).await
+                && !existing.is_stale(self.config.conversation_auto_close_minutes as i64, &turns) {
                     debug!(reason = "active_conversation", "checkin_trigger.skipped");
                     self.scheduler.mark_checkin_done();
                     return Decision::Idle;
                 }
-            }
         }
 
         // Cooldown check
-        if let Some(ref cooldown_repo) = self.cooldown_repo {
-            if let Some(cooldown) = cooldown_repo.check_cooldown(
+        if let Some(ref cooldown_repo) = self.cooldown_repo
+            && let Some(cooldown) = cooldown_repo.check_cooldown(
                 self.config.decision_cooldown_minutes,
                 self.config.decision_extended_cooldown_minutes,
             ) {
@@ -78,7 +77,6 @@ impl CheckinTrigger {
                 self.scheduler.mark_checkin_done();
                 return Decision::Idle;
             }
-        }
 
         // Generate LLM-powered check-in
         info!("checkin_trigger.started");

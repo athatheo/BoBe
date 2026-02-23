@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
+use crate::domain::observation::Observation;
 
 /// Decision result from the decision engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +28,10 @@ pub enum TriggerType {
 pub struct TriggerContext {
     pub trigger_type: TriggerType,
     pub context_text: String,
+    /// Full observation (with embedding) for capture triggers.
+    pub observation: Option<Observation>,
+    /// Goal model for goal triggers.
+    pub goal: Option<crate::domain::goal::Goal>,
 }
 
 /// Configuration for the orchestrator (immutable per cycle).

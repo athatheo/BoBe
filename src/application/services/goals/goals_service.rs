@@ -187,11 +187,10 @@ impl GoalsService {
         let embedding_vec = self.embedding.embed(content).await?;
         let results = self.repo.find_similar(&embedding_vec, 1, true).await?;
 
-        if let Some((goal, score)) = results.into_iter().next() {
-            if score >= threshold {
+        if let Some((goal, score)) = results.into_iter().next()
+            && score >= threshold {
                 return Ok(Some(goal));
             }
-        }
         Ok(None)
     }
 

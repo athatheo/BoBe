@@ -131,6 +131,16 @@ pub struct StreamChunk {
     pub finish_reason: Option<String>,
 }
 
+/// Mixed stream item: either a text/tool chunk or a tool execution notification.
+///
+/// Used by the tool call loop to yield both LLM stream chunks and tool execution
+/// status updates through a single async stream.
+#[derive(Debug, Clone)]
+pub enum StreamItem {
+    Chunk(StreamChunk),
+    ToolNotification(crate::ports::tools::ToolExecutionNotification),
+}
+
 /// Tool definition for LLM function calling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {

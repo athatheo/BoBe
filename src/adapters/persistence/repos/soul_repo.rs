@@ -36,8 +36,8 @@ impl SoulRepository for SqliteSoulRepo {
         .bind(&soul.content)
         .bind(soul.enabled)
         .bind(soul.is_default)
-        .bind(&soul.created_at)
-        .bind(&soul.updated_at)
+        .bind(soul.created_at)
+        .bind(soul.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;

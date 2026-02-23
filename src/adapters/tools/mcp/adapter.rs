@@ -90,6 +90,50 @@ impl McpToolAdapter {
         Ok(())
     }
 
+    /// Add a server config and connect it at runtime.
+    pub async fn add_and_connect_server(&self, config: McpParsedServer) -> Result<bool, AppError> {
+        let name = config.name.clone();
+
+        // Disconnect existing if present
+        {
+            let mut clients = self.clients.write().await;
+            if let Some(client) = clients.remove(&name) {
+                client.disconnect().await;
+            }
+        }
+        {
+            let mut t2s = self.tool_to_server.write().await;
+            t2s.retain(|_, v| v != &name);
+        }
+
+        match self.connect_server(config).await {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                warn!(server = %name, error = %e, "Failed to connect MCP server");
+                Ok(false)
+            }
+        }
+    }
+
+    /// Disconnect and remove a server by name.
+    pub async fn disconnect_server_by_name(&self, name: &str) -> bool {
+        let mut clients = self.clients.write().await;
+        if let Some(client) = clients.remove(name) {
+            client.disconnect().await;
+            drop(clients);
+
+            let mut t2s = self.tool_to_server.write().await;
+            t2s.retain(|_, v| v != name);
+
+            self.server_configs.write().await.remove(name);
+
+            info!(server = %name, "MCP server disconnected");
+            true
+        } else {
+            false
+        }
+    }
+
     /// Get the last error for a specific server.
     pub async fn get_server_error(&self, name: &str) -> Option<String> {
         let clients = self.clients.read().await;
@@ -135,14 +179,13 @@ impl McpToolAdapter {
 
     async fn load_enabled_servers(&self) -> Vec<McpParsedServer> {
         // Try DB first
-        if let Some(repo) = &self.config_repo {
-            if let Ok(configs) = repo.find_enabled().await {
+        if let Some(repo) = &self.config_repo
+            && let Ok(configs) = repo.find_enabled().await {
                 return configs
                     .into_iter()
                     .map(|c| db_config_to_parsed(&c))
                     .collect();
             }
-        }
         // Fall back to file
         load_default_mcp_config()
     }
@@ -329,7 +372,7 @@ fn unprefix_tool_name(prefixed: &str) -> String {
     }
 }
 
-fn db_config_to_parsed(c: &McpServerConfig) -> McpParsedServer {
+pub fn db_config_to_parsed(c: &McpServerConfig) -> McpParsedServer {
     McpParsedServer {
         name: c.server_name.clone(),
         command: c.command.clone(),

@@ -62,13 +62,11 @@ pub fn parse_claude_ndjson(output_path: &Path) -> AgentJobResult {
 
         let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
-        if msg_type == "system" {
-            if let Some(sid) = msg.get("session_id").and_then(|v| v.as_str()) {
-                if !sid.is_empty() {
+        if msg_type == "system"
+            && let Some(sid) = msg.get("session_id").and_then(|v| v.as_str())
+                && !sid.is_empty() {
                     session_id = Some(sid.to_owned());
                 }
-            }
-        }
 
         if msg_type == "result" {
             last_result_line = Some(msg.clone());
@@ -140,17 +138,14 @@ fn extract_tool_calls(
             if !name.is_empty() {
                 tools_seen.insert(name.to_owned());
             }
-            if name == "Write" || name == "Edit" {
-                if let Some(path) = block
+            if (name == "Write" || name == "Edit")
+                && let Some(path) = block
                     .get("input")
                     .and_then(|v| v.get("file_path"))
                     .and_then(|v| v.as_str())
-                {
-                    if !path.is_empty() {
+                    && !path.is_empty() {
                         files_seen.insert(path.to_owned());
                     }
-                }
-            }
         }
     }
 }
@@ -164,17 +159,14 @@ fn extract_file_changes(msg: &Value, files_seen: &mut BTreeSet<String>) {
     };
     for block in content {
         let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        if name == "Write" || name == "Edit" {
-            if let Some(path) = block
+        if (name == "Write" || name == "Edit")
+            && let Some(path) = block
                 .get("input")
                 .and_then(|v| v.get("file_path"))
                 .and_then(|v| v.as_str())
-            {
-                if !path.is_empty() {
+                && !path.is_empty() {
                     files_seen.insert(path.to_owned());
                 }
-            }
-        }
     }
 }
 

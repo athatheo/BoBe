@@ -36,8 +36,8 @@ impl UserProfileRepository for SqliteUserProfileRepo {
         .bind(&profile.content)
         .bind(profile.enabled)
         .bind(profile.is_default)
-        .bind(&profile.created_at)
-        .bind(&profile.updated_at)
+        .bind(profile.created_at)
+        .bind(profile.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;

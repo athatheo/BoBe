@@ -10,6 +10,12 @@ pub struct FetchUrlTool {
     client: reqwest::Client,
 }
 
+impl Default for FetchUrlTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FetchUrlTool {
     pub fn new() -> Self {
         Self {

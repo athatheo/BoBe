@@ -7,6 +7,7 @@ use crate::adapters::capture::ScreenCapture;
 use crate::adapters::llm::ollama_manager::OllamaManager;
 use crate::adapters::sse::connection_manager::SseConnectionManager;
 use crate::adapters::sse::event_queue::EventQueue;
+use crate::adapters::tools::mcp::adapter::McpToolAdapter;
 use crate::adapters::tools::registry::ToolRegistry;
 use crate::application::learning::LearningLoop;
 use crate::application::runtime::session::RuntimeSession;
@@ -60,6 +61,7 @@ pub struct AppState {
     pub screen_capture: Arc<ScreenCapture>,
     pub ollama_manager: Arc<OllamaManager>,
     pub config_manager: Arc<ConfigManager>,
+    pub mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
 }
 
 impl AppState {

@@ -25,7 +25,11 @@ use crate::adapters::sse::connection_manager::SseConnectionManager;
 use crate::adapters::sse::event_queue::EventQueue;
 use crate::adapters::tools::native::adapter::NativeToolAdapter;
 use crate::adapters::tools::native::base::NativeTool;
+use crate::adapters::tools::mcp::McpToolAdapter;
+use crate::adapters::tools::executor::ToolExecutor;
+use crate::adapters::tools::preselector::ToolPreselector;
 use crate::adapters::tools::registry::ToolRegistry;
+use crate::adapters::tools::tool_call_loop::{ToolCallLoop, ToolCallLoopConfig};
 use crate::application::learners::{
     CaptureLearner, GoalLearner, MemoryConsolidator, MemoryLearner, MessageLearner,
 };
@@ -96,8 +100,12 @@ pub struct Container {
     pub ollama_manager: Arc<OllamaManager>,
     pub mdns_announcer: Arc<MdnsAnnouncer>,
     pub config_manager: Arc<ConfigManager>,
+    /// Hot-swappable LLM provider — ConfigManager swaps this on backend changes.
+    pub swappable_llm: Arc<ArcSwap<Arc<dyn LlmProvider>>>,
     /// Native tool adapter — registered with tool_registry during bootstrap.
     pub native_adapter: Arc<NativeToolAdapter>,
+    /// MCP tool adapter — registered with tool_registry during bootstrap.
+    pub mcp_adapter: Arc<McpToolAdapter>,
 }
 
 impl Container {
@@ -116,9 +124,11 @@ impl Container {
             .map_err(|e| crate::error::AppError::Internal(format!("HTTP client build failed: {e}")))?;
 
         // ── LLM providers ───────────────────────────────────────────────
-        let llm_factory = LlmProviderFactory::new(http_client.clone(), config.clone());
+        let llm_factory = Arc::new(LlmProviderFactory::new(http_client.clone(), config.clone()));
         let llm_provider = llm_factory.create(&config.llm_backend)?;
         let vision_llm_provider = llm_factory.create_vision(&config.vision_backend)?;
+        let swappable_llm: Arc<ArcSwap<Arc<dyn LlmProvider>>> =
+            Arc::new(ArcSwap::from_pointee(llm_provider.clone()));
 
         // ── Embedding ───────────────────────────────────────────────────
         let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(
@@ -130,9 +140,13 @@ impl Container {
             ),
         );
 
-        // ── SSE ─────────────────────────────────────────────────────────
+                // ── SSE ─────────────────────────────────────────────────────────
         let event_queue = Arc::new(EventQueue::new(100));
-        let connection_manager = Arc::new(SseConnectionManager::new());
+        let connection_manager = Arc::new(SseConnectionManager::new(
+            event_queue.clone(),
+            None,
+            None,
+        ));
 
         // ── Repos ───────────────────────────────────────────────────────
         let conversation_repo: Arc<dyn ConversationRepository> =
@@ -245,6 +259,9 @@ impl Container {
             )),
         ];
         let native_adapter = Arc::new(NativeToolAdapter::new(native_tools));
+        let mcp_adapter = Arc::new(McpToolAdapter::new(
+            if config.mcp_enabled { Some(mcp_config_repo.clone()) } else { None },
+        ));
         // Registration happens async in bootstrap after build
 
         // ── Learners ────────────────────────────────────────────────────
@@ -296,6 +313,24 @@ impl Container {
             Some(context_assembler.clone()),
         ));
 
+        // ── Tool Call Loop + Preselector ────────────────────────────────
+        let tool_executor = Arc::new(ToolExecutor::new(
+            tool_registry.clone(),
+            config.tools_timeout_seconds,
+        ));
+        let tool_preselector = Arc::new(ToolPreselector::new(
+            llm_provider.clone(),
+            config.tools_preselector_enabled,
+        ));
+        let tool_call_loop = Arc::new(ToolCallLoop::new(
+            llm_provider.clone(),
+            tool_executor,
+            ToolCallLoopConfig {
+                max_iterations: config.tools_max_iterations as usize,
+                timeout_per_tool_secs: config.tools_timeout_seconds,
+            },
+        ));
+
         let proactive_generator = Arc::new(ProactiveGenerator::new(
             llm_provider.clone(),
             context_assembler.clone(),
@@ -303,14 +338,22 @@ impl Container {
             event_queue.clone(),
             config.conversation_summary_enabled,
             Some(cooldown_repo.clone()),
+            Some(tool_registry.clone()),
+            Some(tool_call_loop.clone()),
         ));
 
+        // ── Capture ─────────────────────────────────────────────────────
+        let screen_capture = Arc::new(ScreenCapture::new());
+
         // ── Triggers ────────────────────────────────────────────────────
-        let _capture_trigger = CaptureTrigger::new(
+        let capture_trigger = CaptureTrigger::new(
+            screen_capture.clone(),
             capture_learner,
             decision_engine.clone(),
             proactive_generator.clone(),
             Some(cooldown_repo.clone()),
+            observation_repo.clone(),
+            event_queue.clone(),
             orch_config.clone(),
         );
 
@@ -362,6 +405,7 @@ impl Container {
         let runtime_session = Arc::new(RuntimeSession::new(
             checkin_trigger,
             goal_trigger,
+            capture_trigger,
             Arc::new(MessageHandler::new(
                 llm_provider.clone(),
                 context_assembler.clone(),
@@ -370,6 +414,9 @@ impl Container {
                 Some(cooldown_repo.clone()),
                 event_queue.clone(),
                 orch_config.clone(),
+                Some(tool_registry.clone()),
+                Some(tool_preselector),
+                Some(tool_call_loop),
             )),
             conversation_service.clone(),
             Some(cooldown_repo.clone()),
@@ -399,9 +446,6 @@ impl Container {
             None
         };
 
-        // ── Capture ─────────────────────────────────────────────────────
-        let screen_capture = Arc::new(ScreenCapture::new());
-
         // ── Ollama manager ──────────────────────────────────────────────
         let ollama_manager = Arc::new(OllamaManager::new(
             http_client.clone(),
@@ -419,7 +463,11 @@ impl Container {
         ));
 
         // ── Config manager ──────────────────────────────────────────────
-        let config_manager = Arc::new(ConfigManager::new(config_arc.clone()));
+        let config_manager = Arc::new(ConfigManager::new(
+            config_arc.clone(),
+            swappable_llm.clone(),
+            Some(llm_factory),
+        ));
 
         Ok(Self {
             db: pool,
@@ -450,7 +498,9 @@ impl Container {
             ollama_manager,
             mdns_announcer,
             config_manager,
+            swappable_llm,
             native_adapter,
+            mcp_adapter,
         })
     }
 }

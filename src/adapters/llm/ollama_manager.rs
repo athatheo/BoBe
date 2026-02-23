@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 use crate::error::AppError;
 
@@ -176,8 +176,8 @@ impl OllamaManager {
             if line.is_empty() {
                 continue;
             }
-            if let Ok(progress) = serde_json::from_str::<PullProgress>(line) {
-                if let Some(status) = &progress.status {
+            if let Ok(progress) = serde_json::from_str::<PullProgress>(line)
+                && let Some(status) = &progress.status {
                     if status == "success" {
                         return Ok(());
                     }
@@ -186,8 +186,8 @@ impl OllamaManager {
                             "Ollama pull error: {err}"
                         )));
                     }
-                    if let (Some(completed), Some(total)) = (progress.completed, progress.total) {
-                        if total > 0 {
+                    if let (Some(completed), Some(total)) = (progress.completed, progress.total)
+                        && total > 0 {
                             let pct = (completed as f64 / total as f64 * 100.0) as i64;
                             if pct >= last_logged_pct + 10 {
                                 last_logged_pct = (pct / 10) * 10;
@@ -198,9 +198,7 @@ impl OllamaManager {
                                 );
                             }
                         }
-                    }
                 }
-            }
         }
 
         Ok(())

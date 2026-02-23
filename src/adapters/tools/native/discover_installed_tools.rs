@@ -34,6 +34,12 @@ const DEV_TOOLS: &[(&str, &[&str])] = &[
 
 pub struct DiscoverInstalledToolsTool;
 
+impl Default for DiscoverInstalledToolsTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiscoverInstalledToolsTool {
     pub fn new() -> Self {
         Self

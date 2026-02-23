@@ -133,7 +133,37 @@ pub async fn create_profile(
     Ok(Json(profile_to_response(&saved)))
 }
 
-/// PUT /api/user-profiles/:id
+/// GET /api/user-profiles/:id
+pub async fn get_profile(
+    State(state): State<Arc<AppState>>,
+    Path(profile_id): Path<Uuid>,
+) -> Result<Json<UserProfileResponse>, AppError> {
+    let repo = state.user_profile_repo.clone();
+
+    let profile = repo
+        .get_by_id(profile_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
+
+    Ok(Json(profile_to_response(&profile)))
+}
+
+/// GET /api/user-profiles/by-name/:name
+pub async fn get_profile_by_name(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<Json<UserProfileResponse>, AppError> {
+    let repo = state.user_profile_repo.clone();
+
+    let profile = repo
+        .get_by_name(&name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User profile '{name}' not found")))?;
+
+    Ok(Json(profile_to_response(&profile)))
+}
+
+/// PATCH /api/user-profiles/:id
 pub async fn update_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
@@ -152,4 +182,85 @@ pub async fn update_profile(
 
     tracing::info!(profile_id = %profile_id, "user_profile.updated");
     Ok(Json(profile_to_response(&updated)))
+}
+
+/// POST /api/user-profiles/:id/enable
+pub async fn enable_profile(
+    State(state): State<Arc<AppState>>,
+    Path(profile_id): Path<Uuid>,
+) -> Result<Json<UserProfileActionResponse>, AppError> {
+    let repo = state.user_profile_repo.clone();
+
+    let profile = repo
+        .get_by_id(profile_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
+
+    repo.update(profile_id, None, Some(true)).await?;
+    tracing::info!(profile_id = %profile_id, "user_profile.enabled");
+
+    Ok(Json(UserProfileActionResponse {
+        id: profile_id.to_string(),
+        name: profile.name,
+        enabled: true,
+        message: "User profile enabled".into(),
+    }))
+}
+
+/// POST /api/user-profiles/:id/disable
+pub async fn disable_profile(
+    State(state): State<Arc<AppState>>,
+    Path(profile_id): Path<Uuid>,
+) -> Result<Json<UserProfileActionResponse>, AppError> {
+    let repo = state.user_profile_repo.clone();
+
+    let profile = repo
+        .get_by_id(profile_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
+
+    repo.update(profile_id, None, Some(false)).await?;
+    tracing::info!(profile_id = %profile_id, "user_profile.disabled");
+
+    Ok(Json(UserProfileActionResponse {
+        id: profile_id.to_string(),
+        name: profile.name,
+        enabled: false,
+        message: "User profile disabled".into(),
+    }))
+}
+
+/// DELETE /api/user-profiles/:id
+pub async fn delete_profile(
+    State(state): State<Arc<AppState>>,
+    Path(profile_id): Path<Uuid>,
+) -> Result<Json<UserProfileActionResponse>, AppError> {
+    let repo = state.user_profile_repo.clone();
+
+    let profile = repo
+        .get_by_id(profile_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
+
+    if profile.is_default {
+        return Err(AppError::Validation(
+            "Cannot delete default user profile. Disable it instead.".into(),
+        ));
+    }
+
+    let deleted = repo.delete(profile_id).await?;
+    if !deleted {
+        return Err(AppError::NotFound(format!(
+            "User profile {profile_id} not found"
+        )));
+    }
+
+    tracing::info!(profile_id = %profile_id, name = %profile.name, "user_profile.deleted");
+
+    Ok(Json(UserProfileActionResponse {
+        id: profile_id.to_string(),
+        name: profile.name,
+        enabled: false,
+        message: "User profile deleted".into(),
+    }))
 }

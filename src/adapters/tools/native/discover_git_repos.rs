@@ -15,6 +15,12 @@ const MAX_REPOS: usize = 50;
 
 pub struct DiscoverGitReposTool;
 
+impl Default for DiscoverGitReposTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiscoverGitReposTool {
     pub fn new() -> Self {
         Self

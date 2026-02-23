@@ -12,6 +12,12 @@ const MAX_RESULTS: usize = 100;
 
 pub struct SearchFilesTool;
 
+impl Default for SearchFilesTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SearchFilesTool {
     pub fn new() -> Self {
         Self
@@ -203,13 +209,11 @@ fn search_directory(
         }
 
         let path = entry.path();
-        if let Some(pattern) = file_pattern {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if !glob_match(pattern, name) {
+        if let Some(pattern) = file_pattern
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && !glob_match(pattern, name) {
                     continue;
                 }
-            }
-        }
 
         // Skip binary files
         if let Ok(content) = std::fs::read_to_string(path) {

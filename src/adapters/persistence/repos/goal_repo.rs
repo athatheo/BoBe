@@ -43,8 +43,8 @@ impl GoalRepository for SqliteGoalRepo {
         .bind(goal.enabled)
         .bind(&goal.inference_reason)
         .bind(&goal.embedding)
-        .bind(&goal.created_at)
-        .bind(&goal.updated_at)
+        .bind(goal.created_at)
+        .bind(goal.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
@@ -243,6 +243,32 @@ impl GoalRepository for SqliteGoalRepo {
         }
     }
 
+    async fn delete_stale_goals(
+        &self,
+        statuses: &[GoalStatus],
+        older_than: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, AppError> {
+        if statuses.is_empty() {
+            return Ok(0);
+        }
+        let placeholders: Vec<&str> = statuses.iter().map(|s| s.as_str()).collect();
+        // SQLite doesn't support array binds, so build a safe IN clause
+        let in_clause = placeholders.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "DELETE FROM goals WHERE status IN ({in_clause}) AND updated_at < ?1"
+        );
+        let result = sqlx::query(&sql)
+            .bind(older_than)
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
+        let deleted = result.rows_affected();
+        if deleted > 0 {
+            info!(deleted, statuses = ?placeholders, "goal_repo.stale_goals_deleted");
+        }
+        Ok(deleted)
+    }
+
     async fn find_by_content(&self, content: &str) -> Result<Option<Goal>, AppError> {
         sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE content = ?1")
             .bind(content)
@@ -262,6 +288,29 @@ impl GoalRepository for SqliteGoalRepo {
             .fetch_all(&self.pool)
             .await
             .map_err(AppError::Database)
+    }
+
+    async fn find_null_embedding(&self, limit: i64) -> Result<Vec<Goal>, AppError> {
+        sqlx::query_as::<_, Goal>(
+            "SELECT * FROM goals WHERE embedding IS NULL ORDER BY created_at DESC LIMIT ?1",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::Database)
+    }
+
+    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError> {
+        let json = serde_json::to_string(embedding)
+            .map_err(|e| AppError::Internal(format!("Failed to serialize embedding: {e}")))?;
+        sqlx::query("UPDATE goals SET embedding = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(&json)
+            .bind(chrono::Utc::now())
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
+        Ok(())
     }
 }
 

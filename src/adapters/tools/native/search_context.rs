@@ -82,8 +82,7 @@ impl NativeTool for SearchContextTool {
             .get("limit")
             .and_then(|v| v.as_i64())
             .unwrap_or(5)
-            .min(20)
-            .max(1);
+            .clamp(1, 20);
 
         let categories: Option<Vec<&str>> = arguments
             .get("categories")

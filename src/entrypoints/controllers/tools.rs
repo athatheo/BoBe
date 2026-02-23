@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
+use crate::domain::mcp_server_config::McpServerConfig;
 use crate::error::AppError;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -26,18 +28,80 @@ pub struct ToolListResponse {
     pub providers: Vec<String>,
 }
 
-// ── Handler ─────────────────────────────────────────────────────────────────
+#[derive(Debug, Serialize)]
+pub struct ToolUpdateResponse {
+    pub name: String,
+    pub enabled: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpServerResponse {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub enabled: bool,
+    pub connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpServerListResponse {
+    pub servers: Vec<McpServerResponse>,
+    pub count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct McpServerCreateRequest {
+    pub server_name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_timeout")]
+    pub timeout_seconds: f64,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_timeout() -> f64 {
+    30.0
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpServerCreateResponse {
+    pub name: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpServerDeleteResponse {
+    pub name: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpServerReconnectResponse {
+    pub name: String,
+    pub status: String,
+    pub message: String,
+}
+
+// ── Handlers ────────────────────────────────────────────────────────────────
 
 /// GET /api/tools
-///
-/// Lists all available tools from native providers and MCP servers.
-/// Full tool registry integration will be wired later.
 pub async fn list_tools(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ToolListResponse>, AppError> {
     let cfg = state.config();
 
-    // Return built-in tool definitions (static list)
     let mut tools = Vec::new();
     let mut providers = vec!["bobe".to_owned()];
 
@@ -69,11 +133,17 @@ pub async fn list_tools(
         ];
 
         for (name, desc, category) in native_tools {
+            let enabled = state
+                .tool_registry
+                .is_tool_enabled(name)
+                .await
+                .unwrap_or(true);
+
             tools.push(ToolResponse {
                 name: name.into(),
                 description: desc.into(),
                 provider: "bobe".into(),
-                enabled: true,
+                enabled,
                 category: Some(category.into()),
             });
         }
@@ -89,5 +159,171 @@ pub async fn list_tools(
         tools,
         count,
         providers,
+    }))
+}
+
+/// POST /api/tools/:tool_name/enable
+pub async fn enable_tool(
+    State(state): State<Arc<AppState>>,
+    Path(tool_name): Path<String>,
+) -> Result<Json<ToolUpdateResponse>, AppError> {
+    // Refresh the index so the registry knows about all tools
+    let _ = state.tool_registry.refresh_index().await;
+
+    let success = state.tool_registry.enable_tool(&tool_name).await;
+
+    if !success {
+        return Err(AppError::NotFound(format!(
+            "Tool '{}' not found",
+            tool_name
+        )));
+    }
+
+    tracing::info!(tool_name = %tool_name, "tools.enabled");
+
+    Ok(Json(ToolUpdateResponse {
+        name: tool_name.clone(),
+        enabled: true,
+        message: format!("Tool '{}' enabled", tool_name),
+    }))
+}
+
+/// POST /api/tools/:tool_name/disable
+pub async fn disable_tool(
+    State(state): State<Arc<AppState>>,
+    Path(tool_name): Path<String>,
+) -> Result<Json<ToolUpdateResponse>, AppError> {
+    let _ = state.tool_registry.refresh_index().await;
+
+    let success = state.tool_registry.disable_tool(&tool_name).await;
+
+    if !success {
+        return Err(AppError::NotFound(format!(
+            "Tool '{}' not found",
+            tool_name
+        )));
+    }
+
+    tracing::info!(tool_name = %tool_name, "tools.disabled");
+
+    Ok(Json(ToolUpdateResponse {
+        name: tool_name.clone(),
+        enabled: false,
+        message: format!("Tool '{}' disabled", tool_name),
+    }))
+}
+
+/// GET /api/tools/mcp
+pub async fn list_mcp_servers(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<McpServerListResponse>, AppError> {
+    let configs = state.mcp_config_repo.get_all().await?;
+
+    let servers: Vec<McpServerResponse> = configs
+        .iter()
+        .map(|cfg| McpServerResponse {
+            name: cfg.server_name.clone(),
+            command: cfg.command.clone(),
+            args: cfg.args_vec(),
+            env: cfg.env_map(),
+            enabled: cfg.enabled,
+            connected: cfg.last_connected_at.is_some() && cfg.last_error.is_none(),
+            last_error: cfg.last_error.clone(),
+        })
+        .collect();
+
+    let count = servers.len();
+
+    Ok(Json(McpServerListResponse { servers, count }))
+}
+
+/// POST /api/tools/mcp
+pub async fn add_mcp_server(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<McpServerCreateRequest>,
+) -> Result<Json<McpServerCreateResponse>, AppError> {
+    if body.server_name.is_empty() {
+        return Err(AppError::Validation(
+            "server_name must not be empty".into(),
+        ));
+    }
+    if body.command.is_empty() {
+        return Err(AppError::Validation("command must not be empty".into()));
+    }
+
+    let repo = state.mcp_config_repo.clone();
+
+    if repo.get_by_name(&body.server_name).await?.is_some() {
+        return Err(AppError::Validation(format!(
+            "MCP server '{}' already exists",
+            body.server_name
+        )));
+    }
+
+    let args_json = serde_json::to_string(&body.args)?;
+    let env_json = serde_json::to_string(&body.env)?;
+
+    let mut cfg = McpServerConfig::new(body.server_name.clone(), body.command);
+    cfg.args = args_json;
+    cfg.env = env_json;
+    cfg.enabled = body.enabled;
+    cfg.timeout_seconds = body.timeout_seconds;
+
+    let saved = repo.save(&cfg).await?;
+
+    tracing::info!(name = %saved.server_name, "tools.mcp_server_added");
+
+    Ok(Json(McpServerCreateResponse {
+        name: saved.server_name,
+        message: "MCP server added".into(),
+    }))
+}
+
+/// DELETE /api/tools/mcp/:server_name
+pub async fn remove_mcp_server(
+    State(state): State<Arc<AppState>>,
+    Path(server_name): Path<String>,
+) -> Result<Json<McpServerDeleteResponse>, AppError> {
+    let repo = state.mcp_config_repo.clone();
+
+    let cfg = repo
+        .get_by_name(&server_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("MCP server '{}' not found", server_name)))?;
+
+    repo.delete(cfg.id).await?;
+
+    tracing::info!(name = %server_name, "tools.mcp_server_removed");
+
+    Ok(Json(McpServerDeleteResponse {
+        name: server_name,
+        message: "MCP server removed".into(),
+    }))
+}
+
+/// POST /api/tools/mcp/:server_name/reconnect
+pub async fn reconnect_mcp_server(
+    State(state): State<Arc<AppState>>,
+    Path(server_name): Path<String>,
+) -> Result<Json<McpServerReconnectResponse>, AppError> {
+    let mcp_adapter = state
+        .mcp_tool_adapter
+        .as_ref()
+        .ok_or_else(|| AppError::Validation("MCP is not enabled".into()))?;
+
+    let repo = state.mcp_config_repo.clone();
+    let _cfg = repo
+        .get_by_name(&server_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("MCP server '{}' not found", server_name)))?;
+
+    mcp_adapter.reconnect_server(&server_name).await?;
+
+    tracing::info!(name = %server_name, "tools.mcp_reconnected");
+
+    Ok(Json(McpServerReconnectResponse {
+        name: server_name,
+        status: "ok".into(),
+        message: "MCP server reconnected".into(),
     }))
 }

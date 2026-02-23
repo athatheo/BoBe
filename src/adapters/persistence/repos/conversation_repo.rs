@@ -34,10 +34,10 @@ impl ConversationRepository for SqliteConversationRepo {
         )
         .bind(&id)
         .bind(&conversation.state)
-        .bind(&conversation.closed_at)
+        .bind(conversation.closed_at)
         .bind(&conversation.summary)
-        .bind(&conversation.created_at)
-        .bind(&conversation.updated_at)
+        .bind(conversation.created_at)
+        .bind(conversation.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
@@ -164,8 +164,8 @@ impl ConversationRepository for SqliteConversationRepo {
         )
         .bind(state.as_str())
         .bind(&summary)
-        .bind(&closed_at)
-        .bind(&now)
+        .bind(closed_at)
+        .bind(now)
         .bind(&id_str)
         .execute(&self.pool)
         .await
@@ -215,15 +215,15 @@ impl ConversationRepository for SqliteConversationRepo {
         .bind(&turn.role)
         .bind(&turn.content)
         .bind(&conv_id)
-        .bind(&turn.created_at)
-        .bind(&turn.updated_at)
+        .bind(turn.created_at)
+        .bind(turn.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
 
         // Touch the conversation's updated_at
         sqlx::query("UPDATE conversations SET updated_at = ?1 WHERE id = ?2")
-            .bind(&Utc::now())
+            .bind(Utc::now())
             .bind(&conv_id)
             .execute(&self.pool)
             .await

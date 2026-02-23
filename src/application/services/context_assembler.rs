@@ -188,8 +188,8 @@ impl ContextAssembler {
             }
         }
 
-        if opts.include_memories {
-            if let Some(ref emb) = embedding {
+        if opts.include_memories
+            && let Some(ref emb) = embedding {
                 match self
                     .memory_repo
                     .find_similar(emb, opts.memory_limit, true, opts.memory_min_score)
@@ -201,7 +201,6 @@ impl ContextAssembler {
                     Err(e) => error!(error = %e, "context_assembler.memories_failed"),
                 }
             }
-        }
 
         if opts.include_observations {
             if let Some(ref emb) = embedding {

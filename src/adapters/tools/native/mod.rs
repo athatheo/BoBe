@@ -34,5 +34,3 @@ pub mod check_coding_agent;
 pub mod cancel_coding_agent;
 pub mod list_coding_agents;
 
-pub use base::NativeTool;
-pub use adapter::NativeToolAdapter;

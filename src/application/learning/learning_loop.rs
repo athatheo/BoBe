@@ -23,6 +23,13 @@ use crate::ports::repos::learning_state_repo::LearningStateRepository;
 use crate::ports::repos::memory_repo::MemoryRepository;
 use crate::ports::repos::observation_repo::ObservationRepository;
 
+#[derive(Default)]
+struct ReEmbedStats {
+    re_embedded: usize,
+    deleted: usize,
+    skipped: usize,
+}
+
 pub struct LearningLoop {
     conversation: Arc<ConversationService>,
     goals_service: Arc<GoalsService>,
@@ -155,6 +162,9 @@ impl LearningLoop {
             state_changed = true;
         }
 
+        // 5. Re-embed records with null embeddings
+        let re_embed_stats = self.re_embed_null_records().await;
+
         // Save state
         if state_changed {
             state.updated_at = Utc::now();
@@ -172,6 +182,8 @@ impl LearningLoop {
             memories_from_context = ctx_memories,
             consolidated = consolidated,
             pruned = pruned,
+            re_embedded = re_embed_stats.re_embedded,
+            re_embed_deleted = re_embed_stats.deleted,
             total_ms = total_ms,
             "learning_loop.cycle_complete"
         );
@@ -355,11 +367,10 @@ impl LearningLoop {
 
         let now = Utc::now();
 
-        if let Some(last) = state.last_pruning_at {
-            if last.date_naive() >= now.date_naive() {
+        if let Some(last) = state.last_pruning_at
+            && last.date_naive() >= now.date_naive() {
                 return (0, false);
             }
-        }
 
         info!("learning_loop.starting_pruning");
 
@@ -380,7 +391,17 @@ impl LearningLoop {
             .await
             .unwrap_or(0);
 
-        let total_deleted = obs_deleted + st_deleted + lt_deleted;
+        // Delete stale archived/completed goals
+        let goal_cutoff = now - Duration::days(self.retention_config.goal_retention_days as i64);
+        let goals_deleted = self.goal_repo
+            .delete_stale_goals(
+                &[crate::domain::types::GoalStatus::Archived, crate::domain::types::GoalStatus::Completed],
+                goal_cutoff,
+            )
+            .await
+            .unwrap_or(0);
+
+        let total_deleted = obs_deleted + st_deleted + lt_deleted + goals_deleted as i64;
         state.last_pruning_at = Some(now);
 
         info!(
@@ -388,10 +409,158 @@ impl LearningLoop {
             observations = obs_deleted,
             short_term = st_deleted,
             long_term = lt_deleted,
+            goals = goals_deleted,
             "learning_loop.pruning_complete"
         );
 
         (total_deleted as usize, true)
+    }
+
+    async fn re_embed_null_records(&self) -> ReEmbedStats {
+        let mut stats = ReEmbedStats::default();
+
+        // Observations
+        let (re, del, skip) = self.re_embed_observations(50).await;
+        stats.re_embedded += re;
+        stats.deleted += del;
+        stats.skipped += skip;
+
+        // Memories
+        let (re, del, skip) = self.re_embed_memories(50).await;
+        stats.re_embedded += re;
+        stats.deleted += del;
+        stats.skipped += skip;
+
+        // Goals
+        let (re, del, skip) = self.re_embed_goals(50).await;
+        stats.re_embedded += re;
+        stats.deleted += del;
+        stats.skipped += skip;
+
+        if stats.re_embedded > 0 || stats.deleted > 0 {
+            info!(
+                re_embedded = stats.re_embedded,
+                deleted = stats.deleted,
+                skipped = stats.skipped,
+                "learning_loop.re_embed_complete"
+            );
+        }
+
+        stats
+    }
+
+    async fn re_embed_observations(&self, limit: i64) -> (usize, usize, usize) {
+        let records = match self.observation_repo.find_null_embedding(limit).await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(error = %e, "learning_loop.re_embed_observations_fetch_failed");
+                return (0, 0, 0);
+            }
+        };
+
+        let mut re_embedded = 0usize;
+        let mut deleted = 0usize;
+        let mut skipped = 0usize;
+
+        for record in records {
+            if record.content.trim().is_empty() {
+                let _ = self.observation_repo.delete(record.id).await;
+                deleted += 1;
+                continue;
+            }
+            match self.embedding.embed(&record.content).await {
+                Ok(emb) if !emb.is_empty() => {
+                    if let Err(e) = self.observation_repo.update_embedding(record.id, &emb).await {
+                        warn!(error = %e, id = %record.id, "learning_loop.re_embed_observation_update_failed");
+                        skipped += 1;
+                    } else {
+                        re_embedded += 1;
+                    }
+                }
+                _ => {
+                    let _ = self.observation_repo.delete(record.id).await;
+                    deleted += 1;
+                }
+            }
+        }
+
+        (re_embedded, deleted, skipped)
+    }
+
+    async fn re_embed_memories(&self, limit: i64) -> (usize, usize, usize) {
+        let records = match self.memory_repo.find_null_embedding(limit).await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(error = %e, "learning_loop.re_embed_memories_fetch_failed");
+                return (0, 0, 0);
+            }
+        };
+
+        let mut re_embedded = 0usize;
+        let mut deleted = 0usize;
+        let mut skipped = 0usize;
+
+        for record in records {
+            if record.content.trim().is_empty() {
+                let _ = self.memory_repo.delete(record.id).await;
+                deleted += 1;
+                continue;
+            }
+            match self.embedding.embed(&record.content).await {
+                Ok(emb) if !emb.is_empty() => {
+                    if let Err(e) = self.memory_repo.update_embedding(record.id, &emb).await {
+                        warn!(error = %e, id = %record.id, "learning_loop.re_embed_memory_update_failed");
+                        skipped += 1;
+                    } else {
+                        re_embedded += 1;
+                    }
+                }
+                _ => {
+                    let _ = self.memory_repo.delete(record.id).await;
+                    deleted += 1;
+                }
+            }
+        }
+
+        (re_embedded, deleted, skipped)
+    }
+
+    async fn re_embed_goals(&self, limit: i64) -> (usize, usize, usize) {
+        let records = match self.goal_repo.find_null_embedding(limit).await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(error = %e, "learning_loop.re_embed_goals_fetch_failed");
+                return (0, 0, 0);
+            }
+        };
+
+        let mut re_embedded = 0usize;
+        let mut deleted = 0usize;
+        let mut skipped = 0usize;
+
+        for record in records {
+            if record.content.trim().is_empty() {
+                let _ = self.goal_repo.delete(record.id).await;
+                deleted += 1;
+                continue;
+            }
+            match self.embedding.embed(&record.content).await {
+                Ok(emb) if !emb.is_empty() => {
+                    if let Err(e) = self.goal_repo.update_embedding(record.id, &emb).await {
+                        warn!(error = %e, id = %record.id, "learning_loop.re_embed_goal_update_failed");
+                        skipped += 1;
+                    } else {
+                        re_embedded += 1;
+                    }
+                }
+                _ => {
+                    let _ = self.goal_repo.delete(record.id).await;
+                    deleted += 1;
+                }
+            }
+        }
+
+        (re_embedded, deleted, skipped)
     }
 
     async fn get_all_memories(&self) -> Vec<crate::domain::memory::Memory> {

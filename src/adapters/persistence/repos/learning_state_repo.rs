@@ -44,8 +44,8 @@ impl LearningStateRepository for SqliteLearningStateRepo {
             "INSERT INTO learning_state (id, created_at, updated_at) VALUES (?1, ?2, ?3)",
         )
         .bind(&id)
-        .bind(&new_state.created_at)
-        .bind(&new_state.updated_at)
+        .bind(new_state.created_at)
+        .bind(new_state.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
@@ -65,11 +65,11 @@ impl LearningStateRepository for SqliteLearningStateRepo {
                    updated_at = ?5
                WHERE id = ?6"#,
         )
-        .bind(&state.last_conversation_processed_at)
-        .bind(&state.last_context_processed_at)
-        .bind(&state.last_consolidation_at)
-        .bind(&state.last_pruning_at)
-        .bind(&chrono::Utc::now())
+        .bind(state.last_conversation_processed_at)
+        .bind(state.last_context_processed_at)
+        .bind(state.last_consolidation_at)
+        .bind(state.last_pruning_at)
+        .bind(chrono::Utc::now())
         .bind(&id)
         .execute(&self.pool)
         .await

@@ -9,6 +9,12 @@ use crate::ports::tools::{ToolCategory, ToolExecutionContext};
 
 pub struct BrowserHistoryTool;
 
+impl Default for BrowserHistoryTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BrowserHistoryTool {
     pub fn new() -> Self {
         Self
@@ -81,8 +87,7 @@ impl NativeTool for BrowserHistoryTool {
             .get("days")
             .and_then(|v| v.as_i64())
             .unwrap_or(7)
-            .min(365)
-            .max(1);
+            .clamp(1, 365);
 
         let max_results = arguments
             .get("max_results")
@@ -93,31 +98,25 @@ impl NativeTool for BrowserHistoryTool {
         let mut all_results: Vec<(String, String, String)> = Vec::new();
 
         // Search Chrome
-        if let Some(chrome_path) = Self::chrome_history_path() {
-            if chrome_path.exists() {
-                if let Ok(r) = search_chrome(&chrome_path, &query, days, max_results).await {
+        if let Some(chrome_path) = Self::chrome_history_path()
+            && chrome_path.exists()
+                && let Ok(r) = search_chrome(&chrome_path, &query, days, max_results).await {
                     all_results.extend(r);
                 }
-            }
-        }
 
         // Search Safari
-        if let Some(safari_path) = Self::safari_history_path() {
-            if safari_path.exists() {
-                if let Ok(r) = search_safari(&safari_path, &query, days, max_results).await {
+        if let Some(safari_path) = Self::safari_history_path()
+            && safari_path.exists()
+                && let Ok(r) = search_safari(&safari_path, &query, days, max_results).await {
                     all_results.extend(r);
                 }
-            }
-        }
 
         // Search Firefox
-        if let Some(firefox_dir) = Self::firefox_profile_dir() {
-            if firefox_dir.exists() {
-                if let Ok(r) = search_firefox(&firefox_dir, &query, days, max_results).await {
+        if let Some(firefox_dir) = Self::firefox_profile_dir()
+            && firefox_dir.exists()
+                && let Ok(r) = search_firefox(&firefox_dir, &query, days, max_results).await {
                     all_results.extend(r);
                 }
-            }
-        }
 
         // Sort by timestamp (newest first) and limit
         all_results.sort_by(|a, b| b.2.cmp(&a.2));

@@ -115,7 +115,7 @@ impl GoalLearner {
     async fn deduplicate_and_store(
         &self,
         raw_goals: &[Value],
-        existing_goals: &[Goal],
+        _existing_goals: &[Goal],
     ) -> Vec<Goal> {
         let mut created: Vec<Goal> = Vec::new();
         let max_goals = self.config.max_goals_per_cycle as usize;

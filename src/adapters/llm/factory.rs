@@ -62,9 +62,28 @@ impl LlmProviderFactory {
                 );
                 (Arc::new(p), "openai-vision".into())
             }
+            "azure_openai" | "azure-openai" | "azureopenai" => {
+                if self.config.azure_openai_endpoint.is_empty() || self.config.azure_openai_api_key.is_empty() {
+                    return Err(crate::error::AppError::Config(
+                        "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY required for Azure vision".into(),
+                    ));
+                }
+                let deployment = if self.config.vision_azure_openai_deployment.is_empty() {
+                    &self.config.azure_openai_deployment
+                } else {
+                    &self.config.vision_azure_openai_deployment
+                };
+                let p = OpenAiProvider::with_base_url(
+                    self.client.clone(),
+                    &self.config.azure_openai_endpoint,
+                    &self.config.azure_openai_api_key,
+                    deployment,
+                );
+                (Arc::new(p), "azure_openai-vision".into())
+            }
             other => {
                 return Err(crate::error::AppError::Config(format!(
-                    "Unknown vision backend: '{other}'. Supported: ollama, openai"
+                    "Unknown vision backend: '{other}'. Supported: ollama, openai, azure_openai"
                 )));
             }
         };
@@ -113,8 +132,27 @@ impl LlmProviderFactory {
                 );
                 Ok((Arc::new(provider), "llamacpp".into()))
             }
+            "azure_openai" | "azure-openai" | "azureopenai" => {
+                if self.config.azure_openai_endpoint.is_empty() || self.config.azure_openai_api_key.is_empty() {
+                    return Err(crate::error::AppError::Config(
+                        "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY are required for Azure OpenAI backend".into(),
+                    ));
+                }
+                if self.config.azure_openai_deployment.is_empty() {
+                    return Err(crate::error::AppError::Config(
+                        "BOBE_AZURE_OPENAI_DEPLOYMENT is required for Azure OpenAI backend".into(),
+                    ));
+                }
+                let provider = OpenAiProvider::with_base_url(
+                    self.client.clone(),
+                    &self.config.azure_openai_endpoint,
+                    &self.config.azure_openai_api_key,
+                    &self.config.azure_openai_deployment,
+                );
+                Ok((Arc::new(provider), "azure_openai".into()))
+            }
             other => Err(crate::error::AppError::Config(format!(
-                "Unknown LLM backend: '{other}'. Supported: ollama, openai, llamacpp"
+                "Unknown LLM backend: '{other}'. Supported: ollama, openai, llamacpp, azure_openai"
             ))),
         }
     }

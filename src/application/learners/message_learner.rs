@@ -97,11 +97,10 @@ impl MessageLearner {
         }
 
         let truncated = &cleaned[..max_len];
-        if let Some(last_space) = truncated.rfind(' ') {
-            if last_space > 50 {
+        if let Some(last_space) = truncated.rfind(' ')
+            && last_space > 50 {
                 return format!("{}...", &truncated[..last_space]);
             }
-        }
         format!("{truncated}...")
     }
 }

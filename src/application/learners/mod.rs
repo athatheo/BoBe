@@ -10,5 +10,4 @@ pub use goal_learner::GoalLearner;
 pub use memory_consolidator::MemoryConsolidator;
 pub use memory_learner::MemoryLearner;
 pub use message_learner::MessageLearner;
-pub use types::{LearnerError, LearnerObservation, LearnerObservationSource, LearnerResult};
 

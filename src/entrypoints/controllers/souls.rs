@@ -148,7 +148,7 @@ pub async fn create_soul(
     Ok(Json(soul_to_response(&saved)))
 }
 
-/// PUT /api/souls/:id
+/// PATCH /api/souls/:id
 ///
 /// Copy-on-write for default souls: editing a default soul renames it
 /// to "<name> (edited)" and preserves the original as a disabled copy.
@@ -166,20 +166,21 @@ pub async fn update_soul(
 
     let is_content_edit_of_default = body.content.is_some() && soul.is_default;
 
-    if is_content_edit_of_default {
+    let updated = if is_content_edit_of_default {
         let original_name = soul.name.clone();
         let original_content = soul.content.clone();
         let edited_name = format!("{original_name} (edited)");
 
-        // Rename the current soul
-        repo.update(
-            soul_id,
-            body.content.as_deref(),
-            body.enabled,
-            Some(false),
-            Some(&edited_name),
-        )
-        .await?;
+        // Rename + apply edits in one update
+        let updated = repo
+            .update(
+                soul_id,
+                body.content.as_deref(),
+                body.enabled,
+                Some(false),
+                Some(&edited_name),
+            )
+            .await?;
 
         // Preserve original as disabled copy
         let default_copy = Soul {
@@ -198,29 +199,78 @@ pub async fn update_soul(
             edited_name = %edited_name,
             "soul.copy_on_write",
         );
-    }
 
-    let updated = repo
-        .update(
-            soul_id,
-            if is_content_edit_of_default {
-                None
-            } else {
-                body.content.as_deref()
-            },
-            if is_content_edit_of_default {
-                None
-            } else {
-                body.enabled
-            },
-            None,
-            None,
-        )
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
+        updated
+    } else {
+        repo.update(soul_id, body.content.as_deref(), body.enabled, None, None)
+            .await?
+    };
+
+    let updated =
+        updated.ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
 
     tracing::info!(soul_id = %soul_id, "soul.updated");
     Ok(Json(soul_to_response(&updated)))
+}
+
+/// GET /api/souls/by-name/:name
+pub async fn get_soul_by_name(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<Json<SoulResponse>, AppError> {
+    let repo = state.soul_repo.clone();
+    let soul = repo
+        .get_by_name(&name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Soul '{name}' not found")))?;
+
+    Ok(Json(soul_to_response(&soul)))
+}
+
+/// POST /api/souls/:id/enable
+pub async fn enable_soul(
+    State(state): State<Arc<AppState>>,
+    Path(soul_id): Path<Uuid>,
+) -> Result<Json<SoulActionResponse>, AppError> {
+    let repo = state.soul_repo.clone();
+
+    let soul = repo
+        .get_by_id(soul_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
+
+    repo.update(soul_id, None, Some(true), None, None).await?;
+    tracing::info!(soul_id = %soul_id, "soul.enabled");
+
+    Ok(Json(SoulActionResponse {
+        id: soul_id.to_string(),
+        name: soul.name,
+        enabled: true,
+        message: "Soul enabled".into(),
+    }))
+}
+
+/// POST /api/souls/:id/disable
+pub async fn disable_soul(
+    State(state): State<Arc<AppState>>,
+    Path(soul_id): Path<Uuid>,
+) -> Result<Json<SoulActionResponse>, AppError> {
+    let repo = state.soul_repo.clone();
+
+    let soul = repo
+        .get_by_id(soul_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
+
+    repo.update(soul_id, None, Some(false), None, None).await?;
+    tracing::info!(soul_id = %soul_id, "soul.disabled");
+
+    Ok(Json(SoulActionResponse {
+        id: soul_id.to_string(),
+        name: soul.name,
+        enabled: false,
+        message: "Soul disabled".into(),
+    }))
 }
 
 /// DELETE /api/souls/:id

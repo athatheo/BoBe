@@ -253,18 +253,128 @@ impl AgentJobManager {
         }
 
         // Mark as cancelled in DB
-        if let Some(mut job) = self.repo.get_by_id(job_id).await? {
-            if !job.is_terminal() {
+        if let Some(mut job) = self.repo.get_by_id(job_id).await?
+            && !job.is_terminal() {
                 job.mark_cancelled(Some("user request".to_owned()));
                 self.repo.save(&job).await?;
                 info!(job_id = %job_id, "agent_job.cancelled");
                 return Ok(true);
             }
-        }
         Ok(false)
     }
 
-    /// Get terminal jobs not yet reported to user.
+    /// Resume a completed job with additional instructions.
+    ///
+    /// Uses the agent's session_id to resume the same session (Claude Code).
+    /// For agents without session resume, starts a fresh run with context.
+    pub async fn continue_job(
+        self: &Arc<Self>,
+        job_id: Uuid,
+        continuation_prompt: &str,
+    ) -> Result<Option<AgentJob>, AppError> {
+        let original = self.repo.get_by_id(job_id).await?;
+        let original = match original {
+            Some(j) if j.is_terminal() => j,
+            _ => return Ok(None),
+        };
+
+        let profile = match self.profiles.get(&original.profile_name) {
+            Some(p) if p.enabled => p.clone(),
+            _ => return Ok(None),
+        };
+
+        // Enforce max continuations
+        if original.continuation_count >= 3 {
+            return Ok(None);
+        }
+
+        // Build continuation command
+        let cmd_args = if let (true, Some(session_id)) = (
+            profile.command == "claude",
+            original.agent_session_id.as_ref(),
+        ) {
+            // Claude Code: resume the existing session
+            let mut args = profile.args.clone();
+            args.extend(["--resume".into(), session_id.clone(), "--".into(), continuation_prompt.to_owned()]);
+            args
+        } else {
+            build_command(&profile, continuation_prompt)
+        };
+
+        // Verify command exists
+        let cmd_path = which::which(&profile.command).map_err(|_| {
+            AppError::NotFound(format!(
+                "Agent command not found: '{}'. Ensure it is installed and on PATH.",
+                profile.command
+            ))
+        })?;
+
+        // Create new job linked to original
+        let mut job = AgentJob::new(
+            original.profile_name.clone(),
+            format!("{} {}", cmd_path.display(), cmd_args.join(" ")),
+            continuation_prompt.to_owned(),
+            original.working_directory.clone(),
+        );
+        job.conversation_id = original.conversation_id;
+        job.continuation_count = original.continuation_count + 1;
+        let mut job = self.repo.save(&job).await?;
+
+        // Prepare output file
+        tokio::fs::create_dir_all(&self.output_dir).await?;
+        let output_path = self.output_dir.join(format!("{}.output", job.id));
+        job.raw_output_path = Some(output_path.to_string_lossy().into_owned());
+
+        // Build env and start subprocess
+        let env = build_env(&profile);
+        let child = Command::new(&profile.command)
+            .args(&cmd_args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null())
+            .current_dir(&original.working_directory)
+            .envs(env)
+            .spawn()
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to start continuation subprocess: {e}"))
+            })?;
+
+        let pid = child.id().ok_or_else(|| {
+            AppError::Internal("Continuation subprocess started but has no PID".into())
+        })?;
+
+        job.mark_running(pid as i64);
+        let job = self.repo.save(&job).await?;
+
+        // Spawn watcher
+        let manager = Arc::clone(self);
+        let new_job_id = job.id;
+        let output_format = profile.output_format.clone();
+        let max_runtime = profile.max_runtime_seconds.unwrap_or(self.max_runtime_seconds);
+        let output_path_clone = output_path.clone();
+
+        let watcher_handle = tokio::spawn(async move {
+            manager
+                .watch_process(new_job_id, child, output_path_clone, &output_format, max_runtime)
+                .await;
+        });
+
+        {
+            let mut running = self.running_jobs.lock().await;
+            running.insert(new_job_id, RunningJob {
+                watcher_handle,
+                pid,
+            });
+        }
+
+        info!(
+            job_id = %new_job_id,
+            original_job_id = %job_id,
+            continuation = job.continuation_count,
+            "agent_job.continued"
+        );
+        Ok(Some(job))
+    }
     pub async fn poll_completed_unreported(&self) -> Result<Vec<AgentJob>, AppError> {
         self.repo.find_unreported_terminal().await
     }
@@ -284,12 +394,11 @@ impl AgentJobManager {
         for (job_id, pid) in jobs_to_kill {
             info!(job_id = %job_id, "agent_job.shutdown_kill");
             kill_process(pid).await;
-            if let Ok(Some(mut job)) = self.repo.get_by_id(job_id).await {
-                if !job.is_terminal() {
+            if let Ok(Some(mut job)) = self.repo.get_by_id(job_id).await
+                && !job.is_terminal() {
                     job.mark_cancelled(Some("server shutdown".to_owned()));
                     let _ = self.repo.save(&job).await;
                 }
-            }
         }
     }
 
@@ -379,12 +488,11 @@ impl AgentJobManager {
 
         if let Err(e) = write_result {
             error!(job_id = %job_id, error = %e, "agent_job.watcher_error");
-            if let Ok(Some(mut job)) = self.repo.get_by_id(job_id).await {
-                if !job.is_terminal() {
+            if let Ok(Some(mut job)) = self.repo.get_by_id(job_id).await
+                && !job.is_terminal() {
                     job.mark_failed(format!("Watcher error: {e}"), None);
                     let _ = self.repo.save(&job).await;
                 }
-            }
             return;
         }
 
@@ -481,7 +589,7 @@ fn build_env(profile: &AgentProfileConfig) -> HashMap<String, String> {
     env
 }
 
-fn parse_output(output_path: &PathBuf, output_format: &str) -> AgentJobResult {
+fn parse_output(output_path: &std::path::Path, output_format: &str) -> AgentJobResult {
     if output_format == "ndjson" {
         parse_claude_ndjson(output_path)
     } else {

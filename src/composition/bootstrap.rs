@@ -21,11 +21,10 @@ use super::db_seeding;
 pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // 1. Ensure data directory exists
     let db_url = &config.database_url;
-    if let Some(path) = db_url.strip_prefix("sqlite:") {
-        if let Some(parent) = std::path::Path::new(path).parent() {
+    if let Some(path) = db_url.strip_prefix("sqlite:")
+        && let Some(parent) = std::path::Path::new(path).parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-    }
 
     // 2. Create pool and run migrations
     let pool = SqlitePool::connect(db_url)
@@ -93,6 +92,22 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         );
     }
 
+    // 7b. Register MCP tools if enabled
+    if config.mcp_enabled {
+        match container.mcp_adapter.initialize().await {
+            Ok(()) => {
+                container
+                    .tool_registry
+                    .register(container.mcp_adapter.clone() as Arc<dyn crate::ports::tools::ToolSource>)
+                    .await;
+                info!("bootstrap.mcp_tools_registered");
+            }
+            Err(e) => {
+                warn!(error = %e, "bootstrap.mcp_initialization_failed");
+            }
+        }
+    }
+
     // 8. Mark orphaned agent jobs as failed
     {
         use crate::domain::types::AgentJobStatus;
@@ -111,7 +126,32 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         }
     }
 
-    // 9. Sync goals from file if configured
+    // 9. Clean corrupt embeddings (NULL out non-JSON-array values)
+    {
+        let tables = ["memories", "observations"];
+        let mut total_cleaned: u64 = 0;
+        for table in tables {
+            let sql = format!(
+                "UPDATE {} SET embedding = NULL WHERE embedding IS NOT NULL AND embedding NOT LIKE '[%'",
+                table
+            );
+            match sqlx::query(&sql).execute(&container.db).await {
+                Ok(result) => {
+                    let rows = result.rows_affected();
+                    if rows > 0 {
+                        warn!(table, rows, "bootstrap.cleaned_corrupt_embeddings");
+                        total_cleaned += rows;
+                    }
+                }
+                Err(e) => warn!(error = %e, table, "bootstrap.embedding_cleanup_failed"),
+            }
+        }
+        if total_cleaned > 0 {
+            info!(total_rows = total_cleaned, "bootstrap.corrupt_embeddings_cleaned");
+        }
+    }
+
+    // 10. Sync goals from file if configured
     if config.goals_sync_on_startup {
         match container.goals_service.sync_from_file().await {
             Ok(result) => {
@@ -125,7 +165,24 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         }
     }
 
-    // 10. Build AppState from the container
+    // 10. Wire SSE callbacks to RuntimeSession (connect → start capture, disconnect → stop)
+    {
+        let rs = container.runtime_session.clone();
+        let rs2 = container.runtime_session.clone();
+        container.connection_manager.set_callbacks(
+            Box::new(move || {
+                let rs = rs.clone();
+                tokio::spawn(async move { rs.on_connection().await });
+            }),
+            Box::new(move || {
+                let rs = rs2.clone();
+                tokio::spawn(async move { rs.on_disconnection().await });
+            }),
+        ).await;
+        info!("bootstrap.sse_callbacks_wired");
+    }
+
+    // 11. Build AppState from the container
     let state = Arc::new(AppState {
         db: container.db,
         config: container.config,
@@ -154,6 +211,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         screen_capture: container.screen_capture,
         ollama_manager: container.ollama_manager,
         config_manager: container.config_manager,
+        mcp_tool_adapter: Some(container.mcp_adapter),
     });
 
     // 11. Print startup banner

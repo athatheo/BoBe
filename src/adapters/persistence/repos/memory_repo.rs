@@ -48,8 +48,8 @@ impl MemoryRepository for SqliteMemoryRepo {
         .bind(&memory.embedding)
         .bind(&src_obs)
         .bind(&src_conv)
-        .bind(&memory.created_at)
-        .bind(&memory.updated_at)
+        .bind(memory.created_at)
+        .bind(memory.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
@@ -316,6 +316,29 @@ impl MemoryRepository for SqliteMemoryRepo {
         } else {
             Ok(false)
         }
+    }
+
+    async fn find_null_embedding(&self, limit: i64) -> Result<Vec<Memory>, AppError> {
+        sqlx::query_as::<_, Memory>(
+            "SELECT * FROM memories WHERE embedding IS NULL ORDER BY created_at DESC LIMIT ?1",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::Database)
+    }
+
+    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError> {
+        let json = serde_json::to_string(embedding)
+            .map_err(|e| AppError::Internal(format!("Failed to serialize embedding: {e}")))?;
+        sqlx::query("UPDATE memories SET embedding = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(&json)
+            .bind(Utc::now())
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
+        Ok(())
     }
 }
 

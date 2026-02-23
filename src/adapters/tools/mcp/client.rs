@@ -331,12 +331,11 @@ impl McpClient {
 impl Drop for McpClient {
     fn drop(&mut self) {
         // Best-effort cleanup
-        if let Ok(mut proc) = self.process.try_lock() {
-            if let Some(mut p) = proc.take() {
+        if let Ok(mut proc) = self.process.try_lock()
+            && let Some(mut p) = proc.take() {
                 let _ = p.child.kill();
                 let _ = p.child.wait();
             }
-        }
     }
 }
 

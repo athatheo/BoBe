@@ -1,10 +1,9 @@
 pub mod capture_result;
 
-use std::path::Path;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::Utc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::error::AppError;
 use capture_result::CaptureResult;
@@ -31,7 +30,7 @@ impl ScreenCapture {
         let timestamp = Utc::now();
         debug!("capture.started");
 
-        let image = tokio::task::spawn_blocking(|| take_screenshot())
+        let image = tokio::task::spawn_blocking(take_screenshot)
             .await
             .map_err(|e| AppError::Capture(format!("Screenshot task panicked: {e}")))?
             .map_err(|e| AppError::Capture(format!("Screenshot failed: {e}")))?;
@@ -73,8 +72,7 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
         .output()?;
 
     if !output.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             format!(
                 "screencapture exited with {}: {}",
                 output.status,

@@ -42,11 +42,10 @@ impl SoulService {
     /// Get soul content, preferring database over file.
     pub async fn get_soul_async(&self) -> Result<String, AppError> {
         // Try database first
-        if let Some(ref repo) = self.soul_repo {
-            if let Some(content) = self.load_soul_from_db(repo).await {
+        if let Some(ref repo) = self.soul_repo
+            && let Some(content) = self.load_soul_from_db(repo).await {
                 return Ok(content);
             }
-        }
         // Fall back to file-based loading
         Ok(self.load_soul_from_file())
     }
@@ -141,12 +140,11 @@ impl SoulService {
         ];
 
         for path in &asset_paths {
-            if path.exists() {
-                if let Ok(content) = std::fs::read_to_string(path) {
+            if path.exists()
+                && let Ok(content) = std::fs::read_to_string(path) {
                     info!(path = %path.display(), "soul_service.loaded_default");
                     return content;
                 }
-            }
         }
 
         info!("soul_service.using_builtin_default");

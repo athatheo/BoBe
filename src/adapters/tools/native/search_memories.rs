@@ -72,8 +72,7 @@ impl NativeTool for SearchMemoriesTool {
             .get("limit")
             .and_then(|v| v.as_i64())
             .unwrap_or(5)
-            .min(20)
-            .max(1);
+            .clamp(1, 20);
 
         let embedding = self.embedding_provider.embed(query).await?;
         let results = self

@@ -71,6 +71,12 @@ impl EventQueue {
         self.inner.lock().unwrap().is_empty()
     }
 
+    /// Drain all events from the queue.
+    pub fn clear(&self) -> Vec<StreamBundle> {
+        let mut queue = self.inner.lock().unwrap();
+        queue.drain(..).collect()
+    }
+
     /// Push a heartbeat event.
     pub fn push_heartbeat(&self) {
         use super::types::EventType;

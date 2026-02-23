@@ -21,4 +21,7 @@ pub trait ObservationRepository: Send + Sync {
         limit: i64,
     ) -> Result<Vec<(Observation, f64)>, AppError>;
     async fn delete_older_than(&self, days: i64) -> Result<i64, AppError>;
+    async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
+    async fn find_null_embedding(&self, limit: i64) -> Result<Vec<Observation>, AppError>;
+    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError>;
 }

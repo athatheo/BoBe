@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use axum::{Router, routing::{get, post, put}, middleware as axum_middleware};
+use axum::{Router, routing::{delete, get, post}, middleware as axum_middleware};
 use tower_http::cors::{CorsLayer, AllowOrigin};
 use tower_http::trace::TraceLayer;
 
@@ -44,7 +44,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/goals/{goal_id}",
             get(controllers::goals::get_goal)
-                .put(controllers::goals::update_goal)
+                .patch(controllers::goals::update_goal)
                 .delete(controllers::goals::delete_goal),
         )
         .route(
@@ -67,8 +67,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/memories/{memory_id}",
             get(controllers::memories::get_memory)
-                .put(controllers::memories::update_memory)
+                .patch(controllers::memories::update_memory)
                 .delete(controllers::memories::delete_memory),
+        )
+        .route(
+            "/api/memories/{memory_id}/enable",
+            post(controllers::memories::enable_memory),
+        )
+        .route(
+            "/api/memories/{memory_id}/disable",
+            post(controllers::memories::disable_memory),
         )
         // Souls
         .route(
@@ -76,10 +84,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(controllers::souls::list_souls).post(controllers::souls::create_soul),
         )
         .route(
+            "/api/souls/by-name/{name}",
+            get(controllers::souls::get_soul_by_name),
+        )
+        .route(
             "/api/souls/{soul_id}",
             get(controllers::souls::get_soul)
-                .put(controllers::souls::update_soul)
+                .patch(controllers::souls::update_soul)
                 .delete(controllers::souls::delete_soul),
+        )
+        .route(
+            "/api/souls/{soul_id}/enable",
+            post(controllers::souls::enable_soul),
+        )
+        .route(
+            "/api/souls/{soul_id}/disable",
+            post(controllers::souls::disable_soul),
         )
         // User Profiles
         .route(
@@ -88,8 +108,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .post(controllers::user_profile::create_profile),
         )
         .route(
+            "/api/user-profiles/by-name/{name}",
+            get(controllers::user_profile::get_profile_by_name),
+        )
+        .route(
             "/api/user-profiles/{profile_id}",
-            put(controllers::user_profile::update_profile),
+            get(controllers::user_profile::get_profile)
+                .patch(controllers::user_profile::update_profile)
+                .delete(controllers::user_profile::delete_profile),
+        )
+        .route(
+            "/api/user-profiles/{profile_id}/enable",
+            post(controllers::user_profile::enable_profile),
+        )
+        .route(
+            "/api/user-profiles/{profile_id}/disable",
+            post(controllers::user_profile::disable_profile),
         )
         // MCP Configs
         .route(
@@ -99,17 +133,37 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/mcp-configs/{config_id}",
-            put(controllers::mcp_configs::update_config)
+            get(controllers::mcp_configs::get_config)
+                .patch(controllers::mcp_configs::update_config)
                 .delete(controllers::mcp_configs::delete_config),
+        )
+        .route(
+            "/api/mcp-configs/{config_id}/enable",
+            post(controllers::mcp_configs::enable_config),
+        )
+        .route(
+            "/api/mcp-configs/{config_id}/disable",
+            post(controllers::mcp_configs::disable_config),
+        )
+        .route(
+            "/api/mcp-configs/{config_id}/connect",
+            post(controllers::mcp_configs::connect_server),
+        )
+        .route(
+            "/api/mcp-configs/{config_id}/disconnect",
+            post(controllers::mcp_configs::disconnect_server),
         )
         // Settings
         .route(
             "/api/settings",
             get(controllers::settings::get_settings)
-                .put(controllers::settings::update_settings),
+                .patch(controllers::settings::update_settings),
         )
         // Models
         .route("/api/models", get(controllers::models::list_models))
+        .route("/api/models/pull", post(controllers::models::pull_model))
+        .route("/api/models/registry", get(controllers::models::list_registry_models))
+        .route("/api/models/{model_name}", delete(controllers::models::delete_model))
         // Onboarding
         .route(
             "/api/onboarding/status",
@@ -119,8 +173,41 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/onboarding/complete",
             post(controllers::onboarding::mark_complete),
         )
-        // Tools
+        .route(
+            "/api/onboarding/configure-llm",
+            post(controllers::onboarding::configure_llm),
+        )
+        .route(
+            "/api/onboarding/pull-model",
+            post(controllers::onboarding::pull_model),
+        )
+        .route(
+            "/api/onboarding/warmup-embedding",
+            post(controllers::onboarding::warmup_embedding),
+        )
+        // Tools (MCP sub-routes before wildcard)
+        .route(
+            "/api/tools/mcp",
+            get(controllers::tools::list_mcp_servers)
+                .post(controllers::tools::add_mcp_server),
+        )
+        .route(
+            "/api/tools/mcp/{server_name}",
+            delete(controllers::tools::remove_mcp_server),
+        )
+        .route(
+            "/api/tools/mcp/{server_name}/reconnect",
+            post(controllers::tools::reconnect_mcp_server),
+        )
         .route("/api/tools", get(controllers::tools::list_tools))
+        .route(
+            "/api/tools/{tool_name}/enable",
+            post(controllers::tools::enable_tool),
+        )
+        .route(
+            "/api/tools/{tool_name}/disable",
+            post(controllers::tools::disable_tool),
+        )
         // SSE Events
         .route("/api/events", get(controllers::events::stream_events))
         // Middleware

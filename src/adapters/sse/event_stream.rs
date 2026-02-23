@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use tokio_stream::StreamExt;
-use tracing::{debug, warn};
 
 use super::connection_manager::SseConnectionManager;
 use super::event_queue::EventQueue;
@@ -32,8 +30,8 @@ impl EventStream {
     }
 
     /// Whether a client is connected.
-    pub fn is_connected(&self) -> bool {
-        self.connection_manager.is_connected()
+    pub async fn is_connected(&self) -> bool {
+        self.connection_manager.is_connected().await
     }
 
     /// Get a reference to the underlying event queue.
@@ -46,7 +44,7 @@ impl EventStream {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_seconds));
         loop {
             interval.tick().await;
-            if self.is_connected() {
+            if self.is_connected().await {
                 self.push(factories::heartbeat_event());
             }
         }

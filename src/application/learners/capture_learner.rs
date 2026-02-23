@@ -80,11 +80,10 @@ impl CaptureLearner {
     }
 
     fn effective_vision_llm(&self) -> Option<&Arc<dyn LlmProvider>> {
-        if let Some(ref v) = self.vision_llm {
-            if v.supports_vision() {
+        if let Some(ref v) = self.vision_llm
+            && v.supports_vision() {
                 return Some(v);
             }
-        }
         if self.llm.supports_vision() {
             return Some(&self.llm);
         }

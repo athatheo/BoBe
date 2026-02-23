@@ -52,7 +52,12 @@ impl DecisionEngine {
     /// Route to appropriate decision logic based on trigger type.
     pub async fn decide(&self, context: &TriggerContext) -> Decision {
         match context.trigger_type {
-            TriggerType::Capture => self.decide_on_capture(&context.context_text).await,
+            TriggerType::Capture => {
+                let embedding = context.observation.as_ref()
+                    .and_then(|obs| obs.embedding.as_ref())
+                    .and_then(|e| serde_json::from_str::<Vec<f32>>(e).ok());
+                self.decide_on_capture(&context.context_text, embedding.as_deref()).await
+            }
             TriggerType::Goal => self.decide_on_goal(&context.context_text).await,
             TriggerType::Checkin => Decision::Engage,
             _ => {
@@ -62,7 +67,7 @@ impl DecisionEngine {
         }
     }
 
-    async fn decide_on_capture(&self, current_text: &str) -> Decision {
+    async fn decide_on_capture(&self, current_text: &str, embedding: Option<&[f32]>) -> Decision {
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
             let timeout = Duration::seconds(self.config.conversation_inactivity_timeout_seconds as i64);
@@ -82,11 +87,31 @@ impl DecisionEngine {
             .await
             .unwrap_or_default();
 
-        // Get similar observations
-        let similar_observations = self.observation_repo
-            .find_recent(10)
-            .await
-            .unwrap_or_default();
+        // Get similar observations via semantic search (fallback to recent)
+        let similar_observations = match embedding {
+            Some(emb) => {
+                match self.observation_repo
+                    .find_similar(emb, self.config.semantic_search_limit)
+                    .await
+                {
+                    Ok(results) => {
+                        debug!(
+                            result_count = results.len(),
+                            "decision_engine.semantic_search_complete"
+                        );
+                        results.into_iter().map(|(obs, _score)| obs).collect()
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "decision_engine.semantic_search_failed");
+                        self.observation_repo.find_recent(10).await.unwrap_or_default()
+                    }
+                }
+            }
+            None => {
+                debug!("decision_engine.no_embedding_fallback");
+                self.observation_repo.find_recent(10).await.unwrap_or_default()
+            }
+        };
 
         // Check LLM health
         if !self.llm.health_check().await {
@@ -218,7 +243,7 @@ impl DecisionEngine {
             }
         };
 
-        self.parse_decision_response(&response.message.content.text_or_empty().to_string())
+        self.parse_decision_response(response.message.content.text_or_empty())
     }
 
     fn parse_decision_response(&self, content: &str) -> Decision {

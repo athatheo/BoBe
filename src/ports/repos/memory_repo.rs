@@ -46,4 +46,6 @@ pub trait MemoryRepository: Send + Sync {
         older_than: DateTime<Utc>,
     ) -> Result<i64, AppError>;
     async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
+    async fn find_null_embedding(&self, limit: i64) -> Result<Vec<Memory>, AppError>;
+    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError>;
 }
