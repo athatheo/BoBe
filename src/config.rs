@@ -132,7 +132,7 @@ impl Default for Config {
             host: "127.0.0.1".into(),
             port: 8765,
             mdns_enabled: false,
-            database_url: expand_sqlite_path("sqlite:~/.bobe/data/bobe.db"),
+            database_url: expand_sqlite_path("sqlite:~/.bobe/data/bobrust.db"),
             llm_backend: "ollama".into(),
             llama_url: "http://localhost:8080".into(),
             openai_api_key: String::new(),

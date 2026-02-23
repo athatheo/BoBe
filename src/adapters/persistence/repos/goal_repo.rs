@@ -21,7 +21,6 @@ impl SqliteGoalRepo {
 #[async_trait]
 impl GoalRepository for SqliteGoalRepo {
     async fn save(&self, goal: &Goal) -> Result<Goal, AppError> {
-        let id = goal.id.to_string();
         sqlx::query(
             r#"INSERT INTO goals (id, content, priority, source, status, enabled, inference_reason, embedding, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -35,7 +34,7 @@ impl GoalRepository for SqliteGoalRepo {
                    embedding = excluded.embedding,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(goal.id)
         .bind(&goal.content)
         .bind(&goal.priority)
         .bind(&goal.source)
@@ -50,7 +49,7 @@ impl GoalRepository for SqliteGoalRepo {
         .map_err(AppError::Database)?;
 
         debug!(
-            goal_id = %id,
+            goal_id = %goal.id,
             source = %goal.source,
             status = %goal.status,
             has_embedding = goal.embedding.is_some(),
@@ -61,7 +60,7 @@ impl GoalRepository for SqliteGoalRepo {
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Goal>, AppError> {
         sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -164,7 +163,7 @@ impl GoalRepository for SqliteGoalRepo {
         if let Some(e) = enabled {
             q = q.bind(e);
         }
-        q = q.bind(chrono::Utc::now()).bind(id.to_string());
+        q = q.bind(chrono::Utc::now()).bind(id);
         q.execute(&self.pool).await.map_err(AppError::Database)?;
 
         info!(goal_id = %id, status = ?status.map(|s| s.as_str()), enabled = ?enabled, "goal_repo.updated");
@@ -221,7 +220,7 @@ impl GoalRepository for SqliteGoalRepo {
         if let Some(e) = enabled {
             q = q.bind(e);
         }
-        q = q.bind(chrono::Utc::now()).bind(id.to_string());
+        q = q.bind(chrono::Utc::now()).bind(id);
         q.execute(&self.pool).await.map_err(AppError::Database)?;
 
         info!(goal_id = %id, content_updated = content.is_some(), "goal_repo.update_fields");
@@ -230,7 +229,7 @@ impl GoalRepository for SqliteGoalRepo {
 
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM goals WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;
@@ -309,7 +308,7 @@ impl GoalRepository for SqliteGoalRepo {
         sqlx::query("UPDATE goals SET embedding = ?1, updated_at = ?2 WHERE id = ?3")
             .bind(&json)
             .bind(chrono::Utc::now())
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;
@@ -332,7 +331,7 @@ impl GoalRepository for SqliteGoalRepo {
         );
         let mut query = sqlx::query(&sql).bind(status_str).bind(now);
         for id in goal_ids {
-            query = query.bind(id.to_string());
+            query = query.bind(*id);
         }
         let result = query.execute(&self.pool).await.map_err(AppError::Database)?;
         let count = result.rows_affected();

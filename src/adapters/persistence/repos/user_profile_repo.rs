@@ -20,7 +20,6 @@ impl SqliteUserProfileRepo {
 #[async_trait]
 impl UserProfileRepository for SqliteUserProfileRepo {
     async fn save(&self, profile: &UserProfile) -> Result<UserProfile, AppError> {
-        let id = profile.id.to_string();
         sqlx::query(
             r#"INSERT INTO user_profiles (id, name, content, enabled, is_default, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -31,7 +30,7 @@ impl UserProfileRepository for SqliteUserProfileRepo {
                    is_default = excluded.is_default,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(profile.id)
         .bind(&profile.name)
         .bind(&profile.content)
         .bind(profile.enabled)
@@ -42,13 +41,13 @@ impl UserProfileRepository for SqliteUserProfileRepo {
         .await
         .map_err(AppError::Database)?;
 
-        debug!(profile_id = %id, name = %profile.name, is_default = profile.is_default, "user_profile_repo.saved");
+        debug!(profile_id = %profile.id, name = %profile.name, is_default = profile.is_default, "user_profile_repo.saved");
         Ok(profile.clone())
     }
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<UserProfile>, AppError> {
         sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -117,7 +116,7 @@ impl UserProfileRepository for SqliteUserProfileRepo {
         if let Some(e) = enabled {
             q = q.bind(e);
         }
-        q = q.bind(chrono::Utc::now()).bind(id.to_string());
+        q = q.bind(chrono::Utc::now()).bind(id);
         q.execute(&self.pool).await.map_err(AppError::Database)?;
 
         info!(
@@ -131,7 +130,7 @@ impl UserProfileRepository for SqliteUserProfileRepo {
 
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM user_profiles WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;

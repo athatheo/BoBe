@@ -73,17 +73,16 @@ impl CooldownRepository for SqliteCooldownRepo {
             existing
         } else {
             let new_state = Cooldown::new();
-            let id = new_state.id.to_string();
             sqlx::query(
                 "INSERT INTO cooldown_state (id, created_at, updated_at) VALUES (?1, ?2, ?3)",
             )
-            .bind(&id)
+            .bind(new_state.id)
             .bind(new_state.created_at)
             .bind(new_state.updated_at)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;
-            info!(state_id = %id, "cooldown_repository.state_created");
+            info!(state_id = %new_state.id, "cooldown_repository.state_created");
             new_state
         };
 
@@ -100,7 +99,7 @@ impl CooldownRepository for SqliteCooldownRepo {
         )
         .bind(timestamp)
         .bind(Utc::now())
-        .bind(id.to_string())
+        .bind(id)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
@@ -122,7 +121,7 @@ impl CooldownRepository for SqliteCooldownRepo {
         )
         .bind(timestamp)
         .bind(Utc::now())
-        .bind(id.to_string())
+        .bind(id)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;

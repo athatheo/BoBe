@@ -20,7 +20,6 @@ impl SqliteSoulRepo {
 #[async_trait]
 impl SoulRepository for SqliteSoulRepo {
     async fn save(&self, soul: &Soul) -> Result<Soul, AppError> {
-        let id = soul.id.to_string();
         sqlx::query(
             r#"INSERT INTO souls (id, name, content, enabled, is_default, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -31,7 +30,7 @@ impl SoulRepository for SqliteSoulRepo {
                    is_default = excluded.is_default,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(soul.id)
         .bind(&soul.name)
         .bind(&soul.content)
         .bind(soul.enabled)
@@ -42,13 +41,13 @@ impl SoulRepository for SqliteSoulRepo {
         .await
         .map_err(AppError::Database)?;
 
-        debug!(soul_id = %id, name = %soul.name, is_default = soul.is_default, "soul_repo.saved");
+        debug!(soul_id = %soul.id, name = %soul.name, is_default = soul.is_default, "soul_repo.saved");
         Ok(soul.clone())
     }
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Soul>, AppError> {
         sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -126,7 +125,7 @@ impl SoulRepository for SqliteSoulRepo {
         if let Some(n) = name {
             q = q.bind(n);
         }
-        q = q.bind(chrono::Utc::now()).bind(id.to_string());
+        q = q.bind(chrono::Utc::now()).bind(id);
         q.execute(&self.pool).await.map_err(AppError::Database)?;
 
         info!(
@@ -140,7 +139,7 @@ impl SoulRepository for SqliteSoulRepo {
 
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM souls WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;

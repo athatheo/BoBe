@@ -22,7 +22,6 @@ impl SqliteConversationRepo {
 #[async_trait]
 impl ConversationRepository for SqliteConversationRepo {
     async fn save(&self, conversation: &Conversation) -> Result<Conversation, AppError> {
-        let id = conversation.id.to_string();
         sqlx::query(
             r#"INSERT INTO conversations (id, state, closed_at, summary, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -32,7 +31,7 @@ impl ConversationRepository for SqliteConversationRepo {
                    summary = excluded.summary,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(conversation.id)
         .bind(&conversation.state)
         .bind(conversation.closed_at)
         .bind(&conversation.summary)
@@ -42,7 +41,7 @@ impl ConversationRepository for SqliteConversationRepo {
         .await
         .map_err(AppError::Database)?;
 
-        debug!(conversation_id = %id, state = %conversation.state, "conversation_repo.saved");
+        debug!(conversation_id = %conversation.id, state = %conversation.state, "conversation_repo.saved");
         Ok(conversation.clone())
     }
 
@@ -50,7 +49,7 @@ impl ConversationRepository for SqliteConversationRepo {
         let row = sqlx::query_as::<_, Conversation>(
             "SELECT * FROM conversations WHERE id = ?1",
         )
-        .bind(id.to_string())
+        .bind(id)
         .fetch_optional(&self.pool)
         .await
         .map_err(AppError::Database)?;
@@ -150,7 +149,6 @@ impl ConversationRepository for SqliteConversationRepo {
         state: ConversationState,
         summary: Option<String>,
     ) -> Result<Option<Conversation>, AppError> {
-        let id_str = id.to_string();
         let now = Utc::now();
         let closed_at = if state == ConversationState::Closed {
             Some(now)
@@ -166,7 +164,7 @@ impl ConversationRepository for SqliteConversationRepo {
         .bind(&summary)
         .bind(closed_at)
         .bind(now)
-        .bind(&id_str)
+        .bind(id)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
@@ -186,9 +184,6 @@ impl ConversationRepository for SqliteConversationRepo {
     }
 
     async fn add_turn(&self, turn: &ConversationTurn) -> Result<ConversationTurn, AppError> {
-        let id = turn.id.to_string();
-        let conv_id = turn.conversation_id.to_string();
-
         // Atomic: verify not closed + insert turn + touch timestamp
         let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
 
@@ -196,22 +191,22 @@ impl ConversationRepository for SqliteConversationRepo {
         let conv_state: Option<(String,)> = sqlx::query_as(
             "SELECT state FROM conversations WHERE id = ?1",
         )
-        .bind(&conv_id)
+        .bind(turn.conversation_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(AppError::Database)?;
 
         match conv_state {
             None => {
-                warn!(conversation_id = %conv_id, "conversation_repo.add_turn_not_found");
+                warn!(conversation_id = %turn.conversation_id, "conversation_repo.add_turn_not_found");
                 return Err(AppError::NotFound(format!(
-                    "Conversation {conv_id} not found"
+                    "Conversation {} not found", turn.conversation_id
                 )));
             }
             Some((state,)) if state == "closed" => {
-                warn!(conversation_id = %conv_id, role = %turn.role, "conversation_repo.add_turn_closed");
+                warn!(conversation_id = %turn.conversation_id, role = %turn.role, "conversation_repo.add_turn_closed");
                 return Err(AppError::Validation(format!(
-                    "Cannot add turn to closed conversation {conv_id}"
+                    "Cannot add turn to closed conversation {}", turn.conversation_id
                 )));
             }
             _ => {}
@@ -221,10 +216,10 @@ impl ConversationRepository for SqliteConversationRepo {
             r#"INSERT INTO conversation_turns (id, role, content, conversation_id, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
         )
-        .bind(&id)
+        .bind(turn.id)
         .bind(&turn.role)
         .bind(&turn.content)
-        .bind(&conv_id)
+        .bind(turn.conversation_id)
         .bind(turn.created_at)
         .bind(turn.updated_at)
         .execute(&mut *tx)
@@ -233,7 +228,7 @@ impl ConversationRepository for SqliteConversationRepo {
 
         sqlx::query("UPDATE conversations SET updated_at = ?1 WHERE id = ?2")
             .bind(Utc::now())
-            .bind(&conv_id)
+            .bind(turn.conversation_id)
             .execute(&mut *tx)
             .await
             .map_err(AppError::Database)?;
@@ -241,8 +236,8 @@ impl ConversationRepository for SqliteConversationRepo {
         tx.commit().await.map_err(AppError::Database)?;
 
         debug!(
-            conversation_id = %conv_id,
-            turn_id = %id,
+            conversation_id = %turn.conversation_id,
+            turn_id = %turn.id,
             role = %turn.role,
             content_length = turn.content.len(),
             "conversation_repo.add_turn"
@@ -258,7 +253,7 @@ impl ConversationRepository for SqliteConversationRepo {
         let rows = sqlx::query_as::<_, ConversationTurn>(
             "SELECT * FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at ASC LIMIT ?2",
         )
-        .bind(conversation_id.to_string())
+        .bind(conversation_id)
         .bind(limit)
         .fetch_all(&self.pool)
         .await
@@ -296,7 +291,7 @@ impl ConversationRepository for SqliteConversationRepo {
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
         // Turns are CASCADE deleted by FK
         let result = sqlx::query("DELETE FROM conversations WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;

@@ -22,10 +22,6 @@ impl SqliteMemoryRepo {
 #[async_trait]
 impl MemoryRepository for SqliteMemoryRepo {
     async fn save(&self, memory: &Memory) -> Result<Memory, AppError> {
-        let id = memory.id.to_string();
-        let src_obs = memory.source_observation_id.map(|u| u.to_string());
-        let src_conv = memory.source_conversation_id.map(|u| u.to_string());
-
         sqlx::query(
             r#"INSERT INTO memories (id, content, memory_type, enabled, category, source, embedding,
                    source_observation_id, source_conversation_id, created_at, updated_at)
@@ -39,15 +35,15 @@ impl MemoryRepository for SqliteMemoryRepo {
                    embedding = excluded.embedding,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(memory.id)
         .bind(&memory.content)
         .bind(&memory.memory_type)
         .bind(memory.enabled)
         .bind(&memory.category)
         .bind(&memory.source)
         .bind(&memory.embedding)
-        .bind(&src_obs)
-        .bind(&src_conv)
+        .bind(memory.source_observation_id)
+        .bind(memory.source_conversation_id)
         .bind(memory.created_at)
         .bind(memory.updated_at)
         .execute(&self.pool)
@@ -55,7 +51,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         .map_err(AppError::Database)?;
 
         debug!(
-            memory_id = %id,
+            memory_id = %memory.id,
             memory_type = %memory.memory_type,
             category = %memory.category,
             has_embedding = memory.embedding.is_some(),
@@ -66,7 +62,7 @@ impl MemoryRepository for SqliteMemoryRepo {
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Memory>, AppError> {
         sqlx::query_as::<_, Memory>("SELECT * FROM memories WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -271,7 +267,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         if let Some(cat) = category {
             q = q.bind(cat);
         }
-        q = q.bind(Utc::now()).bind(id.to_string());
+        q = q.bind(Utc::now()).bind(id);
 
         q.execute(&self.pool).await.map_err(AppError::Database)?;
 
@@ -311,7 +307,7 @@ impl MemoryRepository for SqliteMemoryRepo {
 
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM memories WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;
@@ -340,7 +336,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         sqlx::query("UPDATE memories SET embedding = ?1, updated_at = ?2 WHERE id = ?3")
             .bind(&json)
             .bind(Utc::now())
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;

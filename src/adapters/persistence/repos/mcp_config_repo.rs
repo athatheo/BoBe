@@ -20,7 +20,6 @@ impl SqliteMcpConfigRepo {
 #[async_trait]
 impl McpConfigRepository for SqliteMcpConfigRepo {
     async fn save(&self, config: &McpServerConfig) -> Result<McpServerConfig, AppError> {
-        let id = config.id.to_string();
         sqlx::query(
             r#"INSERT INTO mcp_server_configs (id, server_name, command, args, env, enabled,
                    timeout_seconds, is_default, last_connected_at, last_error, excluded_tools,
@@ -39,7 +38,7 @@ impl McpConfigRepository for SqliteMcpConfigRepo {
                    excluded_tools = excluded.excluded_tools,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(config.id)
         .bind(&config.server_name)
         .bind(&config.command)
         .bind(&config.args)
@@ -57,7 +56,7 @@ impl McpConfigRepository for SqliteMcpConfigRepo {
         .map_err(AppError::Database)?;
 
         debug!(
-            config_id = %id,
+            config_id = %config.id,
             server_name = %config.server_name,
             enabled = config.enabled,
             "mcp_config_repo.saved"
@@ -67,7 +66,7 @@ impl McpConfigRepository for SqliteMcpConfigRepo {
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<McpServerConfig>, AppError> {
         sqlx::query_as::<_, McpServerConfig>("SELECT * FROM mcp_server_configs WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -161,7 +160,7 @@ impl McpConfigRepository for SqliteMcpConfigRepo {
         if let Some(et) = excluded_tools {
             q = q.bind(et);
         }
-        q = q.bind(chrono::Utc::now()).bind(id.to_string());
+        q = q.bind(chrono::Utc::now()).bind(id);
         q.execute(&self.pool).await.map_err(AppError::Database)?;
 
         info!(config_id = %id, "mcp_config_repo.updated");
@@ -170,7 +169,7 @@ impl McpConfigRepository for SqliteMcpConfigRepo {
 
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM mcp_server_configs WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;

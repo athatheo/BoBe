@@ -39,23 +39,21 @@ impl LearningStateRepository for SqliteLearningStateRepo {
         }
 
         let new_state = LearningState::new();
-        let id = new_state.id.to_string();
         sqlx::query(
             "INSERT INTO learning_state (id, created_at, updated_at) VALUES (?1, ?2, ?3)",
         )
-        .bind(&id)
+        .bind(new_state.id)
         .bind(new_state.created_at)
         .bind(new_state.updated_at)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;
 
-        info!(state_id = %id, "learning_state_repo.created");
+        info!(state_id = %new_state.id, "learning_state_repo.created");
         Ok(new_state)
     }
 
     async fn save(&self, state: &LearningState) -> Result<(), AppError> {
-        let id = state.id.to_string();
         sqlx::query(
             r#"UPDATE learning_state SET
                    last_conversation_processed_at = ?1,
@@ -70,7 +68,7 @@ impl LearningStateRepository for SqliteLearningStateRepo {
         .bind(state.last_consolidation_at)
         .bind(state.last_pruning_at)
         .bind(chrono::Utc::now())
-        .bind(&id)
+        .bind(state.id)
         .execute(&self.pool)
         .await
         .map_err(AppError::Database)?;

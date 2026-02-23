@@ -21,9 +21,6 @@ impl SqliteAgentJobRepo {
 #[async_trait]
 impl AgentJobRepository for SqliteAgentJobRepo {
     async fn save(&self, job: &AgentJob) -> Result<AgentJob, AppError> {
-        let id = job.id.to_string();
-        let conv_id = job.conversation_id.map(|u| u.to_string());
-
         sqlx::query(
             r#"INSERT INTO agent_jobs (id, profile_name, command, user_intent, status, working_directory,
                    conversation_id, pid, exit_code, result_summary, raw_output_path, error_message,
@@ -46,13 +43,13 @@ impl AgentJobRepository for SqliteAgentJobRepo {
                    reported = excluded.reported,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(job.id)
         .bind(&job.profile_name)
         .bind(&job.command)
         .bind(&job.user_intent)
         .bind(&job.status)
         .bind(&job.working_directory)
-        .bind(&conv_id)
+        .bind(job.conversation_id)
         .bind(job.pid)
         .bind(job.exit_code)
         .bind(&job.result_summary)
@@ -71,13 +68,13 @@ impl AgentJobRepository for SqliteAgentJobRepo {
         .await
         .map_err(AppError::Database)?;
 
-        debug!(job_id = %id, status = %job.status, profile = %job.profile_name, "agent_job_repo.saved");
+        debug!(job_id = %job.id, status = %job.status, profile = %job.profile_name, "agent_job_repo.saved");
         Ok(job.clone())
     }
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<AgentJob>, AppError> {
         sqlx::query_as::<_, AgentJob>("SELECT * FROM agent_jobs WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -104,7 +101,7 @@ impl AgentJobRepository for SqliteAgentJobRepo {
 
     async fn mark_reported(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("UPDATE agent_jobs SET reported = 1 WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;

@@ -21,7 +21,6 @@ impl SqliteObservationRepo {
 #[async_trait]
 impl ObservationRepository for SqliteObservationRepo {
     async fn save(&self, observation: &Observation) -> Result<Observation, AppError> {
-        let id = observation.id.to_string();
         sqlx::query(
             r#"INSERT INTO observations (id, source, content, category, embedding, metadata, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -31,7 +30,7 @@ impl ObservationRepository for SqliteObservationRepo {
                    metadata = excluded.metadata,
                    updated_at = excluded.updated_at"#,
         )
-        .bind(&id)
+        .bind(observation.id)
         .bind(&observation.source)
         .bind(&observation.content)
         .bind(&observation.category)
@@ -44,7 +43,7 @@ impl ObservationRepository for SqliteObservationRepo {
         .map_err(AppError::Database)?;
 
         debug!(
-            observation_id = %id,
+            observation_id = %observation.id,
             category = %observation.category,
             has_embedding = observation.embedding.is_some(),
             "observation_repo.saved"
@@ -54,7 +53,7 @@ impl ObservationRepository for SqliteObservationRepo {
 
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Observation>, AppError> {
         sqlx::query_as::<_, Observation>("SELECT * FROM observations WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::Database)
@@ -163,7 +162,7 @@ impl ObservationRepository for SqliteObservationRepo {
 
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM observations WHERE id = ?1")
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;
@@ -192,7 +191,7 @@ impl ObservationRepository for SqliteObservationRepo {
         sqlx::query("UPDATE observations SET embedding = ?1, updated_at = ?2 WHERE id = ?3")
             .bind(&json)
             .bind(Utc::now())
-            .bind(id.to_string())
+            .bind(id)
             .execute(&self.pool)
             .await
             .map_err(AppError::Database)?;
