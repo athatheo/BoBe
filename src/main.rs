@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
             let app = entrypoints::app::build_router(state.clone());
 
             // ── Background tasks ────────────────────────────────────────
-            let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(1);
+            let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);
 
             // SSE heartbeat (every 15s)
             let heartbeat_handle = {
@@ -133,11 +133,16 @@ async fn main() -> anyhow::Result<()> {
                 })
                 .await?;
 
-            // Wait for background tasks to finish
-            let _ = heartbeat_handle.await;
-            let _ = runtime_handle.await;
-            if let Some(h) = learning_handle {
-                let _ = h.await;
+            // Wait for background tasks to finish, log panics
+            if let Err(e) = heartbeat_handle.await {
+                tracing::error!(error = %e, "heartbeat task panicked");
+            }
+            if let Err(e) = runtime_handle.await {
+                tracing::error!(error = %e, "runtime session task panicked");
+            }
+            if let Some(h) = learning_handle
+                && let Err(e) = h.await {
+                    tracing::error!(error = %e, "learning loop task panicked");
             }
 
             // Graceful shutdown: stop services in order (mDNS → MCP → Ollama → DB)

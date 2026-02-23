@@ -67,12 +67,12 @@ impl RuntimeSession {
     }
 
     pub fn is_running(&self) -> bool {
-        self.running.load(std::sync::atomic::Ordering::Relaxed)
+        self.running.load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// Enable screen capture.
     pub async fn start_capture(&self) {
-        self.capture_enabled.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.capture_enabled.store(true, std::sync::atomic::Ordering::Release);
         let mut trigger = self.capture_trigger.lock().await;
         trigger.start().await;
         info!("runtime_session.capture_started");
@@ -80,7 +80,7 @@ impl RuntimeSession {
 
     /// Disable screen capture.
     pub async fn stop_capture(&self) {
-        self.capture_enabled.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.capture_enabled.store(false, std::sync::atomic::Ordering::Release);
         let mut trigger = self.capture_trigger.lock().await;
         trigger.stop().await;
         info!("runtime_session.capture_stopped");
@@ -104,7 +104,7 @@ impl RuntimeSession {
     }
 
     pub async fn start(&self) {
-        self.running.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.running.store(true, std::sync::atomic::Ordering::Release);
 
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Err(e) = cooldown_repo.load_or_create().await {
@@ -116,7 +116,7 @@ impl RuntimeSession {
     }
 
     pub async fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.running.store(false, std::sync::atomic::Ordering::Release);
         info!("runtime_session.stopped");
     }
 
@@ -138,7 +138,7 @@ impl RuntimeSession {
         let mut last_goal_check = Instant::now();
         let mut last_capture_time = Instant::now();
 
-        while self.running.load(std::sync::atomic::Ordering::Relaxed) {
+        while self.running.load(std::sync::atomic::Ordering::Acquire) {
             loop_counter += 1;
 
             if loop_counter.is_multiple_of(5) {
@@ -186,7 +186,7 @@ impl RuntimeSession {
             }
 
             // CaptureTrigger (error-safe)
-            if self.capture_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+            if self.capture_enabled.load(std::sync::atomic::Ordering::Acquire) {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
                 if time_since_capture >= self.config.capture_interval_seconds {
                     match tokio::time::timeout(
@@ -268,7 +268,7 @@ impl RuntimeSession {
         let next_checkin = checkin.get_next_checkin_time();
         info!(
             loop_count = loop_counter,
-            capture = self.capture_enabled.load(std::sync::atomic::Ordering::Relaxed),
+            capture = self.capture_enabled.load(std::sync::atomic::Ordering::Acquire),
             next_checkin = ?next_checkin.map(|t| t.format("%H:%M:%S").to_string()),
             "runtime_session.heartbeat"
         );
@@ -283,7 +283,7 @@ impl RuntimeSession {
     pub fn get_status(&self) -> serde_json::Value {
         serde_json::json!({
             "indicator": format!("{:?}", self.event_queue.current_indicator()),
-            "capturing": self.capture_enabled.load(std::sync::atomic::Ordering::Relaxed),
+            "capturing": self.capture_enabled.load(std::sync::atomic::Ordering::Acquire),
         })
     }
 

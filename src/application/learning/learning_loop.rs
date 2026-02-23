@@ -87,7 +87,7 @@ impl LearningLoop {
 
     /// Main learning loop. Runs until stop() is called.
     pub async fn run(&self) {
-        self.running.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.running.store(true, std::sync::atomic::Ordering::Release);
         info!(
             interval_minutes = self.config.interval_minutes,
             daily_consolidation_hour = self.config.daily_consolidation_hour,
@@ -103,7 +103,7 @@ impl LearningLoop {
             }
         };
 
-        while self.running.load(std::sync::atomic::Ordering::Relaxed) {
+        while self.running.load(std::sync::atomic::Ordering::Acquire) {
             if let Err(e) = self.learning_cycle(&mut state).await {
                 error!(error = %e, "learning_loop.cycle_error");
             }
@@ -124,7 +124,7 @@ impl LearningLoop {
     /// Gracefully stop the learning loop.
     pub fn stop(&self) {
         info!("learning_loop.stopping");
-        self.running.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.running.store(false, std::sync::atomic::Ordering::Release);
         self.stop_notify.notify_one();
     }
 

@@ -66,7 +66,7 @@ impl McpClient {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.connected.load(Ordering::Relaxed)
+        self.connected.load(Ordering::Acquire)
     }
 
     pub async fn last_error(&self) -> Option<String> {
@@ -142,7 +142,7 @@ impl McpClient {
                 let _ = self
                     .send_notification("notifications/initialized", None)
                     .await;
-                self.connected.store(true, Ordering::Relaxed);
+                self.connected.store(true, Ordering::Release);
                 info!(server = %self.config.name, "MCP server connected");
                 Ok(())
             }
@@ -161,7 +161,7 @@ impl McpClient {
             let _ = p.child.kill();
             let _ = p.child.wait();
         }
-        self.connected.store(false, Ordering::Relaxed);
+        self.connected.store(false, Ordering::Release);
         debug!(server = %self.config.name, "MCP server disconnected");
     }
 

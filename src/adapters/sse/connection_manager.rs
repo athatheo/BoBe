@@ -26,6 +26,7 @@ pub struct SseConnectionManager {
 struct ConnectionState {
     connected: bool,
     connection_id: Option<String>,
+    generation: u64,
     disconnect_time: Option<DateTime<Utc>>,
     current_indicator: IndicatorType,
 }
@@ -43,6 +44,7 @@ impl SseConnectionManager {
             state: Mutex::new(ConnectionState {
                 connected: false,
                 connection_id: None,
+                generation: 0,
                 disconnect_time: None,
                 current_indicator: IndicatorType::Idle,
             }),
@@ -93,6 +95,7 @@ impl SseConnectionManager {
 
         let was_disconnected = !st.connected;
         st.connected = true;
+        st.generation += 1;
         let conn_id = format!("conn_{}", &Uuid::new_v4().to_string()[..8]);
         st.connection_id = Some(conn_id.clone());
 
