@@ -13,7 +13,7 @@ pub struct AgentJob {
     pub profile_name: String,
     pub command: String,
     pub user_intent: String,
-    pub status: String,
+    pub status: AgentJobStatus,
     pub working_directory: String,
     pub conversation_id: Option<Uuid>,
     pub pid: Option<i64>,
@@ -45,7 +45,7 @@ impl AgentJob {
             profile_name,
             command,
             user_intent,
-            status: AgentJobStatus::Pending.as_str().to_owned(),
+            status: AgentJobStatus::Pending,
             working_directory,
             conversation_id: None,
             pid: None,
@@ -66,10 +66,7 @@ impl AgentJob {
     }
 
     pub fn is_terminal(&self) -> bool {
-        matches!(
-            self.status.as_str(),
-            "completed" | "failed" | "cancelled"
-        )
+        self.status.is_terminal()
     }
 
     pub fn runtime_seconds(&self) -> Option<f64> {
@@ -79,14 +76,14 @@ impl AgentJob {
     }
 
     pub fn mark_running(&mut self, pid: i64) {
-        self.status = AgentJobStatus::Running.as_str().to_owned();
+        self.status = AgentJobStatus::Running;
         self.pid = Some(pid);
         self.started_at = Some(Utc::now());
         self.updated_at = Utc::now();
     }
 
     pub fn mark_completed(&mut self, exit_code: i32, summary: Option<String>) {
-        self.status = AgentJobStatus::Completed.as_str().to_owned();
+        self.status = AgentJobStatus::Completed;
         self.exit_code = Some(exit_code);
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
@@ -96,7 +93,7 @@ impl AgentJob {
     }
 
     pub fn mark_failed(&mut self, error: String, exit_code: Option<i32>) {
-        self.status = AgentJobStatus::Failed.as_str().to_owned();
+        self.status = AgentJobStatus::Failed;
         self.error_message = Some(error);
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
@@ -106,7 +103,7 @@ impl AgentJob {
     }
 
     pub fn mark_cancelled(&mut self, reason: Option<String>) {
-        self.status = AgentJobStatus::Cancelled.as_str().to_owned();
+        self.status = AgentJobStatus::Cancelled;
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();
         if let Some(r) = reason {

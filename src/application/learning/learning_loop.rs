@@ -16,7 +16,7 @@ use crate::application::learning::config::{LearningConfig, RetentionConfig};
 use crate::application::services::conversation_service::ConversationService;
 use crate::application::services::goals::goals_service::GoalsService;
 use crate::domain::learning_state::LearningState;
-use crate::domain::types::{MemorySource, MemoryType};
+use crate::domain::types::{MemorySource, MemoryType, ObservationSource};
 use crate::ports::embedding::EmbeddingProvider;
 use crate::ports::repos::goal_repo::GoalRepository;
 use crate::ports::repos::learning_state_repo::LearningStateRepository;
@@ -233,7 +233,7 @@ impl LearningLoop {
 
             let turn_tuples: Vec<(String, String)> = turns
                 .iter()
-                .map(|t| (t.role.clone(), t.content.clone()))
+                .map(|t| (t.role.as_str().to_owned(), t.content.clone()))
                 .collect();
 
             if turn_tuples.is_empty() {
@@ -292,7 +292,7 @@ impl LearningLoop {
         // Filter out already-processed sources
         let observations: Vec<_> = observations
             .into_iter()
-            .filter(|obs| obs.source != "user_message" && obs.source != "screen")
+            .filter(|obs| obs.source != ObservationSource::UserMessage && obs.source != ObservationSource::Screen)
             .collect();
 
         if (observations.len() as u32) < self.config.min_context_items {
@@ -347,7 +347,7 @@ impl LearningLoop {
         // Exclude visual diary entries
         let short_term: Vec<_> = short_term
             .into_iter()
-            .filter(|m| m.source != MemorySource::VisualDiary.as_str())
+            .filter(|m| m.source != MemorySource::VisualDiary)
             .collect();
 
         if short_term.is_empty() {

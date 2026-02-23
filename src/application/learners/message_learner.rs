@@ -69,7 +69,7 @@ impl MessageLearner {
             message_text.clone(),
             "conversation".into(),
         );
-        obs.source = "user_message".into();
+        obs.source = ObservationSource::UserMessage;
         obs.embedding = Some(serde_json::to_string(&embedding_vec).map_err(|e| {
             LearnerError::Storage(e.to_string())
         })?);

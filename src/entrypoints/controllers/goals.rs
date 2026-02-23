@@ -79,9 +79,9 @@ fn goal_to_response(goal: &Goal) -> GoalResponse {
     GoalResponse {
         id: goal.id.to_string(),
         content: goal.content.clone(),
-        status: goal.status.clone(),
-        priority: goal.priority.clone(),
-        source: goal.source.clone(),
+        status: goal.status.as_str().to_owned(),
+        priority: goal.priority.as_str().to_owned(),
+        source: goal.source.as_str().to_owned(),
         enabled: goal.enabled,
         created_at: goal.created_at,
         updated_at: goal.updated_at,
@@ -226,7 +226,7 @@ pub async fn complete_goal(
 
     Ok(Json(GoalActionResponse {
         id: goal_id.to_string(),
-        status: updated.status,
+        status: updated.status.as_str().to_owned(),
         message: "Goal marked as completed".into(),
     }))
 }
@@ -251,7 +251,7 @@ pub async fn archive_goal(
 
     Ok(Json(GoalActionResponse {
         id: goal_id.to_string(),
-        status: updated.status,
+        status: updated.status.as_str().to_owned(),
         message: "Goal archived".into(),
     }))
 }

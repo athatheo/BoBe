@@ -160,7 +160,7 @@ impl MessageHandler {
 
                 let slice = if turns.is_empty() { &[] } else { &turns[..turns.len() - 1] };
                 for turn in slice {
-                    conversation_history.push((turn.role.clone(), turn.content.clone()));
+                    conversation_history.push((turn.role.as_str().to_owned(), turn.content.clone()));
                 }
             }
             Err(e) => {

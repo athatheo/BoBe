@@ -181,7 +181,7 @@ impl MemoryConsolidator {
             MemorySource::Observation,
             memory.category.clone(),
         );
-        long_term.source = "consolidated".into();
+        long_term.source = MemorySource::Consolidated;
         long_term.embedding = memory.embedding.clone();
 
         let stored = self.memory_repo.save(&long_term).await?;
@@ -257,7 +257,7 @@ impl MemoryConsolidator {
                 MemorySource::Observation,
                 category.to_owned(),
             );
-            long_term.source = "consolidated".into();
+            long_term.source = MemorySource::Consolidated;
             long_term.embedding = Some(serde_json::to_string(&new_embedding).unwrap_or_default());
 
             match self.memory_repo.save(&long_term).await {

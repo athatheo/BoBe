@@ -5,7 +5,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::domain::conversation::{Conversation, ConversationTurn};
-use crate::domain::types::ConversationState;
+use crate::domain::types::{ConversationState, TurnRole};
 use crate::error::AppError;
 use crate::ports::repos::conversation_repo::ConversationRepository;
 
@@ -32,7 +32,7 @@ impl ConversationRepository for SqliteConversationRepo {
                    updated_at = excluded.updated_at"#,
         )
         .bind(conversation.id)
-        .bind(&conversation.state)
+        .bind(conversation.state)
         .bind(conversation.closed_at)
         .bind(&conversation.summary)
         .bind(conversation.created_at)
@@ -217,7 +217,7 @@ impl ConversationRepository for SqliteConversationRepo {
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
         )
         .bind(turn.id)
-        .bind(&turn.role)
+        .bind(turn.role)
         .bind(&turn.content)
         .bind(turn.conversation_id)
         .bind(turn.created_at)
@@ -274,13 +274,13 @@ impl ConversationRepository for SqliteConversationRepo {
 
     async fn get_recent_turns_by_role(
         &self,
-        role: &str,
+        role: TurnRole,
         limit: i64,
     ) -> Result<Vec<String>, AppError> {
         let rows: Vec<(String,)> = sqlx::query_as(
             "SELECT content FROM conversation_turns WHERE role = ?1 ORDER BY created_at DESC LIMIT ?2",
         )
-        .bind(role)
+        .bind(role.as_str())
         .bind(limit)
         .fetch_all(&self.pool)
         .await

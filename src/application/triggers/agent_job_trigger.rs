@@ -12,6 +12,7 @@ use crate::application::runtime::proactive_generator::ProactiveGenerator;
 use crate::application::runtime::state::{Decision, OrchestratorConfig};
 use crate::application::services::agent_job_manager::AgentJobManager;
 use crate::domain::agent_job::AgentJob;
+use crate::domain::types::AgentJobStatus;
 use crate::ports::llm::LlmProvider;
 use crate::ports::repos::agent_job_repo::AgentJobRepository;
 
@@ -104,7 +105,7 @@ impl AgentJobTrigger {
     }
 
     async fn should_continue(&self, job: &AgentJob) -> bool {
-        if job.status == "cancelled" {
+        if job.status == AgentJobStatus::Cancelled {
             return false;
         }
         if job.continuation_count >= MAX_CONTINUATIONS {
@@ -189,7 +190,7 @@ impl AgentJobTrigger {
     }
 
     async fn notify_job(&self, job: &AgentJob) {
-        let status_word = if job.status == "completed" { "completed" } else { "failed" };
+        let status_word = if job.status == AgentJobStatus::Completed { "completed" } else { "failed" };
         let mut parts = vec![format!("Coding agent '{}' {status_word}.", job.profile_name)];
 
         if let Some(ref summary) = job.result_summary {

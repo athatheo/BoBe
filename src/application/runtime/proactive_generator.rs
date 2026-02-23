@@ -295,7 +295,7 @@ impl ProactiveGenerator {
     ) -> Option<String> {
         let turn_tuples: Vec<(String, String)> = turns
             .iter()
-            .map(|t| (t.role.clone(), t.content.clone()))
+            .map(|t| (t.role.as_str().to_owned(), t.content.clone()))
             .collect();
 
         let turn_refs: Vec<(&str, &str)> = turn_tuples

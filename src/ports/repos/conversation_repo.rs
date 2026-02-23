@@ -4,7 +4,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::domain::conversation::{Conversation, ConversationTurn};
-use crate::domain::types::ConversationState;
+use crate::domain::types::{ConversationState, TurnRole};
 use crate::error::AppError;
 
 #[async_trait]
@@ -21,6 +21,6 @@ pub trait ConversationRepository: Send + Sync {
     async fn add_turn(&self, turn: &ConversationTurn) -> Result<ConversationTurn, AppError>;
     async fn get_turns(&self, conversation_id: Uuid, limit: i64) -> Result<Vec<ConversationTurn>, AppError>;
     async fn get_recent_turns(&self, limit: i64) -> Result<Vec<ConversationTurn>, AppError>;
-    async fn get_recent_turns_by_role(&self, role: &str, limit: i64) -> Result<Vec<String>, AppError>;
+    async fn get_recent_turns_by_role(&self, role: TurnRole, limit: i64) -> Result<Vec<String>, AppError>;
     async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
 }

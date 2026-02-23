@@ -106,7 +106,7 @@ impl NativeTool for SearchGoalTool {
             .filter(|(g, _)| {
                 priority_filter
                     .as_ref()
-                    .is_none_or(|p| g.priority == *p)
+                    .is_none_or(|p| g.priority.as_str() == p.as_str())
             })
             .collect();
 

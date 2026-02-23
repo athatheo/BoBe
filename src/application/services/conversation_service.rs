@@ -68,7 +68,7 @@ impl ConversationService {
             return Ok(None);
         };
 
-        if conversation.state == ConversationState::Pending.as_str() {
+        if conversation.state == ConversationState::Pending {
             let updated = self
                 .repo
                 .update_state(conversation_id, ConversationState::Active, None)
@@ -90,7 +90,7 @@ impl ConversationService {
             return Ok(None);
         };
 
-        if conversation.state == ConversationState::Closed.as_str() {
+        if conversation.state == ConversationState::Closed {
             debug!(conversation_id = %conversation_id, "conversation.already_closed");
             return Ok(Some(conversation));
         }
@@ -166,7 +166,7 @@ impl ConversationService {
     /// Get recent AI messages (for decision engine to avoid repetition).
     pub async fn get_recent_ai_messages(&self, limit: i64) -> Result<Vec<String>, AppError> {
         self.repo
-            .get_recent_turns_by_role(TurnRole::Assistant.as_str(), limit)
+            .get_recent_turns_by_role(TurnRole::Assistant, limit)
             .await
     }
 
@@ -227,7 +227,7 @@ impl ConversationService {
             .take(2)
             .map(|t| {
                 let prefixed = format!("[From previous conversation] {}", t.content);
-                (t.role, prefixed)
+                (t.role.as_str().to_owned(), prefixed)
             })
             .collect::<Vec<_>>()
             .into_iter()

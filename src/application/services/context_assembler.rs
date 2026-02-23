@@ -45,8 +45,7 @@ impl AssembledContext {
                 .goals
                 .iter()
                 .map(|g| {
-                    let priority = if g.priority.is_empty() { "medium" } else { &g.priority };
-                    format!("- {} (priority: {})", g.content, priority)
+                    format!("- {} (priority: {})", g.content, g.priority)
                 })
                 .collect();
             sections.insert("current_goals".into(), lines.join("\n"));

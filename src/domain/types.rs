@@ -72,6 +72,12 @@ impl GoalStatus {
     }
 }
 
+impl std::fmt::Display for GoalStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
@@ -91,6 +97,12 @@ impl GoalPriority {
     }
 }
 
+impl std::fmt::Display for GoalPriority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
@@ -105,6 +117,12 @@ impl GoalSource {
             Self::User => "user",
             Self::Inferred => "inferred",
         }
+    }
+}
+
+impl std::fmt::Display for GoalSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -129,6 +147,12 @@ impl MemoryType {
     }
 }
 
+impl std::fmt::Display for MemoryType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -136,6 +160,7 @@ pub enum MemorySource {
     Observation,
     Conversation,
     VisualDiary,
+    Consolidated,
 }
 
 impl MemorySource {
@@ -144,19 +169,27 @@ impl MemorySource {
             Self::Observation => "observation",
             Self::Conversation => "conversation",
             Self::VisualDiary => "visual_diary",
+            Self::Consolidated => "consolidated",
         }
+    }
+}
+
+impl std::fmt::Display for MemorySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
 // ─── Observation ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum ObservationSource {
     Screen,
     Audio,
     Clipboard,
+    UserMessage,
 }
 
 impl ObservationSource {
@@ -165,7 +198,14 @@ impl ObservationSource {
             Self::Screen => "screen",
             Self::Audio => "audio",
             Self::Clipboard => "clipboard",
+            Self::UserMessage => "user_message",
         }
+    }
+}
+
+impl std::fmt::Display for ObservationSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -195,5 +235,11 @@ impl AgentJobStatus {
 
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+    }
+}
+
+impl std::fmt::Display for AgentJobStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }

@@ -47,7 +47,7 @@ impl AgentJobRepository for SqliteAgentJobRepo {
         .bind(&job.profile_name)
         .bind(&job.command)
         .bind(&job.user_intent)
-        .bind(&job.status)
+        .bind(job.status)
         .bind(&job.working_directory)
         .bind(job.conversation_id)
         .bind(job.pid)

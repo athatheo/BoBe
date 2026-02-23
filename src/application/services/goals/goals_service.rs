@@ -80,11 +80,10 @@ impl GoalsService {
         let mut goals = self.repo.find_active(true).await?;
 
         // Sort by priority
-        goals.sort_by_key(|g| match g.priority.as_str() {
-            "high" => 0,
-            "medium" => 1,
-            "low" => 2,
-            _ => 1,
+        goals.sort_by_key(|g| match g.priority {
+            GoalPriority::High => 0,
+            GoalPriority::Medium => 1,
+            GoalPriority::Low => 2,
         });
 
         goals.truncate(limit);
@@ -261,8 +260,8 @@ impl GoalsService {
 
             if let Some(existing) = existing_by_content.get(&content_key) {
                 // Update existing goal if status or priority changed
-                if existing.status != status.as_str()
-                    || existing.priority != priority.as_str()
+                if existing.status != status
+                    || existing.priority != priority
                 {
                     self.repo
                         .update_fields(
@@ -282,7 +281,7 @@ impl GoalsService {
                     Ok(embedding_vec) => {
                         let mut new_goal =
                             Goal::new(parsed.content.clone(), source, priority);
-                        new_goal.status = status.as_str().to_owned();
+                        new_goal.status = status;
                         new_goal.embedding = Some(serde_json::to_string(&embedding_vec)?);
                         self.repo.save(&new_goal).await?;
                         created += 1;
@@ -301,7 +300,7 @@ impl GoalsService {
         // Archive goals not in file (user removed them)
         for (content_key, existing) in &existing_by_content {
             if !seen_contents.contains(content_key)
-                && existing.status != GoalStatus::Archived.as_str()
+                && existing.status != GoalStatus::Archived
             {
                 self.repo
                     .update_status(existing.id, Some(GoalStatus::Archived), None)

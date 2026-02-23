@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::domain::types::GoalPriority;
 use crate::error::AppError;
 use crate::ports::repos::goal_repo::GoalRepository;
 use crate::ports::tools::{ToolCategory, ToolExecutionContext};
@@ -53,11 +54,10 @@ impl NativeTool for GetGoalsTool {
 
         let mut output = format!("{} active goals:\n\n", goals.len());
         for (i, goal) in goals.iter().enumerate() {
-            let priority_label = match goal.priority.as_str() {
-                "high" => "🔴 HIGH",
-                "medium" => "🟡 MEDIUM",
-                "low" => "🟢 LOW",
-                other => other,
+            let priority_label = match goal.priority {
+                GoalPriority::High => "🔴 HIGH",
+                GoalPriority::Medium => "🟡 MEDIUM",
+                GoalPriority::Low => "🟢 LOW",
             };
             output.push_str(&format!(
                 "{}. [{}] {} {}\n   Source: {} | Created: {}\n\n",

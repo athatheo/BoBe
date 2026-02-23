@@ -10,7 +10,7 @@ use super::types::ObservationSource;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct Observation {
     pub id: Uuid,
-    pub source: String,
+    pub source: ObservationSource,
     pub content: String,
     pub category: String,
     /// JSON-encoded embedding vector.
@@ -26,7 +26,7 @@ impl Observation {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            source: source.as_str().to_owned(),
+            source,
             content,
             category,
             embedding: None,

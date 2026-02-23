@@ -13,10 +13,10 @@ use super::types::{MemorySource, MemoryType};
 pub struct Memory {
     pub id: Uuid,
     pub content: String,
-    pub memory_type: String,
+    pub memory_type: MemoryType,
     pub enabled: bool,
     pub category: String,
-    pub source: String,
+    pub source: MemorySource,
     /// JSON-encoded embedding vector.
     pub embedding: Option<String>,
     pub source_observation_id: Option<Uuid>,
@@ -36,10 +36,10 @@ impl Memory {
         Self {
             id: Uuid::new_v4(),
             content,
-            memory_type: memory_type.as_str().to_owned(),
+            memory_type,
             enabled: true,
             category,
-            source: source.as_str().to_owned(),
+            source,
             embedding: None,
             source_observation_id: None,
             source_conversation_id: None,

@@ -16,7 +16,7 @@ use super::types::{ConversationState, TurnRole};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct Conversation {
     pub id: Uuid,
-    pub state: String,
+    pub state: ConversationState,
     pub closed_at: Option<DateTime<Utc>>,
     pub summary: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -28,7 +28,7 @@ impl Conversation {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            state: ConversationState::Pending.as_str().to_owned(),
+            state: ConversationState::Pending,
             closed_at: None,
             summary: None,
             created_at: now,
@@ -40,7 +40,7 @@ impl Conversation {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            state: ConversationState::Active.as_str().to_owned(),
+            state: ConversationState::Active,
             closed_at: None,
             summary: None,
             created_at: now,
@@ -49,26 +49,26 @@ impl Conversation {
     }
 
     pub fn is_pending(&self) -> bool {
-        self.state == ConversationState::Pending.as_str()
+        self.state == ConversationState::Pending
     }
 
     pub fn is_active(&self) -> bool {
-        self.state == ConversationState::Active.as_str()
+        self.state == ConversationState::Active
     }
 
     pub fn is_closed(&self) -> bool {
-        self.state == ConversationState::Closed.as_str()
+        self.state == ConversationState::Closed
     }
 
     /// Transition from PENDING to ACTIVE.
     pub fn activate(&mut self) -> Result<(), String> {
-        if self.state != ConversationState::Pending.as_str() {
+        if self.state != ConversationState::Pending {
             return Err(format!(
                 "Cannot activate conversation in state '{}'. Must be 'pending'.",
                 self.state
             ));
         }
-        self.state = ConversationState::Active.as_str().to_owned();
+        self.state = ConversationState::Active;
         self.updated_at = Utc::now();
         Ok(())
     }
@@ -78,7 +78,7 @@ impl Conversation {
         if self.is_closed() {
             return;
         }
-        self.state = ConversationState::Closed.as_str().to_owned();
+        self.state = ConversationState::Closed;
         self.closed_at = Some(Utc::now());
         self.updated_at = Utc::now();
         if let Some(s) = summary {
@@ -97,14 +97,14 @@ impl Conversation {
         turns
             .iter()
             .rev()
-            .find(|t| t.role == TurnRole::User.as_str())
+            .find(|t| t.role == TurnRole::User)
             .map(|t| t.created_at)
     }
 
     pub fn user_message_count(&self, turns: &[ConversationTurn]) -> usize {
         turns
             .iter()
-            .filter(|t| t.role == TurnRole::User.as_str())
+            .filter(|t| t.role == TurnRole::User)
             .count()
     }
 }
@@ -113,7 +113,7 @@ impl Conversation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ConversationTurn {
     pub id: Uuid,
-    pub role: String,
+    pub role: TurnRole,
     pub content: String,
     pub conversation_id: Uuid,
     pub created_at: DateTime<Utc>,
@@ -125,7 +125,7 @@ impl ConversationTurn {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            role: role.as_str().to_owned(),
+            role,
             content,
             conversation_id,
             created_at: now,
@@ -134,10 +134,10 @@ impl ConversationTurn {
     }
 
     pub fn is_user(&self) -> bool {
-        self.role == TurnRole::User.as_str()
+        self.role == TurnRole::User
     }
 
     pub fn is_assistant(&self) -> bool {
-        self.role == TurnRole::Assistant.as_str()
+        self.role == TurnRole::Assistant
     }
 }

@@ -118,9 +118,9 @@ fn memory_to_response(memory: &Memory) -> MemoryResponse {
     MemoryResponse {
         id: memory.id.to_string(),
         content: memory.content.clone(),
-        memory_type: memory.memory_type.clone(),
+        memory_type: memory.memory_type.as_str().to_owned(),
         category: memory.category.clone(),
-        source: memory.source.clone(),
+        source: memory.source.as_str().to_owned(),
         enabled: memory.enabled,
         created_at: memory.created_at,
         updated_at: memory.updated_at,
@@ -325,9 +325,9 @@ pub async fn search_memories(
         .map(|(m, score)| MemorySearchHit {
             id: m.id.to_string(),
             content: m.content,
-            memory_type: m.memory_type,
+            memory_type: m.memory_type.as_str().to_owned(),
             category: m.category,
-            source: m.source,
+            source: m.source.as_str().to_owned(),
             enabled: m.enabled,
             similarity: score,
             created_at: m.created_at,

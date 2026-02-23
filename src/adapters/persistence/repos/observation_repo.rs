@@ -31,7 +31,7 @@ impl ObservationRepository for SqliteObservationRepo {
                    updated_at = excluded.updated_at"#,
         )
         .bind(observation.id)
-        .bind(&observation.source)
+        .bind(observation.source)
         .bind(&observation.content)
         .bind(&observation.category)
         .bind(&observation.embedding)

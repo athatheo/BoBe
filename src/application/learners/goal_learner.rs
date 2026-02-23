@@ -212,7 +212,7 @@ impl GoalLearner {
 
         let existing_data: Vec<(String, String, String)> = similar_goals
             .iter()
-            .map(|g| (g.id.to_string(), g.content.clone(), g.priority.clone()))
+            .map(|g| (g.id.to_string(), g.content.clone(), g.priority.as_str().to_owned()))
             .collect();
 
         let messages = GoalDeduplicationPrompt::messages(content, &existing_data);

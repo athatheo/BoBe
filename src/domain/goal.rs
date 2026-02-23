@@ -8,9 +8,9 @@ use super::types::{GoalPriority, GoalSource, GoalStatus};
 pub struct Goal {
     pub id: Uuid,
     pub content: String,
-    pub priority: String,
-    pub source: String,
-    pub status: String,
+    pub priority: GoalPriority,
+    pub source: GoalSource,
+    pub status: GoalStatus,
     pub enabled: bool,
     pub inference_reason: Option<String>,
     /// JSON-encoded embedding vector.
@@ -25,9 +25,9 @@ impl Goal {
         Self {
             id: Uuid::new_v4(),
             content,
-            priority: priority.as_str().to_owned(),
-            source: source.as_str().to_owned(),
-            status: GoalStatus::Active.as_str().to_owned(),
+            priority,
+            source,
+            status: GoalStatus::Active,
             enabled: true,
             inference_reason: None,
             embedding: None,
@@ -37,24 +37,24 @@ impl Goal {
     }
 
     pub fn is_active(&self) -> bool {
-        self.status == GoalStatus::Active.as_str()
+        self.status == GoalStatus::Active
     }
 
     pub fn is_completed(&self) -> bool {
-        self.status == GoalStatus::Completed.as_str()
+        self.status == GoalStatus::Completed
     }
 
     pub fn is_archived(&self) -> bool {
-        self.status == GoalStatus::Archived.as_str()
+        self.status == GoalStatus::Archived
     }
 
     pub fn complete(&mut self) {
-        self.status = GoalStatus::Completed.as_str().to_owned();
+        self.status = GoalStatus::Completed;
         self.updated_at = Utc::now();
     }
 
     pub fn archive(&mut self) {
-        self.status = GoalStatus::Archived.as_str().to_owned();
+        self.status = GoalStatus::Archived;
         self.updated_at = Utc::now();
     }
 }
