@@ -194,28 +194,29 @@ impl LlmProvider for OpenAiProvider {
                 }
 
                 while let Some(line_end) = buffer.find('\n') {
-                    let line = buffer[..line_end].trim().to_owned();
-                    buffer = buffer[line_end + 1..].to_owned();
-
-                    if line.is_empty() || line == "data: [DONE]" {
-                        continue;
-                    }
-
-                    let json_str = line.strip_prefix("data: ").unwrap_or(&line);
-
-                    let data: serde_json::Value = match serde_json::from_str(json_str) {
-                        Ok(d) => d,
-                        Err(e) => {
-                            warn!("Failed to parse OpenAI SSE chunk: {e}");
-                            continue;
+                    // Parse inside a block so borrows are dropped before drain
+                    let data: Option<serde_json::Value> = {
+                        let line = buffer[..line_end].trim();
+                        if line.is_empty() || line == "data: [DONE]" {
+                            None
+                        } else {
+                            let json_str = line.strip_prefix("data: ").unwrap_or(line);
+                            match serde_json::from_str(json_str) {
+                                Ok(d) => Some(d),
+                                Err(e) => {
+                                    warn!("Failed to parse OpenAI SSE chunk: {e}");
+                                    None
+                                }
+                            }
                         }
                     };
+                    buffer.drain(..line_end + 1);
 
-                    // Accumulate tool call deltas across chunks
+                    let Some(data) = data else { continue };
+
                     tool_accumulator.feed(&data);
 
                     if let Some(mut chunk) = parse_stream_chunk(&data) {
-                        // On finish, attach fully reconstructed tool calls
                         if chunk.finish_reason.is_some() && tool_accumulator.has_tool_calls() {
                             let acc = std::mem::take(&mut tool_accumulator);
                             chunk.tool_calls = acc.finish();

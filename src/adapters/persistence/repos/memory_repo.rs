@@ -74,7 +74,11 @@ impl MemoryRepository for SqliteMemoryRepo {
         enabled_only: bool,
         since: Option<DateTime<Utc>>,
     ) -> Result<Vec<Memory>, AppError> {
-        let mut sql = String::from("SELECT * FROM memories WHERE memory_type = ?1");
+        // Exclude embedding blob for listing performance
+        let cols = "id, content, memory_type, enabled, category, source, \
+                    NULL as embedding, source_observation_id, source_conversation_id, \
+                    created_at, updated_at";
+        let mut sql = format!("SELECT {cols} FROM memories WHERE memory_type = ?1");
         if enabled_only {
             sql.push_str(" AND enabled = 1");
         }
@@ -92,9 +96,12 @@ impl MemoryRepository for SqliteMemoryRepo {
     }
 
     async fn find_enabled(&self, limit: Option<i64>) -> Result<Vec<Memory>, AppError> {
+        let cols = "id, content, memory_type, enabled, category, source, \
+                    NULL as embedding, source_observation_id, source_conversation_id, \
+                    created_at, updated_at";
         if let Some(lim) = limit {
             sqlx::query_as::<_, Memory>(
-                "SELECT * FROM memories WHERE enabled = 1 ORDER BY created_at DESC LIMIT ?1",
+                &format!("SELECT {cols} FROM memories WHERE enabled = 1 ORDER BY created_at DESC LIMIT ?1"),
             )
             .bind(lim)
             .fetch_all(&self.pool)
@@ -102,7 +109,7 @@ impl MemoryRepository for SqliteMemoryRepo {
             .map_err(AppError::Database)
         } else {
             sqlx::query_as::<_, Memory>(
-                "SELECT * FROM memories WHERE enabled = 1 ORDER BY created_at DESC",
+                &format!("SELECT {cols} FROM memories WHERE enabled = 1 ORDER BY created_at DESC"),
             )
             .fetch_all(&self.pool)
             .await
@@ -156,9 +163,12 @@ impl MemoryRepository for SqliteMemoryRepo {
             .await
             .map_err(AppError::Database)?;
 
-        // Data query
+        // Data query — exclude embedding blob for listing performance
         let data_sql = format!(
-            "SELECT * FROM memories{where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            "SELECT id, content, memory_type, enabled, category, source, \
+             NULL as embedding, source_observation_id, source_conversation_id, \
+             created_at, updated_at \
+             FROM memories{where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?"
         );
         let mut data_q = sqlx::query_as::<_, Memory>(&data_sql);
         if let Some(mt) = memory_type {

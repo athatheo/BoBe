@@ -280,13 +280,16 @@ impl GoalRepository for SqliteGoalRepo {
     }
 
     async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError> {
+        // Exclude embedding blob for listing performance
+        let cols = "id, content, priority, source, status, enabled, inference_reason, \
+                    NULL as embedding, created_at, updated_at";
         let sql = if include_archived {
-            "SELECT * FROM goals ORDER BY created_at DESC"
+            format!("SELECT {cols} FROM goals ORDER BY created_at DESC")
         } else {
-            "SELECT * FROM goals WHERE status != 'archived' ORDER BY created_at DESC"
+            format!("SELECT {cols} FROM goals WHERE status != 'archived' ORDER BY created_at DESC")
         };
 
-        sqlx::query_as::<_, Goal>(sql)
+        sqlx::query_as::<_, Goal>(&sql)
             .fetch_all(&self.pool)
             .await
             .map_err(AppError::Database)

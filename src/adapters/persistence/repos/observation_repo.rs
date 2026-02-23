@@ -75,10 +75,12 @@ impl ObservationRepository for SqliteObservationRepo {
         since: Option<chrono::DateTime<Utc>>,
         limit: Option<i64>,
     ) -> Result<Vec<Observation>, AppError> {
+        // Exclude embedding blob — callers need content, not vectors
+        let cols = "id, source, content, category, NULL as embedding, metadata, created_at, updated_at";
         let rows = match (since, limit) {
             (Some(s), Some(lim)) => {
                 sqlx::query_as::<_, Observation>(
-                    "SELECT * FROM observations WHERE created_at > ?1 ORDER BY created_at ASC LIMIT ?2",
+                    &format!("SELECT {cols} FROM observations WHERE created_at > ?1 ORDER BY created_at ASC LIMIT ?2"),
                 )
                 .bind(s)
                 .bind(lim)
@@ -87,7 +89,7 @@ impl ObservationRepository for SqliteObservationRepo {
             }
             (Some(s), None) => {
                 sqlx::query_as::<_, Observation>(
-                    "SELECT * FROM observations WHERE created_at > ?1 ORDER BY created_at ASC",
+                    &format!("SELECT {cols} FROM observations WHERE created_at > ?1 ORDER BY created_at ASC"),
                 )
                 .bind(s)
                 .fetch_all(&self.pool)
@@ -95,7 +97,7 @@ impl ObservationRepository for SqliteObservationRepo {
             }
             (None, Some(lim)) => {
                 sqlx::query_as::<_, Observation>(
-                    "SELECT * FROM observations ORDER BY created_at ASC LIMIT ?1",
+                    &format!("SELECT {cols} FROM observations ORDER BY created_at ASC LIMIT ?1"),
                 )
                 .bind(lim)
                 .fetch_all(&self.pool)
@@ -103,7 +105,7 @@ impl ObservationRepository for SqliteObservationRepo {
             }
             (None, None) => {
                 sqlx::query_as::<_, Observation>(
-                    "SELECT * FROM observations ORDER BY created_at ASC",
+                    &format!("SELECT {cols} FROM observations ORDER BY created_at ASC"),
                 )
                 .fetch_all(&self.pool)
                 .await
