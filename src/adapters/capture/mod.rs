@@ -1,0 +1,1 @@
+// Screen capture + OCR (macOS).

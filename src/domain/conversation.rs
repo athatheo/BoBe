@@ -1,0 +1,143 @@
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use super::types::{ConversationState, TurnRole};
+
+/// A dialogue session with state machine.
+///
+/// State Machine:
+///   PENDING (AI reached out, waiting for user)
+///       ↓ (user responds)
+///   ACTIVE (engaged conversation)
+///       ↓ (timeout or explicit close)
+///   CLOSED (ended, summary generated)
+///
+/// Invariant: Only ONE conversation can be ACTIVE at a time.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct Conversation {
+    pub id: Uuid,
+    pub state: String,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub summary: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl Conversation {
+    pub fn new_pending() -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            state: ConversationState::Pending.as_str().to_owned(),
+            closed_at: None,
+            summary: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn new_active() -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            state: ConversationState::Active.as_str().to_owned(),
+            closed_at: None,
+            summary: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn is_pending(&self) -> bool {
+        self.state == ConversationState::Pending.as_str()
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.state == ConversationState::Active.as_str()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.state == ConversationState::Closed.as_str()
+    }
+
+    /// Transition from PENDING to ACTIVE.
+    pub fn activate(&mut self) -> Result<(), String> {
+        if self.state != ConversationState::Pending.as_str() {
+            return Err(format!(
+                "Cannot activate conversation in state '{}'. Must be 'pending'.",
+                self.state
+            ));
+        }
+        self.state = ConversationState::Active.as_str().to_owned();
+        self.updated_at = Utc::now();
+        Ok(())
+    }
+
+    /// Close the conversation. Idempotent.
+    pub fn close(&mut self, summary: Option<String>) {
+        if self.is_closed() {
+            return;
+        }
+        self.state = ConversationState::Closed.as_str().to_owned();
+        self.closed_at = Some(Utc::now());
+        self.updated_at = Utc::now();
+        if let Some(s) = summary {
+            self.summary = Some(s);
+        }
+    }
+
+    /// Check if conversation is stale (no user activity within timeout).
+    pub fn is_stale(&self, auto_close_minutes: i64, turns: &[ConversationTurn]) -> bool {
+        let reference = self.last_user_message_at(turns).unwrap_or(self.created_at);
+        let elapsed = Utc::now() - reference;
+        elapsed >= chrono::Duration::minutes(auto_close_minutes)
+    }
+
+    pub fn last_user_message_at(&self, turns: &[ConversationTurn]) -> Option<DateTime<Utc>> {
+        turns
+            .iter()
+            .rev()
+            .find(|t| t.role == TurnRole::User.as_str())
+            .map(|t| t.created_at)
+    }
+
+    pub fn user_message_count(&self, turns: &[ConversationTurn]) -> usize {
+        turns
+            .iter()
+            .filter(|t| t.role == TurnRole::User.as_str())
+            .count()
+    }
+}
+
+/// Individual message within a conversation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ConversationTurn {
+    pub id: Uuid,
+    pub role: String,
+    pub content: String,
+    pub conversation_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl ConversationTurn {
+    pub fn new(conversation_id: Uuid, role: TurnRole, content: String) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            role: role.as_str().to_owned(),
+            content,
+            conversation_id,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn is_user(&self) -> bool {
+        self.role == TurnRole::User.as_str()
+    }
+
+    pub fn is_assistant(&self) -> bool {
+        self.role == TurnRole::Assistant.as_str()
+    }
+}
