@@ -70,4 +70,17 @@ impl EventQueue {
     pub fn is_empty(&self) -> bool {
         self.inner.lock().unwrap().is_empty()
     }
+
+    /// Push a heartbeat event.
+    pub fn push_heartbeat(&self) {
+        use super::types::EventType;
+        let event = StreamBundle {
+            event_type: EventType::Heartbeat,
+            message_id: String::new(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            description: "heartbeat".to_owned(),
+            payload: serde_json::json!({}),
+        };
+        self.push(event);
+    }
 }

@@ -38,6 +38,46 @@ impl LlmProviderFactory {
         Ok(Arc::new(CircuitBreakerLlmWrapper::new(provider, breaker)))
     }
 
+    /// Create a vision-specific provider using vision model names from config.
+    pub fn create_vision(&self, backend: &str) -> Result<Arc<dyn LlmProvider>, crate::error::AppError> {
+        let (provider, name): (Arc<dyn LlmProvider>, String) = match backend.to_lowercase().as_str() {
+            "ollama" => {
+                let p = OllamaProvider::new(
+                    self.client.clone(),
+                    &self.config.ollama_url,
+                    &self.config.vision_ollama_model,
+                );
+                (Arc::new(p), "ollama-vision".into())
+            }
+            "openai" => {
+                if self.config.openai_api_key.is_empty() {
+                    return Err(crate::error::AppError::Config(
+                        "BOBE_OPENAI_API_KEY is required for OpenAI vision backend".into(),
+                    ));
+                }
+                let p = OpenAiProvider::new(
+                    self.client.clone(),
+                    &self.config.openai_api_key,
+                    &self.config.vision_openai_model,
+                );
+                (Arc::new(p), "openai-vision".into())
+            }
+            other => {
+                return Err(crate::error::AppError::Config(format!(
+                    "Unknown vision backend: '{other}'. Supported: ollama, openai"
+                )));
+            }
+        };
+
+        let breaker = Arc::new(CircuitBreaker::new(
+            format!("llm-{name}"),
+            CircuitBreakerConfig::default(),
+        ));
+
+        info!(backend = name, "Created vision LLM provider with circuit breaker");
+        Ok(Arc::new(CircuitBreakerLlmWrapper::new(provider, breaker)))
+    }
+
     /// Create a raw provider without circuit breaker wrapping.
     pub fn create_raw(
         &self,

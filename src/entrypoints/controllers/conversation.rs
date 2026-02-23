@@ -4,12 +4,8 @@ use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::adapters::persistence::repos::conversation_repo::SqliteConversationRepo;
 use crate::app_state::AppState;
-use crate::domain::conversation::{Conversation, ConversationTurn};
-use crate::domain::types::{ConversationState, TurnRole};
 use crate::error::AppError;
-use crate::ports::repos::conversation_repo::ConversationRepository;
 
 // ── Request / Response ──────────────────────────────────────────────────────
 
@@ -27,9 +23,9 @@ pub struct ConversationMessageResponse {
 
 /// POST /api/conversation/message
 ///
-/// Simplified version: receives a user message, ensures an active conversation
-/// exists, saves the turn, and returns a message_id. The full runtime streaming
-/// will be wired later.
+/// Receives a user message and delegates to the runtime session's message
+/// handler. The LLM response streams back via SSE events. Returns the
+/// message ID immediately so the client can correlate SSE events.
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConversationMessageRequest>,
@@ -38,34 +34,32 @@ pub async fn send_message(
         return Err(AppError::Validation("content must not be empty".into()));
     }
 
-    let repo = SqliteConversationRepo::new(state.db.clone());
+    // Delegate to the runtime session which handles:
+    // 1. Conversation lifecycle (create/activate)
+    // 2. Learning (embed user message)
+    // 3. LLM response generation (streamed via SSE)
+    let session = state.runtime_session.clone();
+    let content = body.content.clone();
 
-    // Get or create an active conversation
-    let conversation = match repo.get_pending_or_active().await? {
-        Some(mut conv) => {
-            if conv.is_pending() {
-                conv.activate().map_err(|e| AppError::Internal(e))?;
-                repo.update_state(conv.id, ConversationState::Active, None)
-                    .await?;
-            }
-            conv
-        }
-        None => {
-            let conv = Conversation::new_active();
-            repo.save(&conv).await?
-        }
-    };
+    // Fire-and-forget: spawn the message handling so HTTP returns immediately.
+    // The response streams via SSE events to the client.
+    let msg_id_holder = Arc::new(tokio::sync::OnceCell::new());
+    let msg_id_holder_clone = msg_id_holder.clone();
 
-    let turn = ConversationTurn::new(conversation.id, TurnRole::User, body.content);
-    let saved_turn = repo.add_turn(&turn).await?;
+    tokio::spawn(async move {
+        let msg_id = session.handle_user_message(&content).await;
+        let _ = msg_id_holder_clone.set(msg_id);
+    });
 
-    tracing::info!(
-        message_id = %saved_turn.id,
-        conversation_id = %conversation.id,
-        "api.message_accepted",
-    );
+    // Give the handler a moment to generate the message ID
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    Ok(Json(ConversationMessageResponse {
-        message_id: saved_turn.id.to_string(),
-    }))
+    let message_id = msg_id_holder
+        .get()
+        .cloned()
+        .unwrap_or_else(|| format!("msg_{}", uuid::Uuid::new_v4().simple()));
+
+    tracing::info!(message_id = %message_id, "api.message_accepted");
+
+    Ok(Json(ConversationMessageResponse { message_id }))
 }

@@ -6,11 +6,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::adapters::persistence::repos::user_profile_repo::SqliteUserProfileRepo;
+
 use crate::app_state::AppState;
 use crate::domain::user_profile::UserProfile;
 use crate::error::AppError;
-use crate::ports::repos::user_profile_repo::UserProfileRepository;
+
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ pub async fn list_profiles(
     State(state): State<Arc<AppState>>,
     Query(params): Query<UserProfileListQuery>,
 ) -> Result<Json<UserProfileListResponse>, AppError> {
-    let repo = SqliteUserProfileRepo::new(state.db.clone());
+    let repo = state.user_profile_repo.clone();
 
     let profiles = if params.enabled_only {
         repo.find_enabled().await?
@@ -116,7 +116,7 @@ pub async fn create_profile(
         ));
     }
 
-    let repo = SqliteUserProfileRepo::new(state.db.clone());
+    let repo = state.user_profile_repo.clone();
 
     if repo.get_by_name(&body.name).await?.is_some() {
         return Err(AppError::Validation(format!(
@@ -139,7 +139,7 @@ pub async fn update_profile(
     Path(profile_id): Path<Uuid>,
     Json(body): Json<UserProfileUpdateRequest>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    let repo = SqliteUserProfileRepo::new(state.db.clone());
+    let repo = state.user_profile_repo.clone();
 
     repo.get_by_id(profile_id)
         .await?

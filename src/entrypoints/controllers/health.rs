@@ -23,3 +23,14 @@ pub async fn health_check(
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
+
+/// GET /api/status — runtime status for the UI.
+pub async fn get_status(
+    State(state): State<Arc<AppState>>,
+) -> Json<Value> {
+    let mut status = state.runtime_session.get_status();
+    status.as_object_mut().map(|obj| {
+        obj.insert("version".to_owned(), json!(env!("CARGO_PKG_VERSION")));
+    });
+    Json(status)
+}

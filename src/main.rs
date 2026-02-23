@@ -58,11 +58,78 @@ async fn main() -> anyhow::Result<()> {
 
             // Bootstrap: create pool, run migrations, seed, wire deps, build state
             let state = composition::bootstrap::run(config.clone()).await?;
-            let app = entrypoints::app::build_router(state);
+            let app = entrypoints::app::build_router(state.clone());
 
+            // ── Background tasks ────────────────────────────────────────
+            let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(1);
+
+            // SSE heartbeat (every 15s)
+            let heartbeat_handle = {
+                let eq = state.event_queue.clone();
+                let mut shutdown_rx = shutdown_tx.subscribe();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::select! {
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+                                eq.push_heartbeat();
+                            }
+                            _ = shutdown_rx.recv() => break,
+                        }
+                    }
+                    tracing::info!("heartbeat_task.stopped");
+                })
+            };
+
+            // Runtime session (trigger loop)
+            let runtime_handle = {
+                let session = state.runtime_session.clone();
+                let mut shutdown_rx = shutdown_tx.subscribe();
+                tokio::spawn(async move {
+                    tokio::select! {
+                        _ = session.run() => {}
+                        _ = shutdown_rx.recv() => {
+                            session.stop().await;
+                        }
+                    }
+                    tracing::info!("runtime_session_task.stopped");
+                })
+            };
+
+            // Learning loop (if enabled)
+            let learning_handle = state.learning_loop.as_ref().map(|ll| {
+                let ll = ll.clone();
+                let mut shutdown_rx = shutdown_tx.subscribe();
+                tokio::spawn(async move {
+                    tokio::select! {
+                        _ = ll.run() => {}
+                        _ = shutdown_rx.recv() => {
+                            ll.stop();
+                        }
+                    }
+                    tracing::info!("learning_loop_task.stopped");
+                })
+            });
+
+            // ── Serve with graceful shutdown ────────────────────────────
             let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
             tracing::info!("BoBe listening on {}:{}", config.host, config.port);
-            axum::serve(listener, app).await?;
+
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    tokio::signal::ctrl_c().await.ok();
+                    tracing::info!("Shutdown signal received, stopping background tasks...");
+                    let _ = shutdown_tx.send(());
+                })
+                .await?;
+
+            // Wait for background tasks to finish
+            let _ = heartbeat_handle.await;
+            let _ = runtime_handle.await;
+            if let Some(h) = learning_handle {
+                let _ = h.await;
+            }
+
+            tracing::info!("BoBe shutdown complete");
         }
         Commands::Version => {
             println!("BoBe v{}", env!("CARGO_PKG_VERSION"));

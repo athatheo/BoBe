@@ -6,12 +6,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::adapters::persistence::repos::goal_repo::SqliteGoalRepo;
+
 use crate::app_state::AppState;
 use crate::domain::goal::Goal;
 use crate::domain::types::{GoalPriority, GoalSource, GoalStatus};
 use crate::error::AppError;
-use crate::ports::repos::goal_repo::GoalRepository;
+
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -117,7 +117,7 @@ pub async fn list_goals(
     State(state): State<Arc<AppState>>,
     Query(params): Query<GoalListQuery>,
 ) -> Result<Json<GoalListResponse>, AppError> {
-    let repo = SqliteGoalRepo::new(state.db.clone());
+    let repo = state.goal_repo.clone();
 
     let goals = if let Some(ref status_str) = params.status {
         let status = parse_goal_status(status_str)?;
@@ -140,7 +140,7 @@ pub async fn get_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalResponse>, AppError> {
-    let repo = SqliteGoalRepo::new(state.db.clone());
+    let repo = state.goal_repo.clone();
     let goal = repo
         .get_by_id(goal_id)
         .await?
@@ -163,7 +163,7 @@ pub async fn create_goal(
     let priority = parse_goal_priority(&body.priority)?;
     let goal = Goal::new(body.content, GoalSource::User, priority);
 
-    let repo = SqliteGoalRepo::new(state.db.clone());
+    let repo = state.goal_repo.clone();
     let saved = repo.save(&goal).await?;
 
     tracing::info!(goal_id = %saved.id, "goal.created");
@@ -177,7 +177,7 @@ pub async fn update_goal(
     Path(goal_id): Path<Uuid>,
     Json(body): Json<GoalUpdateRequest>,
 ) -> Result<Json<GoalResponse>, AppError> {
-    let repo = SqliteGoalRepo::new(state.db.clone());
+    let repo = state.goal_repo.clone();
 
     repo.get_by_id(goal_id)
         .await?
@@ -211,7 +211,7 @@ pub async fn complete_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
-    let repo = SqliteGoalRepo::new(state.db.clone());
+    let repo = state.goal_repo.clone();
 
     repo.get_by_id(goal_id)
         .await?
@@ -236,7 +236,7 @@ pub async fn archive_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
-    let repo = SqliteGoalRepo::new(state.db.clone());
+    let repo = state.goal_repo.clone();
 
     repo.get_by_id(goal_id)
         .await?
@@ -261,7 +261,7 @@ pub async fn delete_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
-    let repo = SqliteGoalRepo::new(state.db.clone());
+    let repo = state.goal_repo.clone();
 
     if !repo.delete(goal_id).await? {
         return Err(AppError::NotFound(format!("Goal {goal_id} not found")));

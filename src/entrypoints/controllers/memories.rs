@@ -6,12 +6,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::adapters::persistence::repos::memory_repo::SqliteMemoryRepo;
+
 use crate::app_state::AppState;
 use crate::domain::memory::Memory;
 use crate::domain::types::{MemorySource, MemoryType};
 use crate::error::AppError;
-use crate::ports::repos::memory_repo::MemoryRepository;
+
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ pub async fn list_memories(
     State(state): State<Arc<AppState>>,
     Query(params): Query<MemoryListQuery>,
 ) -> Result<Json<MemoryListResponse>, AppError> {
-    let repo = SqliteMemoryRepo::new(state.db.clone());
+    let repo = state.memory_repo.clone();
 
     let (memories, total) = repo
         .find_all(
@@ -151,7 +151,7 @@ pub async fn get_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryResponse>, AppError> {
-    let repo = SqliteMemoryRepo::new(state.db.clone());
+    let repo = state.memory_repo.clone();
     let memory = repo
         .get_by_id(memory_id)
         .await?
@@ -180,7 +180,7 @@ pub async fn create_memory(
         body.category,
     );
 
-    let repo = SqliteMemoryRepo::new(state.db.clone());
+    let repo = state.memory_repo.clone();
     let saved = repo.save(&memory).await?;
 
     tracing::info!(
@@ -199,7 +199,7 @@ pub async fn update_memory(
     Path(memory_id): Path<Uuid>,
     Json(body): Json<MemoryUpdateRequest>,
 ) -> Result<Json<MemoryResponse>, AppError> {
-    let repo = SqliteMemoryRepo::new(state.db.clone());
+    let repo = state.memory_repo.clone();
 
     repo.get_by_id(memory_id)
         .await?
@@ -224,7 +224,7 @@ pub async fn delete_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
-    let repo = SqliteMemoryRepo::new(state.db.clone());
+    let repo = state.memory_repo.clone();
 
     if !repo.delete(memory_id).await? {
         return Err(AppError::NotFound(format!(

@@ -7,11 +7,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::adapters::persistence::repos::mcp_config_repo::SqliteMcpConfigRepo;
+
 use crate::app_state::AppState;
 use crate::domain::mcp_server_config::McpServerConfig;
 use crate::error::AppError;
-use crate::ports::repos::mcp_config_repo::McpConfigRepository;
+
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ fn config_to_response(cfg: &McpServerConfig) -> McpConfigResponse {
 pub async fn list_configs(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<McpConfigListResponse>, AppError> {
-    let repo = SqliteMcpConfigRepo::new(state.db.clone());
+    let repo = state.mcp_config_repo.clone();
     let configs = repo.get_all().await?;
     let enabled_count = configs.iter().filter(|c| c.enabled).count();
 
@@ -138,7 +138,7 @@ pub async fn create_config(
         return Err(AppError::Validation("command must not be empty".into()));
     }
 
-    let repo = SqliteMcpConfigRepo::new(state.db.clone());
+    let repo = state.mcp_config_repo.clone();
 
     if repo.get_by_name(&body.server_name).await?.is_some() {
         return Err(AppError::Validation(format!(
@@ -175,7 +175,7 @@ pub async fn update_config(
     Path(config_id): Path<Uuid>,
     Json(body): Json<McpConfigUpdateRequest>,
 ) -> Result<Json<McpConfigUpdateResponse>, AppError> {
-    let repo = SqliteMcpConfigRepo::new(state.db.clone());
+    let repo = state.mcp_config_repo.clone();
 
     let _existing = repo
         .get_by_id(config_id)
@@ -226,7 +226,7 @@ pub async fn delete_config(
     State(state): State<Arc<AppState>>,
     Path(config_id): Path<Uuid>,
 ) -> Result<Json<McpConfigUpdateResponse>, AppError> {
-    let repo = SqliteMcpConfigRepo::new(state.db.clone());
+    let repo = state.mcp_config_repo.clone();
 
     let existing = repo.get_by_id(config_id).await?.ok_or_else(|| {
         AppError::NotFound(format!("MCP config {config_id} not found"))

@@ -6,11 +6,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::adapters::persistence::repos::soul_repo::SqliteSoulRepo;
+
 use crate::app_state::AppState;
 use crate::domain::soul::Soul;
 use crate::error::AppError;
-use crate::ports::repos::soul_repo::SoulRepository;
+
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ pub async fn list_souls(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SoulListQuery>,
 ) -> Result<Json<SoulListResponse>, AppError> {
-    let repo = SqliteSoulRepo::new(state.db.clone());
+    let repo = state.soul_repo.clone();
 
     let souls = if params.enabled_only {
         repo.find_enabled().await?
@@ -107,7 +107,7 @@ pub async fn get_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let repo = SqliteSoulRepo::new(state.db.clone());
+    let repo = state.soul_repo.clone();
     let soul = repo
         .get_by_id(soul_id)
         .await?
@@ -130,7 +130,7 @@ pub async fn create_soul(
         ));
     }
 
-    let repo = SqliteSoulRepo::new(state.db.clone());
+    let repo = state.soul_repo.clone();
 
     // Check for duplicate name
     if repo.get_by_name(&body.name).await?.is_some() {
@@ -157,7 +157,7 @@ pub async fn update_soul(
     Path(soul_id): Path<Uuid>,
     Json(body): Json<SoulUpdateRequest>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let repo = SqliteSoulRepo::new(state.db.clone());
+    let repo = state.soul_repo.clone();
 
     let soul = repo
         .get_by_id(soul_id)
@@ -228,7 +228,7 @@ pub async fn delete_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let repo = SqliteSoulRepo::new(state.db.clone());
+    let repo = state.soul_repo.clone();
 
     let soul = repo
         .get_by_id(soul_id)

@@ -29,6 +29,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         // Health
         .route("/health", get(controllers::health::health_check))
+        .route("/api/status", get(controllers::health::get_status))
         // Conversation
         .route(
             "/api/conversation/message",
