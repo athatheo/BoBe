@@ -2,16 +2,19 @@
 
 use clap::{Parser, Subcommand};
 
-mod adapters;
+mod api;
 mod app_state;
-mod application;
-mod composition;
+mod bootstrap;
 mod config;
-mod domain;
-mod entrypoints;
+mod config_manager;
+mod db;
 mod error;
-mod ports;
-mod shared;
+mod llm;
+mod models;
+mod runtime;
+mod services;
+mod tools;
+mod util;
 
 #[derive(Parser)]
 #[command(name = "bobe", about = "BoBe - Local-first proactive AI companion")]
@@ -47,7 +50,6 @@ enum Commands {
     Version,
 }
 
-#[allow(unsafe_code)]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -58,23 +60,19 @@ async fn main() -> anyhow::Result<()> {
             port,
             log_level,
         } => {
-            // SAFETY: set_var is called before any threads are spawned.
-            unsafe {
-                std::env::set_var("BOBE_HOST", &host);
-                std::env::set_var("BOBE_PORT", port.to_string());
-                std::env::set_var("BOBE_LOG_LEVEL", &log_level);
-            }
-
-            let config = config::Config::from_env()?;
+            let mut config = config::Config::from_env()?;
+            config.host = host;
+            config.port = port;
+            config.log_level = log_level;
 
             // Initialize tracing
-            adapters::logging::init_tracing(&config);
+            util::logging::init_tracing(&config);
 
             tracing::info!("Starting BoBe on {}:{}", config.host, config.port);
 
             // Bootstrap: create pool, run migrations, seed, wire deps, build state
-            let state = composition::bootstrap::run(config.clone()).await?;
-            let app = entrypoints::app::build_router(state.clone());
+            let state = bootstrap::run(config.clone()).await?;
+            let app = api::router::build_router(state.clone());
 
             // ── Background tasks ────────────────────────────────────────
             let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);

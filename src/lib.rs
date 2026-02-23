@@ -1,12 +1,15 @@
 #![allow(dead_code)]
 
-pub mod adapters;
+pub mod api;
 pub mod app_state;
-pub mod application;
-pub mod composition;
+pub mod bootstrap;
 pub mod config;
-pub mod domain;
-pub mod entrypoints;
+pub mod config_manager;
+pub mod db;
 pub mod error;
-pub mod ports;
-pub mod shared;
+pub mod llm;
+pub mod models;
+pub mod runtime;
+pub mod services;
+pub mod tools;
+pub mod util;
