@@ -4,9 +4,21 @@ use super::types::{EventType, IndicatorType, StreamBundle};
 
 /// Create an indicator event showing the daemon's current activity.
 pub fn indicator_event(indicator: IndicatorType, message: Option<&str>) -> StreamBundle {
+    indicator_event_with_progress(indicator, message, None)
+}
+
+/// Create an indicator event with optional progress (0.0–1.0).
+pub fn indicator_event_with_progress(
+    indicator: IndicatorType,
+    message: Option<&str>,
+    progress: Option<f64>,
+) -> StreamBundle {
     let mut payload = json!({"indicator": indicator});
     if let Some(msg) = message {
         payload["message"] = json!(msg);
+    }
+    if let Some(p) = progress {
+        payload["progress"] = json!(p);
     }
     StreamBundle {
         event_type: EventType::Indicator,
