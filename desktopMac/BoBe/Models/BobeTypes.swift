@@ -21,6 +21,12 @@ enum IndicatorType: String, Codable, Sendable {
     case thinking = "THINKING"
     case toolCalling = "TOOL_CALLING"
     case streaming = "STREAMING"
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = IndicatorType(rawValue: raw) ?? .unknown
+    }
 }
 
 /// Chat message sender

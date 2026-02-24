@@ -159,7 +159,7 @@ final class BobeStore {
             if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
                 logger.error("Daemon error: \(payload.message)")
             }
-        case .heartbeat, .endOfTurn, .actionRequest:
+        case .heartbeat, .endOfTurn, .actionRequest, .unknown:
             break
         }
     }
@@ -186,6 +186,8 @@ final class BobeStore {
                 ctx.thinking = true; ctx.speaking = false
             case .streaming:
                 ctx.thinking = false; ctx.speaking = true
+            case .unknown:
+                break
             }
             ctx.activeIndicator = activeIndicator
         }

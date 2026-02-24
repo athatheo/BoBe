@@ -14,6 +14,12 @@ enum EventType: String, Codable, Sendable {
     case endOfTurn = "end_of_turn"
     case conversationClosed = "conversation_closed"
     case actionRequest = "action_request"
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = EventType(rawValue: raw) ?? .unknown
+    }
 }
 
 /// All SSE events wrapped in this envelope

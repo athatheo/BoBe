@@ -270,6 +270,7 @@ struct GoalsEditor: View {
         case .high: theme.colors.primary
         case .medium: Color(hex: "C8B090")
         case .low: theme.colors.secondary
+        case .unknown: theme.colors.textMuted
         }
     }
 
@@ -278,6 +279,7 @@ struct GoalsEditor: View {
         case .active: theme.colors.secondary
         case .completed: .green
         case .archived: theme.colors.textMuted
+        case .unknown: theme.colors.textMuted
         }
     }
 

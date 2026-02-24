@@ -2,16 +2,31 @@ import Foundation
 
 // MARK: - Goals
 
-enum GoalStatus: String, Codable, Sendable {
-    case active, completed, archived
+enum GoalStatus: String, Codable, Sendable, CaseIterable {
+    case active, completed, archived, unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = GoalStatus(rawValue: raw) ?? .unknown
+    }
 }
 
-enum GoalPriority: String, Codable, Sendable {
-    case high, medium, low
+enum GoalPriority: String, Codable, Sendable, CaseIterable {
+    case high, medium, low, unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = GoalPriority(rawValue: raw) ?? .unknown
+    }
 }
 
 enum GoalSource: String, Codable, Sendable {
-    case user, inferred
+    case user, inferred, unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = GoalSource(rawValue: raw) ?? .unknown
+    }
 }
 
 struct Goal: Identifiable, Codable, Sendable {
@@ -68,11 +83,21 @@ enum GoalPlanStatus: String, Codable, Sendable {
     case approved
     case autoApproved = "auto_approved"
     case inProgress = "in_progress"
-    case completed, failed, rejected
+    case completed, failed, rejected, unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = GoalPlanStatus(rawValue: raw) ?? .unknown
+    }
 }
 
 enum GoalPlanStepStatus: String, Codable, Sendable {
-    case pending, inProgress = "in_progress", completed, failed, skipped
+    case pending, inProgress = "in_progress", completed, failed, skipped, unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = GoalPlanStepStatus(rawValue: raw) ?? .unknown
+    }
 }
 
 struct GoalPlan: Identifiable, Codable, Sendable {
@@ -218,15 +243,32 @@ enum MemoryType: String, Codable, Sendable {
     case shortTerm = "short_term"
     case longTerm = "long_term"
     case explicit
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = MemoryType(rawValue: raw) ?? .unknown
+    }
 }
 
 enum MemoryCategory: String, Codable, Sendable, CaseIterable {
-    case preference, pattern, fact, interest, general, observation
+    case preference, pattern, fact, interest, general, observation, unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = MemoryCategory(rawValue: raw) ?? .unknown
+    }
 }
 
 enum MemorySource: String, Codable, Sendable {
     case observation, conversation, user
     case visualDiary = "visual_diary"
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = MemorySource(rawValue: raw) ?? .unknown
+    }
 }
 
 struct Memory: Identifiable, Codable, Sendable {
