@@ -232,6 +232,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::goal_worker::list_goal_plans),
         )
         .route(
+            "/api/goal-plans/pause",
+            post(handlers::goal_worker::pause_goal),
+        )
+        .route(
+            "/api/goal-plans/resume",
+            post(handlers::goal_worker::resume_goal),
+        )
+        .route(
+            "/api/goal-plans/status",
+            get(handlers::goal_worker::goal_worker_status),
+        )
+        .route(
             "/api/goal-plans/{plan_id}",
             get(handlers::goal_worker::get_goal_plan),
         )

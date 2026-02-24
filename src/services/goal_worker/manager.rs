@@ -19,6 +19,15 @@ use crate::models::types::{GoalPlanStatus, GoalStatus};
 
 use super::worker::GoalWorker;
 
+/// Status information for the goal worker, exposed via API.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GoalWorkerStatus {
+    pub enabled: bool,
+    pub max_concurrent: u32,
+    pub active_goals_count: usize,
+    pub pending_approval_count: usize,
+}
+
 /// Manages the lifecycle of goal worker tasks.
 pub struct GoalWorkerManager {
     config: Arc<ArcSwap<Config>>,

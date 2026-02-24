@@ -9,8 +9,14 @@ use crate::app_state::AppState;
 use crate::error::AppError;
 use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
 use crate::models::types::{GoalPlanStatus, GoalStatus};
+use crate::services::goal_worker::manager::GoalWorkerStatus;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct GoalIdRequest {
+    pub goal_id: String,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ActionResponseRequest {
@@ -231,5 +237,94 @@ pub async fn reject_goal_plan(
         id: plan_id,
         status: "rejected".to_string(),
         message: "Plan rejected; goal returned to active".to_string(),
+    }))
+}
+
+/// POST /api/goal-plans/pause
+pub async fn pause_goal(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<GoalIdRequest>,
+) -> Result<Json<PlanActionResponse>, AppError> {
+    let goal_id = body
+        .goal_id
+        .parse::<uuid::Uuid>()
+        .map_err(|_| AppError::Validation(format!("Invalid goal_id: {}", body.goal_id)))?;
+
+    let goal = state
+        .goal_repo
+        .get_by_id(goal_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Goal {} not found", goal_id)))?;
+
+    if goal.status != GoalStatus::Active {
+        return Err(AppError::Validation(format!(
+            "Goal is not active (current status: {})",
+            goal.status
+        )));
+    }
+
+    state
+        .goal_repo
+        .update_status(goal_id, Some(GoalStatus::Paused), None)
+        .await?;
+
+    Ok(Json(PlanActionResponse {
+        id: goal_id.to_string(),
+        status: "paused".to_string(),
+        message: "Goal paused".to_string(),
+    }))
+}
+
+/// POST /api/goal-plans/resume
+pub async fn resume_goal(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<GoalIdRequest>,
+) -> Result<Json<PlanActionResponse>, AppError> {
+    let goal_id = body
+        .goal_id
+        .parse::<uuid::Uuid>()
+        .map_err(|_| AppError::Validation(format!("Invalid goal_id: {}", body.goal_id)))?;
+
+    let goal = state
+        .goal_repo
+        .get_by_id(goal_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Goal {} not found", goal_id)))?;
+
+    if goal.status != GoalStatus::Paused {
+        return Err(AppError::Validation(format!(
+            "Goal is not paused (current status: {})",
+            goal.status
+        )));
+    }
+
+    state
+        .goal_repo
+        .update_status(goal_id, Some(GoalStatus::Active), None)
+        .await?;
+
+    Ok(Json(PlanActionResponse {
+        id: goal_id.to_string(),
+        status: "active".to_string(),
+        message: "Goal resumed".to_string(),
+    }))
+}
+
+/// GET /api/goal-plans/status
+pub async fn goal_worker_status(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<GoalWorkerStatus>, AppError> {
+    let cfg = state.config();
+    let enabled = cfg.goal_worker_enabled;
+    let max_concurrent = cfg.goal_worker_max_concurrent;
+
+    let active_goals = state.goal_repo.find_active(true).await?;
+    let pending_plans = state.goal_plan_repo.get_pending_approval_plans().await?;
+
+    Ok(Json(GoalWorkerStatus {
+        enabled,
+        max_concurrent,
+        active_goals_count: active_goals.len(),
+        pending_approval_count: pending_plans.len(),
     }))
 }

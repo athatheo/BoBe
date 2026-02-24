@@ -211,6 +211,18 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         Arc::new(crate::tools::native::archive_goal::ArchiveGoalTool::new(
             goal_repo.clone(),
         )),
+        Arc::new(crate::tools::native::pause_goal::PauseGoalTool::new(
+            goal_repo.clone(),
+        )),
+        Arc::new(crate::tools::native::resume_goal::ResumeGoalTool::new(
+            goal_repo.clone(),
+        )),
+        Arc::new(crate::tools::native::approve_plan::ApprovePlanTool::new(
+            goal_plan_repo.clone(),
+        )),
+        Arc::new(crate::tools::native::reject_plan::RejectPlanTool::new(
+            goal_plan_repo.clone(),
+        )),
         Arc::new(crate::tools::native::file_reader::FileReaderTool::new()),
         Arc::new(crate::tools::native::list_directory::ListDirectoryTool::new()),
         Arc::new(crate::tools::native::search_files::SearchFilesTool::new()),

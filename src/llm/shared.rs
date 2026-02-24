@@ -51,6 +51,23 @@ pub fn message_to_json(msg: &AiMessage) -> Value {
     Value::Object(obj)
 }
 
+/// Returns true if the model uses internal reasoning (o1, o3, o4, gpt-5).
+/// Reasoning models reject custom temperature and use `max_completion_tokens`.
+fn is_reasoning_model(model: &str) -> bool {
+    let m = model.to_lowercase();
+    m.starts_with("o1") || m.starts_with("o3") || m.starts_with("o4") || m.contains("gpt-5")
+}
+
+/// Map finish_reason values to canonical form.
+/// Azure may send "content_filter" which we treat as "stop".
+pub fn map_finish_reason(raw: &str) -> &str {
+    match raw {
+        "tool_calls" | "length" | "stop" => raw,
+        "content_filter" => "stop",
+        other => other,
+    }
+}
+
 /// Build a full chat-completions request body.
 pub fn build_chat_request(
     model: &str,
@@ -66,10 +83,15 @@ pub fn build_chat_request(
     let mut body = json!({
         "model": model,
         "messages": msgs,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+        "max_completion_tokens": max_tokens,
         "stream": stream,
     });
+
+    // Reasoning models (o1, o3, gpt-5) only accept temperature=1.
+    // Skip the parameter entirely for these models to avoid API errors.
+    if !is_reasoning_model(model) {
+        body["temperature"] = json!(temperature);
+    }
 
     if let Some(tools) = tools
         && !tools.is_empty()
@@ -160,8 +182,7 @@ pub fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
     let finish_reason = choice
         .get("finish_reason")
         .and_then(|f| f.as_str())
-        .unwrap_or("stop")
-        .to_owned();
+        .map_or_else(|| "stop".to_owned(), |r| map_finish_reason(r).to_owned());
 
     let usage = data.get("usage").map(|u| TokenUsage {
         prompt_tokens: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
@@ -207,7 +228,7 @@ pub fn parse_stream_chunk(data: &Value) -> Option<StreamChunk> {
     let finish_reason = choice
         .get("finish_reason")
         .and_then(|f| f.as_str())
-        .map(|s| s.to_owned());
+        .map(|r| map_finish_reason(r).to_owned());
 
     Some(StreamChunk {
         delta: text,

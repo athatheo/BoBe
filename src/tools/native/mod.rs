@@ -15,7 +15,13 @@ pub mod update_memory;
 pub mod archive_goal;
 pub mod complete_goal;
 pub mod create_goal;
+pub mod pause_goal;
+pub mod resume_goal;
 pub mod update_goal;
+
+// Plan tools
+pub mod approve_plan;
+pub mod reject_plan;
 
 // File system tools
 pub mod file_reader;
