@@ -5,10 +5,11 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use serde_json::Value;
 use tracing::{info, warn};
 
-use crate::runtime::learning::config::LearningConfig;
+use crate::config::Config;
 use crate::runtime::prompts::learning::deduplication_decision::MemoryDeduplicationPrompt;
 use crate::runtime::prompts::learning::memory_distillation::{
     ConversationMemoryPrompt, MemoryDistillationPrompt,
@@ -31,7 +32,7 @@ pub struct MemoryLearner {
     llm: Arc<dyn LlmProvider>,
     embedding: Arc<dyn EmbeddingProvider>,
     memory_repo: Arc<dyn MemoryRepository>,
-    config: LearningConfig,
+    config: Arc<ArcSwap<Config>>,
 }
 
 impl MemoryLearner {
@@ -39,7 +40,7 @@ impl MemoryLearner {
         llm: Arc<dyn LlmProvider>,
         embedding: Arc<dyn EmbeddingProvider>,
         memory_repo: Arc<dyn MemoryRepository>,
-        config: LearningConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             llm,
@@ -47,11 +48,6 @@ impl MemoryLearner {
             memory_repo,
             config,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: LearningConfig) {
-        self.config = config;
     }
 
     /// Extract memories from accumulated observations.
@@ -77,16 +73,16 @@ impl MemoryLearner {
 
         let messages =
             MemoryDistillationPrompt::messages(&context_strings, &memory_strings, &goal_strings);
-        let config = MemoryDistillationPrompt::config();
+        let prompt_config = MemoryDistillationPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             ),
         )
         .await
@@ -143,16 +139,16 @@ impl MemoryLearner {
             .collect();
 
         let messages = ConversationMemoryPrompt::messages(&turn_strings, &memory_strings);
-        let config = ConversationMemoryPrompt::config();
+        let prompt_config = ConversationMemoryPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             ),
         )
         .await
@@ -194,6 +190,8 @@ impl MemoryLearner {
         raw_memories: &[Value],
         existing_memories: &[Memory],
     ) -> Vec<Memory> {
+        let cfg = self.config.load();
+
         // Build existing embeddings for dedup
         let existing_embeddings: Vec<(&Memory, Vec<f32>)> = existing_memories
             .iter()
@@ -205,7 +203,7 @@ impl MemoryLearner {
             .collect();
 
         let mut created: Vec<Memory> = Vec::new();
-        let max_memories = self.config.max_memories_per_cycle as usize;
+        let max_memories = cfg.learning_max_memories_per_cycle as usize;
 
         for raw in raw_memories {
             if created.len() >= max_memories {
@@ -309,16 +307,16 @@ impl MemoryLearner {
             .collect();
 
         let messages = MemoryDeduplicationPrompt::messages(content, category, &existing_data);
-        let config = MemoryDeduplicationPrompt::config();
+        let prompt_config = MemoryDeduplicationPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             ),
         )
         .await

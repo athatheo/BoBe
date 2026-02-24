@@ -1,6 +1,9 @@
 use std::sync::Arc;
+
+use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
 
+use crate::config::Config;
 use crate::llm::LlmProvider;
 use crate::llm::types::{AiMessage, ToolDefinition};
 
@@ -21,15 +24,15 @@ const MAX_TOKENS: u32 = 500;
 /// Narrows the tool list based on conversation context using an LLM call.
 pub struct ToolPreselector {
     llm: Arc<dyn LlmProvider>,
-    enabled: bool,
+    config: Arc<ArcSwap<Config>>,
     max_tools_for_bypass: usize,
 }
 
 impl ToolPreselector {
-    pub fn new(llm: Arc<dyn LlmProvider>, enabled: bool) -> Self {
+    pub fn new(llm: Arc<dyn LlmProvider>, config: Arc<ArcSwap<Config>>) -> Self {
         Self {
             llm,
-            enabled,
+            config,
             max_tools_for_bypass: 5,
         }
     }
@@ -42,8 +45,10 @@ impl ToolPreselector {
         messages: &[AiMessage],
         all_tools: &[ToolDefinition],
     ) -> Vec<ToolDefinition> {
+        let cfg = self.config.load();
+
         // Bypass conditions
-        if !self.enabled || all_tools.len() <= self.max_tools_for_bypass || messages.is_empty() {
+        if !cfg.tools_preselector_enabled || all_tools.len() <= self.max_tools_for_bypass || messages.is_empty() {
             return all_tools.to_vec();
         }
 

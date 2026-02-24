@@ -342,12 +342,40 @@ fn apply_changes(config: &mut Config, changes: &HashMap<String, serde_json::Valu
                     config.tools_enabled = v;
                 }
             }
-            "semantic_search_limit" | "recent_ai_messages_limit" | "max_response_tokens"
-            | "response_temperature" | "decision_cooldown_minutes"
-            | "decision_extended_cooldown_minutes" | "min_context_for_decision" => {
-                // These fields appear in ORCH_FIELDS but are not present on the Config struct;
-                // they are orchestrator-internal settings persisted to .env for restart survival.
-                // No in-memory field to patch.
+            "decision_cooldown_minutes" => {
+                if let Ok(v) = str_val.parse() {
+                    config.decision_cooldown_minutes = v;
+                }
+            }
+            "decision_extended_cooldown_minutes" => {
+                if let Ok(v) = str_val.parse() {
+                    config.decision_extended_cooldown_minutes = v;
+                }
+            }
+            "min_context_for_decision" => {
+                if let Ok(v) = str_val.parse() {
+                    config.min_context_for_decision = v;
+                }
+            }
+            "semantic_search_limit" => {
+                if let Ok(v) = str_val.parse() {
+                    config.semantic_search_limit = v;
+                }
+            }
+            "recent_ai_messages_limit" => {
+                if let Ok(v) = str_val.parse() {
+                    config.recent_ai_messages_limit = v;
+                }
+            }
+            "max_response_tokens" => {
+                if let Ok(v) = str_val.parse() {
+                    config.max_response_tokens = v;
+                }
+            }
+            "response_temperature" => {
+                if let Ok(v) = str_val.parse() {
+                    config.response_temperature = v;
+                }
             }
             // Learning
             "learning_enabled" => {

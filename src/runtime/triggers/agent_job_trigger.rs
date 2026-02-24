@@ -5,11 +5,13 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
+use crate::config::Config;
 use crate::runtime::prompts::agent_job_evaluation::AgentJobEvaluationPrompt;
 use crate::runtime::proactive_generator::ProactiveGenerator;
-use crate::runtime::state::{Decision, OrchestratorConfig};
+use crate::runtime::state::Decision;
 use crate::services::agent_job_manager::AgentJobManager;
 use crate::models::agent_job::AgentJob;
 use crate::models::types::AgentJobStatus;
@@ -23,7 +25,7 @@ pub struct AgentJobTrigger {
     manager: Arc<AgentJobManager>,
     agent_job_repo: Arc<dyn AgentJobRepository>,
     generator: Arc<ProactiveGenerator>,
-    config: OrchestratorConfig,
+    config: Arc<ArcSwap<Config>>,
     llm: Option<Arc<dyn LlmProvider>>,
 }
 
@@ -32,7 +34,7 @@ impl AgentJobTrigger {
         manager: Arc<AgentJobManager>,
         agent_job_repo: Arc<dyn AgentJobRepository>,
         generator: Arc<ProactiveGenerator>,
-        config: OrchestratorConfig,
+        config: Arc<ArcSwap<Config>>,
         llm: Option<Arc<dyn LlmProvider>>,
     ) -> Self {
         Self {
@@ -69,11 +71,6 @@ impl AgentJobTrigger {
                 warn!(error = %e, "agent_job_trigger.mark_reported_failed");
             }
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: OrchestratorConfig) {
-        self.config = config;
     }
 
     /// Fallback: check for any unreported jobs that slipped through.
@@ -132,15 +129,15 @@ impl AgentJobTrigger {
             job.error_message.as_deref(),
             job.continuation_count as u32,
         );
-        let config = AgentJobEvaluationPrompt::config();
+        let prompt_config = AgentJobEvaluationPrompt::config();
 
         match llm
             .complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             )
             .await
         {
@@ -209,6 +206,7 @@ impl AgentJobTrigger {
     }
 
     async fn notify_job(&self, job: &AgentJob) {
+        let cfg = self.config.load();
         let status_word = if job.status == AgentJobStatus::Completed {
             "completed"
         } else {
@@ -253,7 +251,7 @@ impl AgentJobTrigger {
 
         self.generator
             .generate_proactive_response(
-                self.config.conversation_auto_close_minutes as i64,
+                cfg.conversation_auto_close_minutes as i64,
                 Some(context_summary),
             )
             .await;

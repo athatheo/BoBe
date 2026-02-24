@@ -4,10 +4,12 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use chrono::Utc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
 use crate::tools::preselector::ToolPreselector;
@@ -17,7 +19,6 @@ use crate::runtime::learners::MessageLearner;
 use crate::runtime::learners::types::LearnerObservation;
 use crate::runtime::prompts::response::UserResponsePrompt;
 use crate::runtime::response_streamer::{stream_llm_response, stream_response};
-use crate::runtime::state::OrchestratorConfig;
 use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
 use crate::services::conversation_service::ConversationService;
 use crate::models::types::TurnRole;
@@ -32,7 +33,7 @@ pub struct MessageHandler {
     message_learner: Arc<MessageLearner>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
     event_queue: Arc<EventQueue>,
-    config: OrchestratorConfig,
+    config: Arc<ArcSwap<Config>>,
     tool_registry: Option<Arc<ToolRegistry>>,
     tool_preselector: Option<Arc<ToolPreselector>>,
     tool_call_loop: Option<Arc<ToolCallLoop>>,
@@ -46,7 +47,7 @@ impl MessageHandler {
         message_learner: Arc<MessageLearner>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
         event_queue: Arc<EventQueue>,
-        config: OrchestratorConfig,
+        config: Arc<ArcSwap<Config>>,
         tool_registry: Option<Arc<ToolRegistry>>,
         tool_preselector: Option<Arc<ToolPreselector>>,
         tool_call_loop: Option<Arc<ToolCallLoop>>,
@@ -63,11 +64,6 @@ impl MessageHandler {
             tool_preselector,
             tool_call_loop,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: OrchestratorConfig) {
-        self.config = config;
     }
 
     /// Handle a user message. Returns message ID for tracking.
@@ -131,6 +127,7 @@ impl MessageHandler {
     }
 
     async fn respond_to_message(&self, msg_id: &str, user_content: &str, conversation_id: Uuid) {
+        let cfg = self.config.load();
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
         // Get context (gracefully degrade on failure)
@@ -206,10 +203,10 @@ impl MessageHandler {
             },
             soul.as_deref(),
         );
-        let config = UserResponsePrompt::config();
+        let prompt_config = UserResponsePrompt::config();
 
         // Get tools if enabled
-        let tools = if self.config.tools_enabled {
+        let tools = if cfg.tools_enabled {
             self.get_tools(&messages).await
         } else {
             Vec::new()
@@ -231,8 +228,8 @@ impl MessageHandler {
             let stream = tcl.stream(
                 messages,
                 tools,
-                config.temperature,
-                config.max_tokens,
+                prompt_config.temperature,
+                prompt_config.max_tokens,
                 Some(tool_context),
             );
             stream_response(stream, &self.event_queue, Some(msg_id)).await
@@ -240,9 +237,9 @@ impl MessageHandler {
             let stream = self.llm.stream(
                 messages,
                 None,
-                config.response_format,
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format,
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             );
             stream_llm_response(stream, &self.event_queue, Some(msg_id)).await
         };

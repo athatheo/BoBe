@@ -5,10 +5,11 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use serde_json::Value;
 use tracing::{debug, info, warn};
 
-use crate::runtime::learning::config::LearningConfig;
+use crate::config::Config;
 use crate::runtime::prompts::learning::memory_consolidation::MemoryConsolidationPrompt;
 use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
@@ -23,7 +24,7 @@ pub struct MemoryConsolidator {
     llm: Arc<dyn LlmProvider>,
     embedding: Arc<dyn EmbeddingProvider>,
     memory_repo: Arc<dyn MemoryRepository>,
-    config: LearningConfig,
+    config: Arc<ArcSwap<Config>>,
 }
 
 impl MemoryConsolidator {
@@ -31,7 +32,7 @@ impl MemoryConsolidator {
         llm: Arc<dyn LlmProvider>,
         embedding: Arc<dyn EmbeddingProvider>,
         memory_repo: Arc<dyn MemoryRepository>,
-        config: LearningConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             llm,
@@ -39,11 +40,6 @@ impl MemoryConsolidator {
             memory_repo,
             config,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: LearningConfig) {
-        self.config = config;
     }
 
     /// Consolidate short-term memories into long-term.
@@ -94,7 +90,8 @@ impl MemoryConsolidator {
     }
 
     fn cluster_memories<'a>(&self, memories: &'a [Memory]) -> Vec<Vec<&'a Memory>> {
-        let cap = self.config.max_memories_per_consolidation as usize;
+        let cfg = self.config.load();
+        let cap = cfg.learning_max_memories_per_consolidation as usize;
         let memories: Vec<&Memory> = if memories.len() > cap {
             let mut sorted: Vec<&Memory> = memories.iter().collect();
             sorted.sort_by_key(|m| m.created_at);
@@ -104,7 +101,7 @@ impl MemoryConsolidator {
             memories.iter().collect()
         };
 
-        let threshold = self.config.similarity.clustering_threshold;
+        let threshold = cfg.similarity_clustering_threshold;
         let mut clusters: Vec<Vec<&'a Memory>> = Vec::new();
         let mut centroids: Vec<Vec<f32>> = Vec::new();
 
@@ -204,16 +201,16 @@ impl MemoryConsolidator {
             .collect();
 
         let messages = MemoryConsolidationPrompt::messages(&memory_clusters);
-        let config = MemoryConsolidationPrompt::config();
+        let prompt_config = MemoryConsolidationPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             ),
         )
         .await

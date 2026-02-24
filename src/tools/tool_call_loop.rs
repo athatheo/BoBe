@@ -1,48 +1,31 @@
 use std::pin::Pin;
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use futures::Stream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, info, warn};
 
 use super::executor::ToolExecutor;
+use crate::config::Config;
 use crate::error::AppError;
 use crate::llm::LlmProvider;
 use crate::llm::types::{AiMessage, AiResponse, StreamItem, ToolDefinition};
 use crate::tools::{ToolExecutionContext, ToolExecutionNotification, ToolResult};
 
-/// Configuration for the tool call loop.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct ToolCallLoopConfig {
-    pub max_iterations: usize,
-    pub timeout_per_tool_secs: f64,
-}
-
-impl Default for ToolCallLoopConfig {
-    fn default() -> Self {
-        Self {
-            max_iterations: 5,
-            timeout_per_tool_secs: 30.0,
-        }
-    }
-}
-
 /// Agentic loop: LLM → tool calls → results → LLM, until stop or max iterations.
-#[allow(dead_code)]
 pub struct ToolCallLoop {
     llm: Arc<dyn LlmProvider>,
     executor: Arc<ToolExecutor>,
-    config: ToolCallLoopConfig,
+    config: Arc<ArcSwap<Config>>,
 }
 
-#[allow(dead_code)]
 impl ToolCallLoop {
     pub fn new(
         llm: Arc<dyn LlmProvider>,
         executor: Arc<ToolExecutor>,
-        config: ToolCallLoopConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             llm,
@@ -52,6 +35,7 @@ impl ToolCallLoop {
     }
 
     /// Run the non-streaming tool call loop.
+    #[allow(dead_code)]
     pub async fn run(
         &self,
         messages: &[AiMessage],
@@ -60,9 +44,11 @@ impl ToolCallLoop {
         max_tokens: u32,
         context: Option<&ToolExecutionContext>,
     ) -> Result<AiResponse, AppError> {
+        let cfg = self.config.load();
+        let max_iterations = cfg.tools_max_iterations as usize;
         let mut working_messages = messages.to_vec();
 
-        for iteration in 0..self.config.max_iterations {
+        for iteration in 0..max_iterations {
             debug!(iteration, "Tool call loop iteration");
 
             let response = self
@@ -106,7 +92,7 @@ impl ToolCallLoop {
         }
 
         warn!(
-            max_iterations = self.config.max_iterations,
+            max_iterations,
             "Tool call loop hit max iterations, making final call without tools"
         );
 
@@ -136,7 +122,8 @@ impl ToolCallLoop {
 
         let llm = self.llm.clone();
         let executor = self.executor.clone();
-        let max_iterations = self.config.max_iterations;
+        let cfg = self.config.load();
+        let max_iterations = cfg.tools_max_iterations as usize;
 
         tokio::spawn(async move {
             if let Err(e) = run_streaming_loop(
@@ -159,6 +146,7 @@ impl ToolCallLoop {
         Box::pin(ReceiverStream::new(rx))
     }
 
+    #[allow(dead_code)]
     async fn execute_tools_with_notifications(
         &self,
         tool_calls: &[crate::llm::types::AiToolCall],

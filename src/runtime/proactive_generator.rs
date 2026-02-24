@@ -5,10 +5,12 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use chrono::Utc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::conversation_closed_event;
 use crate::util::sse::types::IndicatorType;
@@ -31,7 +33,7 @@ pub struct ProactiveGenerator {
     context_assembler: Arc<ContextAssembler>,
     conversation: Arc<ConversationService>,
     event_queue: Arc<EventQueue>,
-    summary_enabled: bool,
+    config: Arc<ArcSwap<Config>>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
     tool_registry: Option<Arc<ToolRegistry>>,
     tool_call_loop: Option<Arc<ToolCallLoop>>,
@@ -43,7 +45,7 @@ impl ProactiveGenerator {
         context_assembler: Arc<ContextAssembler>,
         conversation: Arc<ConversationService>,
         event_queue: Arc<EventQueue>,
-        summary_enabled: bool,
+        config: Arc<ArcSwap<Config>>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
         tool_registry: Option<Arc<ToolRegistry>>,
         tool_call_loop: Option<Arc<ToolCallLoop>>,
@@ -53,7 +55,7 @@ impl ProactiveGenerator {
             context_assembler,
             conversation,
             event_queue,
-            summary_enabled,
+            config,
             cooldown_repo,
             tool_registry,
             tool_call_loop,
@@ -159,7 +161,7 @@ impl ProactiveGenerator {
             previous_summary.as_deref(),
             Some(&current_time),
         );
-        let config = ProactiveResponsePrompt::config();
+        let prompt_config = ProactiveResponsePrompt::config();
 
         // Load tools if registry available
         let tools = if let Some(ref registry) = self.tool_registry {
@@ -171,15 +173,15 @@ impl ProactiveGenerator {
         // Use tool call loop if tools are available, otherwise plain LLM stream
         let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
             let tool_stream =
-                tcl.stream(messages, tools, config.temperature, config.max_tokens, None);
+                tcl.stream(messages, tools, prompt_config.temperature, prompt_config.max_tokens, None);
             stream_response(tool_stream, &self.event_queue, Some(&msg_id)).await
         } else {
             let stream = self.llm.stream(
                 messages,
                 None,
-                config.response_format,
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format,
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             );
             stream_llm_response(stream, &self.event_queue, Some(&msg_id)).await
         };
@@ -282,9 +284,10 @@ impl ProactiveGenerator {
         &self,
         old_conversation: &Conversation,
     ) -> (Conversation, Option<String>) {
+        let cfg = self.config.load();
         let mut summary: Option<String> = None;
 
-        if self.summary_enabled
+        if cfg.conversation_summary_enabled
             && let Ok(turns) = self
                 .conversation
                 .get_conversation_turns(old_conversation.id, 50)
@@ -332,16 +335,16 @@ impl ProactiveGenerator {
             .collect();
 
         let messages = ConversationSummaryPrompt::messages(&turn_refs);
-        let config = ConversationSummaryPrompt::config();
+        let prompt_config = ConversationSummaryPrompt::config();
 
         match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             ),
         )
         .await

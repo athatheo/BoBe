@@ -4,8 +4,10 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use tracing::{debug, error, info};
 
+use crate::config::Config;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::indicator_event;
@@ -13,7 +15,7 @@ use crate::util::sse::types::IndicatorType;
 use crate::runtime::learners::CaptureLearner;
 use crate::runtime::learners::types::LearnerObservation;
 use crate::runtime::state::{
-    Decision, OrchestratorConfig, TriggerContext, TriggerType,
+    Decision, TriggerContext, TriggerType,
 };
 use crate::models::observation::Observation;
 use crate::db::CooldownRepository;
@@ -30,7 +32,7 @@ pub struct CaptureTrigger {
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
     observation_repo: Arc<dyn ObservationRepository>,
     event_queue: Arc<EventQueue>,
-    config: OrchestratorConfig,
+    config: Arc<ArcSwap<Config>>,
     enabled: bool,
     context_count: usize,
 }
@@ -44,7 +46,7 @@ impl CaptureTrigger {
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
         observation_repo: Arc<dyn ObservationRepository>,
         event_queue: Arc<EventQueue>,
-        config: OrchestratorConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             screen_capture,
@@ -58,11 +60,6 @@ impl CaptureTrigger {
             enabled: false,
             context_count: 0,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: OrchestratorConfig) {
-        self.config = config;
     }
 
     #[allow(dead_code)]
@@ -92,11 +89,13 @@ impl CaptureTrigger {
             return Decision::Idle;
         };
 
+        let cfg = self.config.load();
+
         // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
-                self.config.decision_cooldown_minutes,
-                self.config.decision_extended_cooldown_minutes,
+                cfg.decision_cooldown_minutes,
+                cfg.decision_extended_cooldown_minutes,
             )
         {
             debug!(
@@ -126,7 +125,7 @@ impl CaptureTrigger {
         if decision == Decision::Engage {
             self.generator
                 .generate_proactive_response(
-                    self.config.conversation_auto_close_minutes as i64,
+                    cfg.conversation_auto_close_minutes as i64,
                     None,
                 )
                 .await;

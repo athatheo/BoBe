@@ -95,6 +95,15 @@ pub struct Config {
     pub log_json: bool,
     pub log_file: Option<String>,
 
+    // ── Decision engine ────────────────────────────────────────────────
+    pub decision_cooldown_minutes: i64,
+    pub decision_extended_cooldown_minutes: i64,
+    pub min_context_for_decision: usize,
+    pub semantic_search_limit: i64,
+    pub recent_ai_messages_limit: i64,
+    pub max_response_tokens: u32,
+    pub response_temperature: f32,
+
     // ── Tools ───────────────────────────────────────────────────────────
     pub tools_enabled: bool,
     pub tools_max_iterations: u32,
@@ -193,6 +202,13 @@ impl Default for Config {
             log_level: "INFO".into(),
             log_json: false,
             log_file: None,
+            decision_cooldown_minutes: 3,
+            decision_extended_cooldown_minutes: 5,
+            min_context_for_decision: 2,
+            semantic_search_limit: 10,
+            recent_ai_messages_limit: 3,
+            max_response_tokens: 500,
+            response_temperature: 0.7,
             tools_enabled: true,
             tools_max_iterations: 5,
             tools_timeout_seconds: 30.0,
@@ -284,6 +300,18 @@ impl Config {
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty())
             .collect()
+    }
+
+    /// Get the resolved goals file path, using default if not specified.
+    pub fn resolved_goals_file_path(&self) -> std::path::PathBuf {
+        if let Some(ref path) = self.goals_file {
+            std::path::PathBuf::from(path)
+        } else {
+            dirs::home_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+                .join(".bobe")
+                .join("GOALS.md")
+        }
     }
 
     /// Parse CORS origins from comma-separated string.

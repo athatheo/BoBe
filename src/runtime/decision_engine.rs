@@ -4,14 +4,16 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use chrono::{Duration, Utc};
 use serde_json::Value;
 use tracing::{debug, info, warn};
 
+use crate::config::Config;
 use crate::runtime::prompts::decision::DecisionPrompt;
 use crate::runtime::prompts::goal_decision::GoalDecisionPrompt;
 use crate::runtime::state::{
-    Decision, OrchestratorConfig, TriggerContext, TriggerType,
+    Decision, TriggerContext, TriggerType,
 };
 use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
@@ -22,7 +24,7 @@ pub struct DecisionEngine {
     llm: Arc<dyn LlmProvider>,
     observation_repo: Arc<dyn ObservationRepository>,
     conversation: Arc<ConversationService>,
-    config: OrchestratorConfig,
+    config: Arc<ArcSwap<Config>>,
     context_assembler: Option<Arc<ContextAssembler>>,
 }
 
@@ -31,7 +33,7 @@ impl DecisionEngine {
         llm: Arc<dyn LlmProvider>,
         observation_repo: Arc<dyn ObservationRepository>,
         conversation: Arc<ConversationService>,
-        config: OrchestratorConfig,
+        config: Arc<ArcSwap<Config>>,
         context_assembler: Option<Arc<ContextAssembler>>,
     ) -> Self {
         Self {
@@ -41,11 +43,6 @@ impl DecisionEngine {
             config,
             context_assembler,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: OrchestratorConfig) {
-        self.config = config;
     }
 
     /// Route to appropriate decision logic based on trigger type.
@@ -70,10 +67,12 @@ impl DecisionEngine {
     }
 
     async fn decide_on_capture(&self, current_text: &str, embedding: Option<&[f32]>) -> Decision {
+        let cfg = self.config.load();
+
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
             let timeout =
-                Duration::seconds(self.config.conversation_inactivity_timeout_seconds as i64);
+                Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!(
@@ -93,7 +92,7 @@ impl DecisionEngine {
         // Get recent AI messages
         let recent_ai_messages = self
             .conversation
-            .get_recent_ai_messages(self.config.recent_ai_messages_limit)
+            .get_recent_ai_messages(cfg.recent_ai_messages_limit)
             .await
             .unwrap_or_default();
 
@@ -171,10 +170,12 @@ impl DecisionEngine {
     }
 
     async fn decide_on_goal(&self, goal_content: &str) -> Decision {
+        let cfg = self.config.load();
+
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
             let timeout =
-                Duration::seconds(self.config.conversation_inactivity_timeout_seconds as i64);
+                Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!("decision_engine.goal_blocked_by_conversation");
@@ -314,12 +315,13 @@ impl DecisionEngine {
         &self,
         embedding: Option<&[f32]>,
     ) -> Vec<crate::models::observation::Observation> {
+        let cfg = self.config.load();
         match embedding {
             Some(emb) => {
                 let start = std::time::Instant::now();
                 match self
                     .observation_repo
-                    .find_similar(emb, self.config.semantic_search_limit)
+                    .find_similar(emb, cfg.semantic_search_limit)
                     .await
                 {
                     Ok(results) => {

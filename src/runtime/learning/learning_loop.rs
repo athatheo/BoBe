@@ -8,11 +8,12 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use chrono::{Duration, Utc};
 use tracing::{debug, error, info, warn};
 
+use crate::config::Config;
 use crate::runtime::learners::{GoalLearner, MemoryConsolidator, MemoryLearner};
-use crate::runtime::learning::config::{LearningConfig, RetentionConfig};
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::goals_service::GoalsService;
 use crate::models::learning_state::LearningState;
@@ -41,8 +42,7 @@ pub struct LearningLoop {
     goal_repo: Arc<dyn GoalRepository>,
     learning_state_repo: Arc<dyn LearningStateRepository>,
     embedding: Arc<dyn EmbeddingProvider>,
-    config: LearningConfig,
-    retention_config: RetentionConfig,
+    config: Arc<ArcSwap<Config>>,
     running: std::sync::atomic::AtomicBool,
     stop_notify: tokio::sync::Notify,
 }
@@ -60,8 +60,7 @@ impl LearningLoop {
         goal_repo: Arc<dyn GoalRepository>,
         learning_state_repo: Arc<dyn LearningStateRepository>,
         embedding: Arc<dyn EmbeddingProvider>,
-        config: LearningConfig,
-        retention_config: RetentionConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             conversation,
@@ -75,24 +74,19 @@ impl LearningLoop {
             learning_state_repo,
             embedding,
             config,
-            retention_config,
             running: std::sync::atomic::AtomicBool::new(false),
             stop_notify: tokio::sync::Notify::new(),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: LearningConfig) {
-        self.config = config;
     }
 
     /// Main learning loop. Runs until stop() is called.
     pub async fn run(&self) {
         self.running
             .store(true, std::sync::atomic::Ordering::Release);
+        let cfg = self.config.load();
         info!(
-            interval_minutes = self.config.interval_minutes,
-            daily_consolidation_hour = self.config.daily_consolidation_hour,
+            interval_minutes = cfg.learning_interval_minutes,
+            daily_consolidation_hour = cfg.daily_consolidation_hour,
             "learning_loop.starting"
         );
 
@@ -110,8 +104,9 @@ impl LearningLoop {
                 error!(error = %e, "learning_loop.cycle_error");
             }
 
-            // Interruptible sleep
-            let sleep_duration = std::time::Duration::from_secs(self.config.interval_minutes * 60);
+            // Interruptible sleep — re-read interval each cycle
+            let cfg = self.config.load();
+            let sleep_duration = std::time::Duration::from_secs(cfg.learning_interval_minutes * 60);
             tokio::select! {
                 _ = tokio::time::sleep(sleep_duration) => {},
                 _ = self.stop_notify.notified() => {
@@ -284,11 +279,12 @@ impl LearningLoop {
     }
 
     async fn process_accumulated_context(&self, state: &mut LearningState) -> (usize, usize, bool) {
+        let cfg = self.config.load();
         let observations = match self
             .observation_repo
             .find_since(
                 state.last_context_processed_at,
-                Some(self.config.max_context_per_cycle as i64 * 2),
+                Some(cfg.learning_max_context_per_cycle as i64 * 2),
             )
             .await
         {
@@ -308,13 +304,13 @@ impl LearningLoop {
             })
             .collect();
 
-        if (observations.len() as u32) < self.config.min_context_items {
+        if (observations.len() as u32) < cfg.learning_min_context_items {
             return (0, 0, false);
         }
 
         let to_process = &observations[..observations
             .len()
-            .min(self.config.max_context_per_cycle as usize)];
+            .min(cfg.learning_max_context_per_cycle as usize)];
         let existing_memories = self.get_all_memories().await;
         let goals = self.goals_service.get_active(100).await.unwrap_or_default();
 
@@ -336,17 +332,18 @@ impl LearningLoop {
     }
 
     async fn daily_consolidation_if_needed(&self, state: &mut LearningState) -> (usize, bool) {
+        let cfg = self.config.load();
         let now = Utc::now();
 
         let should_run = match state.last_consolidation_at {
             None => {
                 now.format("%H").to_string().parse::<u32>().unwrap_or(0)
-                    == self.config.daily_consolidation_hour
+                    == cfg.daily_consolidation_hour
             }
             Some(last) => {
                 last.date_naive() < now.date_naive()
                     && now.format("%H").to_string().parse::<u32>().unwrap_or(0)
-                        >= self.config.daily_consolidation_hour
+                        >= cfg.daily_consolidation_hour
             }
         };
 
@@ -386,7 +383,9 @@ impl LearningLoop {
     }
 
     async fn scheduled_pruning_if_needed(&self, state: &mut LearningState) -> (usize, bool) {
-        if !self.retention_config.pruning_enabled {
+        let cfg = self.config.load();
+
+        if !cfg.memory_pruning_enabled {
             return (0, false);
         }
 
@@ -402,18 +401,18 @@ impl LearningLoop {
 
         let obs_deleted = self
             .observation_repo
-            .delete_older_than(self.retention_config.raw_context_days as i64)
+            .delete_older_than(cfg.memory_raw_context_retention_days as i64)
             .await
             .unwrap_or(0);
 
-        let st_cutoff = now - Duration::days(self.retention_config.short_term_memory_days as i64);
+        let st_cutoff = now - Duration::days(cfg.memory_short_term_retention_days as i64);
         let st_deleted = self
             .memory_repo
             .delete_by_criteria(MemoryType::ShortTerm, st_cutoff)
             .await
             .unwrap_or(0);
 
-        let lt_cutoff = now - Duration::days(self.retention_config.long_term_memory_days as i64);
+        let lt_cutoff = now - Duration::days(cfg.memory_long_term_retention_days as i64);
         let lt_deleted = self
             .memory_repo
             .delete_by_criteria(MemoryType::LongTerm, lt_cutoff)
@@ -421,7 +420,7 @@ impl LearningLoop {
             .unwrap_or(0);
 
         // Delete stale archived/completed goals
-        let goal_cutoff = now - Duration::days(self.retention_config.goal_retention_days as i64);
+        let goal_cutoff = now - Duration::days(cfg.goal_retention_days as i64);
         let goals_deleted = self
             .goal_repo
             .delete_stale_goals(

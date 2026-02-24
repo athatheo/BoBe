@@ -4,11 +4,12 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use serde_json::Value;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::runtime::learning::config::LearningConfig;
+use crate::config::Config;
 use crate::runtime::prompts::learning::deduplication_decision::GoalDeduplicationPrompt;
 use crate::runtime::prompts::learning::goal_extraction::GoalExtractionPrompt;
 use crate::services::goals::goals_service::GoalsService;
@@ -41,7 +42,7 @@ pub struct GoalLearner {
     llm: Arc<dyn LlmProvider>,
     embedding: Arc<dyn EmbeddingProvider>,
     goals: Arc<GoalsService>,
-    config: LearningConfig,
+    config: Arc<ArcSwap<Config>>,
 }
 
 impl GoalLearner {
@@ -49,7 +50,7 @@ impl GoalLearner {
         llm: Arc<dyn LlmProvider>,
         embedding: Arc<dyn EmbeddingProvider>,
         goals: Arc<GoalsService>,
-        config: LearningConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             llm,
@@ -57,11 +58,6 @@ impl GoalLearner {
             goals,
             config,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: LearningConfig) {
-        self.config = config;
     }
 
     /// Extract goals from a closed conversation.
@@ -81,16 +77,16 @@ impl GoalLearner {
         let goal_strings: Vec<String> = existing_goals.iter().map(|g| g.content.clone()).collect();
 
         let messages = GoalExtractionPrompt::messages(&turn_strings, &goal_strings);
-        let config = GoalExtractionPrompt::config();
+        let prompt_config = GoalExtractionPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             ),
         )
         .await
@@ -131,8 +127,9 @@ impl GoalLearner {
         raw_goals: &[Value],
         _existing_goals: &[Goal],
     ) -> Vec<Goal> {
+        let cfg = self.config.load();
         let mut created: Vec<Goal> = Vec::new();
-        let max_goals = self.config.max_goals_per_cycle as usize;
+        let max_goals = cfg.learning_max_goals_per_cycle as usize;
 
         for raw in raw_goals {
             if created.len() >= max_goals {
@@ -264,16 +261,16 @@ impl GoalLearner {
             .collect();
 
         let messages = GoalDeduplicationPrompt::messages(content, &existing_data);
-        let config = GoalDeduplicationPrompt::config();
+        let prompt_config = GoalDeduplicationPrompt::config();
 
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
                 None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
+                prompt_config.response_format.as_ref(),
+                prompt_config.temperature,
+                prompt_config.max_tokens,
             ),
         )
         .await

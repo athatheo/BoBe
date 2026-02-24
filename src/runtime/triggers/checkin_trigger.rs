@@ -4,11 +4,13 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use chrono::{DateTime, Utc};
 use tracing::{debug, info};
 
+use crate::config::Config;
 use crate::runtime::proactive_generator::ProactiveGenerator;
-use crate::runtime::state::{Decision, OrchestratorConfig};
+use crate::runtime::state::Decision;
 use crate::services::conversation_service::ConversationService;
 use crate::runtime::triggers::checkin_scheduler::CheckinScheduler;
 use crate::db::CooldownRepository;
@@ -18,7 +20,7 @@ pub struct CheckinTrigger {
     generator: Arc<ProactiveGenerator>,
     conversation: Arc<ConversationService>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-    config: OrchestratorConfig,
+    config: Arc<ArcSwap<Config>>,
 }
 
 impl CheckinTrigger {
@@ -27,7 +29,7 @@ impl CheckinTrigger {
         generator: Arc<ProactiveGenerator>,
         conversation: Arc<ConversationService>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-        config: OrchestratorConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             scheduler,
@@ -36,11 +38,6 @@ impl CheckinTrigger {
             cooldown_repo,
             config,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: OrchestratorConfig) {
-        self.config = config;
     }
 
     #[allow(dead_code)]
@@ -54,6 +51,8 @@ impl CheckinTrigger {
             return Decision::Idle;
         }
 
+        let cfg = self.config.load();
+
         // Skip if active non-stale conversation
         if let Ok(Some(existing)) = self.conversation.get_pending_or_active().await {
             // Get turns to check staleness
@@ -61,7 +60,7 @@ impl CheckinTrigger {
                 .conversation
                 .get_conversation_turns(existing.id, 100)
                 .await
-                && !existing.is_stale(self.config.conversation_auto_close_minutes as i64, &turns)
+                && !existing.is_stale(cfg.conversation_auto_close_minutes as i64, &turns)
             {
                 debug!(reason = "active_conversation", "checkin_trigger.skipped");
                 self.scheduler.mark_checkin_done();
@@ -72,8 +71,8 @@ impl CheckinTrigger {
         // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
-                self.config.decision_cooldown_minutes,
-                self.config.decision_extended_cooldown_minutes,
+                cfg.decision_cooldown_minutes,
+                cfg.decision_extended_cooldown_minutes,
             )
         {
             debug!(
@@ -89,7 +88,7 @@ impl CheckinTrigger {
         info!("checkin_trigger.started");
         self.generator
             .generate_proactive_response(
-                self.config.conversation_auto_close_minutes as i64,
+                cfg.conversation_auto_close_minutes as i64,
                 Some("Scheduled check-in".into()),
             )
             .await;

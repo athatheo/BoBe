@@ -6,13 +6,15 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use arc_swap::ArcSwap;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
+use crate::config::Config;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::{EventType, IndicatorType, StreamBundle};
 use crate::runtime::message_handler::MessageHandler;
-use crate::runtime::state::{Decision, OrchestratorConfig};
+use crate::runtime::state::Decision;
 use crate::services::conversation_service::ConversationService;
 use crate::runtime::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
@@ -27,7 +29,7 @@ pub struct RuntimeSession {
     conversation: Arc<ConversationService>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
     event_queue: Arc<EventQueue>,
-    config: OrchestratorConfig,
+    config: Arc<ArcSwap<Config>>,
     agent_job_trigger: Option<Arc<AgentJobTrigger>>,
     running: std::sync::atomic::AtomicBool,
     capture_enabled: std::sync::atomic::AtomicBool,
@@ -42,7 +44,7 @@ impl RuntimeSession {
         conversation: Arc<ConversationService>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
         event_queue: Arc<EventQueue>,
-        config: OrchestratorConfig,
+        config: Arc<ArcSwap<Config>>,
         agent_job_trigger: Option<Arc<AgentJobTrigger>>,
     ) -> Self {
         Self {
@@ -58,11 +60,6 @@ impl RuntimeSession {
             running: std::sync::atomic::AtomicBool::new(false),
             capture_enabled: std::sync::atomic::AtomicBool::new(false),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn update_config(&mut self, config: OrchestratorConfig) {
-        self.config = config;
     }
 
     #[allow(dead_code)]
@@ -90,11 +87,12 @@ impl RuntimeSession {
 
     /// Called when an SSE client connects.
     pub async fn on_connection(&self) {
+        let cfg = self.config.load();
         info!(
-            capture_enabled = self.config.capture_enabled,
+            capture_enabled = cfg.capture_enabled,
             "runtime_session.sse_client_connected"
         );
-        if self.config.capture_enabled {
+        if cfg.capture_enabled {
             self.start_capture().await;
         }
     }
@@ -145,6 +143,7 @@ impl RuntimeSession {
 
         while self.running.load(std::sync::atomic::Ordering::Acquire) {
             loop_counter += 1;
+            let cfg = self.config.load();
 
             if loop_counter.is_multiple_of(5) {
                 self.log_heartbeat(loop_counter).await;
@@ -173,7 +172,7 @@ impl RuntimeSession {
 
             // GoalTrigger (error-safe)
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
-            if time_since_goal >= self.config.goal_check_interval_seconds {
+            if time_since_goal >= cfg.goal_check_interval_seconds {
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(300),
                     self.goal_trigger.fire(),
@@ -197,7 +196,7 @@ impl RuntimeSession {
                 .load(std::sync::atomic::Ordering::Acquire)
             {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
-                if time_since_capture >= self.config.capture_interval_seconds {
+                if time_since_capture >= cfg.capture_interval_seconds {
                     match tokio::time::timeout(std::time::Duration::from_secs(300), async {
                         let mut ct = self.capture_trigger.lock().await;
                         ct.fire().await
@@ -239,6 +238,7 @@ impl RuntimeSession {
     }
 
     async fn close_stale_conversation_if_needed(&self) -> Result<(), crate::error::AppError> {
+        let cfg = self.config.load();
         let existing = self.conversation.get_pending_or_active().await?;
         let Some(existing) = existing else {
             return Ok(());
@@ -248,7 +248,7 @@ impl RuntimeSession {
             .conversation
             .get_conversation_turns(existing.id, 100)
             .await?;
-        if !existing.is_stale(self.config.conversation_auto_close_minutes as i64, &turns) {
+        if !existing.is_stale(cfg.conversation_auto_close_minutes as i64, &turns) {
             return Ok(());
         }
 
@@ -262,7 +262,7 @@ impl RuntimeSession {
             .conversation
             .get_conversation_turns(refetched.id, 100)
             .await?;
-        if !refetched.is_stale(self.config.conversation_auto_close_minutes as i64, &turns) {
+        if !refetched.is_stale(cfg.conversation_auto_close_minutes as i64, &turns) {
             return Ok(());
         }
 

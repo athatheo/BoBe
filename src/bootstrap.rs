@@ -31,18 +31,16 @@ use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::learners::{
     CaptureLearner, GoalLearner, MemoryConsolidator, MemoryLearner, MessageLearner,
 };
-use crate::runtime::learning::{LearningConfig, LearningLoop, RetentionConfig};
+use crate::runtime::learning::LearningLoop;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
-use crate::runtime::state::OrchestratorConfig;
 use crate::runtime::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
 use crate::services::agent_job_manager::AgentJobManager;
 use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
-use crate::services::goals::goals_config::GoalConfig;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::soul_service::SoulService;
 use crate::tools::executor::ToolExecutor;
@@ -51,7 +49,7 @@ use crate::tools::native::adapter::NativeToolAdapter;
 use crate::tools::native::base::NativeTool;
 use crate::tools::preselector::ToolPreselector;
 use crate::tools::registry::ToolRegistry;
-use crate::tools::tool_call_loop::{ToolCallLoop, ToolCallLoopConfig};
+use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -160,16 +158,10 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         Some(soul_service),
     ));
 
-    let goal_config = GoalConfig {
-        file_path: config.goals_file.as_ref().map(PathBuf::from),
-        max_active: config.goals_max_active,
-        sync_on_startup: config.goals_sync_on_startup,
-        sync_interval_minutes: config.goals_sync_interval_minutes,
-    };
     let goals_service = Arc::new(GoalsService::new(
         goal_repo.clone(),
         embedding_provider.clone(),
-        goal_config,
+        config_arc.clone(),
     ));
 
     // ── Tool registry ──────────────────────────────────────────────────
@@ -243,8 +235,6 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     ));
 
     // ── Learners ───────────────────────────────────────────────────────
-    let learning_config = LearningConfig::from_app_config(&config);
-
     let message_learner = Arc::new(MessageLearner::new(
         embedding_provider.clone(),
         observation_repo.clone(),
@@ -262,32 +252,29 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         llm_provider.clone(),
         embedding_provider.clone(),
         memory_repo.clone(),
-        learning_config.clone(),
+        config_arc.clone(),
     ));
 
     let goal_learner = Arc::new(GoalLearner::new(
         llm_provider.clone(),
         embedding_provider.clone(),
         goals_service.clone(),
-        learning_config.clone(),
+        config_arc.clone(),
     ));
 
     let memory_consolidator = Arc::new(MemoryConsolidator::new(
         llm_provider.clone(),
         embedding_provider.clone(),
         memory_repo.clone(),
-        learning_config.clone(),
+        config_arc.clone(),
     ));
-
-    // ── Orchestrator config ────────────────────────────────────────────
-    let orch_config = OrchestratorConfig::from_config(&config);
 
     // ── Decision engine + proactive generator ──────────────────────────
     let decision_engine = Arc::new(DecisionEngine::new(
         llm_provider.clone(),
         observation_repo.clone(),
         conversation_service.clone(),
-        orch_config.clone(),
+        config_arc.clone(),
         Some(context_assembler.clone()),
     ));
 
@@ -298,15 +285,12 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     ));
     let tool_preselector = Arc::new(ToolPreselector::new(
         llm_provider.clone(),
-        config.tools_preselector_enabled,
+        config_arc.clone(),
     ));
     let tool_call_loop = Arc::new(ToolCallLoop::new(
         llm_provider.clone(),
         tool_executor,
-        ToolCallLoopConfig {
-            max_iterations: config.tools_max_iterations as usize,
-            timeout_per_tool_secs: config.tools_timeout_seconds,
-        },
+        config_arc.clone(),
     ));
 
     let proactive_generator = Arc::new(ProactiveGenerator::new(
@@ -314,7 +298,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         context_assembler.clone(),
         conversation_service.clone(),
         event_queue.clone(),
-        config.conversation_summary_enabled,
+        config_arc.clone(),
         Some(cooldown_repo.clone()),
         Some(tool_registry.clone()),
         Some(tool_call_loop.clone()),
@@ -332,7 +316,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         Some(cooldown_repo.clone()),
         observation_repo.clone(),
         event_queue.clone(),
-        orch_config.clone(),
+        config_arc.clone(),
     );
 
     let checkin_scheduler = CheckinScheduler::new(
@@ -346,7 +330,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         proactive_generator.clone(),
         conversation_service.clone(),
         Some(cooldown_repo.clone()),
-        orch_config.clone(),
+        config_arc.clone(),
     );
 
     let goal_trigger = Arc::new(GoalTrigger::new(
@@ -355,7 +339,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         proactive_generator.clone(),
         Some(cooldown_repo.clone()),
         event_queue.clone(),
-        orch_config.clone(),
+        config_arc.clone(),
     ));
 
     // Agent job trigger (optional)
@@ -373,7 +357,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             agent_job_manager,
             agent_job_repo.clone(),
             proactive_generator,
-            orch_config.clone(),
+            config_arc.clone(),
             Some(llm_provider.clone()),
         ));
         Some(trigger)
@@ -393,7 +377,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             message_learner,
             Some(cooldown_repo.clone()),
             event_queue.clone(),
-            orch_config.clone(),
+            config_arc.clone(),
             Some(tool_registry.clone()),
             Some(tool_preselector),
             Some(tool_call_loop),
@@ -401,13 +385,12 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         conversation_service.clone(),
         Some(cooldown_repo.clone()),
         event_queue.clone(),
-        orch_config,
+        config_arc.clone(),
         agent_job_trigger.clone(),
     ));
 
     // ── LearningLoop (optional) ────────────────────────────────────────
     let learning_loop = if config.learning_enabled {
-        let retention_config = RetentionConfig::from_app_config(&config);
         Some(Arc::new(LearningLoop::new(
             conversation_service.clone(),
             goals_service.clone(),
@@ -419,8 +402,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             goal_repo.clone(),
             learning_state_repo.clone(),
             embedding_provider.clone(),
-            learning_config,
-            retention_config,
+            config_arc.clone(),
         )))
     } else {
         None

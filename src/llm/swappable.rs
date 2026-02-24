@@ -1,9 +1,17 @@
-//! A transparent LlmProvider wrapper backed by ArcSwap.
+//! Hot-swappable LLM provider proxy (Rust equivalent of .NET's IOptionsMonitor pattern).
 //!
-//! When ConfigManager rebuilds the LLM provider (e.g. after an API key or model
-//! change), all consumers holding a reference to `SwappableLlmProvider`
-//! automatically see the new provider on their next call -- no update callbacks
-//! needed.
+//! In Rust, `Arc<dyn LlmProvider>` is an immutable shared reference — once cloned
+//! into 10+ consumers at bootstrap, there's no way to swap what's behind it.
+//! `ArcSwap` solves this with lock-free atomic swaps, but consumers expect
+//! `Arc<dyn LlmProvider>`, not `Arc<ArcSwap<...>>`.
+//!
+//! `SwappableLlmProvider` bridges this: it implements `LlmProvider` and delegates
+//! every call to whatever provider is currently in the `ArcSwap`. Consumers see
+//! a normal `Arc<dyn LlmProvider>` and are unaware of swapping. When
+//! `ConfigManager` rebuilds the provider (API key change, model switch, backend
+//! swap), all consumers automatically use the new provider on their next call.
+//!
+//! The atomic load per call is essentially free (one `Acquire` fence, nanoseconds).
 
 use std::pin::Pin;
 use std::sync::Arc;

@@ -6,16 +6,17 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::models::goal::Goal;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 use crate::db::GoalRepository;
 
-use super::goals_config::GoalConfig;
 use super::goals_file_parser::parse_goals_file;
 
 /// Maximum file size for GOALS.md (1 MB).
@@ -33,14 +34,14 @@ pub struct SyncResult {
 pub struct GoalsService {
     repo: Arc<dyn GoalRepository>,
     embedding: Arc<dyn EmbeddingProvider>,
-    config: GoalConfig,
+    config: Arc<ArcSwap<Config>>,
 }
 
 impl GoalsService {
     pub fn new(
         repo: Arc<dyn GoalRepository>,
         embedding: Arc<dyn EmbeddingProvider>,
-        config: GoalConfig,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             repo,
@@ -205,7 +206,8 @@ impl GoalsService {
 
     /// Parse GOALS.md and sync to database.
     pub async fn sync_from_file(&self) -> Result<SyncResult, AppError> {
-        let goals_file = self.config.resolved_file_path();
+        let cfg = self.config.load();
+        let goals_file = cfg.resolved_goals_file_path();
         let mut created = 0u32;
         let mut updated = 0u32;
         let mut archived = 0u32;
@@ -322,7 +324,8 @@ impl GoalsService {
     /// Create GOALS.md with template if it doesn't exist.
     #[allow(dead_code)]
     pub fn ensure_goals_file_exists(&self) -> Result<(), AppError> {
-        let goals_file = self.config.resolved_file_path();
+        let cfg = self.config.load();
+        let goals_file = cfg.resolved_goals_file_path();
         if goals_file.exists() {
             return Ok(());
         }
@@ -357,8 +360,6 @@ impl GoalsService {
 
 impl std::fmt::Debug for GoalsService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GoalsService")
-            .field("config", &self.config)
-            .finish()
+        f.debug_struct("GoalsService").finish()
     }
 }
