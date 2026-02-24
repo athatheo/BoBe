@@ -63,6 +63,14 @@ const ONLINE_PROVIDERS = [
     placeholder: 'sk-ant-...',
     defaultModel: 'claude-sonnet-4-5-20250929',
   },
+  {
+    id: 'azure_openai',
+    label: 'Azure OpenAI',
+    placeholder: 'Your Azure API key',
+    defaultModel: 'gpt-5-mini',
+    needsEndpoint: true,
+    endpointPlaceholder: 'https://your-resource.cognitiveservices.azure.com/openai/v1/',
+  },
 ]
 
 // IPC bridge — calls preload's setup API which proxies to service /onboarding/* endpoints
@@ -72,7 +80,9 @@ const ipc = {
     mode: string,
     model: string,
     apiKey: string,
-  ): Promise<{ ok: boolean; message: string }> => window.setup.configureLLM(mode, model, apiKey),
+    endpoint?: string,
+  ): Promise<{ ok: boolean; message: string }> =>
+    window.setup.configureLLM(mode, model, apiKey, endpoint),
   completeSetup: (): Promise<void> => window.setup.completeSetup(),
   onProgress: (cb: (data: { step: string; progress: number; message: string }) => void) =>
     window.setup.onProgress(cb),
@@ -102,6 +112,7 @@ export function SetupWizard() {
   const [showOnline, setShowOnline] = useState(false)
   const [onlineProvider, setOnlineProvider] = useState('openai')
   const [apiKey, setApiKey] = useState('')
+  const [endpoint, setEndpoint] = useState('')
   const [onlineModel, setOnlineModel] = useState('gpt-4o-mini')
   const [progress, setProgress] = useState(0)
   const [statusMessage, setStatusMessage] = useState('')
@@ -161,7 +172,7 @@ export function SetupWizard() {
 
     try {
       // API key goes to service → keyring. Frontend forgets it immediately.
-      const result = await ipc.configureLLM(onlineProvider, onlineModel, apiKey)
+      const result = await ipc.configureLLM(onlineProvider, onlineModel, apiKey, endpoint || undefined)
       if (result && !result.ok) {
         setErrorMessage(result.message)
         setStep('error')
@@ -289,6 +300,21 @@ export function SetupWizard() {
                 autoComplete="off"
                 style={inputStyle}
               />
+              {ONLINE_PROVIDERS.find((p) => p.id === onlineProvider)?.needsEndpoint && (
+                <>
+                  <label style={{ ...fieldLabelStyle, marginTop: '0.5rem' }}>Endpoint URL</label>
+                  <input
+                    type="text"
+                    value={endpoint}
+                    onChange={(e) => setEndpoint(e.target.value)}
+                    placeholder={
+                      ONLINE_PROVIDERS.find((p) => p.id === onlineProvider)?.endpointPlaceholder ??
+                      'https://...'
+                    }
+                    style={inputStyle}
+                  />
+                </>
+              )}
               <label style={{ ...fieldLabelStyle, marginTop: '0.5rem' }}>Model</label>
               <input
                 type="text"

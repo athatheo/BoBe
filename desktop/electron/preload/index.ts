@@ -227,8 +227,8 @@ const memoriesApi = {
 
 const setupApi = {
   startLocalSetup: (modelName: string) => ipcRenderer.invoke('bobe:start-local-setup', modelName),
-  configureLLM: (mode: string, model: string, apiKey: string) =>
-    ipcRenderer.invoke('bobe:configure-llm', mode, model, apiKey),
+  configureLLM: (mode: string, model: string, apiKey: string, endpoint?: string) =>
+    ipcRenderer.invoke('bobe:configure-llm', mode, model, apiKey, endpoint),
   completeSetup: () => ipcRenderer.invoke('bobe:complete-setup'),
   getOnboardingStatus: () => ipcRenderer.invoke('bobe:get-onboarding-status'),
   onProgress: (
@@ -413,6 +413,7 @@ export interface SetupAPI {
     mode: string,
     model: string,
     apiKey: string,
+    endpoint?: string,
   ) => Promise<{ ok: boolean; message: string }>
   completeSetup: () => Promise<void>
   getOnboardingStatus: () => Promise<{

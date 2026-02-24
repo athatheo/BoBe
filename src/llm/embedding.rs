@@ -58,6 +58,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
         let body = serde_json::json!({
             "model": self.model,
             "input": text,
+            "keep_alive": "45s",
         });
 
         let response = self
@@ -108,6 +109,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
         let body = serde_json::json!({
             "model": self.model,
             "input": texts,
+            "keep_alive": "45s",
         });
 
         let response = self

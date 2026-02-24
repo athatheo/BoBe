@@ -85,7 +85,33 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
     if let Err(e) = std::fs::remove_file(&capture_path) {
         tracing::warn!(path = %capture_path, error = %e, "capture.temp_file_cleanup_failed");
     }
+
+    // Detect blank frame — macOS returns all-black PNG when screen recording
+    // permission is not granted. Check a sample of pixels.
+    if data.len() > 1000 && is_blank_image(&data) {
+        return Err(std::io::Error::other(
+            "Screen capture returned a blank frame — screen recording permission may not be granted",
+        ));
+    }
+
     Ok(data)
+}
+
+/// Check if a PNG image is all black (likely a denied screen recording permission).
+fn is_blank_image(png_data: &[u8]) -> bool {
+    // Skip PNG header (8 bytes) and sample raw data after IDAT.
+    // A truly blank image will have mostly zero bytes in its data.
+    // Sample every 4th byte in the middle portion.
+    let start = png_data.len().min(100);
+    let end = png_data.len().saturating_sub(12);
+    if end <= start {
+        return false;
+    }
+    let sample: Vec<u8> = png_data[start..end].iter().step_by(4).take(500).copied().collect();
+    if sample.len() < 100 {
+        return false;
+    }
+    sample.iter().all(|&b| b == 0)
 }
 
 /// Get the active window title via AppleScript (blocking, macOS only).

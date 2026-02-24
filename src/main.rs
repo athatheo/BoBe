@@ -175,6 +175,24 @@ async fn main() -> anyhow::Result<()> {
             if config.llm_backend == crate::config::LlmBackend::Ollama
                 || config.vision_backend == crate::config::LlmBackend::Ollama
             {
+                // Unload Ollama models to free VRAM immediately
+                tracing::info!("Unloading Ollama models...");
+                let unload_client = reqwest::Client::new();
+                for model_name in [
+                    &config.ollama_model,
+                    &config.vision_ollama_model,
+                    &config.embedding_model,
+                ] {
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        unload_client.post(format!("{}/api/generate", config.ollama_url))
+                            .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
+                            .send(),
+                    )
+                    .await;
+                }
+                tracing::debug!("ollama.models_unloaded");
+
                 tracing::info!("Stopping Ollama (if managed)...");
                 tokio::time::timeout(
                     std::time::Duration::from_secs(2),

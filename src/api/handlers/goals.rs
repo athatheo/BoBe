@@ -180,6 +180,19 @@ pub async fn update_goal(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
+    // Re-embed when content changes (generates new embedding vector)
+    let mut updated_goal = None;
+    if let Some(ref content) = body.content {
+        updated_goal = state
+            .goals_service
+            .update_content(goal_id, content)
+            .await?;
+        if updated_goal.is_none() {
+            return Err(AppError::NotFound(format!("Goal {goal_id} not found")));
+        }
+    }
+
+    // Apply non-content field updates (status, priority, enabled)
     let status = body.status.as_deref().map(parse_goal_status).transpose()?;
     let priority = body
         .priority
@@ -187,21 +200,25 @@ pub async fn update_goal(
         .map(parse_goal_priority)
         .transpose()?;
 
-    let updated = state
-        .goal_repo
-        .update_fields(
-            goal_id,
-            body.content.as_deref(),
-            status,
-            priority,
-            None,
-            body.enabled,
-        )
-        .await?
+    if status.is_some() || priority.is_some() || body.enabled.is_some() {
+        updated_goal = state
+            .goal_repo
+            .update_fields(
+                goal_id,
+                None, // content already handled above
+                status,
+                priority,
+                None,
+                body.enabled,
+            )
+            .await?;
+    }
+
+    let goal = updated_goal
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
     tracing::info!(goal_id = %goal_id, "goal.updated");
-    Ok(Json(goal_to_response(&updated)))
+    Ok(Json(goal_to_response(&goal)))
 }
 
 /// POST /api/goals/:id/complete

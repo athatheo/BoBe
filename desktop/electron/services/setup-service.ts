@@ -154,11 +154,11 @@ export async function runSetupWizard(
     // Configure LLM (local or online) — service stores in keyring + .env
     ipcMain.handle(
       'bobe:configure-llm',
-      async (_event, mode: string, model: string, apiKey: string) => {
+      async (_event, mode: string, model: string, apiKey: string, endpoint?: string) => {
         const resp = await fetch(`${SERVICE_URL}/onboarding/configure-llm`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode, model, api_key: apiKey }),
+          body: JSON.stringify({ mode, model, api_key: apiKey, endpoint: endpoint ?? '' }),
         })
         return resp.json()
       },

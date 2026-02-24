@@ -305,6 +305,7 @@ export interface SetupAPI {
     mode: string,
     model: string,
     apiKey: string,
+    endpoint?: string,
   ) => Promise<{ ok: boolean; message: string }>
   completeSetup: () => Promise<void>
   getOnboardingStatus: () => Promise<{
