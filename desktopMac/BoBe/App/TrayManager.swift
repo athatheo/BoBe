@@ -4,13 +4,13 @@ import Observation
 
 /// System tray (menu bar) manager. Based on TrayManager.
 @MainActor
-final class TrayManager {
+final class TrayManager: NSObject, NSMenuDelegate {
     static let shared = TrayManager()
 
     private var statusItem: NSStatusItem?
     private var store = BobeStore.shared
 
-    private init() {}
+    private override init() {}
 
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -79,6 +79,14 @@ final class TrayManager {
         menu.addItem(quitItem)
 
         self.statusItem?.menu = menu
+        menu.delegate = self
+    }
+
+    // Rebuild menu every time it opens — always shows fresh state
+    nonisolated func menuWillOpen(_ menu: NSMenu) {
+        Task { @MainActor in
+            updateMenu()
+        }
     }
 
     @objc private func toggleCapture() {
@@ -108,10 +116,10 @@ final class TrayManager {
     }
 
     private func loadTrayIcon() -> NSImage? {
-        // Look for trayIconTemplate@2x.png first (retina), then 1x
+        // SPM resources are in Bundle.module
         for name in ["trayIconTemplate@2x", "trayIconTemplate"] {
-            if let path = Bundle.main.path(forResource: name, ofType: "png"),
-               let image = NSImage(contentsOfFile: path) {
+            if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+               let image = NSImage(contentsOf: url) {
                 return image
             }
         }

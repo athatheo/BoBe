@@ -17,6 +17,9 @@ final class SettingsWindowManager {
             return
         }
 
+        // Temporarily show in dock so settings can activate properly
+        NSApp.setActivationPolicy(.regular)
+
         let settingsView = SettingsWindow()
             .environment(\.theme, ThemeStore.shared.currentTheme)
 
@@ -33,6 +36,17 @@ final class SettingsWindowManager {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.window = nil
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
     }
 
     func close() {

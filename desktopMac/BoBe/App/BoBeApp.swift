@@ -17,6 +17,7 @@ struct BoBeApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private var isQuitting = false
+    private var setupWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("BoBe starting up")
@@ -135,6 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     @MainActor
     private func showSetupWizard() {
+        // Temporarily show in dock so wizard can activate properly
+        NSApp.setActivationPolicy(.regular)
+
         let theme = ThemeStore.shared.currentTheme
         let setupView = SetupWizard()
             .environment(\.theme, theme)
@@ -154,6 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
+        // Retain the window so ARC doesn't release it
+        self.setupWindow = window
+
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
@@ -161,6 +168,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard self?.isQuitting != true else { return }
+                self?.setupWindow = nil
+                // Revert to accessory (tray-only) mode
+                NSApp.setActivationPolicy(.accessory)
                 self?.showOverlay()
                 BobeStore.shared.connect()
             }
@@ -180,11 +190,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
 
     @MainActor
     private func setDockIcon() {
-        // Use theme-appropriate dock icon from resources
         let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let iconName = isDark ? "bobe_app_dock_dark" : "bobe_app_dock_light"
-        if let iconPath = Bundle.main.path(forResource: iconName, ofType: "png"),
-           let icon = NSImage(contentsOfFile: iconPath) {
+        if let iconURL = Bundle.module.url(forResource: iconName, withExtension: "png"),
+           let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
         }
     }

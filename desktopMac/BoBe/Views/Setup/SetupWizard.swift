@@ -1,4 +1,6 @@
 import SwiftUI
+import AVFoundation
+import ScreenCaptureKit
 
 // MARK: - Step Flow
 
@@ -105,6 +107,7 @@ struct SetupWizard: View {
     @State private var ttsDownloaded = false
     @State private var screenPermission = "not-determined"
     @State private var micPermission = "not-determined"
+    @State private var permissionPollTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -134,6 +137,47 @@ struct SetupWizard: View {
         }
         .frame(width: 540, height: 620)
         .background(theme.colors.background)
+        .onChange(of: step) { _, newStep in
+            permissionPollTask?.cancel()
+            if newStep == .captureSetup {
+                checkScreenPermission()
+                startPermissionPolling { checkScreenPermission() }
+            } else if newStep == .voiceSetup {
+                checkMicPermission()
+                startPermissionPolling { checkMicPermission() }
+            }
+        }
+    }
+
+    // MARK: - Permission Checks
+
+    private func checkScreenPermission() {
+        screenPermission = CGPreflightScreenCaptureAccess() ? "granted" : "not-determined"
+    }
+
+    private func checkMicPermission() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: micPermission = "granted"
+        case .denied, .restricted: micPermission = "denied"
+        default: micPermission = "not-determined"
+        }
+    }
+
+    private func requestMicPermission() {
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            Task { @MainActor in
+                micPermission = granted ? "granted" : "denied"
+            }
+        }
+    }
+
+    private func startPermissionPolling(check: @escaping @MainActor () -> Void) {
+        permissionPollTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                await MainActor.run { check() }
+            }
+        }
     }
 
     // MARK: - Choose Mode
@@ -305,9 +349,13 @@ struct SetupWizard: View {
                 title: "Microphone Permission",
                 description: "Required for voice input (speech-to-text).",
                 granted: micPermission == "granted",
-                badge: micPermission == "granted" ? "Granted" : "Not Set"
+                badge: micPermission == "granted" ? "Granted" : (micPermission == "denied" ? "Denied" : "Not Set")
             ) {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                if micPermission == "denied" {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                } else {
+                    requestMicPermission()
+                }
             }
 
             // STT model
@@ -468,7 +516,11 @@ struct SetupWizard: View {
                     }
                 }
                 _ = try await OllamaService.shared.start(binaryPath: binaryPath)
-                try await Task.sleep(for: .seconds(2)) // Wait for Ollama to become ready
+                progressMessage = "Waiting for Ollama to start..."
+                let ready = await OllamaService.shared.waitUntilReady()
+                if !ready {
+                    throw SetupError.diskSpace("Ollama failed to start. Please try again.")
+                }
 
                 // Pull LLM
                 step = .downloadingModel

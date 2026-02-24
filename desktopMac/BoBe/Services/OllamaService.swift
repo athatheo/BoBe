@@ -16,13 +16,21 @@ actor OllamaService {
         self.downloadDir = appSupport.appendingPathComponent("ollama")
     }
 
-    /// Download Ollama if not already present
+    /// Download Ollama if not already present, or check for system Ollama
     func ensureInstalled(onProgress: @Sendable @escaping (Double, String) -> Void) async throws -> String {
         let binaryPath = downloadDir.appendingPathComponent("ollama").path
 
         if FileManager.default.isExecutableFile(atPath: binaryPath) {
             logger.info("Ollama already installed at \(binaryPath)")
             return binaryPath
+        }
+
+        // Check for system-installed Ollama (e.g., via Homebrew)
+        for systemPath in ["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"] {
+            if FileManager.default.isExecutableFile(atPath: systemPath) {
+                logger.info("System Ollama found at \(systemPath)")
+                return systemPath
+            }
         }
 
         try FileManager.default.createDirectory(at: downloadDir, withIntermediateDirectories: true)
@@ -61,8 +69,14 @@ actor OllamaService {
         return binaryPath
     }
 
-    /// Start Ollama server
-    func start(binaryPath: String) async throws -> Process {
+    /// Start Ollama server if not already running
+    func start(binaryPath: String) async throws -> Process? {
+        // Check if Ollama is already serving (e.g., system install or previous run)
+        if await isOllamaResponding() {
+            logger.info("Ollama already running — skipping start")
+            return nil
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)
         process.arguments = ["serve"]
@@ -71,6 +85,27 @@ actor OllamaService {
         try process.run()
         logger.info("Ollama server started (PID: \(process.processIdentifier))")
         return process
+    }
+
+    /// Poll Ollama until it responds (up to 15 seconds)
+    func waitUntilReady() async -> Bool {
+        for _ in 0..<30 {
+            if await isOllamaResponding() { return true }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return false
+    }
+
+    private func isOllamaResponding() async -> Bool {
+        let url = URL(string: "http://127.0.0.1:11434/api/tags")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
     }
 
     private func ollamaDownloadURL() -> URL {

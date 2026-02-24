@@ -77,6 +77,9 @@ struct AvatarView: View {
         }
         .contentShape(Circle())
         .onTapGesture { onClick?() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("BoBe avatar, \(stateType == .idle ? "idle" : String(describing: stateType))")
+        .accessibilityAddTraits(.isButton)
     }
 
     private var innerFace: some View {
@@ -129,6 +132,7 @@ struct ConnectionDot: View {
                 Circle().stroke(theme.colors.background, lineWidth: 2)
             )
             .frame(width: 14, height: 14)
+            .accessibilityLabel(isConnected ? "Connected" : "Disconnected")
     }
 }
 

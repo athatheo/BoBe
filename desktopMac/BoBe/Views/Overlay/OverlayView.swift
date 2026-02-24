@@ -69,7 +69,6 @@ struct OverlayView: View {
             resizeWindow()
         }
         .onAppear {
-            store.connect()
             startInactivityTimer()
         }
     }
