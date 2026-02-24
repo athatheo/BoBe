@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Observation
 
-/// System tray (menu bar) manager. Matches Electron TrayManager.
+/// System tray (menu bar) manager. Based on TrayManager.
 @MainActor
 final class TrayManager {
     static let shared = TrayManager()

@@ -145,9 +145,9 @@ No DI framework. Constructor injection via `AppState` (Arc-wrapped, passed throu
 
 ## Native macOS Desktop App (desktopMac/)
 
-### Current Task: Swift/SwiftUI Port of Electron Desktop App
+### Swift/SwiftUI Native Desktop App
 
-The `desktop/` folder contains an Electron + React + TypeScript app. The `desktopMac/` folder is the native macOS port using Swift and SwiftUI. The goal is a pixel-faithful, feature-complete replacement of the Electron app as a native macOS .app bundle.
+The `desktopMac/` folder contains the native macOS desktop app built with Swift and SwiftUI. It is a pixel-faithful, feature-complete native macOS .app bundle that communicates with the Rust backend daemon.
 
 ### What must be ported
 
@@ -190,21 +190,20 @@ BoBe/                         — Xcode project root
     Resources/                — Assets.xcassets, icons
 ```
 
-### Swift/SwiftUI equivalents
+### SwiftUI patterns used
 
-| Electron/React | Swift/SwiftUI |
+| Concept | Implementation |
 |---|---|
-| BrowserWindow (transparent, frameless) | NSPanel subclass with `.nonactivatingPanel`, `isOpaque = false`, `backgroundColor = .clear` |
-| alwaysOnTop | `panel.level = .floating` + `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]` |
-| Framer Motion animations | SwiftUI `.animation()`, `withAnimation()`, `matchedGeometryEffect` |
-| React state + useSyncExternalStore | `@Observable` class (Observation framework) or `ObservableObject` + `@Published` |
-| EventSource (SSE) | URLSession with `URLSessionDataDelegate` streaming, or AsyncBytes |
-| Tailwind CSS | SwiftUI view modifiers + custom `ViewModifier` |
-| Monaco Editor | `TextEditor` or NSTextView wrapped in `NSViewRepresentable` |
-| framer-motion spring | SwiftUI `.spring(duration:bounce:)` |
-| localStorage | UserDefaults |
-| IPC (contextBridge) | Direct Swift function calls (no IPC needed — native app) |
-| electron-builder | Xcode archive + notarization via `xcodebuild` |
+| Transparent floating overlay | NSPanel subclass with `.nonactivatingPanel`, `isOpaque = false`, `backgroundColor = .clear` |
+| Always-on-top | `panel.level = .floating` + `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]` |
+| Animations | SwiftUI `.animation()`, `withAnimation()`, `.spring(duration:bounce:)` |
+| Reactive state | `@Observable` class (Observation framework, macOS 14+) |
+| SSE streaming | URLSession `bytes(for:)` with async line iteration |
+| Styling | SwiftUI view modifiers + ThemeConfig via Environment |
+| Rich text editing | `TextEditor` or NSTextView wrapped in `NSViewRepresentable` |
+| Persistence | UserDefaults for preferences |
+| IPC | Direct Swift function calls (no IPC needed — native app) |
+| Distribution | Xcode archive + notarization via `xcodebuild` |
 
 ### Rules for desktopMac/
 

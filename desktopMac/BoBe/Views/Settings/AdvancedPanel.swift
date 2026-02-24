@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Advanced settings panel ("For Nerds") — similarity thresholds, intervals, MCP toggle.
-/// Matches Electron AdvancedSettings.tsx with DebouncedDecimalInput and description text.
+/// Based on AdvancedSettings.tsx with DebouncedDecimalInput and description text.
 struct AdvancedPanel: View {
     @State private var settings: DaemonSettings?
     @State private var isLoading = false

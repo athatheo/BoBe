@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Appearance settings panel — theme picker with visual preview cards.
-/// Matches Electron AppearanceSettings.tsx with mini avatar preview.
+/// Based on AppearanceSettings.tsx with mini avatar preview.
 struct AppearancePanel: View {
     @State private var themeStore = ThemeStore.shared
     @Environment(\.theme) private var theme

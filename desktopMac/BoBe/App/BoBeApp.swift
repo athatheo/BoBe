@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
         guard !isQuitting else { return .terminateNow }
         isQuitting = true
 
-        // 8-second hard timeout guarantees exit (matches Electron pattern)
+        // 8-second hard timeout guarantees exit (production pattern)
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
             logger.warning("Hard shutdown timeout — forcing exit")
             exit(0)

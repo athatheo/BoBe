@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Behavior settings panel — capture, check-ins, memory, conversation, tools.
-/// Matches Electron BehaviorSettings.tsx with collapsible sections and custom controls.
+/// Based on BehaviorSettings.tsx with collapsible sections and custom controls.
 struct BehaviorPanel: View {
     @State private var settings: DaemonSettings?
     @State private var isLoading = false

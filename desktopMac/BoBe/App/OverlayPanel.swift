@@ -1,7 +1,7 @@
 import AppKit
 
 /// Transparent, frameless, always-on-top floating panel for the BoBe overlay.
-/// Equivalent to Electron's BrowserWindow with transparent: true, frame: false, alwaysOnTop: true.
+/// Based on original BrowserWindow with transparent: true, frame: false, alwaysOnTop: true.
 final class OverlayPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(

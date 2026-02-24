@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Custom Toggle Switch (36×20px with animated thumb, matching Electron shared-controls)
+// MARK: - Custom Toggle Switch (36×20px with animated thumb, matching original shared-controls)
 
 struct BobeToggle: View {
     @Binding var isOn: Bool
@@ -60,7 +60,7 @@ struct SettingsRow<Content: View>: View {
     }
 }
 
-// MARK: - Debounced Number Input (600ms debounce like Electron NumInput)
+// MARK: - Debounced Number Input (600ms debounce like original NumInput)
 
 struct DebouncedNumberInput: View {
     @Binding var value: Int
@@ -132,7 +132,7 @@ struct DebouncedDecimalInput: View {
     }
 }
 
-// MARK: - Collapsible Settings Section (matching Electron Section with toggle)
+// MARK: - Collapsible Settings Section (matching original Section with toggle)
 
 struct CollapsibleSection<Content: View>: View {
     let title: String

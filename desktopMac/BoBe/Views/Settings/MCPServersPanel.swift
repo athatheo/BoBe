@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// MCP Servers management panel.
-/// Matches Electron MCPServersSettings.tsx with connection status, excluded tools tags, delete confirmation.
+/// Based on MCPServersSettings.tsx with connection status, excluded tools tags, delete confirmation.
 struct MCPServersPanel: View {
     @State private var servers: [MCPServer] = []
     @State private var selectedId: String?

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Main overlay window content. Matches Electron OverlayWindow orchestrator.
+/// Main overlay window content. Based on OverlayWindow orchestrator.
 /// Layout: bottom-right anchor, flex column items-end justify-end.
 /// Indicator bubble sits to the LEFT of the avatar, vertically centered.
 struct OverlayView: View {

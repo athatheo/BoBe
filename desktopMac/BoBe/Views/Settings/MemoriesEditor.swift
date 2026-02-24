@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Split-pane editor for Memories with category/type filters.
-/// Matches Electron MemoriesSettings.tsx with filters, empty state, delete confirmation.
+/// Based on MemoriesSettings.tsx with filters, empty state, delete confirmation.
 struct MemoriesEditor: View {
     @State private var memories: [Memory] = []
     @State private var selectedId: String?

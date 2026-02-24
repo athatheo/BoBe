@@ -3,13 +3,13 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "BackendService")
 
-/// Service states matching Electron python-service.ts
+/// Service states matching original python-service.ts
 enum ServiceState: Sendable {
     case stopped, starting, ready, crashed, fatal
 }
 
 /// Manages the bobe backend binary lifecycle with crash recovery.
-/// Equivalent to Electron's python-service.ts — 3-attempt restart, PID file, health checks.
+/// Based on original python-service.ts — 3-attempt restart, PID file, health checks.
 actor BackendService {
     static let shared = BackendService()
 
@@ -135,7 +135,7 @@ actor BackendService {
         logger.info("bobe backend healthy (PID: \(proc.processIdentifier))")
     }
 
-    /// Exponential backoff health check — matches Electron pattern
+    /// Exponential backoff health check — production pattern
     private func waitForHealth() async throws {
         var delay: TimeInterval = 0.2
         let maxAttempts = 30

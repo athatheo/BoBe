@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// AI Model settings panel — provider picker (Ollama/OpenAI/Azure) with model management.
-/// Matches Electron AIModelSettings.tsx with save bar, model dropdown, pull progress.
+/// Based on AIModelSettings.tsx with save bar, model dropdown, pull progress.
 struct AIModelPanel: View {
     @State private var settings: DaemonSettings?
     @State private var selectedProvider = "ollama"

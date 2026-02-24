@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Split-pane editor for Goals with priority colors, status badges, and delete confirmation.
-/// Matches Electron GoalsSettings.tsx.
+/// Based on GoalsSettings.tsx.
 struct GoalsEditor: View {
     @State private var goals: [Goal] = []
     @State private var selectedId: String?

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Split-pane editor for User Profiles.
-/// Matches Electron UserProfilesSettings.tsx with empty state, delete confirmation, unsaved badge.
+/// Based on UserProfilesSettings.tsx with empty state, delete confirmation, unsaved badge.
 struct UserProfilesEditor: View {
     @State private var profiles: [UserProfile] = []
     @State private var selectedId: String?

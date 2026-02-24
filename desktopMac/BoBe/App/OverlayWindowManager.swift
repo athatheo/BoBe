@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Manages the overlay panel's position and sizing.
-/// Anchors the panel to the bottom-right of the screen, mirroring the Electron behavior.
+/// Anchors the panel to the bottom-right of the screen, matching the original behavior.
 @MainActor
 final class OverlayWindowManager {
     static let shared = OverlayWindowManager()

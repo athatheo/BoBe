@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Stack of chat message bubbles. Matches Electron ChatStack: collapsed shows last 2, expanded shows all.
+/// Stack of chat message bubbles. Based on ChatStack: collapsed shows last 2, expanded shows all.
 struct ChatStack: View {
     let messages: [ChatMessage]
 

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Tools list panel — grouped by provider with expandable descriptions and BobeToggle.
-/// Matches Electron ToolsSettings.tsx with provider groups, stats, and expand/collapse.
+/// Based on ToolsSettings.tsx with provider groups, stats, and expand/collapse.
 struct ToolsPanel: View {
     @State private var tools: [ToolInfo] = []
     @State private var isLoading = false

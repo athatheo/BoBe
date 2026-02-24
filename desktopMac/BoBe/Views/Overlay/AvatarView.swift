@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Main avatar circle with state-dependent eye expressions and decorations.
-/// Pixel-perfect match to Electron: 116px card, 76px inner face, exact shadows and positioning.
+/// Pixel-perfect avatar: 116px card, 76px inner face, exact shadows and positioning.
 struct AvatarView: View {
     let stateType: BobeStateType
     let isCapturing: Bool

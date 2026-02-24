@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Split-pane editor for Souls (personality documents).
-/// Matches Electron SoulsSettings.tsx with empty state, delete confirmation, unsaved badge.
+/// Based on SoulsSettings.tsx with empty state, delete confirmation, unsaved badge.
 struct SoulsEditor: View {
     @State private var souls: [Soul] = []
     @State private var selectedId: String?

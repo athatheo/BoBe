@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Text input panel for sending messages. Matches Electron compact MessageInput exactly.
+/// Text input panel for sending messages. Based on compact MessageInput exactly.
 /// CSS: .message-input-container-compact with .message-input-accent (3px olive bar)
 struct MessageInput: View {
     let onSend: (String) -> Void

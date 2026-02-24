@@ -5,7 +5,7 @@ import OSLog
 private let logger = Logger(subsystem: "com.bobe.app", category: "BobeStore")
 
 /// Central observable state store for the BoBe app.
-/// Replaces the Electron useSyncExternalStore + bobeActions pattern.
+/// Replaces the original useSyncExternalStore + bobeActions pattern.
 @Observable @MainActor
 final class BobeStore {
     static let shared = BobeStore()

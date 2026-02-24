@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Manages the settings window (separate from overlay). Matches Electron SettingsWindow.
+/// Manages the settings window (separate from overlay). Based on SettingsWindow.
 @MainActor
 final class SettingsWindowManager {
     static let shared = SettingsWindowManager()

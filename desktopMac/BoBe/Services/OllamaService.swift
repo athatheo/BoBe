@@ -4,7 +4,7 @@ import OSLog
 private let logger = Logger(subsystem: "com.bobe.app", category: "OllamaService")
 
 /// Manages Ollama binary download, verification, and lifecycle.
-/// Equivalent to Electron's ollama-service.ts.
+/// Based on original ollama-service.ts.
 actor OllamaService {
     static let shared = OllamaService()
 

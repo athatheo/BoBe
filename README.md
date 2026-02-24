@@ -29,7 +29,7 @@ Three processes work together:
 | Process | Technology | Responsibility |
 |---------|------------|----------------|
 | **bobe** | Rust / Axum | All business logic: orchestration, capture, learning, tools |
-| **bobe-shell** | Electron / React | Thin UI overlay that displays state via SSE |
+| **bobe-shell** | Swift / SwiftUI (macOS) | Native desktop overlay that displays state via SSE |
 | **LLM backend** | Ollama / llama.cpp / OpenAI / Azure OpenAI | Local or cloud inference |
 
 ```
@@ -46,7 +46,7 @@ Three processes work together:
 │                    │ SSE + HTTP                               │
 │                    ▼                                         │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │              bobe-shell (Electron)                     │  │
+│  │              bobe-shell (Swift/SwiftUI)                 │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```

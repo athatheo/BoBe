@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Privacy settings panel — data size display and danger zone.
-/// Matches Electron PrivacySettings.tsx with beige data container and red danger zone.
+/// Based on PrivacySettings.tsx with beige data container and red danger zone.
 struct PrivacyPanel: View {
     @State private var dataSize: DataSizeResponse?
     @State private var isLoading = false
@@ -133,7 +133,7 @@ struct PrivacyPanel: View {
 }
 
 /// Goal Worker settings panel — autonomous execution config.
-/// Matches Electron GoalWorkerPanel with BobeToggle and DebouncedNumberInput.
+/// Based on GoalWorkerPanel with BobeToggle and DebouncedNumberInput.
 struct GoalWorkerPanel: View {
     @State private var settings: DaemonSettings?
     @State private var isLoading = false
