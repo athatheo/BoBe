@@ -275,7 +275,7 @@ impl Default for Config {
             anthropic_api_key: String::new(),
             projects_dir: String::new(),
             seed_default_documents: true,
-            cors_origins: "http://localhost:5173".into(),
+            cors_origins: "http://localhost:5175".into(),
         }
     }
 }

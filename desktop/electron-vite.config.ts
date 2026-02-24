@@ -49,6 +49,7 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src'),
     server: {
+      port: 5175,
       strictPort: true,
     },
     build: {
