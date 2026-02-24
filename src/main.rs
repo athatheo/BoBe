@@ -29,7 +29,7 @@ enum Commands {
         #[arg(short = 'H', long, default_value = "127.0.0.1")]
         host: String,
         /// Port to bind to
-        #[arg(short, long, default_value_t = 8765)]
+        #[arg(short, long, default_value_t = 8766)]
         port: u16,
         /// Log level
         #[arg(short, long, default_value = "INFO")]
@@ -41,7 +41,7 @@ enum Commands {
         #[arg(short = 'H', long, default_value = "127.0.0.1")]
         host: String,
         /// Service port
-        #[arg(short, long, default_value_t = 8765)]
+        #[arg(short, long, default_value_t = 8766)]
         port: u16,
     },
     /// Show version information

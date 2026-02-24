@@ -181,7 +181,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),
-            port: 8765,
+            port: 8766,
             mdns_enabled: false,
             database_url: expand_sqlite_path("sqlite:~/.bobe/data/bobrust.db"),
             llm_backend: LlmBackend::Ollama,

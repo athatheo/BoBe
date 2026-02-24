@@ -38,6 +38,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Health
         .route("/health", get(handlers::health::health_check))
         .route("/api/status", get(handlers::health::get_status))
+        // Daemon-facing routes (no /api prefix — used by Electron desktop client)
+        .route("/status", get(handlers::health::get_status))
+        .route("/events", get(handlers::events::stream_events))
+        .route("/message", post(handlers::conversation::send_message))
+        .route("/capture/start", post(handlers::capture::start_capture))
+        .route("/capture/stop", post(handlers::capture::stop_capture))
         // Conversation
         .route(
             "/api/conversation/message",
@@ -220,7 +226,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/tools/{tool_name}/disable",
             post(handlers::tools::disable_tool),
         )
-        // SSE Events
+        // SSE Events (canonical /api/ route — daemon alias at top)
         .route("/api/events", get(handlers::events::stream_events))
         // Goal Worker
         .route(

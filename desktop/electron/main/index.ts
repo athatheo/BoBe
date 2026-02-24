@@ -95,7 +95,7 @@ app.whenReady().then(async () => {
 
   // Set dock icon in dev mode (packaged builds get it from Info.plist)
   if (!packaged && process.platform === 'darwin' && app.dock) {
-    const iconPath = path.join(__dirname, '../../resources/icon.icns')
+    const iconPath = path.join(__dirname, '../../resources/icon.png')
     if (existsSync(iconPath)) {
       app.dock.setIcon(iconPath)
     }
