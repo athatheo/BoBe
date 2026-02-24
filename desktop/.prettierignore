@@ -1,6 +1,0 @@
-out/
-dist/
-node_modules/
-packaging/
-pnpm-lock.yaml
-*.html

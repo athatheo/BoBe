@@ -1,7 +1,0 @@
-# Pinned checksums for build dependencies
-# Format: SHA256  filename
-# Verify with: shasum -a 256 -c checksums.txt
-
-# python-build-standalone (cpython 3.13 for macOS ARM)
-# Source: https://github.com/astral-sh/python-build-standalone/releases/tag/20260203
-146d011e9246790659d86c729a9bb37dc423545d0ed8e542ba1dfe93700aa0f2  cpython-3.13.12+20260203-aarch64-apple-darwin-install_only_stripped.tar.gz
