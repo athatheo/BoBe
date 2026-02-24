@@ -7,7 +7,7 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use super::handlers;
-use super::middleware::{AllowedHosts, host_validation};
+use super::middleware::{AllowedHosts, host_validation, request_logging};
 use crate::app_state::AppState;
 
 /// Build the complete Axum router with all middleware.
@@ -255,7 +255,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/goal-plans/{plan_id}/reject",
             post(handlers::goal_worker::reject_goal_plan),
         )
-        // Middleware
+        // Middleware (order: outermost applied first, innermost runs first)
+        .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)
