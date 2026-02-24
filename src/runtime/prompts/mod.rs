@@ -3,6 +3,7 @@ pub mod base;
 pub mod capture;
 pub mod decision;
 pub mod goal_decision;
+pub mod goal_worker;
 pub mod learning;
 pub mod response;
 pub mod summary;

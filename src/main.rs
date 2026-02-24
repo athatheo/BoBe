@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("Starting BoBe on {}:{}", config.host, config.port);
 
             // Bootstrap: create pool, run migrations, seed, wire deps, build state
-            let state = bootstrap::run(config.clone()).await?;
+            let (state, goal_worker_manager) = bootstrap::run(config.clone()).await?;
             let app = api::router::build_router(state.clone());
 
             // ── Background tasks ────────────────────────────────────────
@@ -122,6 +122,16 @@ async fn main() -> anyhow::Result<()> {
                 })
             });
 
+            // Goal worker manager
+            let goal_worker_handle = {
+                let shutdown_rx = shutdown_tx.subscribe();
+                let mut manager = goal_worker_manager;
+                tokio::spawn(async move {
+                    manager.run(shutdown_rx).await;
+                    tracing::info!("goal_worker_manager_task.stopped");
+                })
+            };
+
             // ── Serve with graceful shutdown ────────────────────────────
             let listener =
                 tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
@@ -146,6 +156,9 @@ async fn main() -> anyhow::Result<()> {
                 && let Err(e) = h.await
             {
                 tracing::error!(error = %e, "learning loop task panicked");
+            }
+            if let Err(e) = goal_worker_handle.await {
+                tracing::error!(error = %e, "goal worker manager task panicked");
             }
 
             // Graceful shutdown: stop services in order (mDNS → MCP → Ollama → DB)

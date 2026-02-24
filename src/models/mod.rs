@@ -2,6 +2,7 @@ pub mod agent_job;
 pub mod conversation;
 pub mod cooldown;
 pub mod goal;
+pub mod goal_plan;
 pub mod learning_state;
 pub mod mcp_server_config;
 pub mod memory;

@@ -141,6 +141,8 @@ pub struct StreamChunk {
 pub enum StreamItem {
     Chunk(StreamChunk),
     ToolNotification(crate::tools::ToolExecutionNotification),
+    /// Typed tool lifecycle notification (started/completed).
+    TypedToolNotification(crate::tools::ToolNotification),
 }
 
 /// Tool definition for LLM function calling.

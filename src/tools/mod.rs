@@ -66,6 +66,8 @@ impl ToolResult {
 #[derive(Debug, Clone, Default)]
 pub struct ToolExecutionContext {
     pub conversation_id: Option<String>,
+    pub message_id: Option<String>,
+    pub user_message: Option<String>,
 }
 
 /// Notification about tool execution for SSE/UI updates.
@@ -80,6 +82,24 @@ pub struct ToolExecutionNotification {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<f64>,
+}
+
+/// Typed notification about tool execution lifecycle events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolNotification {
+    Started {
+        tool_name: String,
+        tool_call_id: String,
+    },
+    Completed {
+        tool_name: String,
+        tool_call_id: String,
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        duration_ms: f64,
+    },
 }
 
 /// Protocol for tool sources.

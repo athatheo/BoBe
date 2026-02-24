@@ -67,6 +67,10 @@ pub async fn stream_response(
             Ok(StreamItem::ToolNotification(notification)) => {
                 handle_tool_notification(&notification, &msg_id, event_queue);
             }
+            Ok(StreamItem::TypedToolNotification(_)) => {
+                // Typed notifications are handled by consumers that opt into them;
+                // the SSE streamer uses the legacy ToolNotification format above.
+            }
             Err(e) => {
                 success = false;
                 error_msg = Some(e.to_string());

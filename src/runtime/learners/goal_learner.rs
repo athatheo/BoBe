@@ -70,6 +70,15 @@ impl GoalLearner {
             return Vec::new();
         }
 
+        // Short conversations produce spurious goals — skip extraction
+        if conversation_turns.len() < 4 {
+            debug!(
+                turns = conversation_turns.len(),
+                "goal_learner.skipping_short_conversation"
+            );
+            return Vec::new();
+        }
+
         let turn_strings: Vec<String> = conversation_turns
             .iter()
             .map(|(role, content)| format!("{role}: {content}"))
@@ -130,6 +139,8 @@ impl GoalLearner {
         let cfg = self.config.load();
         let mut created: Vec<Goal> = Vec::new();
         let max_goals = cfg.learning_max_goals_per_cycle as usize;
+        let max_dedup_calls = max_goals * 2;
+        let mut dedup_calls = 0usize;
 
         for raw in raw_goals {
             if created.len() >= max_goals {
@@ -169,7 +180,17 @@ impl GoalLearner {
                 continue;
             }
 
+            // Bound LLM dedup calls to prevent excessive API usage
+            if dedup_calls >= max_dedup_calls {
+                debug!(
+                    max_dedup_calls = max_dedup_calls,
+                    "goal_learner.max_dedup_calls_reached"
+                );
+                break;
+            }
+
             // LLM-based deduplication
+            dedup_calls += 1;
             let decision = self.evaluate_goal(content).await;
 
             match decision {

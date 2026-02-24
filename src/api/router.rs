@@ -222,6 +222,27 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // SSE Events
         .route("/api/events", get(handlers::events::stream_events))
+        // Goal Worker
+        .route(
+            "/api/goal-worker/action-response",
+            post(handlers::goal_worker::submit_action_response),
+        )
+        .route(
+            "/api/goal-plans",
+            get(handlers::goal_worker::list_goal_plans),
+        )
+        .route(
+            "/api/goal-plans/{plan_id}",
+            get(handlers::goal_worker::get_goal_plan),
+        )
+        .route(
+            "/api/goal-plans/{plan_id}/approve",
+            post(handlers::goal_worker::approve_goal_plan),
+        )
+        .route(
+            "/api/goal-plans/{plan_id}/reject",
+            post(handlers::goal_worker::reject_goal_plan),
+        )
         // Middleware
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))

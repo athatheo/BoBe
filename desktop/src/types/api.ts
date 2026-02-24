@@ -23,6 +23,7 @@ export type EventType =
   | 'error'
   | 'heartbeat'
   | 'conversation_closed'
+  | 'action_request'
 
 // =============================================================================
 // SSE EVENT STREAM (GET /events)
@@ -81,6 +82,14 @@ export interface ConversationClosedPayload {
   turn_count: number
 }
 
+export interface ActionRequestPayload {
+  action: string
+  prompt: string
+  request_id: string
+  timeout_ms: number
+  options?: string[]
+}
+
 // =============================================================================
 export type EventPayload =
   | IndicatorPayload
@@ -89,6 +98,7 @@ export type EventPayload =
   | ErrorPayload
   | HeartbeatPayload
   | ConversationClosedPayload
+  | ActionRequestPayload
 
 // =============================================================================
 // GOALS
@@ -136,6 +146,37 @@ export interface GoalActionResponse {
   id: string
   status: string
   message: string
+}
+
+// =============================================================================
+// GOAL PLANS
+// =============================================================================
+
+export type GoalPlanStatus = 'pending_approval' | 'approved' | 'auto_approved' | 'in_progress' | 'completed' | 'failed' | 'rejected'
+export type GoalPlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+
+export interface GoalPlan {
+  id: string
+  goal_id: string
+  summary: string
+  status: GoalPlanStatus
+  failure_count: number
+  last_error: string | null
+  created_at: string
+  updated_at: string
+  steps?: GoalPlanStep[]
+}
+
+export interface GoalPlanStep {
+  id: string
+  plan_id: string
+  step_order: number
+  content: string
+  status: GoalPlanStepStatus
+  result: string | null
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
 }
 
 // =============================================================================
@@ -372,6 +413,11 @@ export interface DaemonSettings {
   // Memory retention
   memory_short_term_retention_days: number
   memory_long_term_retention_days: number
+  // Goal Worker
+  goal_worker_enabled: boolean
+  goal_worker_autonomous: boolean
+  goal_worker_max_concurrent: number
+  projects_dir: string
 }
 
 /** PATCH /settings — all fields optional, only provided fields are updated */
@@ -414,6 +460,11 @@ export interface SettingsUpdateRequest {
   // Memory retention
   memory_short_term_retention_days?: number
   memory_long_term_retention_days?: number
+  // Goal Worker
+  goal_worker_enabled?: boolean
+  goal_worker_autonomous?: boolean
+  goal_worker_max_concurrent?: number
+  projects_dir?: string
 }
 
 export interface SettingsUpdateResponse {

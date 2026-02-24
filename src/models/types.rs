@@ -61,6 +61,7 @@ pub enum GoalStatus {
     Active,
     Completed,
     Archived,
+    Paused,
 }
 
 impl GoalStatus {
@@ -69,6 +70,7 @@ impl GoalStatus {
             Self::Active => "active",
             Self::Completed => "completed",
             Self::Archived => "archived",
+            Self::Paused => "paused",
         }
     }
 }
@@ -240,6 +242,78 @@ impl AgentJobStatus {
 }
 
 impl std::fmt::Display for AgentJobStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+// ─── Goal Plan ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum GoalPlanStatus {
+    PendingApproval,
+    Approved,
+    AutoApproved,
+    InProgress,
+    Completed,
+    Failed,
+    Rejected,
+}
+
+impl GoalPlanStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::PendingApproval => "pending_approval",
+            Self::Approved => "approved",
+            Self::AutoApproved => "auto_approved",
+            Self::InProgress => "in_progress",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Rejected => "rejected",
+        }
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Rejected)
+    }
+}
+
+impl std::fmt::Display for GoalPlanStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum GoalPlanStepStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+    Skipped,
+}
+
+impl GoalPlanStepStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::InProgress => "inprogress",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Skipped => "skipped",
+        }
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Skipped)
+    }
+}
+
+impl std::fmt::Display for GoalPlanStepStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }

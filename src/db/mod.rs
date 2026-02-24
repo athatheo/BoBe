@@ -10,6 +10,7 @@ mod user_profile_repo;
 mod learning_state_repo;
 mod cooldown_repo;
 mod mcp_config_repo;
+mod goal_plan_repo;
 
 pub mod seeding;
 
@@ -23,6 +24,7 @@ pub use user_profile_repo::SqliteUserProfileRepo;
 pub use learning_state_repo::SqliteLearningStateRepo;
 pub use cooldown_repo::SqliteCooldownRepo;
 pub use mcp_config_repo::SqliteMcpConfigRepo;
+pub use goal_plan_repo::SqliteGoalPlanRepo;
 
 // ─── Repository trait definitions ───────────────────────────────────────────
 
@@ -35,13 +37,15 @@ use crate::models::agent_job::AgentJob;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::cooldown::CooldownInfo;
 use crate::models::goal::Goal;
+use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
 use crate::models::learning_state::LearningState;
 use crate::models::mcp_server_config::McpServerConfig;
 use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::soul::Soul;
 use crate::models::types::{
-    AgentJobStatus, ConversationState, GoalPriority, GoalSource, GoalStatus, MemoryType, TurnRole,
+    AgentJobStatus, ConversationState, GoalPlanStatus, GoalPlanStepStatus, GoalPriority,
+    GoalSource, GoalStatus, MemoryType, TurnRole,
 };
 use crate::models::user_profile::UserProfile;
 
@@ -286,4 +290,45 @@ pub trait McpConfigRepository: Send + Sync {
         excluded_tools: Option<&str>,
     ) -> Result<Option<McpServerConfig>, AppError>;
     async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
+}
+
+#[async_trait]
+pub trait GoalPlanRepository: Send + Sync {
+    async fn create_plan(
+        &self,
+        goal_id: Uuid,
+        summary: &str,
+        status: GoalPlanStatus,
+    ) -> Result<GoalPlan, AppError>;
+    async fn get_plan(&self, plan_id: Uuid) -> Result<Option<GoalPlan>, AppError>;
+    async fn get_plans_for_goal(&self, goal_id: Uuid) -> Result<Vec<GoalPlan>, AppError>;
+    async fn get_active_plan_for_goal(
+        &self,
+        goal_id: Uuid,
+    ) -> Result<Option<GoalPlan>, AppError>;
+    async fn update_plan_status(
+        &self,
+        plan_id: Uuid,
+        status: GoalPlanStatus,
+        error: Option<&str>,
+    ) -> Result<Option<GoalPlan>, AppError>;
+    async fn get_pending_approval_plans(&self) -> Result<Vec<GoalPlan>, AppError>;
+    async fn get_expired_pending_plans(
+        &self,
+        timeout_minutes: i64,
+    ) -> Result<Vec<GoalPlan>, AppError>;
+    async fn create_step(
+        &self,
+        plan_id: Uuid,
+        step_order: i32,
+        content: &str,
+    ) -> Result<GoalPlanStep, AppError>;
+    async fn update_step_status(
+        &self,
+        step_id: Uuid,
+        status: GoalPlanStepStatus,
+        result: Option<&str>,
+        error: Option<&str>,
+    ) -> Result<Option<GoalPlanStep>, AppError>;
+    async fn get_steps_for_plan(&self, plan_id: Uuid) -> Result<Vec<GoalPlanStep>, AppError>;
 }

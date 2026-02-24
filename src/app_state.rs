@@ -14,6 +14,7 @@ use crate::runtime::learning::LearningLoop;
 use crate::runtime::session::RuntimeSession;
 use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
+use crate::services::goal_worker::ask_user::AskUserBridge;
 use crate::services::goals::goals_service::GoalsService;
 use crate::config_manager::ConfigManager;
 use crate::config::Config;
@@ -22,6 +23,7 @@ use crate::llm::LlmProvider;
 use crate::db::AgentJobRepository;
 use crate::db::ConversationRepository;
 use crate::db::CooldownRepository;
+use crate::db::GoalPlanRepository;
 use crate::db::GoalRepository;
 use crate::db::LearningStateRepository;
 use crate::db::McpConfigRepository;
@@ -52,6 +54,7 @@ pub struct AppState {
     pub mcp_config_repo: Arc<dyn McpConfigRepository>,
     pub soul_repo: Arc<dyn SoulRepository>,
     pub user_profile_repo: Arc<dyn UserProfileRepository>,
+    pub goal_plan_repo: Arc<dyn GoalPlanRepository>,
     // Services
     pub conversation_service: Arc<ConversationService>,
     pub context_assembler: Arc<ContextAssembler>,
@@ -64,6 +67,7 @@ pub struct AppState {
     pub ollama_manager: Arc<OllamaManager>,
     pub config_manager: Arc<ConfigManager>,
     pub mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
+    pub ask_user_bridge: Arc<AskUserBridge>,
     pub mdns_announcer: Arc<MdnsAnnouncer>,
 }
 

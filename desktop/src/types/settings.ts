@@ -22,6 +22,7 @@ export type SettingsCategory =
   | 'appearance'
   | 'ai-model'
   | 'behavior'
+  | 'goal-worker'
   | 'privacy'
   | 'advanced'
 
@@ -104,6 +105,13 @@ export const SETTINGS_CATEGORIES: CategoryConfig[] = [
     label: 'Behavior',
     icon: 'sliders',
     description: 'Screen capture, check-ins, and engagement settings',
+    group: 'preferences',
+  },
+  {
+    id: 'goal-worker',
+    label: 'Goal Worker',
+    icon: 'play-circle',
+    description: 'Autonomous goal execution and planning',
     group: 'preferences',
   },
   {

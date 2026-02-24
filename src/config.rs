@@ -156,6 +156,20 @@ pub struct Config {
     pub coding_agent_max_concurrent: u32,
     pub coding_agent_max_runtime_seconds: u64,
 
+    // ── Goal worker (Claude Agent SDK) ─────────────────────────────────
+    pub goal_worker_enabled: bool,
+    pub goal_worker_max_concurrent: u32,
+    pub goal_worker_poll_interval_seconds: u64,
+    pub goal_worker_plan_max_steps: u32,
+    pub goal_worker_step_max_turns: u32,
+    pub goal_worker_autonomous: bool,
+    pub goal_worker_ask_user_timeout_seconds: u64,
+    pub goal_worker_approval_timeout_minutes: u64,
+    pub goal_worker_max_failure_retries: u32,
+    pub goal_worker_claude_model: String,
+    pub anthropic_api_key: String,
+    pub projects_dir: String,
+
     // ── Database seeding ────────────────────────────────────────────────
     pub seed_default_documents: bool,
 
@@ -248,6 +262,18 @@ impl Default for Config {
             coding_agent_poll_interval_seconds: 5.0,
             coding_agent_max_concurrent: 2,
             coding_agent_max_runtime_seconds: 1800,
+            goal_worker_enabled: false,
+            goal_worker_max_concurrent: 1,
+            goal_worker_poll_interval_seconds: 60,
+            goal_worker_plan_max_steps: 10,
+            goal_worker_step_max_turns: 20,
+            goal_worker_autonomous: true,
+            goal_worker_ask_user_timeout_seconds: 300,
+            goal_worker_approval_timeout_minutes: 60,
+            goal_worker_max_failure_retries: 3,
+            goal_worker_claude_model: "claude-sonnet-4-5-20250929".into(),
+            anthropic_api_key: String::new(),
+            projects_dir: String::new(),
             seed_default_documents: true,
             cors_origins: "http://localhost:5173".into(),
         }
@@ -321,6 +347,17 @@ impl Config {
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty())
             .collect()
+    }
+
+    /// Resolved projects directory for goal worker. Defaults to ~/.bobe/goal-work.
+    pub fn resolved_projects_dir(&self) -> std::path::PathBuf {
+        let raw = if self.projects_dir.is_empty() {
+            "~/.bobe/goal-work".to_string()
+        } else {
+            self.projects_dir.clone()
+        };
+        let expanded = raw.replace('~', &dirs_path());
+        std::path::PathBuf::from(expanded)
     }
 }
 

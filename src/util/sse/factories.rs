@@ -142,3 +142,30 @@ pub fn end_of_turn_event(message_id: &str) -> StreamBundle {
         payload: json!({}),
     }
 }
+
+/// Create an action request event for user interaction (e.g. goal worker ask_user).
+#[allow(dead_code)]
+pub fn action_request_event(
+    action: &str,
+    prompt: &str,
+    request_id: &str,
+    timeout_ms: u64,
+    options: Option<&[String]>,
+) -> StreamBundle {
+    let mut payload = json!({
+        "action": action,
+        "prompt": prompt,
+        "request_id": request_id,
+        "timeout_ms": timeout_ms,
+    });
+    if let Some(opts) = options {
+        payload["options"] = json!(opts);
+    }
+    StreamBundle {
+        event_type: EventType::ActionRequest,
+        message_id: String::new(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        description: String::new(),
+        payload,
+    }
+}

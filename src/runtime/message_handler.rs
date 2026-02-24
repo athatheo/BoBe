@@ -221,6 +221,8 @@ impl MessageHandler {
 
         let tool_context = ToolExecutionContext {
             conversation_id: Some(conversation_id.to_string()),
+            message_id: Some(msg_id.to_string()),
+            user_message: Some(user_content.to_string()),
         };
 
         // Stream with or without tools

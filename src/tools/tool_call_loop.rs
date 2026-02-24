@@ -12,7 +12,7 @@ use crate::config::Config;
 use crate::error::AppError;
 use crate::llm::LlmProvider;
 use crate::llm::types::{AiMessage, AiResponse, StreamItem, ToolDefinition};
-use crate::tools::{ToolExecutionContext, ToolExecutionNotification, ToolResult};
+use crate::tools::{ToolExecutionContext, ToolExecutionNotification, ToolNotification, ToolResult};
 
 /// Agentic loop: LLM → tool calls → results → LLM, until stop or max iterations.
 pub struct ToolCallLoop {
@@ -151,7 +151,7 @@ impl ToolCallLoop {
         &self,
         tool_calls: &[crate::llm::types::AiToolCall],
         context: Option<&ToolExecutionContext>,
-    ) -> (Vec<ToolExecutionNotification>, Vec<ToolResult>) {
+    ) -> (Vec<ToolExecutionNotification>, Vec<ToolNotification>, Vec<ToolResult>) {
         execute_tools_with_notifications(&self.executor, tool_calls, context).await
     }
 }
@@ -239,13 +239,22 @@ async fn run_streaming_loop(
         current_messages.push(assistant_msg);
 
         // Execute tools with notifications
-        let (notifications, results) =
+        let (notifications, typed_notifications, results) =
             execute_tools_with_notifications(&executor, &accumulated_tool_calls, ctx_ref).await;
 
-        // Yield all notifications
+        // Yield all notifications (legacy + typed)
         for notification in notifications {
             if tx
                 .send(Ok(StreamItem::ToolNotification(notification)))
+                .await
+                .is_err()
+            {
+                return Ok(());
+            }
+        }
+        for typed in typed_notifications {
+            if tx
+                .send(Ok(StreamItem::TypedToolNotification(typed)))
                 .await
                 .is_err()
             {
@@ -301,8 +310,9 @@ async fn execute_tools_with_notifications(
     executor: &ToolExecutor,
     tool_calls: &[crate::llm::types::AiToolCall],
     context: Option<&ToolExecutionContext>,
-) -> (Vec<ToolExecutionNotification>, Vec<ToolResult>) {
+) -> (Vec<ToolExecutionNotification>, Vec<ToolNotification>, Vec<ToolResult>) {
     let mut notifications = Vec::new();
+    let mut typed_notifications = Vec::new();
 
     // Emit start notifications
     for tc in tool_calls {
@@ -313,6 +323,10 @@ async fn execute_tools_with_notifications(
             success: None,
             error: None,
             duration_ms: None,
+        });
+        typed_notifications.push(ToolNotification::Started {
+            tool_name: tc.name.clone(),
+            tool_call_id: tc.id.clone(),
         });
     }
 
@@ -348,7 +362,14 @@ async fn execute_tools_with_notifications(
             error: result.error.clone(),
             duration_ms: Some(duration_ms),
         });
+        typed_notifications.push(ToolNotification::Completed {
+            tool_name: result.tool_name.clone(),
+            tool_call_id: result.tool_call_id.clone(),
+            success: result.success,
+            error: result.error.clone(),
+            duration_ms,
+        });
     }
 
-    (notifications, batch_results)
+    (notifications, typed_notifications, batch_results)
 }

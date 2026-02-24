@@ -72,7 +72,7 @@ const CONTENT_CATEGORIES = [
   'tools',
   'mcp-servers',
 ] as const
-const PREFERENCE_CATEGORIES = ['appearance', 'ai-model', 'behavior', 'privacy'] as const
+const PREFERENCE_CATEGORIES = ['appearance', 'ai-model', 'behavior', 'goal-worker', 'privacy'] as const
 const ADVANCED_CATEGORIES = ['advanced'] as const
 
 function isContentCategory(cat: SettingsCategory): boolean {
@@ -98,6 +98,7 @@ const CATEGORY_TITLES: Record<SettingsCategory, string> = {
   appearance: 'Appearance',
   'ai-model': 'AI Model',
   behavior: 'Behavior',
+  'goal-worker': 'Goal Worker',
   privacy: 'Privacy',
   advanced: 'For Nerds',
 }

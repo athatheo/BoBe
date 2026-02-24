@@ -1,6 +1,7 @@
 pub mod capture;
 pub mod conversation;
 pub mod events;
+pub mod goal_worker;
 pub mod goals;
 pub mod health;
 pub mod mcp_configs;

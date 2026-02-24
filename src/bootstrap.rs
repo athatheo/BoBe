@@ -12,14 +12,14 @@ use crate::config::{Config, LlmBackend};
 use crate::config_manager::ConfigManager;
 use crate::db::seeding as db_seeding;
 use crate::db::{
-    SqliteAgentJobRepo, SqliteConversationRepo, SqliteCooldownRepo, SqliteGoalRepo,
-    SqliteLearningStateRepo, SqliteMcpConfigRepo, SqliteMemoryRepo, SqliteObservationRepo,
-    SqliteSoulRepo, SqliteUserProfileRepo,
+    SqliteAgentJobRepo, SqliteConversationRepo, SqliteCooldownRepo, SqliteGoalPlanRepo,
+    SqliteGoalRepo, SqliteLearningStateRepo, SqliteMcpConfigRepo, SqliteMemoryRepo,
+    SqliteObservationRepo, SqliteSoulRepo, SqliteUserProfileRepo,
 };
 use crate::db::{
-    AgentJobRepository, ConversationRepository, CooldownRepository, GoalRepository,
-    LearningStateRepository, McpConfigRepository, MemoryRepository, ObservationRepository,
-    SoulRepository, UserProfileRepository,
+    AgentJobRepository, ConversationRepository, CooldownRepository, GoalPlanRepository,
+    GoalRepository, LearningStateRepository, McpConfigRepository, MemoryRepository,
+    ObservationRepository, SoulRepository, UserProfileRepository,
 };
 use crate::error::AppError;
 use crate::llm::embedding::LocalEmbeddingProvider;
@@ -55,6 +55,12 @@ use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
 
+use crate::services::goal_worker::ask_user::AskUserBridge;
+use crate::services::goal_worker::claude_provider::ClaudeAgentProvider;
+use crate::services::goal_worker::context_provider::DefaultGoalContextProvider;
+use crate::services::goal_worker::manager::GoalWorkerManager;
+use crate::services::goal_worker::worker::GoalWorker;
+
 /// Run the full application bootstrap sequence.
 ///
 /// 1. Create SQLite pool
@@ -64,7 +70,7 @@ use crate::util::sse::event_queue::EventQueue;
 /// 5. Seed default documents
 /// 6. Build AppState
 #[allow(clippy::too_many_lines)]
-pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
+pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), AppError> {
     // ── Database setup ─────────────────────────────────────────────────
     let db_url = &config.database_url;
     if let Some(path) = db_url.strip_prefix("sqlite:")
@@ -140,6 +146,8 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let soul_repo: Arc<dyn SoulRepository> = Arc::new(SqliteSoulRepo::new(pool.clone()));
     let user_profile_repo: Arc<dyn UserProfileRepository> =
         Arc::new(SqliteUserProfileRepo::new(pool.clone()));
+    let goal_plan_repo: Arc<dyn GoalPlanRepository> =
+        Arc::new(SqliteGoalPlanRepo::new(pool.clone()));
 
     // ── Services ───────────────────────────────────────────────────────
     let conversation_service = Arc::new(ConversationService::new(conversation_repo.clone()));
@@ -408,6 +416,41 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         None
     };
 
+    // ── Goal Worker ────────────────────────────────────────────────────
+    let ask_user_bridge = Arc::new(AskUserBridge::new(
+        event_queue.clone(),
+        config.goal_worker_ask_user_timeout_seconds,
+    ));
+
+    let goal_context_provider = Arc::new(DefaultGoalContextProvider::new(
+        memory_repo.clone(),
+        goal_repo.clone(),
+        soul_repo.clone(),
+        embedding_provider.clone(),
+    ));
+
+    let claude_agent_provider = Arc::new(ClaudeAgentProvider::new(
+        config_arc.clone(),
+        http_client.clone(),
+    ));
+
+    let goal_worker = Arc::new(GoalWorker::new(
+        config_arc.clone(),
+        claude_agent_provider,
+        goal_context_provider,
+        goal_repo.clone(),
+        goal_plan_repo.clone(),
+        event_queue.clone(),
+        conversation_service.clone(),
+    ));
+
+    let goal_worker_manager = GoalWorkerManager::new(
+        config_arc.clone(),
+        goal_worker,
+        goal_repo.clone(),
+        goal_plan_repo.clone(),
+    );
+
     // ── Ollama manager ─────────────────────────────────────────────────
     let ollama_manager = Arc::new(OllamaManager::new(
         http_client.clone(),
@@ -605,6 +648,7 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         mcp_config_repo,
         soul_repo,
         user_profile_repo,
+        goal_plan_repo,
         conversation_service,
         context_assembler,
         goals_service,
@@ -615,13 +659,14 @@ pub async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         ollama_manager,
         config_manager,
         mcp_tool_adapter: Some(mcp_adapter),
+        ask_user_bridge,
         mdns_announcer,
     });
 
     // Print startup banner
     print_banner(&config);
 
-    Ok(state)
+    Ok((state, goal_worker_manager))
 }
 
 fn print_banner(config: &Config) {
