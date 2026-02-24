@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 18 80 80" fill="none">
+  <!-- Outer ring (black circle) -->
+  <circle cx="56" cy="58" r="36" stroke="#000000" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <!-- Face circle (white with black outline) -->
+  <circle cx="56" cy="58" r="28" fill="#FFFFFF" stroke="#000000" stroke-width="4"/>
+  <!-- Left eye -->
+  <circle cx="48" cy="54" r="2.5" fill="#000000"/>
+  <!-- Right eye -->
+  <circle cx="63" cy="54" r="2.5" fill="#000000"/>
+  <!-- Smile -->
+  <path d="M51 62 Q56 67 61 62" stroke="#000000" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- Moon dot (on ring) -->
+  <circle cx="87" cy="76" r="6" fill="#666666" opacity="0.7"/>
+</svg>

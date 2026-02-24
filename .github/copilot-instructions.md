@@ -140,3 +140,78 @@ No DI framework. Constructor injection via `AppState` (Arc-wrapped, passed throu
 6. **Install real dependencies.** Use `cargo add` to add crates. Set up clippy, rustfmt. The project must compile and pass `cargo clippy` at all times.
 7. **Write professional code.** No placeholder stubs, no `todo!()` macros left behind, no `unimplemented!()`. Every module must be complete and compilable.
 8. **The original Python repo is NEVER edited.** Not even to add a comment. Read only.
+
+---
+
+## Native macOS Desktop App (desktopMac/)
+
+### Current Task: Swift/SwiftUI Port of Electron Desktop App
+
+The `desktop/` folder contains an Electron + React + TypeScript app. The `desktopMac/` folder is the native macOS port using Swift and SwiftUI. The goal is a pixel-faithful, feature-complete replacement of the Electron app as a native macOS .app bundle.
+
+### What must be ported
+
+1. **Transparent overlay window** — Frameless, always-on-top NSPanel with transparent background, anchored bottom-right. Contains the avatar, chat stack, message input, and indicator bubbles. Dynamic window resizing based on content.
+2. **Avatar with animated eyes** — Circle avatar with state-dependent eye expressions (sleeping, capturing, thinking, speaking, eager, attentive), status label typewriter effect, thinking numbers ring, speaking wave bars, connection dot, message badge.
+3. **Chat system** — Stacking chat bubbles (user + bobe), streaming text with blinking cursor, auto-scroll, expand/collapse for message history, max 4 visible messages.
+4. **Message input** — Text input panel with send on Enter, Escape to close, auto-resize, disabled while thinking.
+5. **Indicator bubble** — Shows thinking/analyzing state, tool execution progress with history, UX smoothing (delay before show, minimum display time).
+6. **SSE client** — Connect to `http://localhost:8766/events`, parse StreamBundle JSON, handle indicator/text_delta/tool_call/error/heartbeat/conversation_closed events, accumulate text deltas, manage tool execution state.
+7. **HTTP API client** — All REST calls to the Rust daemon: health, status, capture start/stop, send message, dismiss, goals CRUD, souls CRUD, memories CRUD, user profiles CRUD, tools list/enable/disable, MCP servers CRUD, settings get/update, models list/pull/delete.
+8. **System tray (NSStatusItem)** — Menu bar icon with status text, capture toggle, show/hide, settings, quit.
+9. **Settings window** — Separate window (1050×720) with sidebar navigation and content panels:
+   - Context: Souls, Goals, Memories, User Profiles (split-pane with list + Monaco-equivalent editor)
+   - Integrations: Tools (list with enable/disable), MCP Servers (CRUD + reconnect)
+   - Preferences: Appearance (theme picker), AI Model (Ollama/OpenAI/Azure), Behavior (capture, check-ins, memory, conversation, tools), Goal Worker, Privacy
+   - Advanced: For Nerds (similarity thresholds, intervals, projects directory, MCP toggle)
+10. **Setup wizard** — Onboarding flow: choose local/cloud model → download Ollama + model → permissions check → complete.
+11. **Theme system** — 6 themes (Bauhaus, Bauhaus Pastel, Bubblegum, Cotton Candy, Midnight Clay, Twilight Rose) with CSS variable equivalents as SwiftUI environment values.
+12. **Backend service management** — Spawn bundled `bobe` binary, health check, graceful shutdown (SIGTERM → SIGKILL).
+13. **Ollama service** — Download Ollama binary, verify SHA256, manage lifecycle.
+14. **Security** — Bind localhost only, permission checks (screen recording, data directory).
+15. **State management** — Observable state store equivalent to useSyncExternalStore pattern, with derived state types and selector-based observation.
+
+### Architecture for desktopMac/
+
+```
+BoBe/                         — Xcode project root
+  BoBe/
+    App/                      — @main App, AppDelegate, WindowManager
+    Models/                   — Domain types (BobeContext, ChatMessage, ToolExecution, etc.)
+    Services/                 — DaemonClient (HTTP+SSE), BackendService, OllamaService, SetupService
+    Stores/                   — ObservableObject state stores (BobeStore, SettingsStore, ThemeStore)
+    Views/
+      Overlay/                — OverlayWindow, Avatar, ChatStack, MessageInput, IndicatorBubble
+      Settings/               — SettingsWindow, sidebar, all settings panels
+      Setup/                  — SetupWizard steps
+      Components/             — Shared UI components
+    Theme/                    — ThemeConfig, color definitions
+    Utilities/                — Extensions, helpers
+    Resources/                — Assets.xcassets, icons
+```
+
+### Swift/SwiftUI equivalents
+
+| Electron/React | Swift/SwiftUI |
+|---|---|
+| BrowserWindow (transparent, frameless) | NSPanel subclass with `.nonactivatingPanel`, `isOpaque = false`, `backgroundColor = .clear` |
+| alwaysOnTop | `panel.level = .floating` + `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]` |
+| Framer Motion animations | SwiftUI `.animation()`, `withAnimation()`, `matchedGeometryEffect` |
+| React state + useSyncExternalStore | `@Observable` class (Observation framework) or `ObservableObject` + `@Published` |
+| EventSource (SSE) | URLSession with `URLSessionDataDelegate` streaming, or AsyncBytes |
+| Tailwind CSS | SwiftUI view modifiers + custom `ViewModifier` |
+| Monaco Editor | `TextEditor` or NSTextView wrapped in `NSViewRepresentable` |
+| framer-motion spring | SwiftUI `.spring(duration:bounce:)` |
+| localStorage | UserDefaults |
+| IPC (contextBridge) | Direct Swift function calls (no IPC needed — native app) |
+| electron-builder | Xcode archive + notarization via `xcodebuild` |
+
+### Rules for desktopMac/
+
+1. **Pure Swift + SwiftUI.** No Objective-C bridging headers unless absolutely required (e.g., specific AppKit APIs). Use `@objc` only when needed for NSPanel delegate methods.
+2. **macOS 14+ (Sonoma) minimum.** Use `@Observable` macro, modern SwiftUI APIs.
+3. **Same visual design.** Match colors, sizing, animations, and layout exactly. Use the same color hex values, same border radii, same spacing.
+4. **Same API contract.** Communicate with the same Rust backend on `localhost:8766`. Same REST endpoints, same SSE event format.
+5. **Swift Package Manager** for dependencies (if any). Prefer Foundation/AppKit/SwiftUI built-ins.
+6. **Max 300 lines per file.** Split views into subviews aggressively.
+7. **No stubs.** Every view and service must be fully implemented.

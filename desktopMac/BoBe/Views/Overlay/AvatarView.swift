@@ -1,0 +1,206 @@
+import SwiftUI
+
+/// Main avatar circle with state-dependent eye expressions and decorations.
+/// Pixel-perfect match to Electron: 116px card, 76px inner face, exact shadows and positioning.
+struct AvatarView: View {
+    let stateType: BobeStateType
+    let isCapturing: Bool
+    let isConnected: Bool
+    let hasMessage: Bool
+    var showInput: Bool = false
+    var onClick: (() -> Void)?
+    var onToggleCapture: (() -> Void)?
+    var onToggleInput: (() -> Void)?
+
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        ZStack {
+            avatarCard
+                .overlay(alignment: .top) {
+                    StatusLabel(stateType: stateType)
+                        .offset(y: -14)
+                }
+
+            // Chat toggle — top-left of avatar card
+            if showInput {
+                ChatToggleButton(isActive: true, action: onToggleInput ?? {})
+                    .offset(x: -50, y: -50)
+            }
+
+            // Connection dot — bottom-right of inner circle
+            ConnectionDot(isConnected: isConnected)
+                .offset(x: 30, y: 30)
+
+            // Message badge — top-right of inner circle
+            if hasMessage && !showInput {
+                MessageBadge()
+                    .offset(x: 34, y: -34)
+            }
+        }
+        .frame(width: 116, height: 116)
+        // BoBe label below, overlapping the card edge
+        .overlay(alignment: .bottom) {
+            BobeLabel()
+                .offset(y: 11)
+        }
+    }
+
+    private var avatarCard: some View {
+        ZStack {
+            // Outer ring with shadow
+            Circle()
+                .fill(theme.colors.background)
+                .frame(width: 116, height: 116)
+                .overlay(
+                    Circle().stroke(theme.colors.border, lineWidth: 2)
+                )
+                .shadow(color: Color(hex: "3A3A3A").opacity(0.12), radius: 10, y: 4)
+
+            // Thinking numbers ring (in the gap between outer and inner)
+            if stateType == .thinking {
+                ThinkingNumbersRing()
+            }
+
+            // Speaking wave ring
+            if stateType == .speaking {
+                SpeakingWaveRing()
+            }
+
+            // Attention pulse
+            if stateType == .wantsToSpeak {
+                AttentionPulse()
+            }
+
+            // Inner face circle (76px)
+            innerFace
+        }
+        .contentShape(Circle())
+        .onTapGesture { onClick?() }
+    }
+
+    private var innerFace: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [theme.colors.avatarFaceLight, theme.colors.avatarFaceDark],
+                        startPoint: .init(x: 0.15, y: 0.0),
+                        endPoint: .init(x: 0.85, y: 1.0)
+                    )
+                )
+                .frame(width: 76, height: 76)
+                .overlay(
+                    Circle().stroke(theme.colors.avatarRing, lineWidth: 2)
+                )
+                .shadow(color: Color(hex: "3A3A3A").opacity(0.15), radius: 4, y: 2)
+                // Inner highlight (inset shadow equivalent)
+                .overlay(
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [.white.opacity(0.25), .clear],
+                                center: .init(x: 0.35, y: 0.25),
+                                startRadius: 0,
+                                endRadius: 38
+                            )
+                        )
+                        .frame(width: 76, height: 76)
+                )
+
+            // Eyes
+            EyesIndicator(state: stateType, chatOpen: showInput)
+        }
+        .zIndex(10)
+    }
+}
+
+// MARK: - Connection Dot (14px with 2px white border)
+
+struct ConnectionDot: View {
+    let isConnected: Bool
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Circle()
+            .fill(isConnected ? theme.colors.secondary : theme.colors.primary)
+            .frame(width: 10, height: 10)
+            .overlay(
+                Circle().stroke(theme.colors.background, lineWidth: 2)
+            )
+            .frame(width: 14, height: 14)
+    }
+}
+
+// MARK: - Message Badge (20px with white border)
+
+struct MessageBadge: View {
+    @State private var scale: CGFloat = 1.0
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Circle()
+            .fill(theme.colors.primary)
+            .frame(width: 16, height: 16)
+            .overlay(
+                Circle().stroke(theme.colors.background, lineWidth: 2)
+            )
+            .frame(width: 20, height: 20)
+            .scaleEffect(scale)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                    scale = 1.1
+                }
+            }
+    }
+}
+
+// MARK: - Chat Toggle Button (28px circle, top-left)
+
+struct ChatToggleButton: View {
+    var isActive: Bool = false
+    let action: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "message.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(isActive ? theme.colors.background : theme.colors.text)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 28, height: 28)
+        .background(
+            Circle()
+                .fill(isActive ? theme.colors.secondary : theme.colors.border)
+        )
+        .overlay(
+            Circle().stroke(theme.colors.background, lineWidth: 2)
+        )
+        .shadow(color: Color(hex: "3A3A3A").opacity(0.1), radius: 3, y: 1)
+    }
+}
+
+// MARK: - BoBe Label (overlapping bottom edge)
+
+struct BobeLabel: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Text("BOBE")
+            .font(.system(size: 11, weight: .bold))
+            .tracking(1.5)
+            .foregroundStyle(theme.colors.primary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(theme.colors.background)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(theme.colors.border, lineWidth: 1)
+                    )
+            )
+            .zIndex(1)
+    }
+}

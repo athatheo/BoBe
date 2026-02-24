@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 18 80 80" fill="none">
+  <!-- Outer ring (terracotta circle) -->
+  <circle cx="56" cy="58" r="36" stroke="#C67B5C" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <!-- Face circle (sand with brown outline) -->
+  <circle cx="56" cy="58" r="28" fill="#E8DCC4" stroke="#5C4A3A" stroke-width="4"/>
+  <!-- Left eye -->
+  <circle cx="48" cy="54" r="2.5" fill="#5C4A3A"/>
+  <!-- Right eye -->
+  <circle cx="63" cy="54" r="2.5" fill="#5C4A3A"/>
+  <!-- Smile -->
+  <path d="M51 62 Q56 67 61 62" stroke="#C67B5C" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- Moon dot (on ring) -->
+  <circle cx="87" cy="76" r="6" fill="#A69080" opacity="0.7"/>
+</svg>
