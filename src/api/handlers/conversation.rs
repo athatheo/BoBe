@@ -55,3 +55,13 @@ pub async fn send_message(
 
     Ok(Json(ConversationMessageResponse { message_id }))
 }
+
+/// POST /message/dismiss
+///
+/// Dismiss the current proactive message. Acknowledges the client wants
+/// to hide the message without responding.
+pub async fn dismiss_message() -> axum::http::StatusCode {
+    // Currently a no-op — the frontend handles dismiss locally.
+    // Future: could notify the runtime session to clear pending proactive state.
+    axum::http::StatusCode::OK
+}
