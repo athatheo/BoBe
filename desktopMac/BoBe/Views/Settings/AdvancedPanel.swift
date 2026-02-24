@@ -76,7 +76,10 @@ struct AdvancedPanel: View {
             description: "Goal tracking intervals"
         ) {
             SettingsRow(label: "Check interval", description: "Seconds between goal relevance checks", suffix: "seconds") {
-                DebouncedNumberInput(value: binding(\.goalCheckIntervalSeconds), range: 60...7200)
+                DebouncedNumberInput(value: Binding(
+                    get: { Int(settings?.goalCheckIntervalSeconds ?? 300) },
+                    set: { newVal in settings?.goalCheckIntervalSeconds = Double(newVal) }
+                ), range: 60...7200)
             }
         }
     }

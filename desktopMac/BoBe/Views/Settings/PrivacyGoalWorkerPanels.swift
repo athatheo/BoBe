@@ -179,7 +179,10 @@ struct GoalWorkerPanel: View {
                         description: "Where BoBe creates project folders for goals"
                     ) {
                         HStack(spacing: 8) {
-                            TextField("/path/to/projects", text: binding(\.projectsDir))
+                            TextField("/path/to/projects", text: Binding(
+                                get: { settings?.projectsDir ?? "" },
+                                set: { settings?.projectsDir = $0 }
+                            ))
                                 .textFieldStyle(.roundedBorder)
                             Button("Browse...") { browseDirectory() }
                                 .buttonStyle(.bordered)

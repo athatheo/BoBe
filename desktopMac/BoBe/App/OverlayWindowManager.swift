@@ -12,6 +12,9 @@ final class OverlayWindowManager {
     private init() {}
 
     func createPanel(with rootView: some View) {
+        // Close existing panel to prevent orphans
+        if panel != nil { close() }
+
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let screenFrame = screen.visibleFrame
         let initialWidth = WindowSizes.widthCollapsed

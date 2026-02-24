@@ -64,8 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        // Recreate overlay if no windows exist (macOS standard)
-        if NSApp.windows.filter({ $0.isVisible }).isEmpty && !isQuitting {
+        // Only recreate overlay if panel doesn't exist and we're not in setup
+        if OverlayWindowManager.shared.panel == nil && setupWindow == nil && !isQuitting {
             Task { @MainActor in
                 showOverlay()
             }

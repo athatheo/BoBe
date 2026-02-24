@@ -147,7 +147,9 @@ final class BobeStore {
             if let payload = try? bundle.payload.decode(as: TextDeltaPayload.self) {
                 handleTextDelta(payload, messageId: bundle.messageId)
             }
-        case .toolCall:
+        case .toolCall, .toolCallStart:
+            handleToolCall(bundle.payload)
+        case .toolCallComplete:
             handleToolCall(bundle.payload)
         case .conversationClosed:
             if let payload = try? bundle.payload.decode(as: ConversationClosedPayload.self) {
@@ -157,9 +159,7 @@ final class BobeStore {
             if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
                 logger.error("Daemon error: \(payload.message)")
             }
-        case .heartbeat:
-            break
-        case .actionRequest:
+        case .heartbeat, .endOfTurn, .actionRequest:
             break
         }
     }
@@ -173,18 +173,18 @@ final class BobeStore {
             return
         }
 
-        let bubbleIndicators: Set<IndicatorType> = [.thinking, .analyzing]
+        let bubbleIndicators: Set<IndicatorType> = [.thinking, .toolCalling]
         let activeIndicator: IndicatorType? = bubbleIndicators.contains(indicator) ? indicator : nil
 
         updateState { ctx in
             switch indicator {
             case .idle:
                 ctx.capturing = false; ctx.thinking = false; ctx.speaking = false
-            case .capturing:
+            case .screenCapture:
                 ctx.capturing = true; ctx.thinking = false; ctx.speaking = false
-            case .analyzing, .thinking, .generating:
+            case .toolCalling, .thinking:
                 ctx.thinking = true; ctx.speaking = false
-            case .speaking:
+            case .streaming:
                 ctx.thinking = false; ctx.speaking = true
             }
             ctx.activeIndicator = activeIndicator

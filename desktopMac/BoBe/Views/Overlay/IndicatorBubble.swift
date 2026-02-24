@@ -72,7 +72,7 @@ struct IndicatorBubble: View {
                 .font(.system(size: 10))
                 .foregroundStyle(theme.colors.primary)
 
-            Text(indicator == .analyzing ? "analyzing" : "thinking")
+            Text(indicator == .toolCalling ? "using tools" : "thinking")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(theme.colors.textMuted)
 
@@ -144,7 +144,7 @@ struct IndicatorBubble: View {
     }
 
     private func handleIndicatorChange(_ newIndicator: IndicatorType?) {
-        if let newIndicator, newIndicator == .thinking || newIndicator == .analyzing {
+        if let newIndicator, newIndicator == .thinking || newIndicator == .toolCalling {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(IndicatorTiming.delayBeforeShow))
                 if indicator == newIndicator {

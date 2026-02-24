@@ -26,7 +26,7 @@ struct DaemonSettings: Codable, Sendable {
     var conversationAutoCloseMinutes: Int
     var conversationSummaryEnabled: Bool
     // Goals
-    var goalCheckIntervalSeconds: Int
+    var goalCheckIntervalSeconds: Double
     // Projects
     var projectsDirectory: String
     // Tools
@@ -45,7 +45,7 @@ struct DaemonSettings: Codable, Sendable {
     var goalWorkerEnabled: Bool
     var goalWorkerAutonomous: Bool
     var goalWorkerMaxConcurrent: Int
-    var projectsDir: String
+    var projectsDir: String?
     var visionBackend: String?
     var visionOllamaModel: String?
     var sttEnabled: Bool?
@@ -108,7 +108,7 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var conversationInactivityTimeoutSeconds: Int?
     var conversationAutoCloseMinutes: Int?
     var conversationSummaryEnabled: Bool?
-    var goalCheckIntervalSeconds: Int?
+    var goalCheckIntervalSeconds: Double?
     var projectsDirectory: String?
     var toolsEnabled: Bool?
     var toolsMaxIterations: Int?

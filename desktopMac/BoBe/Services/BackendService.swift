@@ -88,8 +88,9 @@ actor BackendService {
         env["BOBE_PORT"] = "\(DaemonConfig.port)"
         let dbPath = dataDir.appendingPathComponent("bobe.db").path
         env["BOBE_DATABASE_URL"] = "sqlite:\(dbPath)"
-        let ollamaDir = dataDir.appendingPathComponent("ollama/bin").path
-        env["PATH"] = [ollamaDir, env["PATH"] ?? ""].joined(separator: ":")
+        let ollamaBinDir = dataDir.appendingPathComponent("ollama/bin").path
+        env["PATH"] = [ollamaBinDir, env["PATH"] ?? ""].joined(separator: ":")
+        env["BOBE_OLLAMA_BINARY_PATH"] = ollamaBinDir + "/ollama"
         env["OLLAMA_HOST"] = "127.0.0.1:11434"
         env["OLLAMA_ORIGINS"] = "http://127.0.0.1:*"
         env["OLLAMA_MODELS"] = dataDir.appendingPathComponent("models").path

@@ -4,74 +4,82 @@ import OSLog
 private let logger = Logger(subsystem: "com.bobe.app", category: "OllamaService")
 
 /// Manages Ollama binary download, verification, and lifecycle.
-/// Based on original ollama-service.ts.
+/// Mirrors Python OllamaManager: health check → auto-start → auto-pull.
+/// Everything lives under ~/.bobe/ollama/ (bin, models, logs).
 actor OllamaService {
     static let shared = OllamaService()
 
-    private let ollamaVersion = "v0.6.2"
-    private let downloadDir: URL
+    private let ollamaVersion = "v0.17.0"
+    private let bobeDir: URL
+    private let ollamaDir: URL
+    private let binDir: URL
+    private let modelsDir: URL
 
     private init() {
-        let appSupport = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bobe")
-        self.downloadDir = appSupport.appendingPathComponent("ollama")
+        bobeDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bobe")
+        ollamaDir = bobeDir.appendingPathComponent("ollama")
+        binDir = ollamaDir.appendingPathComponent("bin")
+        modelsDir = bobeDir.appendingPathComponent("models")
     }
 
-    /// Download Ollama if not already present, or check for system Ollama
-    func ensureInstalled(onProgress: @Sendable @escaping (Double, String) -> Void) async throws -> String {
-        let binaryPath = downloadDir.appendingPathComponent("ollama").path
+    /// The binary path inside ~/.bobe/ollama/bin/ollama
+    var binaryPath: String { binDir.appendingPathComponent("ollama").path }
 
+    /// Download Ollama if not already present, or find system Ollama
+    func ensureInstalled(onProgress: @Sendable @escaping (Double, String) -> Void) async throws -> String {
+        // 1. Check our managed binary
         if FileManager.default.isExecutableFile(atPath: binaryPath) {
-            logger.info("Ollama already installed at \(binaryPath)")
+            logger.info("Ollama already installed at \(self.binaryPath)")
             return binaryPath
         }
 
-        // Check for system-installed Ollama (e.g., via Homebrew)
-        for systemPath in ["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"] {
+        // 2. Check for system-installed Ollama (Homebrew, manual)
+        for systemPath in ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"] {
             if FileManager.default.isExecutableFile(atPath: systemPath) {
                 logger.info("System Ollama found at \(systemPath)")
                 return systemPath
             }
         }
 
-        try FileManager.default.createDirectory(at: downloadDir, withIntermediateDirectories: true)
+        // 3. Download and extract
+        try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
-        let downloadURL = ollamaDownloadURL()
-        logger.info("Downloading Ollama from \(downloadURL)")
-
-        onProgress(0, "Downloading Ollama...")
+        let downloadURL = URL(string: "https://github.com/ollama/ollama/releases/download/\(ollamaVersion)/ollama-darwin.tgz")!
+        logger.info("Downloading Ollama \(self.ollamaVersion) from \(downloadURL)")
+        onProgress(0, "Downloading Ollama \(ollamaVersion)...")
 
         let (tempURL, response) = try await URLSession.shared.download(from: downloadURL)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw OllamaError.downloadFailed
         }
 
-        onProgress(50, "Extracting...")
+        onProgress(50, "Extracting Ollama...")
 
-        // Extract tarball
-        let extractProcess = Process()
-        extractProcess.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        extractProcess.arguments = ["-xzf", tempURL.path, "-C", downloadDir.path]
-        try extractProcess.run()
-        extractProcess.waitUntilExit()
-
-        guard extractProcess.terminationStatus == 0 else {
+        // Extract — tarball contains ollama binary + dylibs at root level
+        let extract = Process()
+        extract.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        extract.arguments = ["-xzf", tempURL.path, "-C", binDir.path]
+        try extract.run()
+        extract.waitUntilExit()
+        guard extract.terminationStatus == 0 else {
             throw OllamaError.extractionFailed
         }
 
-        // Make executable
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755],
-            ofItemAtPath: binaryPath
-        )
+        // Verify the binary exists after extraction
+        guard FileManager.default.isExecutableFile(atPath: binaryPath) else {
+            logger.error("Ollama binary not found at \(self.binaryPath) after extraction")
+            throw OllamaError.extractionFailed
+        }
 
         onProgress(100, "Ollama ready")
-        logger.info("Ollama installed at \(binaryPath)")
+        logger.info("Ollama \(self.ollamaVersion) installed at \(self.binaryPath)")
         return binaryPath
     }
 
-    /// Start Ollama server if not already running
+    /// Start Ollama server if not already running.
+    /// Configures OLLAMA_MODELS to ~/.bobe/models so everything stays under .bobe.
     func start(binaryPath: String) async throws -> Process? {
-        // Check if Ollama is already serving (e.g., system install or previous run)
         if await isOllamaResponding() {
             logger.info("Ollama already running — skipping start")
             return nil
@@ -80,6 +88,14 @@ actor OllamaService {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)
         process.arguments = ["serve"]
+
+        // Keep all Ollama data under ~/.bobe/
+        var env = ProcessInfo.processInfo.environment
+        env["OLLAMA_HOST"] = "127.0.0.1:11434"
+        env["OLLAMA_ORIGINS"] = "http://127.0.0.1:*"
+        env["OLLAMA_MODELS"] = modelsDir.path
+        process.environment = env
+
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
@@ -87,9 +103,9 @@ actor OllamaService {
         return process
     }
 
-    /// Poll Ollama until it responds (up to 15 seconds)
+    /// Poll Ollama /api/tags until it responds (up to 30 seconds)
     func waitUntilReady() async -> Bool {
-        for _ in 0..<30 {
+        for _ in 0..<60 {
             if await isOllamaResponding() { return true }
             try? await Task.sleep(for: .milliseconds(500))
         }
@@ -107,27 +123,16 @@ actor OllamaService {
             return false
         }
     }
-
-    private func ollamaDownloadURL() -> URL {
-        #if arch(arm64)
-        let arch = "arm64"
-        #else
-        let arch = "amd64"
-        #endif
-        return URL(string: "https://github.com/ollama/ollama/releases/download/\(ollamaVersion)/ollama-darwin-\(arch).tgz")!
-    }
 }
 
 enum OllamaError: Error, LocalizedError {
     case downloadFailed
     case extractionFailed
-    case verificationFailed
 
     var errorDescription: String? {
         switch self {
         case .downloadFailed: "Failed to download Ollama"
-        case .extractionFailed: "Failed to extract Ollama archive"
-        case .verificationFailed: "Ollama checksum verification failed"
+        case .extractionFailed: "Failed to extract Ollama — binary not found after download"
         }
     }
 }

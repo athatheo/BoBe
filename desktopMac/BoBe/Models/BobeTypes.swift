@@ -14,14 +14,13 @@ enum BobeStateType: String, Sendable {
     case wantsToSpeak = "wants_to_speak"
 }
 
-/// Indicator types from daemon SSE events
+/// Indicator types from daemon SSE events — matches Rust SCREAMING_SNAKE_CASE
 enum IndicatorType: String, Codable, Sendable {
-    case idle
-    case capturing
-    case analyzing
-    case thinking
-    case generating
-    case speaking
+    case idle = "IDLE"
+    case screenCapture = "SCREEN_CAPTURE"
+    case thinking = "THINKING"
+    case toolCalling = "TOOL_CALLING"
+    case streaming = "STREAMING"
 }
 
 /// Chat message sender

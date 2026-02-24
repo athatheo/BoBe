@@ -7,8 +7,11 @@ enum EventType: String, Codable, Sendable {
     case indicator
     case textDelta = "text_delta"
     case toolCall = "tool_call"
+    case toolCallStart = "tool_call_start"
+    case toolCallComplete = "tool_call_complete"
     case error
     case heartbeat
+    case endOfTurn = "end_of_turn"
     case conversationClosed = "conversation_closed"
     case actionRequest = "action_request"
 }
@@ -19,12 +22,14 @@ struct StreamBundle: Codable, Sendable {
     let payload: AnyCodablePayload
     let messageId: String
     let timestamp: String
+    let description: String
 
     enum CodingKeys: String, CodingKey {
         case type
         case payload
         case messageId = "message_id"
         case timestamp
+        case description
     }
 }
 

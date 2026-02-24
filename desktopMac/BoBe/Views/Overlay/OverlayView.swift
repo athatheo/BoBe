@@ -81,7 +81,7 @@ struct OverlayView: View {
 
     private var displayIndicator: IndicatorType? {
         guard let indicator = store.activeIndicator else { return nil }
-        if showChat && (indicator == .thinking || indicator == .analyzing) {
+        if showChat && (indicator == .thinking || indicator == .toolCalling) {
             return nil
         }
         return indicator
