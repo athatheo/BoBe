@@ -41,7 +41,7 @@ pub struct AppState {
     pub event_queue: Arc<EventQueue>,
     pub connection_manager: Arc<SseConnectionManager>,
     pub llm_provider: Arc<dyn LlmProvider>,
-    pub vision_llm_provider: Arc<dyn LlmProvider>,
+    pub vision_llm_provider: Option<Arc<dyn LlmProvider>>,
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
     // Repos
     pub conversation_repo: Arc<dyn ConversationRepository>,

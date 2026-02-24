@@ -12,6 +12,9 @@ pub enum LlmBackend {
     AzureOpenai,
     #[serde(rename = "llamacpp")]
     LlamaCpp,
+    /// Vision/voice disabled — no LLM provider needed.
+    #[serde(rename = "none")]
+    None,
 }
 
 impl fmt::Display for LlmBackend {
@@ -21,6 +24,7 @@ impl fmt::Display for LlmBackend {
             Self::Openai => write!(f, "openai"),
             Self::AzureOpenai => write!(f, "azure_openai"),
             Self::LlamaCpp => write!(f, "llamacpp"),
+            Self::None => write!(f, "none"),
         }
     }
 }
@@ -196,7 +200,7 @@ impl Default for Config {
             ollama_auto_start: true,
             ollama_auto_pull: true,
             ollama_binary_path: None,
-            vision_backend: LlmBackend::Ollama,
+            vision_backend: LlmBackend::None,
             vision_ollama_model: "qwen3-vl:8b".into(),
             vision_openai_model: "gpt-4o-mini".into(),
             vision_azure_openai_deployment: String::new(),

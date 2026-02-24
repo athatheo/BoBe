@@ -22,6 +22,10 @@ pub struct SettingsResponse {
     pub azure_openai_deployment: String,
     pub azure_openai_api_key_set: bool,
 
+    // Vision
+    pub vision_backend: LlmBackend,
+    pub vision_ollama_model: String,
+
     // Capture
     pub capture_enabled: bool,
     pub capture_interval_seconds: u64,
@@ -70,6 +74,10 @@ pub struct SettingsUpdateRequest {
     pub azure_openai_endpoint: Option<String>,
     pub azure_openai_deployment: Option<String>,
     pub azure_openai_api_key: Option<String>,
+
+    // Vision
+    pub vision_backend: Option<String>,
+    pub vision_ollama_model: Option<String>,
 
     // Capture
     pub capture_enabled: Option<bool>,
@@ -132,6 +140,8 @@ pub async fn get_settings(
         azure_openai_endpoint: cfg.azure_openai_endpoint.clone(),
         azure_openai_deployment: cfg.azure_openai_deployment.clone(),
         azure_openai_api_key_set: !cfg.azure_openai_api_key.is_empty(),
+        vision_backend: cfg.vision_backend,
+        vision_ollama_model: cfg.vision_ollama_model.clone(),
         capture_enabled: cfg.capture_enabled,
         capture_interval_seconds: cfg.capture_interval_seconds,
         checkin_enabled: cfg.checkin_enabled,
@@ -194,6 +204,8 @@ pub async fn update_settings(
     collect_opt!(azure_openai_endpoint);
     collect_opt!(azure_openai_deployment);
     collect_opt!(azure_openai_api_key);
+    collect_opt!(vision_backend);
+    collect_opt!(vision_ollama_model);
     collect_opt!(capture_enabled);
     collect_opt!(capture_interval_seconds);
     collect_opt!(checkin_enabled);

@@ -101,6 +101,11 @@ impl LlmProviderFactory {
                     "llama.cpp does not support vision models".into(),
                 ));
             }
+            LlmBackend::None => {
+                return Err(crate::error::AppError::Config(
+                    "Vision backend is disabled (set to 'none')".into(),
+                ));
+            }
         };
 
         let breaker = Arc::new(CircuitBreaker::new(
@@ -170,6 +175,9 @@ impl LlmProviderFactory {
                 );
                 Ok((Arc::new(provider), "azure_openai".into()))
             }
+            LlmBackend::None => Err(crate::error::AppError::Config(
+                "LLM backend is disabled (set to 'none')".into(),
+            )),
         }
     }
 }

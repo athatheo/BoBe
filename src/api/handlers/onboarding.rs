@@ -95,6 +95,7 @@ pub async fn onboarding_status(
             !cfg.azure_openai_api_key.is_empty() && !cfg.azure_openai_endpoint.is_empty()
         }
         crate::config::LlmBackend::LlamaCpp => true,
+        crate::config::LlmBackend::None => false,
     };
 
     steps.insert(

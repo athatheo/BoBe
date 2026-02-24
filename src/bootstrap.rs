@@ -109,7 +109,11 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
     // ── LLM providers ──────────────────────────────────────────────────
     let llm_factory = Arc::new(LlmProviderFactory::new(http_client.clone(), config_arc.clone()));
     let real_provider = llm_factory.create(config.llm_backend)?;
-    let vision_llm_provider = llm_factory.create_vision(config.vision_backend)?;
+    let vision_llm_provider = if config.vision_backend == LlmBackend::None {
+        None
+    } else {
+        Some(llm_factory.create_vision(config.vision_backend)?)
+    };
 
     // Wrap in SwappableLlmProvider so all consumers automatically see
     // the latest provider after a hot-swap (no update callbacks needed).
@@ -265,7 +269,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         embedding_provider.clone(),
         observation_repo.clone(),
         memory_repo.clone(),
-        Some(vision_llm_provider.clone()),
+        vision_llm_provider.clone(),
     ));
 
     let memory_learner = Arc::new(MemoryLearner::new(
