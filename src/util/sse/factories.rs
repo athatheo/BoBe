@@ -24,7 +24,7 @@ pub fn indicator_event_with_progress(
         event_type: EventType::Indicator,
         message_id: String::new(),
         timestamp: chrono::Utc::now().to_rfc3339(),
-        description: format!("{indicator:?}"),
+        description: indicator.as_str().to_owned(),
         payload,
     }
 }

@@ -255,13 +255,10 @@ fn push_error_event_classified(
 /// Classify an error for SSE reporting.
 /// Tool system errors are non-recoverable; LLM errors are recoverable.
 fn classify_error(error: &AppError) -> (&'static str, bool) {
-    let msg = error.to_string().to_lowercase();
-    if msg.contains("tool") {
-        ("TOOL_SYSTEM_ERROR", false)
-    } else if msg.contains("timeout") {
-        ("LLM_TIMEOUT", true)
-    } else {
-        ("RESPONSE_ERROR", true)
+    match error {
+        AppError::Tool(_) | AppError::ToolCallLoop(_) => ("TOOL_SYSTEM_ERROR", false),
+        AppError::LlmTimeout(_) => ("LLM_TIMEOUT", true),
+        _ => ("RESPONSE_ERROR", true),
     }
 }
 

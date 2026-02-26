@@ -28,6 +28,18 @@ pub enum IndicatorType {
     Streaming,
 }
 
+impl IndicatorType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "Idle",
+            Self::ScreenCapture => "ScreenCapture",
+            Self::Thinking => "Thinking",
+            Self::ToolCalling => "ToolCalling",
+            Self::Streaming => "Streaming",
+        }
+    }
+}
+
 /// Wire format for SSE events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamBundle {

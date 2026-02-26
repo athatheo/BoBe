@@ -247,16 +247,12 @@ impl RuntimeSession {
             return Ok(());
         }
 
-        // Re-fetch to avoid race
+        // Re-fetch conversation to avoid race (but reuse turns since they're immutable history)
         let refetched = self.conversation.get_conversation(existing.id).await?;
         let Some(refetched) = refetched else {
             return Ok(());
         };
 
-        let turns = self
-            .conversation
-            .get_conversation_turns(refetched.id, 100)
-            .await?;
         if !refetched.is_stale(cfg.conversation_auto_close_minutes as i64, &turns) {
             return Ok(());
         }
@@ -292,7 +288,7 @@ impl RuntimeSession {
     /// Get current status for the API.
     pub fn get_status(&self) -> serde_json::Value {
         serde_json::json!({
-            "indicator": format!("{:?}", self.event_queue.current_indicator()),
+            "indicator": self.event_queue.current_indicator().as_str(),
             "capturing": self.capture_enabled.load(std::sync::atomic::Ordering::Acquire),
         })
     }

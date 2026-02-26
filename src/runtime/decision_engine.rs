@@ -112,41 +112,43 @@ impl DecisionEngine {
         }
 
         // Build context using observation summaries
-        let context_lines: Vec<String> = similar_observations
-            .iter()
-            .take(5)
-            .map(|obs| {
-                let summary = self.get_observation_summary(obs);
-                format!("- [{}] {}", obs.category, summary)
-            })
-            .collect();
-        let context_summary = if context_lines.is_empty() {
+        let context_summary = if similar_observations.is_empty() {
             "No recent context".into()
         } else {
-            context_lines.join("\n")
+            use std::fmt::Write;
+            let mut buf = String::new();
+            for (i, obs) in similar_observations.iter().take(5).enumerate() {
+                if i > 0 {
+                    buf.push('\n');
+                }
+                let summary = self.get_observation_summary(obs);
+                let _ = write!(buf, "- [{}] {}", obs.category, summary);
+            }
+            buf
         };
 
         let recent_messages = if recent_ai_messages.is_empty() {
             "I haven't sent any messages recently.".into()
         } else {
-            let msgs: Vec<String> = recent_ai_messages
-                .iter()
-                .map(|msg| {
-                    let truncated = if msg.len() > 100 {
-                        format!("{}...", &msg[..100])
-                    } else {
-                        msg.clone()
-                    };
-                    format!("- {truncated}")
-                })
-                .collect();
-            format!("Recent messages I sent:\n{}", msgs.join("\n"))
+            use std::fmt::Write;
+            let mut buf = String::from("Recent messages I sent:\n");
+            for (i, msg) in recent_ai_messages.iter().enumerate() {
+                if i > 0 {
+                    buf.push('\n');
+                }
+                if msg.len() > 100 {
+                    let _ = write!(buf, "- {}...", &msg[..100]);
+                } else {
+                    let _ = write!(buf, "- {msg}");
+                }
+            }
+            buf
         };
 
-        let current_summary = if current_text.len() < 200 {
-            current_text.to_owned()
+        let current_summary = if current_text.len() <= 200 {
+            current_text
         } else {
-            current_text[..200].to_owned()
+            &current_text[..200]
         };
 
         // Get soul
@@ -155,7 +157,7 @@ impl DecisionEngine {
         let current_time = Utc::now().format("%A, %B %d %Y %H:%M").to_string();
 
         let messages = DecisionPrompt::messages(
-            &current_summary,
+            current_summary,
             &context_summary,
             &recent_messages,
             soul.as_deref(),
@@ -191,18 +193,19 @@ impl DecisionEngine {
             return Decision::Idle;
         }
 
-        let context_lines: Vec<String> = recent_observations
-            .iter()
-            .take(5)
-            .map(|obs| {
-                let summary = self.get_observation_summary(obs);
-                format!("- [{}] {}", obs.category, summary)
-            })
-            .collect();
-        let context_summary = if context_lines.is_empty() {
+        let context_summary = if recent_observations.is_empty() {
             "No recent context".into()
         } else {
-            context_lines.join("\n")
+            use std::fmt::Write;
+            let mut buf = String::new();
+            for (i, obs) in recent_observations.iter().take(5).enumerate() {
+                if i > 0 {
+                    buf.push('\n');
+                }
+                let summary = self.get_observation_summary(obs);
+                let _ = write!(buf, "- [{}] {}", obs.category, summary);
+            }
+            buf
         };
 
         let soul = self.get_soul_content().await;
@@ -378,15 +381,15 @@ impl DecisionEngine {
             && let Ok(parsed) = serde_json::from_str::<Value>(meta)
             && let Some(summary) = parsed.get("summary").and_then(|s| s.as_str())
         {
-            let summary = summary.to_string();
-            if summary.len() < 200 {
-                return summary;
-            }
-            return summary[..200].to_string();
+            return if summary.len() <= 200 {
+                summary.to_owned()
+            } else {
+                summary[..200].to_owned()
+            };
         }
         // Fallback: truncate content
         if obs.content.len() > 100 {
-            obs.content[..100].to_string()
+            format!("{}...", &obs.content[..100])
         } else {
             obs.content.clone()
         }
