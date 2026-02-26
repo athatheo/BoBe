@@ -62,7 +62,7 @@ impl NativeTool for GetRecentContextTool {
         let mut output = format!("{} recent observations:\n\n", observations.len());
         for (i, obs) in observations.iter().enumerate() {
             let preview = if obs.content.len() > 200 {
-                format!("{}...", &obs.content[..200])
+                format!("{}...", crate::util::text::truncate_str(&obs.content, 200))
             } else {
                 obs.content.clone()
             };

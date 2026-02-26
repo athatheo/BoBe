@@ -307,8 +307,7 @@ impl McpClient {
                         )));
                     }
                     // Yield to tokio instead of hard-blocking the thread
-                    tokio::task::yield_now().await;
-                    std::thread::sleep(Duration::from_millis(10));
+                    tokio::time::sleep(Duration::from_millis(10)).await;
                 }
                 Err(e) => {
                     return Err(AppError::Mcp(format!(

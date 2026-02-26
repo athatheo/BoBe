@@ -50,7 +50,7 @@ impl MessageLearner {
         info!(
             message_length = message_text.len(),
             message_preview = %if message_text.len() > 80 {
-                format!("{}...", &message_text[..80])
+                format!("{}...", crate::util::text::truncate_str(message_text, 80))
             } else {
                 message_text.clone()
             },

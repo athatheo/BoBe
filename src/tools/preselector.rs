@@ -142,7 +142,7 @@ fn format_conversation(messages: &[AiMessage]) -> String {
         .map(|m| {
             let content = m.content.text_or_empty();
             let truncated = if content.len() > 500 {
-                format!("{}...", &content[..500])
+                format!("{}...", crate::util::text::truncate_str(content, 500))
             } else {
                 content.to_owned()
             };

@@ -17,6 +17,7 @@ use crate::runtime::prompts::goal_decision::GoalDecisionPrompt;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
+use crate::util::text::truncate_str;
 
 pub struct DecisionEngine {
     llm: Arc<dyn LlmProvider>,
@@ -137,7 +138,7 @@ impl DecisionEngine {
                     buf.push('\n');
                 }
                 if msg.len() > 100 {
-                    let _ = write!(buf, "- {}...", &msg[..100]);
+                    let _ = write!(buf, "- {}...", truncate_str(msg, 100));
                 } else {
                     let _ = write!(buf, "- {msg}");
                 }
@@ -145,11 +146,7 @@ impl DecisionEngine {
             buf
         };
 
-        let current_summary = if current_text.len() <= 200 {
-            current_text
-        } else {
-            &current_text[..200]
-        };
+        let current_summary = truncate_str(current_text, 200);
 
         // Get soul
         let soul = self.get_soul_content().await;
@@ -381,15 +378,11 @@ impl DecisionEngine {
             && let Ok(parsed) = serde_json::from_str::<Value>(meta)
             && let Some(summary) = parsed.get("summary").and_then(|s| s.as_str())
         {
-            return if summary.len() <= 200 {
-                summary.to_owned()
-            } else {
-                summary[..200].to_owned()
-            };
+            return truncate_str(summary, 200).to_owned();
         }
         // Fallback: truncate content
         if obs.content.len() > 100 {
-            format!("{}...", &obs.content[..100])
+            format!("{}...", truncate_str(&obs.content, 100))
         } else {
             obs.content.clone()
         }

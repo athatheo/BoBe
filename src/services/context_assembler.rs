@@ -17,6 +17,7 @@ use crate::models::goal::Goal;
 use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::soul::Soul;
+use crate::util::text::truncate_str;
 
 use super::soul_service::SoulService;
 
@@ -94,7 +95,7 @@ impl AssembledContext {
                 if let Some(ref s) = summary {
                     let _ = write!(buf, "- [{}] {}", category, s);
                 } else if o.content.len() > 100 {
-                    let _ = write!(buf, "- [{}] {}...", category, &o.content[..100]);
+                    let _ = write!(buf, "- [{}] {}...", category, truncate_str(&o.content, 100));
                 } else {
                     let _ = write!(buf, "- [{}] {}", category, o.content);
                 }

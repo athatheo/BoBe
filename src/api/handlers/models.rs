@@ -199,25 +199,22 @@ const REGISTRY_CACHE_TTL_SECS: u64 = 3600;
 /// Cached for 1 hour.
 pub async fn list_registry_models() -> Json<ModelsListResponse> {
     let cache = REGISTRY_CACHE.get_or_init(|| Mutex::new((None, None)));
+    let mut guard = cache.lock().await;
 
-    // Check cache under lock, then release before network I/O
-    {
-        let guard = cache.lock().await;
-        if let (Some(ref models), Some(ref ts)) = *guard {
-            if ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS {
-                return Json(ModelsListResponse {
-                    backend: LlmBackend::Ollama,
-                    models: models.clone(),
-                    supports_pull: true,
-                });
-            }
+    // Return cached if fresh
+    if let (Some(ref models), Some(ref ts)) = *guard {
+        if ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS {
+            return Json(ModelsListResponse {
+                backend: LlmBackend::Ollama,
+                models: models.clone(),
+                supports_pull: true,
+            });
         }
     }
 
-    // Fetch outside lock
+    // Fetch while holding lock to prevent cache stampede (low-traffic endpoint, 1h TTL)
     match fetch_registry_models().await {
         Ok(models) => {
-            let mut guard = cache.lock().await;
             *guard = (Some(models.clone()), Some(Instant::now()));
             Json(ModelsListResponse {
                 backend: LlmBackend::Ollama,
@@ -227,7 +224,6 @@ pub async fn list_registry_models() -> Json<ModelsListResponse> {
         }
         Err(e) => {
             tracing::warn!(error = %e, "Failed to fetch registry models");
-            let guard = cache.lock().await;
             let models = guard.0.clone().unwrap_or_default();
             Json(ModelsListResponse {
                 backend: LlmBackend::Ollama,

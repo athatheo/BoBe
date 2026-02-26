@@ -247,12 +247,16 @@ impl RuntimeSession {
             return Ok(());
         }
 
-        // Re-fetch conversation to avoid race (but reuse turns since they're immutable history)
+        // Re-fetch conversation and turns to avoid race with concurrent message handling
         let refetched = self.conversation.get_conversation(existing.id).await?;
         let Some(refetched) = refetched else {
             return Ok(());
         };
 
+        let turns = self
+            .conversation
+            .get_conversation_turns(refetched.id, 100)
+            .await?;
         if !refetched.is_stale(cfg.conversation_auto_close_minutes as i64, &turns) {
             return Ok(());
         }

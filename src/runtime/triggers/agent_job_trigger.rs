@@ -219,7 +219,7 @@ impl AgentJobTrigger {
 
         if let Some(ref summary) = job.result_summary {
             let s = if summary.len() > 500 {
-                format!("{}...", &summary[..500])
+                format!("{}...", crate::util::text::truncate_str(summary, 500))
             } else {
                 summary.clone()
             };
