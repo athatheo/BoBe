@@ -1,8 +1,9 @@
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
@@ -103,6 +104,11 @@ impl McpClient {
         let stdout = child.stdout.take().ok_or_else(|| {
             AppError::Mcp(format!("No stdout for MCP server '{}'", self.config.name))
         })?;
+        if let Err(e) = set_nonblocking_stdout(&stdout) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
+        }
 
         let reader = BufReader::new(stdout);
 
@@ -112,6 +118,7 @@ impl McpClient {
             stdin,
             reader,
         });
+        drop(proc);
 
         // Send initialize request
         let init_result = self
@@ -259,12 +266,49 @@ impl McpClient {
             .flush()
             .map_err(|e| AppError::Mcp(format!("Failed to flush MCP server stdin: {e}")))?;
 
-        // Read response (blocking in this context — caller should use timeout)
+        // Read response with timeout and process liveness checks.
+        let timeout = Duration::from_secs_f64(self.config.timeout_seconds.max(1.0));
+        let deadline = Instant::now() + timeout;
         let mut line = String::new();
-        process
-            .reader
-            .read_line(&mut line)
-            .map_err(|e| AppError::Mcp(format!("Failed to read from MCP server: {e}")))?;
+        loop {
+            line.clear();
+            match process.reader.read_line(&mut line) {
+                Ok(0) => {
+                    let status = process.child.try_wait().ok().flatten();
+                    let details = status
+                        .map(|s| format!(" (exit status: {s})"))
+                        .unwrap_or_default();
+                    return Err(AppError::Mcp(format!(
+                        "MCP server '{}' closed stdout before responding{}",
+                        self.config.name, details
+                    )));
+                }
+                Ok(_) => break,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                    if let Ok(Some(status)) = process.child.try_wait() {
+                        return Err(AppError::Mcp(format!(
+                            "MCP server '{}' exited before responding (status: {status})",
+                            self.config.name
+                        )));
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(AppError::Mcp(format!(
+                            "MCP server '{}' did not respond to '{}' within {:.1}s",
+                            self.config.name,
+                            method,
+                            timeout.as_secs_f64()
+                        )));
+                    }
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Err(e) => {
+                    return Err(AppError::Mcp(format!(
+                        "Failed to read from MCP server '{}': {e}",
+                        self.config.name
+                    )));
+                }
+            }
+        }
 
         let response: JsonRpcResponse = serde_json::from_str(line.trim())
             .map_err(|e| AppError::Mcp(format!("Invalid JSON-RPC response: {e}")))?;
@@ -302,6 +346,24 @@ impl McpClient {
 
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn set_nonblocking_stdout(stdout: &std::process::ChildStdout) -> Result<(), AppError> {
+    let mut flags = rustix::fs::fcntl_getfl(stdout).map_err(|e| {
+        AppError::Mcp(format!(
+            "Failed to read MCP stdout flags for nonblocking mode: {e}"
+        ))
+    })?;
+    flags.insert(rustix::fs::OFlags::NONBLOCK);
+    rustix::fs::fcntl_setfl(stdout, flags)
+        .map_err(|e| AppError::Mcp(format!("Failed to set MCP stdout nonblocking mode: {e}")))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_nonblocking_stdout(_stdout: &std::process::ChildStdout) -> Result<(), AppError> {
+    Ok(())
 }
 
 impl Drop for McpClient {
