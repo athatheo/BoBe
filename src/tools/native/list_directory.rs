@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::base::NativeTool;
 use crate::error::AppError;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 const MAX_ENTRIES: usize = 500;
 const MAX_RECURSIVE_DEPTH: usize = 2;
@@ -88,10 +88,6 @@ impl NativeTool for ListDirectoryTool {
             },
             "required": ["path"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::FileSystem
     }
 
     async fn execute(

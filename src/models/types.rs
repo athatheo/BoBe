@@ -274,10 +274,6 @@ impl GoalPlanStatus {
             Self::Rejected => "rejected",
         }
     }
-
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Rejected)
-    }
 }
 
 impl std::fmt::Display for GoalPlanStatus {

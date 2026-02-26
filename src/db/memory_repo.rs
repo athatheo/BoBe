@@ -4,10 +4,10 @@ use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::db::MemoryRepository;
+use crate::error::AppError;
 use crate::models::memory::Memory;
 use crate::models::types::MemoryType;
-use crate::error::AppError;
-use crate::db::MemoryRepository;
 
 pub struct SqliteMemoryRepo {
     pool: SqlitePool,

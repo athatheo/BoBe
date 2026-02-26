@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::base::NativeTool;
 use crate::error::AppError;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 pub struct FetchUrlTool {
     client: reqwest::Client,
@@ -52,10 +52,6 @@ impl NativeTool for FetchUrlTool {
             },
             "required": ["url"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Research
     }
 
     async fn execute(

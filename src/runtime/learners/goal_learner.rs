@@ -10,14 +10,14 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::runtime::prompts::learning::deduplication_decision::GoalDeduplicationPrompt;
-use crate::runtime::prompts::learning::goal_extraction::GoalExtractionPrompt;
-use crate::services::goals::goals_service::GoalsService;
-use crate::models::goal::Goal;
-use crate::models::types::{GoalPriority, GoalSource};
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
+use crate::models::goal::Goal;
+use crate::models::types::{GoalPriority, GoalSource};
+use crate::runtime::prompts::learning::deduplication_decision::GoalDeduplicationPrompt;
+use crate::runtime::prompts::learning::goal_extraction::GoalExtractionPrompt;
+use crate::services::goals::goals_service::GoalsService;
 
 /// Valid values for goal priorities.
 const VALID_PRIORITIES: &[&str] = &["high", "medium", "low"];

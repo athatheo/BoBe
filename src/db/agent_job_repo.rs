@@ -3,10 +3,10 @@ use sqlx::SqlitePool;
 use tracing::{debug, info};
 use uuid::Uuid;
 
+use crate::db::AgentJobRepository;
+use crate::error::AppError;
 use crate::models::agent_job::AgentJob;
 use crate::models::types::AgentJobStatus;
-use crate::error::AppError;
-use crate::db::AgentJobRepository;
 
 pub struct SqliteAgentJobRepo {
     pool: SqlitePool,

@@ -99,13 +99,13 @@ struct StatusLabel: View {
 
     private func labelText(for state: BobeStateType) -> String {
         switch state {
-        case .loading: "connecting..."
+        case .loading: "Loading"
         case .idle: ""
-        case .capturing: "looking..."
-        case .thinking: "thinking..."
-        case .speaking: "speaking"
-        case .wantsToSpeak: "has something to say"
-        case .error: "error"
+        case .capturing: "Capturing"
+        case .thinking: "Thinking"
+        case .speaking: "Speaking"
+        case .wantsToSpeak: "Hey"
+        case .error: "Offline"
         }
     }
 }

@@ -9,11 +9,11 @@ use chrono::{DateTime, Utc};
 use tracing::{debug, info};
 
 use crate::config::Config;
+use crate::db::CooldownRepository;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::Decision;
-use crate::services::conversation_service::ConversationService;
 use crate::runtime::triggers::checkin_scheduler::CheckinScheduler;
-use crate::db::CooldownRepository;
+use crate::services::conversation_service::ConversationService;
 
 pub struct CheckinTrigger {
     scheduler: CheckinScheduler,
@@ -38,11 +38,6 @@ impl CheckinTrigger {
             cooldown_repo,
             config,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn is_scheduled(&mut self) -> bool {
-        self.scheduler.should_checkin()
     }
 
     /// Execute the checkin trigger. Returns `Decision::Engage` if check-in was sent.

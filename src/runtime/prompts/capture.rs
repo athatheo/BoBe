@@ -1,7 +1,7 @@
 //! Screen capture analysis prompts.
 
-use crate::runtime::prompts::base::PromptConfig;
 use crate::llm::types::{AiMessage, MessageContent};
+use crate::runtime::prompts::base::PromptConfig;
 
 /// Allowed category values for validation.
 pub const ALLOWED_CATEGORIES: &[&str] = &[

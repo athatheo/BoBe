@@ -5,7 +5,7 @@ use tracing::{debug, warn};
 
 use crate::error::AppError;
 use crate::llm::types::ToolDefinition;
-use crate::tools::{ToolCategory, ToolSource};
+use crate::tools::ToolSource;
 
 /// Central registry that aggregates all tool sources (native + MCP).
 pub struct ToolRegistry {
@@ -46,14 +46,6 @@ impl ToolRegistry {
         self.sources.write().await.insert(name, source);
     }
 
-    /// Unregister a tool source.
-    #[allow(dead_code)]
-    pub async fn unregister(&self, source_name: &str) {
-        self.sources.write().await.remove(source_name);
-        let mut t2s = self.tool_to_source.write().await;
-        t2s.retain(|_, v| v != source_name);
-    }
-
     /// Get all available tool definitions from all sources.
     pub async fn get_all_tools(&self, include_disabled: bool) -> Vec<ToolDefinition> {
         let sources = self.sources.read().await;
@@ -70,58 +62,12 @@ impl ToolRegistry {
         all
     }
 
-    /// Get tools filtered by categories.
-    #[allow(dead_code)]
-    pub async fn get_tools_by_category(&self, categories: &[ToolCategory]) -> Vec<ToolDefinition> {
-        let sources = self.sources.read().await;
-        let mut result = Vec::new();
-
-        for source in sources.values() {
-            let source_cats = source.categories();
-            if source_cats.iter().any(|c| categories.contains(c))
-                && let Ok(tools) = source.get_tools(false).await
-            {
-                result.extend(tools);
-            }
-        }
-        result
-    }
-
     /// Find the source that provides a given tool.
     pub async fn get_source_for_tool(&self, tool_name: &str) -> Option<Arc<dyn ToolSource>> {
         let t2s = self.tool_to_source.read().await;
         let source_name = t2s.get(tool_name)?;
         let sources = self.sources.read().await;
         sources.get(source_name).cloned()
-    }
-
-    /// Get a source by name.
-    #[allow(dead_code)]
-    pub async fn get_source(&self, name: &str) -> Option<Arc<dyn ToolSource>> {
-        self.sources.read().await.get(name).cloned()
-    }
-
-    /// Get all registered source names.
-    #[allow(dead_code)]
-    pub async fn source_names(&self) -> Vec<String> {
-        self.sources.read().await.keys().cloned().collect()
-    }
-
-    /// Get the source name for a given tool.
-    #[allow(dead_code)]
-    pub async fn get_source_name_for_tool(&self, tool_name: &str) -> Option<String> {
-        self.tool_to_source.read().await.get(tool_name).cloned()
-    }
-
-    /// Health check all sources.
-    #[allow(dead_code)]
-    pub async fn health_check_all(&self) -> HashMap<String, bool> {
-        let sources = self.sources.read().await;
-        let mut results = HashMap::new();
-        for (name, source) in sources.iter() {
-            results.insert(name.clone(), source.health_check().await);
-        }
-        results
     }
 
     /// Rebuild the tool→source index.

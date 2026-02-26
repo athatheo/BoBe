@@ -1,9 +1,9 @@
-pub mod registry;
 pub mod executor;
-pub mod preselector;
-pub mod tool_call_loop;
-pub mod native;
 pub mod mcp;
+pub mod native;
+pub mod preselector;
+pub mod registry;
+pub mod tool_call_loop;
 
 // ─── Types and trait definitions ────────────────────────────────────────────
 
@@ -11,19 +11,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::llm::types::{AiToolCall, ToolDefinition};
 use crate::error::AppError;
-
-/// Categories for tool organization.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolCategory {
-    Research,
-    FileSystem,
-    System,
-    Memory,
-    Mcp,
-}
+use crate::llm::types::{AiToolCall, ToolDefinition};
 
 /// Result from tool execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,8 +55,6 @@ impl ToolResult {
 #[derive(Debug, Clone, Default)]
 pub struct ToolExecutionContext {
     pub conversation_id: Option<String>,
-    pub message_id: Option<String>,
-    pub user_message: Option<String>,
 }
 
 /// Notification about tool execution for SSE/UI updates.
@@ -110,9 +97,6 @@ pub trait ToolSource: Send + Sync {
     /// Source name (e.g., "bobe", "mcp:filesystem").
     fn name(&self) -> &str;
 
-    /// Categories of tools this source offers.
-    fn categories(&self) -> &[ToolCategory];
-
     /// Get available tool definitions.
     async fn get_tools(&self, include_disabled: bool) -> Result<Vec<ToolDefinition>, AppError>;
 
@@ -122,8 +106,4 @@ pub trait ToolSource: Send + Sync {
         tool_call: &AiToolCall,
         context: Option<&ToolExecutionContext>,
     ) -> ToolResult;
-
-    /// Check if source is available.
-    #[allow(dead_code)]
-    async fn health_check(&self) -> bool;
 }

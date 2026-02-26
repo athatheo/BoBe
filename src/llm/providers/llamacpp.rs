@@ -5,11 +5,11 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 use tracing::{debug, error, warn};
 
+use crate::error::AppError;
+use crate::llm::LlmProvider;
 use crate::llm::shared::{
     ToolCallAccumulator, build_chat_request, parse_response, parse_stream_chunk,
 };
-use crate::error::AppError;
-use crate::llm::LlmProvider;
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
 /// llama.cpp server provider using its OpenAI-compatible endpoint.

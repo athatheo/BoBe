@@ -5,13 +5,16 @@
 use std::time::Instant;
 
 use futures::StreamExt;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
-use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::types::{EventType, StreamBundle};
 use crate::error::AppError;
 use crate::llm::types::{StreamChunk, StreamItem};
+use crate::util::sse::event_queue::EventQueue;
+use crate::util::sse::factories::{
+    end_of_turn_event, error_event, text_delta_event, tool_call_complete_event,
+    tool_call_start_event,
+};
 
 /// Result of streaming an LLM response.
 #[derive(Debug)]
@@ -67,10 +70,34 @@ pub async fn stream_response(
             Ok(StreamItem::ToolNotification(notification)) => {
                 handle_tool_notification(&notification, &msg_id, event_queue);
             }
-            Ok(StreamItem::TypedToolNotification(_)) => {
-                // Typed notifications are handled by consumers that opt into them;
-                // the SSE streamer uses the legacy ToolNotification format above.
-            }
+            Ok(StreamItem::TypedToolNotification(notification)) => match notification {
+                crate::tools::ToolNotification::Started {
+                    tool_name,
+                    tool_call_id,
+                } => {
+                    debug!(
+                        tool = %tool_name,
+                        tool_call_id = %tool_call_id,
+                        "tool_call.typed_start"
+                    );
+                }
+                crate::tools::ToolNotification::Completed {
+                    tool_name,
+                    tool_call_id,
+                    success,
+                    error,
+                    duration_ms,
+                } => {
+                    debug!(
+                        tool = %tool_name,
+                        tool_call_id = %tool_call_id,
+                        success,
+                        error = ?error,
+                        duration_ms,
+                        "tool_call.typed_complete"
+                    );
+                }
+            },
             Err(e) => {
                 success = false;
                 error_msg = Some(e.to_string());
@@ -170,19 +197,7 @@ fn handle_stream_chunk(
 ) -> bool {
     if !chunk.delta.is_empty() {
         full_response.push_str(&chunk.delta);
-
-        let event = StreamBundle {
-            event_type: EventType::TextDelta,
-            message_id: msg_id.to_owned(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            description: "text_delta".into(),
-            payload: serde_json::json!({
-                "delta": chunk.delta,
-                "sequence": *sequence,
-                "done": false,
-            }),
-        };
-        event_queue.push(event);
+        event_queue.push(text_delta_event(msg_id, &chunk.delta, *sequence, false));
         *sequence += 1;
     }
 
@@ -199,16 +214,11 @@ fn handle_tool_notification(
 ) {
     if notification.notification_type == "start" {
         info!(tool = %notification.tool_name, "tool_call.start");
-        event_queue.push(StreamBundle {
-            event_type: EventType::ToolCallStart,
-            message_id: msg_id.to_owned(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            description: "tool_call_start".into(),
-            payload: serde_json::json!({
-                "tool_name": notification.tool_name,
-                "tool_call_id": notification.tool_call_id,
-            }),
-        });
+        event_queue.push(tool_call_start_event(
+            msg_id,
+            &notification.tool_name,
+            &notification.tool_call_id,
+        ));
     } else {
         info!(
             tool = %notification.tool_name,
@@ -216,19 +226,14 @@ fn handle_tool_notification(
             duration_ms = ?notification.duration_ms,
             "tool_call.complete"
         );
-        event_queue.push(StreamBundle {
-            event_type: EventType::ToolCallComplete,
-            message_id: msg_id.to_owned(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            description: "tool_call_complete".into(),
-            payload: serde_json::json!({
-                "tool_name": notification.tool_name,
-                "tool_call_id": notification.tool_call_id,
-                "success": notification.success,
-                "error": notification.error,
-                "duration_ms": notification.duration_ms,
-            }),
-        });
+        event_queue.push(tool_call_complete_event(
+            msg_id,
+            &notification.tool_name,
+            &notification.tool_call_id,
+            notification.success,
+            notification.error.as_deref(),
+            notification.duration_ms,
+        ));
     }
 }
 
@@ -244,17 +249,7 @@ fn push_error_event_classified(
     recoverable: bool,
     event_queue: &EventQueue,
 ) {
-    event_queue.push(StreamBundle {
-        event_type: EventType::Error,
-        message_id: msg_id.to_owned(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        description: "stream_error".into(),
-        payload: serde_json::json!({
-            "code": code,
-            "message": error.to_string(),
-            "recoverable": recoverable,
-        }),
-    });
+    event_queue.push(error_event(msg_id, code, &error.to_string(), recoverable));
 }
 
 /// Classify an error for SSE reporting.
@@ -271,17 +266,7 @@ fn classify_error(error: &AppError) -> (&'static str, bool) {
 }
 
 fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {
-    event_queue.push(StreamBundle {
-        event_type: EventType::TextDelta,
-        message_id: msg_id.to_owned(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        description: "text_delta".into(),
-        payload: serde_json::json!({
-            "delta": "",
-            "sequence": sequence,
-            "done": true,
-        }),
-    });
+    event_queue.push(end_of_turn_event(msg_id, sequence));
 }
 
 /// Stream a simple text message (no LLM call needed).
@@ -291,27 +276,6 @@ pub fn stream_simple_message(message: &str, event_queue: &EventQueue, msg_id: Op
         .map(|s| s.to_owned())
         .unwrap_or_else(|| format!("msg_{}", Uuid::new_v4().simple()));
 
-    event_queue.push(StreamBundle {
-        event_type: EventType::TextDelta,
-        message_id: msg_id.clone(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        description: "text_delta".into(),
-        payload: serde_json::json!({
-            "delta": message,
-            "sequence": 0,
-            "done": false,
-        }),
-    });
-
-    event_queue.push(StreamBundle {
-        event_type: EventType::TextDelta,
-        message_id: msg_id,
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        description: "text_delta".into(),
-        payload: serde_json::json!({
-            "delta": "",
-            "sequence": 1,
-            "done": true,
-        }),
-    });
+    event_queue.push(text_delta_event(&msg_id, message, 0, false));
+    event_queue.push(end_of_turn_event(&msg_id, 1));
 }

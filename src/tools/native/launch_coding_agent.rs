@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
-use crate::error::AppError;
 use crate::db::AgentJobRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::tools::ToolExecutionContext;
 
 pub struct LaunchCodingAgentTool {
     agent_job_repo: Arc<dyn AgentJobRepository>,
@@ -47,10 +47,6 @@ impl NativeTool for LaunchCodingAgentTool {
             },
             "required": ["task", "profile"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::System
     }
 
     async fn execute(

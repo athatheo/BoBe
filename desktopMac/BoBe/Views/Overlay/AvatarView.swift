@@ -18,15 +18,15 @@ struct AvatarView: View {
         ZStack {
             avatarCard
                 .overlay(alignment: .top) {
-                    StatusLabel(stateType: stateType)
-                        .offset(y: -14)
+                    if stateType != .speaking {
+                        StatusLabel(stateType: stateType)
+                            .offset(y: -14)
+                    }
                 }
 
             // Chat toggle — top-left of avatar card
-            if showInput {
-                ChatToggleButton(isActive: true, action: onToggleInput ?? {})
-                    .offset(x: -50, y: -50)
-            }
+            ChatToggleButton(isActive: showInput, action: onToggleInput ?? {})
+                .offset(x: -52, y: -52)
 
             // Connection dot — bottom-right of inner circle
             ConnectionDot(isConnected: isConnected)
@@ -169,7 +169,7 @@ struct ChatToggleButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "message.fill")
-                .font(.system(size: 11))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(isActive ? theme.colors.background : theme.colors.text)
         }
         .buttonStyle(.plain)
@@ -191,7 +191,7 @@ struct BobeLabel: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Text("BOBE")
+        Text("BoBe")
             .font(.system(size: 11, weight: .bold))
             .tracking(1.5)
             .foregroundStyle(theme.colors.primary)

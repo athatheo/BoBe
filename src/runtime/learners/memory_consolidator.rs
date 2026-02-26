@@ -10,12 +10,12 @@ use serde_json::Value;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
-use crate::runtime::prompts::learning::memory_consolidation::MemoryConsolidationPrompt;
-use crate::models::memory::Memory;
-use crate::models::types::{MemorySource, MemoryType};
+use crate::db::MemoryRepository;
 use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
-use crate::db::MemoryRepository;
+use crate::models::memory::Memory;
+use crate::models::types::{MemorySource, MemoryType};
+use crate::runtime::prompts::learning::memory_consolidation::MemoryConsolidationPrompt;
 
 /// Valid values for memory categories.
 const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];

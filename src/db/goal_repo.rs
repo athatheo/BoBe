@@ -3,10 +3,10 @@ use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::db::GoalRepository;
+use crate::error::AppError;
 use crate::models::goal::Goal;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
-use crate::error::AppError;
-use crate::db::GoalRepository;
 
 pub struct SqliteGoalRepo {
     pool: SqlitePool,

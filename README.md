@@ -192,7 +192,7 @@ All via `BOBE_*` environment variables. Key settings:
 | `BOBE_LLM_BACKEND` | `ollama` | `ollama`, `local`, `openai`, `azure_openai` |
 | `BOBE_DATABASE_URL` | `sqlite:~/.bobe/data/bobe.db` | Database connection |
 | `BOBE_CAPTURE_ENABLED` | `true` | Screen capture |
-| `BOBE_CAPTURE_INTERVAL_SECONDS` | `240` | Capture frequency |
+| `BOBE_CAPTURE_INTERVAL_SECONDS` | `45` | Capture frequency |
 | `BOBE_LEARNING_ENABLED` | `true` | Background learning |
 | `BOBE_LOG_LEVEL` | `INFO` | Logging verbosity |
 | `BOBE_TOOLS_ENABLED` | `true` | Tool calling |

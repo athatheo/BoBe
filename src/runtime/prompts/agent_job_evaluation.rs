@@ -1,7 +1,7 @@
 //! Prompt for evaluating whether a coding agent achieved its goal.
 
-use crate::runtime::prompts::base::PromptConfig;
 use crate::llm::types::AiMessage;
+use crate::runtime::prompts::base::PromptConfig;
 
 /// Evaluate whether a coding agent's result satisfies the original goal.
 ///

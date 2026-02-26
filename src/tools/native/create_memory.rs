@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
-use crate::models::memory::Memory;
-use crate::models::types::{MemorySource, MemoryType};
+use crate::db::MemoryRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
-use crate::db::MemoryRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::models::memory::Memory;
+use crate::models::types::{MemorySource, MemoryType};
+use crate::tools::ToolExecutionContext;
 
 const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];
 
@@ -58,10 +58,6 @@ impl NativeTool for CreateMemoryTool {
             },
             "required": ["content", "category"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

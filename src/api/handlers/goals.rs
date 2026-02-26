@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
+use crate::error::AppError;
 use crate::models::goal::Goal;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
-use crate::error::AppError;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -183,10 +183,7 @@ pub async fn update_goal(
     // Re-embed when content changes (generates new embedding vector)
     let mut updated_goal = None;
     if let Some(ref content) = body.content {
-        updated_goal = state
-            .goals_service
-            .update_content(goal_id, content)
-            .await?;
+        updated_goal = state.goals_service.update_content(goal_id, content).await?;
         if updated_goal.is_none() {
             return Err(AppError::NotFound(format!("Goal {goal_id} not found")));
         }
@@ -214,8 +211,8 @@ pub async fn update_goal(
             .await?;
     }
 
-    let goal = updated_goal
-        .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
+    let goal =
+        updated_goal.ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
     tracing::info!(goal_id = %goal_id, "goal.updated");
     Ok(Json(goal_to_response(&goal)))

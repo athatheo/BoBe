@@ -10,20 +10,20 @@ use base64::Engine;
 use chrono::{DateTime, Timelike, Utc};
 use tracing::{debug, info, warn};
 
+use crate::db::MemoryRepository;
+use crate::db::ObservationRepository;
+use crate::error::AppError;
+use crate::llm::EmbeddingProvider;
+use crate::llm::LlmProvider;
+use crate::models::memory::Memory;
+use crate::models::observation::Observation;
+use crate::models::types::{MemorySource, MemoryType, ObservationSource};
 use crate::runtime::learners::types::{
     LearnerError, LearnerObservation, LearnerObservationSource, LearnerResult,
 };
 use crate::runtime::prompts::capture::{
     ALLOWED_CATEGORIES, VisionAnalysisPrompt, VisualMemoryConsolidationPrompt,
 };
-use crate::models::memory::Memory;
-use crate::models::observation::Observation;
-use crate::models::types::{MemorySource, MemoryType, ObservationSource};
-use crate::error::AppError;
-use crate::llm::EmbeddingProvider;
-use crate::llm::LlmProvider;
-use crate::db::MemoryRepository;
-use crate::db::ObservationRepository;
 
 /// Keyword → category mapping for simple inference (no LLM needed).
 static CATEGORY_KEYWORDS: &[(&str, &[&str])] = &[
@@ -233,13 +233,10 @@ impl CaptureLearner {
     }
 
     async fn analyze(&self, screenshot: &[u8], active_window: Option<&str>) -> AnalysisResult {
-        let vision_llm = self.effective_vision_llm();
-
-        if vision_llm.is_none() {
+        let Some(vision_llm) = self.effective_vision_llm() else {
             debug!("capture_learner.vision_skipped");
             return Self::degraded_analysis(active_window);
-        }
-        let vision_llm = vision_llm.unwrap();
+        };
 
         match self.call_vision_llm(screenshot, vision_llm.as_ref()).await {
             Ok(raw_output) => {

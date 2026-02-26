@@ -107,7 +107,12 @@ fn is_blank_image(png_data: &[u8]) -> bool {
     if end <= start {
         return false;
     }
-    let sample: Vec<u8> = png_data[start..end].iter().step_by(4).take(500).copied().collect();
+    let sample: Vec<u8> = png_data[start..end]
+        .iter()
+        .step_by(4)
+        .take(500)
+        .copied()
+        .collect();
     if sample.len() < 100 {
         return false;
     }

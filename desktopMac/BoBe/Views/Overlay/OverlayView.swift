@@ -7,57 +7,74 @@ struct OverlayView: View {
     @State private var store = BobeStore.shared
     @State private var themeStore = ThemeStore.shared
     @State private var showChat = false
-    @State private var prevMessagesCount = 0
     @State private var lastMessageActivity: Date = .now
+    @State private var measuredContentHeight: CGFloat = 0
     @State private var inactivityTimer: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
 
-            // Chat stack (above avatar area)
-            if showChat && !store.messages.isEmpty {
-                ChatStack(messages: store.messages)
+            VStack(spacing: 0) {
+                // Chat stack (above avatar area)
+                if showChat && !store.messages.isEmpty {
+                    ChatStack(messages: store.messages)
+                        .padding(.horizontal, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // Message input (between chat and avatar)
+                if showChat {
+                    MessageInput(
+                        onSend: handleSendMessage,
+                        onClose: { withAnimation { showChat = false } },
+                        isThinking: store.isThinking
+                    )
                     .padding(.horizontal, 12)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // Avatar with indicator row
+                // CSS: .avatar-with-indicator is relative, indicator is absolutely positioned left
+                HStack(spacing: 12) {
+                    Spacer()
+
+                    // Indicator bubble (left of avatar)
+                    IndicatorBubble(
+                        indicator: displayIndicator,
+                        toolExecutions: store.toolExecutions
+                    )
+
+                    // Avatar (right side)
+                    AvatarView(
+                        stateType: store.stateType,
+                        isCapturing: store.isCapturing,
+                        isConnected: store.isConnected,
+                        hasMessage: hasUnreadMessages,
+                        showInput: showChat,
+                        onClick: handleAvatarClick,
+                        onToggleCapture: { Task { _ = await store.toggleCapture() } },
+                        onToggleInput: { withAnimation { showChat.toggle() } }
+                    )
+                }
+                .padding(.trailing, 12)
+                .padding(.bottom, 8)
             }
-
-            // Message input (between chat and avatar)
-            if showChat {
-                MessageInput(
-                    onSend: handleSendMessage,
-                    onClose: { withAnimation { showChat = false } },
-                    isThinking: store.isThinking
-                )
-                .padding(.horizontal, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .preference(
+                            key: OverlayContentHeightPreferenceKey.self,
+                            value: ceil(geo.size.height)
+                        )
+                }
+            )
+            .onPreferenceChange(OverlayContentHeightPreferenceKey.self) { newHeight in
+                if newHeight > 0, abs(newHeight - measuredContentHeight) > 0.5 {
+                    measuredContentHeight = newHeight
+                    resizeWindow()
+                }
             }
-
-            // Avatar with indicator row
-            // CSS: .avatar-with-indicator is relative, indicator is absolutely positioned left
-            HStack(spacing: 12) {
-                Spacer()
-
-                // Indicator bubble (left of avatar)
-                IndicatorBubble(
-                    indicator: displayIndicator,
-                    toolExecutions: store.toolExecutions
-                )
-
-                // Avatar (right side)
-                AvatarView(
-                    stateType: store.stateType,
-                    isCapturing: store.isCapturing,
-                    isConnected: store.isConnected,
-                    hasMessage: hasUnreadMessages,
-                    showInput: showChat,
-                    onClick: handleAvatarClick,
-                    onToggleCapture: { Task { _ = await store.toggleCapture() } },
-                    onToggleInput: { withAnimation { showChat.toggle() } }
-                )
-            }
-            .padding(.trailing, 12)
-            .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .environment(\.theme, themeStore.currentTheme)
@@ -69,6 +86,7 @@ struct OverlayView: View {
             resizeWindow()
         }
         .onAppear {
+            resizeWindow()
             startInactivityTimer()
         }
     }
@@ -121,12 +139,10 @@ struct OverlayView: View {
             return CGSize(width: WindowSizes.widthCollapsed, height: WindowSizes.heightCollapsed)
         }
 
-        let messageCount = min(store.messages.count, 2)
-        var height = WindowSizes.heightAvatar + WindowSizes.heightInput
-        height += CGFloat(messageCount) * WindowSizes.heightMessage
-        height = min(height, WindowSizes.heightMax)
-
-        return CGSize(width: WindowSizes.widthExpanded, height: height)
+        let minExpandedHeight = WindowSizes.heightAvatar + WindowSizes.heightInput
+        let measured = max(measuredContentHeight, minExpandedHeight)
+        let clampedHeight = min(measured, WindowSizes.heightMax)
+        return CGSize(width: WindowSizes.widthExpanded, height: clampedHeight)
     }
 
     // MARK: - Inactivity Timer
@@ -137,12 +153,20 @@ struct OverlayView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(inactivityCheckIntervalSeconds))
                 let elapsed = Date().timeIntervalSince(lastMessageActivity)
-                if elapsed > inactivityTimeoutSeconds && showChat {
+                if elapsed > inactivityTimeoutSeconds && showChat && store.stateType == .idle {
                     await MainActor.run {
                         withAnimation { showChat = false }
                     }
                 }
             }
         }
+    }
+}
+
+private enum OverlayContentHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

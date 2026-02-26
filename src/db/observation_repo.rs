@@ -4,9 +4,9 @@ use sqlx::SqlitePool;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::models::observation::Observation;
-use crate::error::AppError;
 use crate::db::ObservationRepository;
+use crate::error::AppError;
+use crate::models::observation::Observation;
 
 pub struct SqliteObservationRepo {
     pool: SqlitePool,

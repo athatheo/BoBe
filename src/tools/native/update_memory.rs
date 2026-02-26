@@ -5,9 +5,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::base::NativeTool;
-use crate::error::AppError;
 use crate::db::MemoryRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::tools::ToolExecutionContext;
 
 const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];
 
@@ -51,10 +51,6 @@ impl NativeTool for UpdateMemoryTool {
             },
             "required": ["memory_id"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::base::NativeTool;
 use crate::error::AppError;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 const MAX_FILE_SIZE: u64 = 1_048_576; // 1 MB
 const MAX_LINES: usize = 500;
@@ -67,10 +67,6 @@ impl NativeTool for FileReaderTool {
             },
             "required": ["path"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::FileSystem
     }
 
     async fn execute(

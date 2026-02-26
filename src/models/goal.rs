@@ -47,16 +47,4 @@ impl Goal {
     pub fn is_archived(&self) -> bool {
         self.status == GoalStatus::Archived
     }
-
-    #[allow(dead_code)]
-    pub fn complete(&mut self) {
-        self.status = GoalStatus::Completed;
-        self.updated_at = Utc::now();
-    }
-
-    #[allow(dead_code)]
-    pub fn archive(&mut self) {
-        self.status = GoalStatus::Archived;
-        self.updated_at = Utc::now();
-    }
 }

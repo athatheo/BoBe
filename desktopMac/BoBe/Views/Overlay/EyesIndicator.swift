@@ -128,6 +128,7 @@ struct ErrorEyes: View {
     @Environment(\.theme) private var theme
 
     private var xColor: Color { theme.colors.primary }
+    private var frownColor: Color { theme.colors.text }
 
     var body: some View {
         ZStack {
@@ -145,7 +146,7 @@ struct ErrorEyes: View {
 
             // Frown mouth
             FrownArc()
-                .stroke(xColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .stroke(frownColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                 .frame(width: 8, height: 4)
                 .offset(y: 8)
                 .opacity(frownVisible ? 1 : 0.3)
@@ -236,7 +237,7 @@ private struct CapturingEyeUnit: View {
         ZStack {
             // Eye outline
             Ellipse()
-                .stroke(.white.opacity(0.8), lineWidth: 1)
+                .stroke(theme.avatarEyeOutline, lineWidth: 1)
                 .frame(width: 11, height: 10)
             // Sclera
             Ellipse()
@@ -244,12 +245,12 @@ private struct CapturingEyeUnit: View {
                 .frame(width: 9, height: 8)
             // Iris
             Circle()
-                .fill(Color(hex: "A69080"))
+                .fill(theme.avatarIris)
                 .frame(width: 5, height: 5)
                 .offset(x: pupilOffset)
             // Pupil
             Circle()
-                .fill(Color(hex: "3A3A3A"))
+                .fill(theme.text)
                 .frame(width: 2, height: 2)
                 .offset(x: pupilOffset)
         }
@@ -312,14 +313,14 @@ struct ThinkingEyes: View {
     var body: some View {
         VStack(spacing: 2) {
             HStack(spacing: 8) {
-                ThinkingEyeUnit()
-                ThinkingEyeUnit()
+                ThinkingEyeUnit(theme: theme.colors)
+                ThinkingEyeUnit(theme: theme.colors)
             }
             .offset(y: lookUpOffset)
 
             // Thinking mouth — small "o" shape
             Ellipse()
-                .stroke(Color(hex: "C67B5C"), lineWidth: 2)
+                .stroke(theme.colors.avatarMouth, lineWidth: 2)
                 .frame(width: 5, height: 4)
         }
         .onAppear {
@@ -331,11 +332,13 @@ struct ThinkingEyes: View {
 }
 
 private struct ThinkingEyeUnit: View {
+    let theme: ThemeColors
+
     var body: some View {
         ZStack {
             // Eye outline
             Ellipse()
-                .stroke(.white.opacity(0.8), lineWidth: 1)
+                .stroke(theme.avatarEyeOutline, lineWidth: 1)
                 .frame(width: 13, height: 11)
             // Sclera
             Ellipse()
@@ -343,12 +346,12 @@ private struct ThinkingEyeUnit: View {
                 .frame(width: 11, height: 9)
             // Iris (looking up: y offset -1)
             Circle()
-                .fill(Color(hex: "A69080"))
+                .fill(theme.avatarIris)
                 .frame(width: 6, height: 6)
                 .offset(y: -1)
             // Pupil
             Circle()
-                .fill(Color(hex: "3A3A3A"))
+                .fill(theme.text)
                 .frame(width: 2.4, height: 2.4)
                 .offset(y: -1)
         }
@@ -360,17 +363,18 @@ private struct ThinkingEyeUnit: View {
 
 struct SpeakingEyes: View {
     @State private var mouthScaleY: CGFloat = 1.0
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(spacing: 2) {
             HStack(spacing: 8) {
-                SpeakingEyeUnit()
-                SpeakingEyeUnit()
+                SpeakingEyeUnit(theme: theme.colors)
+                SpeakingEyeUnit(theme: theme.colors)
             }
 
             // Animated talking mouth
             Ellipse()
-                .fill(Color(hex: "C67B5C"))
+                .fill(theme.colors.avatarMouth)
                 .frame(width: 8, height: 4)
                 .scaleEffect(y: mouthScaleY)
         }
@@ -396,11 +400,13 @@ struct SpeakingEyes: View {
 }
 
 private struct SpeakingEyeUnit: View {
+    let theme: ThemeColors
+
     var body: some View {
         ZStack {
             // Eye outline
             Ellipse()
-                .stroke(.white.opacity(0.8), lineWidth: 1)
+                .stroke(theme.avatarEyeOutline, lineWidth: 1)
                 .frame(width: 13, height: 11)
             // Sclera
             Ellipse()
@@ -408,11 +414,11 @@ private struct SpeakingEyeUnit: View {
                 .frame(width: 11, height: 9)
             // Iris
             Circle()
-                .fill(Color(hex: "A69080"))
+                .fill(theme.avatarIris)
                 .frame(width: 6, height: 6)
             // Pupil
             Circle()
-                .fill(Color(hex: "3A3A3A"))
+                .fill(theme.text)
                 .frame(width: 2.4, height: 2.4)
             // Highlight
             Circle()
@@ -428,30 +434,31 @@ private struct SpeakingEyeUnit: View {
 
 struct EagerEyes: View {
     @State private var browOffset: CGFloat = 0
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(spacing: 1) {
             // Raised eyebrows
             HStack(spacing: 12) {
                 EyebrowShape()
-                    .stroke(Color(hex: "3A3A3A").opacity(0.6),
+                    .stroke(theme.colors.text.opacity(0.6),
                             style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .frame(width: 10, height: 3)
                 EyebrowShape()
-                    .stroke(Color(hex: "3A3A3A").opacity(0.6),
+                    .stroke(theme.colors.text.opacity(0.6),
                             style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .frame(width: 10, height: 3)
             }
             .offset(y: browOffset)
 
             HStack(spacing: 8) {
-                EagerEyeUnit()
-                EagerEyeUnit()
+                EagerEyeUnit(theme: theme.colors)
+                EagerEyeUnit(theme: theme.colors)
             }
 
             // Happy smile — d="M14 23 Q18 26, 22 23"
             SmilePath()
-                .stroke(Color(hex: "C67B5C"),
+                .stroke(theme.colors.avatarMouth,
                         style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .frame(width: 10, height: 4)
         }
@@ -488,11 +495,13 @@ private struct SmilePath: Shape {
 }
 
 private struct EagerEyeUnit: View {
+    let theme: ThemeColors
+
     var body: some View {
         ZStack {
             // Eye outline (larger — rx=6.5, ry=6)
             Ellipse()
-                .stroke(.white.opacity(0.8), lineWidth: 1)
+                .stroke(theme.avatarEyeOutline, lineWidth: 1)
                 .frame(width: 13, height: 12)
             // Sclera
             Ellipse()
@@ -500,12 +509,12 @@ private struct EagerEyeUnit: View {
                 .frame(width: 11, height: 10)
             // Iris (slightly up: cy=11.5 in 24h space)
             Circle()
-                .fill(Color(hex: "A69080"))
+                .fill(theme.avatarIris)
                 .frame(width: 7, height: 7)
                 .offset(y: -0.5)
             // Pupil
             Circle()
-                .fill(Color(hex: "3A3A3A"))
+                .fill(theme.text)
                 .frame(width: 3, height: 3)
                 .offset(y: -0.5)
             // Highlight
@@ -522,11 +531,12 @@ private struct EagerEyeUnit: View {
 
 struct AttentiveEyes: View {
     @State private var bobOffset: CGFloat = 0
+    @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(spacing: 8) {
-            AttentiveEyeUnit()
-            AttentiveEyeUnit()
+            AttentiveEyeUnit(theme: theme.colors)
+            AttentiveEyeUnit(theme: theme.colors)
         }
         .offset(y: bobOffset)
         .onAppear {
@@ -538,11 +548,13 @@ struct AttentiveEyes: View {
 }
 
 private struct AttentiveEyeUnit: View {
+    let theme: ThemeColors
+
     var body: some View {
         ZStack {
             // Eye outline
             Ellipse()
-                .stroke(.white.opacity(0.8), lineWidth: 1)
+                .stroke(theme.avatarEyeOutline, lineWidth: 1)
                 .frame(width: 13, height: 11)
             // Sclera
             Ellipse()
@@ -550,11 +562,11 @@ private struct AttentiveEyeUnit: View {
                 .frame(width: 11, height: 9)
             // Iris
             Circle()
-                .fill(Color(hex: "A69080"))
+                .fill(theme.avatarIris)
                 .frame(width: 6, height: 6)
             // Pupil
             Circle()
-                .fill(Color(hex: "3A3A3A"))
+                .fill(theme.text)
                 .frame(width: 2.4, height: 2.4)
             // Highlight
             Circle()

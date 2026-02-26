@@ -88,8 +88,7 @@ impl GoalWorkerManager {
 
         info!(
             max_concurrent,
-            poll_interval,
-            "goal_worker_manager.starting"
+            poll_interval, "goal_worker_manager.starting"
         );
 
         // Recover stale goals from previous run

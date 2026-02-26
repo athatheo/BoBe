@@ -13,7 +13,6 @@ enum EventType: String, Codable, Sendable {
     case heartbeat
     case endOfTurn = "end_of_turn"
     case conversationClosed = "conversation_closed"
-    case actionRequest = "action_request"
     case unknown
 
     init(from decoder: Decoder) throws {
@@ -93,9 +92,6 @@ struct ErrorPayload: Codable, Sendable {
     let details: [String: AnyCodableValue]?
 }
 
-/// Heartbeat event payload (empty)
-struct HeartbeatPayload: Codable, Sendable {}
-
 /// Conversation closed payload
 struct ConversationClosedPayload: Codable, Sendable {
     let conversationId: String
@@ -106,23 +102,6 @@ struct ConversationClosedPayload: Codable, Sendable {
         case conversationId = "conversation_id"
         case reason
         case turnCount = "turn_count"
-    }
-}
-
-/// Action request payload
-struct ActionRequestPayload: Codable, Sendable {
-    let action: String
-    let prompt: String
-    let requestId: String
-    let timeoutMs: Int
-    let options: [String]?
-
-    enum CodingKeys: String, CodingKey {
-        case action
-        case prompt
-        case requestId = "request_id"
-        case timeoutMs = "timeout_ms"
-        case options
     }
 }
 

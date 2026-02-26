@@ -8,10 +8,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::tools::mcp::adapter::db_config_to_parsed;
 use crate::app_state::AppState;
-use crate::models::mcp_server_config::McpServerConfig;
 use crate::error::AppError;
+use crate::models::mcp_server_config::McpServerConfig;
+use crate::tools::mcp::adapter::db_config_to_parsed;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -351,11 +351,15 @@ pub async fn delete_config(
     State(state): State<Arc<AppState>>,
     Path(config_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    state
+    let cfg = state
         .mcp_config_repo
         .get_by_id(config_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("MCP config {config_id} not found")))?;
+
+    if let Some(ref adapter) = state.mcp_tool_adapter {
+        let _ = adapter.disconnect_server_by_name(&cfg.server_name).await;
+    }
 
     if !state.mcp_config_repo.delete(config_id).await? {
         return Err(AppError::NotFound(format!(

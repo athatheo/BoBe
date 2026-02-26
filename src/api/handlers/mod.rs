@@ -11,4 +11,5 @@ pub mod onboarding;
 pub mod settings;
 pub mod souls;
 pub mod tools;
+pub mod tools_mcp;
 pub mod user_profile;

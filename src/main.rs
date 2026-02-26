@@ -185,7 +185,8 @@ async fn main() -> anyhow::Result<()> {
                 ] {
                     let _ = tokio::time::timeout(
                         std::time::Duration::from_secs(2),
-                        unload_client.post(format!("{}/api/generate", config.ollama_url))
+                        unload_client
+                            .post(format!("{}/api/generate", config.ollama_url))
                             .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
                             .send(),
                     )

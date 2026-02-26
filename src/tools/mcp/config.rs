@@ -38,13 +38,11 @@ pub struct McpConfigFile {
 
 /// Parsed and validated MCP server configuration.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct McpParsedServer {
     pub name: String,
     pub command: String,
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
-    pub enabled: bool,
     pub timeout_seconds: f64,
     pub excluded_tools: Vec<String>,
 }
@@ -71,7 +69,6 @@ pub fn load_mcp_config(
             command: entry.command,
             args: entry.args,
             env: entry.env,
-            enabled: entry.enabled,
             timeout_seconds: entry.timeout_seconds,
             excluded_tools: entry.excluded_tools,
         });

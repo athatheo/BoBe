@@ -89,11 +89,7 @@ impl GoalWorker {
         }
     }
 
-    async fn work_on_goal_inner(
-        &self,
-        goal: &Goal,
-        autonomous: bool,
-    ) -> Result<bool, AppError> {
+    async fn work_on_goal_inner(&self, goal: &Goal, autonomous: bool) -> Result<bool, AppError> {
         let goal_id = goal.id;
 
         // 1. Gather context
@@ -235,11 +231,7 @@ impl GoalWorker {
             self.notify_goal_complete(goal, &work_dir).await;
         } else {
             self.plan_repo
-                .update_plan_status(
-                    plan_id,
-                    GoalPlanStatus::Failed,
-                    result.error.as_deref(),
-                )
+                .update_plan_status(plan_id, GoalPlanStatus::Failed, result.error.as_deref())
                 .await?;
             self.goal_repo
                 .update_status(goal_id, Some(GoalStatus::Active), None)

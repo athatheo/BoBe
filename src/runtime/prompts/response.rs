@@ -1,7 +1,7 @@
 //! Response generation prompts.
 
-use crate::runtime::prompts::base::{DEFAULT_SOUL, PromptConfig};
 use crate::llm::types::AiMessage;
+use crate::runtime::prompts::base::{DEFAULT_SOUL, PromptConfig};
 
 /// Prompt for generating proactive suggestions to the user.
 pub struct ProactiveResponsePrompt;

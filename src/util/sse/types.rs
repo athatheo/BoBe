@@ -13,7 +13,6 @@ pub enum EventType {
     Heartbeat,
     EndOfTurn,
     ConversationClosed,
-    ActionRequest,
 }
 
 /// Indicator states for the runtime session.

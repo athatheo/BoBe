@@ -12,20 +12,19 @@ use crate::config::{Config, LlmBackend};
 use crate::config_manager::ConfigManager;
 use crate::db::seeding as db_seeding;
 use crate::db::{
-    SqliteAgentJobRepo, SqliteConversationRepo, SqliteCooldownRepo, SqliteGoalPlanRepo,
-    SqliteGoalRepo, SqliteLearningStateRepo, SqliteMcpConfigRepo, SqliteMemoryRepo,
-    SqliteObservationRepo, SqliteSoulRepo, SqliteUserProfileRepo,
-};
-use crate::db::{
     AgentJobRepository, ConversationRepository, CooldownRepository, GoalPlanRepository,
     GoalRepository, LearningStateRepository, McpConfigRepository, MemoryRepository,
     ObservationRepository, SoulRepository, UserProfileRepository,
 };
+use crate::db::{
+    SqliteAgentJobRepo, SqliteConversationRepo, SqliteCooldownRepo, SqliteGoalPlanRepo,
+    SqliteGoalRepo, SqliteLearningStateRepo, SqliteMcpConfigRepo, SqliteMemoryRepo,
+    SqliteObservationRepo, SqliteSoulRepo, SqliteUserProfileRepo,
+};
 use crate::error::AppError;
-use crate::llm::embedding::LocalEmbeddingProvider;
 use crate::llm::factory::LlmProviderFactory;
 use crate::llm::ollama_manager::OllamaManager;
-use crate::llm::swappable::SwappableLlmProvider;
+use crate::llm::swappable::{SwappableEmbeddingProvider, SwappableLlmProvider};
 use crate::llm::{EmbeddingProvider, LlmProvider};
 use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::learners::{
@@ -55,7 +54,6 @@ use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
 
-use crate::services::goal_worker::ask_user::AskUserBridge;
 use crate::services::goal_worker::claude_provider::ClaudeAgentProvider;
 use crate::services::goal_worker::context_provider::DefaultGoalContextProvider;
 use crate::services::goal_worker::manager::GoalWorkerManager;
@@ -107,7 +105,10 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         .map_err(|e| AppError::Internal(format!("HTTP client build failed: {e}")))?;
 
     // ── LLM providers ──────────────────────────────────────────────────
-    let llm_factory = Arc::new(LlmProviderFactory::new(http_client.clone(), config_arc.clone()));
+    let llm_factory = Arc::new(LlmProviderFactory::new(
+        http_client.clone(),
+        config_arc.clone(),
+    ));
     let real_provider = llm_factory.create(config.llm_backend)?;
     let vision_llm_provider = if config.vision_backend == LlmBackend::None {
         None
@@ -121,12 +122,10 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
     let llm_provider: Arc<dyn LlmProvider> = Arc::new(swappable_provider);
 
     // ── Embedding ──────────────────────────────────────────────────────
-    let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(LocalEmbeddingProvider::new(
-        http_client.clone(),
-        &config.ollama_url,
-        "nomic-embed-text",
-        config.embedding_dimension,
-    ));
+    let real_embedding_provider = llm_factory.create_embedding()?;
+    let (swappable_embedding_provider, embedding_swap_handle) =
+        SwappableEmbeddingProvider::new(real_embedding_provider);
+    let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(swappable_embedding_provider);
 
     // ── SSE ────────────────────────────────────────────────────────────
     let event_queue = Arc::new(EventQueue::new(100));
@@ -179,14 +178,21 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
     // ── Tool registry ──────────────────────────────────────────────────
     let tool_registry = Arc::new(ToolRegistry::new());
     let native_tools: Vec<Arc<dyn NativeTool>> = vec![
-        Arc::new(crate::tools::native::search_memories::SearchMemoriesTool::new(
-            memory_repo.clone(), embedding_provider.clone(),
-        )),
-        Arc::new(crate::tools::native::search_context::SearchContextTool::new(
-            memory_repo.clone(), embedding_provider.clone(),
-        )),
+        Arc::new(
+            crate::tools::native::search_memories::SearchMemoriesTool::new(
+                memory_repo.clone(),
+                embedding_provider.clone(),
+            ),
+        ),
+        Arc::new(
+            crate::tools::native::search_context::SearchContextTool::new(
+                memory_repo.clone(),
+                embedding_provider.clone(),
+            ),
+        ),
         Arc::new(crate::tools::native::search_goal::SearchGoalTool::new(
-            goal_repo.clone(), embedding_provider.clone(),
+            goal_repo.clone(),
+            embedding_provider.clone(),
         )),
         Arc::new(crate::tools::native::get_goals::GetGoalsTool::new(
             goal_repo.clone(),
@@ -194,17 +200,21 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         Arc::new(crate::tools::native::get_souls::GetSoulsTool::new(
             soul_repo.clone(),
         )),
-        Arc::new(crate::tools::native::get_recent_context::GetRecentContextTool::new(
-            observation_repo.clone(),
-        )),
+        Arc::new(
+            crate::tools::native::get_recent_context::GetRecentContextTool::new(
+                observation_repo.clone(),
+            ),
+        ),
         Arc::new(crate::tools::native::create_memory::CreateMemoryTool::new(
-            memory_repo.clone(), embedding_provider.clone(),
+            memory_repo.clone(),
+            embedding_provider.clone(),
         )),
         Arc::new(crate::tools::native::update_memory::UpdateMemoryTool::new(
             memory_repo.clone(),
         )),
         Arc::new(crate::tools::native::create_goal::CreateGoalTool::new(
-            goal_repo.clone(), embedding_provider.clone(),
+            goal_repo.clone(),
+            embedding_provider.clone(),
         )),
         Arc::new(crate::tools::native::update_goal::UpdateGoalTool::new(
             goal_repo.clone(),
@@ -234,18 +244,26 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         Arc::new(crate::tools::native::browser_history::BrowserHistoryTool::new()),
         Arc::new(crate::tools::native::discover_git_repos::DiscoverGitReposTool::new()),
         Arc::new(crate::tools::native::discover_installed_tools::DiscoverInstalledToolsTool::new()),
-        Arc::new(crate::tools::native::launch_coding_agent::LaunchCodingAgentTool::new(
-            agent_job_repo.clone(),
-        )),
-        Arc::new(crate::tools::native::check_coding_agent::CheckCodingAgentTool::new(
-            agent_job_repo.clone(),
-        )),
-        Arc::new(crate::tools::native::cancel_coding_agent::CancelCodingAgentTool::new(
-            agent_job_repo.clone(),
-        )),
-        Arc::new(crate::tools::native::list_coding_agents::ListCodingAgentsTool::new(
-            agent_job_repo.clone(),
-        )),
+        Arc::new(
+            crate::tools::native::launch_coding_agent::LaunchCodingAgentTool::new(
+                agent_job_repo.clone(),
+            ),
+        ),
+        Arc::new(
+            crate::tools::native::check_coding_agent::CheckCodingAgentTool::new(
+                agent_job_repo.clone(),
+            ),
+        ),
+        Arc::new(
+            crate::tools::native::cancel_coding_agent::CancelCodingAgentTool::new(
+                agent_job_repo.clone(),
+            ),
+        ),
+        Arc::new(
+            crate::tools::native::list_coding_agents::ListCodingAgentsTool::new(
+                agent_job_repo.clone(),
+            ),
+        ),
     ];
     let native_adapter = Arc::new(NativeToolAdapter::new(native_tools));
     let mcp_adapter = Arc::new(McpToolAdapter::new(
@@ -433,11 +451,6 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
     };
 
     // ── Goal Worker ────────────────────────────────────────────────────
-    let ask_user_bridge = Arc::new(AskUserBridge::new(
-        event_queue.clone(),
-        config.goal_worker_ask_user_timeout_seconds,
-    ));
-
     let goal_context_provider = Arc::new(DefaultGoalContextProvider::new(
         memory_repo.clone(),
         goal_repo.clone(),
@@ -487,6 +500,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
     let config_manager = Arc::new(ConfigManager::new(
         config_arc.clone(),
         swap_handle,
+        embedding_swap_handle,
         Some(llm_factory),
     ));
 
@@ -560,10 +574,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
     // Mark orphaned agent jobs as failed
     {
         use crate::models::types::AgentJobStatus;
-        match agent_job_repo
-            .find_by_status(AgentJobStatus::Running)
-            .await
-        {
+        match agent_job_repo.find_by_status(AgentJobStatus::Running).await {
             Ok(orphans) if !orphans.is_empty() => {
                 info!(count = orphans.len(), "bootstrap.orphaned_jobs_found");
                 for mut job in orphans {
@@ -613,6 +624,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
                 info!(
                     created = result.created,
                     updated = result.updated,
+                    archived = result.archived,
                     "bootstrap.goals_synced_from_file"
                 );
             }
@@ -675,7 +687,6 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         ollama_manager,
         config_manager,
         mcp_tool_adapter: Some(mcp_adapter),
-        ask_user_bridge,
         mdns_announcer,
     });
 

@@ -7,7 +7,13 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "DaemonClient")
 actor DaemonClient {
     static let shared = DaemonClient()
 
-    private let baseURL = URL(string: DaemonConfig.baseURL)!
+    private let baseURL: URL = {
+        if let url = URL(string: DaemonConfig.baseURL) {
+            return url
+        }
+        logger.error("Invalid daemon base URL, falling back to localhost")
+        return URL(string: "http://127.0.0.1:8766") ?? URL(fileURLWithPath: "/")
+    }()
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -18,6 +24,11 @@ actor DaemonClient {
     private var connectionHandler: ((Bool) -> Void)?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 10
+
+    private func endpointURL(_ path: String) -> URL {
+        let normalized = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        return baseURL.appendingPathComponent(normalized)
+    }
 
     init() {
         let config = URLSessionConfiguration.default
@@ -56,7 +67,7 @@ actor DaemonClient {
     }
 
     private func runSSELoop() async {
-        let url = baseURL.appendingPathComponent("events")
+        let url = endpointURL("events")
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 0 // No timeout for SSE
@@ -120,7 +131,7 @@ actor DaemonClient {
         method: String = "GET",
         body: (any Encodable)? = nil
     ) async throws -> T {
-        let url = baseURL.appendingPathComponent(path)
+        let url = endpointURL(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = fetchTimeout
@@ -146,7 +157,7 @@ actor DaemonClient {
         method: String = "POST",
         body: (any Encodable)? = nil
     ) async throws {
-        let url = baseURL.appendingPathComponent(path)
+        let url = endpointURL(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = fetchTimeout
@@ -174,6 +185,16 @@ actor DaemonClient {
 
     func status() async throws -> [String: AnyCodableValue] {
         try await fetch("/status")
+    }
+
+    // MARK: - App Maintenance
+
+    func getDataSize() async throws -> DataSizeResponse {
+        try await fetch("/app/data-size")
+    }
+
+    func deleteAllData() async throws {
+        try await fetchVoid("/app/delete-all-data", method: "GET")
     }
 
     // MARK: - Capture
@@ -290,7 +311,12 @@ actor DaemonClient {
         limit: Int? = nil,
         offset: Int? = nil
     ) async throws -> MemoryListResponse {
-        var components = URLComponents(url: baseURL.appendingPathComponent("/memories"), resolvingAgainstBaseURL: false)!
+        guard var components = URLComponents(
+            url: endpointURL("memories"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw DaemonError.invalidResponse
+        }
         var items: [URLQueryItem] = []
         if let type { items.append(.init(name: "memory_type", value: type.rawValue)) }
         if let category { items.append(.init(name: "category", value: category.rawValue)) }
@@ -298,7 +324,10 @@ actor DaemonClient {
         if let offset { items.append(.init(name: "offset", value: String(offset))) }
         if !items.isEmpty { components.queryItems = items }
 
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else {
+            throw DaemonError.invalidResponse
+        }
+        var request = URLRequest(url: url)
         request.timeoutInterval = fetchTimeout
         let (data, _) = try await session.data(for: request)
         return try decoder.decode(MemoryListResponse.self, from: data)

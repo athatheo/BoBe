@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
-use crate::models::types::GoalPriority;
-use crate::error::AppError;
 use crate::db::GoalRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::models::types::GoalPriority;
+use crate::tools::ToolExecutionContext;
 
 pub struct GetGoalsTool {
     goal_repo: Arc<dyn GoalRepository>,
@@ -35,10 +35,6 @@ impl NativeTool for GetGoalsTool {
             "properties": {},
             "required": []
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

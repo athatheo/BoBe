@@ -76,71 +76,6 @@ struct GoalActionResponse: Codable, Sendable {
     let message: String
 }
 
-// MARK: - Goal Plans
-
-enum GoalPlanStatus: String, Codable, Sendable {
-    case pendingApproval = "pending_approval"
-    case approved
-    case autoApproved = "auto_approved"
-    case inProgress = "in_progress"
-    case completed, failed, rejected, unknown
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = GoalPlanStatus(rawValue: raw) ?? .unknown
-    }
-}
-
-enum GoalPlanStepStatus: String, Codable, Sendable {
-    case pending, inProgress = "in_progress", completed, failed, skipped, unknown
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = GoalPlanStepStatus(rawValue: raw) ?? .unknown
-    }
-}
-
-struct GoalPlan: Identifiable, Codable, Sendable {
-    let id: String
-    let goalId: String
-    let summary: String
-    var status: GoalPlanStatus
-    let failureCount: Int
-    let lastError: String?
-    let createdAt: String
-    var updatedAt: String
-    var steps: [GoalPlanStep]?
-
-    enum CodingKeys: String, CodingKey {
-        case id, summary, status, steps
-        case goalId = "goal_id"
-        case failureCount = "failure_count"
-        case lastError = "last_error"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-    }
-}
-
-struct GoalPlanStep: Identifiable, Codable, Sendable {
-    let id: String
-    let planId: String
-    let stepOrder: Int
-    let content: String
-    var status: GoalPlanStepStatus
-    let result: String?
-    let error: String?
-    let startedAt: String?
-    let completedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, content, status, result, error
-        case planId = "plan_id"
-        case stepOrder = "step_order"
-        case startedAt = "started_at"
-        case completedAt = "completed_at"
-    }
-}
-
 // MARK: - Souls
 
 struct Soul: Identifiable, Codable, Sendable {
@@ -295,27 +230,6 @@ struct MemoryListResponse: Codable, Sendable {
     let total: Int
 }
 
-/// Query parameters for GET /memories
-struct MemoryListParams: Sendable {
-    var memoryType: MemoryType?
-    var category: MemoryCategory?
-    var source: MemorySource?
-    var enabledOnly: Bool?
-    var limit: Int?
-    var offset: Int?
-
-    var queryItems: [URLQueryItem] {
-        var items: [URLQueryItem] = []
-        if let v = memoryType { items.append(.init(name: "memory_type", value: v.rawValue)) }
-        if let v = category { items.append(.init(name: "category", value: v.rawValue)) }
-        if let v = source { items.append(.init(name: "source", value: v.rawValue)) }
-        if let v = enabledOnly { items.append(.init(name: "enabled_only", value: v ? "true" : "false")) }
-        if let v = limit { items.append(.init(name: "limit", value: String(v))) }
-        if let v = offset { items.append(.init(name: "offset", value: String(v))) }
-        return items
-    }
-}
-
 struct MemoryCreateRequest: Codable, Sendable {
     let content: String
     var category: MemoryCategory?
@@ -449,36 +363,6 @@ struct MCPServerUpdateResponse: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case name, message
         case excludedTools = "excluded_tools"
-    }
-}
-
-struct MCPServerDeleteResponse: Codable, Sendable {
-    let name: String
-    let message: String
-}
-
-// MARK: - MCP Configs
-
-struct MCPConfig: Identifiable, Codable, Sendable {
-    let id: String
-    let serverName: String
-    let excludedTools: [String]
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case serverName = "server_name"
-        case excludedTools = "excluded_tools"
-    }
-}
-
-struct MCPConfigListResponse: Codable, Sendable {
-    let configs: [MCPConfig]
-    let count: Int
-    let enabledCount: Int
-
-    enum CodingKeys: String, CodingKey {
-        case configs, count
-        case enabledCount = "enabled_count"
     }
 }
 

@@ -11,22 +11,20 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::Config;
+use crate::db::CooldownRepository;
+use crate::llm::LlmProvider;
+use crate::models::conversation::Conversation;
+use crate::models::types::TurnRole;
+use crate::runtime::prompts::response::ProactiveResponsePrompt;
+use crate::runtime::prompts::summary::ConversationSummaryPrompt;
+use crate::runtime::response_streamer::{stream_llm_response, stream_response};
+use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
+use crate::services::conversation_service::ConversationService;
+use crate::tools::registry::ToolRegistry;
+use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::conversation_closed_event;
 use crate::util::sse::types::IndicatorType;
-use crate::tools::registry::ToolRegistry;
-use crate::tools::tool_call_loop::ToolCallLoop;
-use crate::runtime::prompts::response::ProactiveResponsePrompt;
-use crate::runtime::prompts::summary::ConversationSummaryPrompt;
-use crate::runtime::response_streamer::{
-    stream_llm_response, stream_response, stream_simple_message,
-};
-use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
-use crate::services::conversation_service::ConversationService;
-use crate::models::conversation::Conversation;
-use crate::models::types::TurnRole;
-use crate::llm::LlmProvider;
-use crate::db::CooldownRepository;
 
 pub struct ProactiveGenerator {
     llm: Arc<dyn LlmProvider>,
@@ -71,13 +69,6 @@ impl ProactiveGenerator {
         let (target, previous_summary) = self.ensure_conversation(auto_close_minutes).await;
         self.generate_response(target, previous_summary, context_summary)
             .await;
-    }
-
-    /// Send a simple check-in message.
-    #[allow(dead_code)]
-    pub async fn send_proactive_checkin(&self, message: &str, auto_close_minutes: i64) {
-        let (target, _) = self.ensure_conversation(auto_close_minutes).await;
-        self.send_checkin(message, target).await;
     }
 
     async fn ensure_conversation(
@@ -172,8 +163,13 @@ impl ProactiveGenerator {
 
         // Use tool call loop if tools are available, otherwise plain LLM stream
         let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
-            let tool_stream =
-                tcl.stream(messages, tools, prompt_config.temperature, prompt_config.max_tokens, None);
+            let tool_stream = tcl.stream(
+                messages,
+                tools,
+                prompt_config.temperature,
+                prompt_config.max_tokens,
+                None,
+            );
             stream_response(tool_stream, &self.event_queue, Some(&msg_id)).await
         } else {
             let stream = self.llm.stream(
@@ -246,29 +242,6 @@ impl ProactiveGenerator {
             self.record_engagement().await;
         }
 
-        self.event_queue.set_indicator(IndicatorType::Idle);
-    }
-
-    #[allow(dead_code)]
-    async fn send_checkin(&self, message: &str, target_conversation: Option<Conversation>) {
-        self.event_queue.set_indicator(IndicatorType::Streaming);
-
-        let msg_id = format!("msg_{}", Uuid::new_v4().simple());
-        stream_simple_message(message, &self.event_queue, Some(&msg_id));
-
-        if let Some(ref target) = target_conversation {
-            if let Err(e) = self
-                .conversation
-                .add_turn(target.id, TurnRole::Assistant, message)
-                .await
-            {
-                warn!(error = %e, "proactive_generator.checkin_save_failed");
-            }
-        } else if let Err(e) = self.conversation.create_pending(message).await {
-            warn!(error = %e, "proactive_generator.checkin_create_failed");
-        }
-
-        self.record_engagement().await;
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 

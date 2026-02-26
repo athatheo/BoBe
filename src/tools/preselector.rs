@@ -48,7 +48,10 @@ impl ToolPreselector {
         let cfg = self.config.load();
 
         // Bypass conditions
-        if !cfg.tools_preselector_enabled || all_tools.len() <= self.max_tools_for_bypass || messages.is_empty() {
+        if !cfg.tools_preselector_enabled
+            || all_tools.len() <= self.max_tools_for_bypass
+            || messages.is_empty()
+        {
             return all_tools.to_vec();
         }
 

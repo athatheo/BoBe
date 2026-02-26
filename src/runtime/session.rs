@@ -11,15 +11,15 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
-use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::types::{EventType, IndicatorType, StreamBundle};
+use crate::db::CooldownRepository;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::state::Decision;
-use crate::services::conversation_service::ConversationService;
 use crate::runtime::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinTrigger, GoalTrigger};
-use crate::db::CooldownRepository;
+use crate::services::conversation_service::ConversationService;
+use crate::util::sse::event_queue::EventQueue;
+use crate::util::sse::types::{EventType, IndicatorType, StreamBundle};
 
 pub struct RuntimeSession {
     checkin_trigger: Mutex<CheckinTrigger>,
@@ -60,11 +60,6 @@ impl RuntimeSession {
             running: std::sync::atomic::AtomicBool::new(false),
             capture_enabled: std::sync::atomic::AtomicBool::new(false),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn is_running(&self) -> bool {
-        self.running.load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// Enable screen capture.

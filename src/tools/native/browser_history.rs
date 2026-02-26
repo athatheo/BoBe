@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use super::base::NativeTool;
 use crate::error::AppError;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 pub struct BrowserHistoryTool;
 
@@ -65,10 +65,6 @@ impl NativeTool for BrowserHistoryTool {
             },
             "required": ["query"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Research
     }
 
     async fn execute(

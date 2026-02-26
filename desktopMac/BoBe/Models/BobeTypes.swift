@@ -116,19 +116,12 @@ enum DaemonConfig {
 
 enum WindowSizes {
     static let widthCollapsed: CGFloat = 148
-    static let widthExpanded: CGFloat = 340
+    static let widthExpanded: CGFloat = 540
     static let heightCollapsed: CGFloat = 180
     static let heightAvatar: CGFloat = 180
     static let heightInput: CGFloat = 70
-    static let heightMessage: CGFloat = 110
-    static let heightMax: CGFloat = 700
+    static let heightMax: CGFloat = 900
     static let margin: CGFloat = 16
-}
-
-enum SpringConfig {
-    static let damping: Double = 20
-    static let stiffness: Double = 300
-    static let mass: Double = 0.8
 }
 
 enum IndicatorTiming {
@@ -139,6 +132,5 @@ enum IndicatorTiming {
     static let expandAnimation: TimeInterval = 0.2
 }
 
-let maxVisibleMessages = 4
 let inactivityTimeoutSeconds: TimeInterval = 10 * 60
 let inactivityCheckIntervalSeconds: TimeInterval = 30

@@ -17,6 +17,7 @@ use crate::error::AppError;
 use crate::models::goal::Goal;
 use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
 use crate::runtime::prompts::goal_worker::{GoalExecutionPrompt, GoalPlanningPrompt};
+use crate::util::slugify::slugify;
 
 use super::{GoalExecutionResult, GoalExecutorProvider, PlanStep};
 
@@ -46,7 +47,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
         let base = cfg.resolved_projects_dir();
 
         // Slugify the goal title for a human-readable directory name
-        let slug = slugify(goal_title);
+        let slug = slugify(goal_title, 50);
         let short_id = &goal_id.to_string()[..8];
         let dir_name = if slug.is_empty() {
             short_id.to_string()
@@ -86,11 +87,8 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
             ));
         }
 
-        let (system_msg, user_msg) = GoalPlanningPrompt::messages(
-            &goal.content,
-            context,
-            effective_max_steps,
-        );
+        let (system_msg, user_msg) =
+            GoalPlanningPrompt::messages(&goal.content, context, effective_max_steps);
 
         let body = serde_json::json!({
             "model": model,
@@ -118,9 +116,10 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
             )));
         }
 
-        let data: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::Llm(format!("Failed to parse Anthropic response: {e}"))
-        })?;
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Llm(format!("Failed to parse Anthropic response: {e}")))?;
 
         // Extract text from response content blocks
         let plan_text = extract_text_from_response(&data);
@@ -160,8 +159,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
             GoalExecutionPrompt::messages(&goal.content, &step_list, work_dir);
 
         // Try the Claude CLI first (preferred — it has tool use built in)
-        match execute_via_cli(&model, &api_key, &system_msg, &user_msg, work_dir).await
-        {
+        match execute_via_cli(&model, &api_key, &system_msg, &user_msg, work_dir).await {
             Ok(result) => {
                 info!(
                     goal_id = %goal.id,
@@ -181,15 +179,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
         }
 
         // Fallback: call Anthropic Messages API directly (no tool use)
-        execute_via_api(
-            &self.http_client,
-            &model,
-            &api_key,
-            &system_msg,
-            &user_msg,
-            work_dir,
-        )
-        .await
+        execute_via_api(&self.http_client, &model, &api_key, &system_msg, &user_msg).await
     }
 }
 
@@ -203,13 +193,10 @@ async fn execute_via_cli(
     user_message: &str,
     work_dir: &Path,
 ) -> Result<GoalExecutionResult, AppError> {
-    let claude_bin = which::which("claude").map_err(|e| {
-        AppError::Tool(format!("claude CLI not found: {e}"))
-    })?;
+    let claude_bin =
+        which::which("claude").map_err(|e| AppError::Tool(format!("claude CLI not found: {e}")))?;
 
-    let prompt = format!(
-        "System: {system_prompt}\n\n{user_message}"
-    );
+    let prompt = format!("System: {system_prompt}\n\n{user_message}");
 
     let mut cmd = tokio::process::Command::new(claude_bin);
     cmd.arg("--model")
@@ -229,9 +216,9 @@ async fn execute_via_cli(
     // Bypass nested-session guard
     cmd.env("CLAUDECODE", "");
 
-    let mut child = cmd.spawn().map_err(|e| {
-        AppError::Tool(format!("Failed to spawn claude CLI: {e}"))
-    })?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| AppError::Tool(format!("Failed to spawn claude CLI: {e}")))?;
 
     // Write prompt to stdin
     if let Some(mut stdin) = child.stdin.take() {
@@ -240,9 +227,10 @@ async fn execute_via_cli(
         drop(stdin);
     }
 
-    let output = child.wait_with_output().await.map_err(|e| {
-        AppError::Tool(format!("claude CLI execution failed: {e}"))
-    })?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| AppError::Tool(format!("claude CLI execution failed: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -253,14 +241,12 @@ async fn execute_via_cli(
         Ok(GoalExecutionResult {
             success: true,
             output: result_text,
-            work_dir: work_dir.to_path_buf(),
             error: None,
         })
     } else {
         Ok(GoalExecutionResult {
             success: false,
             output: stdout,
-            work_dir: work_dir.to_path_buf(),
             error: Some(if stderr.is_empty() {
                 format!("claude CLI exited with status {}", output.status)
             } else {
@@ -306,7 +292,6 @@ async fn execute_via_api(
     api_key: &str,
     system_msg: &str,
     user_msg: &str,
-    work_dir: &Path,
 ) -> Result<GoalExecutionResult, AppError> {
     if api_key.is_empty() {
         return Err(AppError::Config(
@@ -337,21 +322,20 @@ async fn execute_via_api(
         return Ok(GoalExecutionResult {
             success: false,
             output: String::new(),
-            work_dir: work_dir.to_path_buf(),
             error: Some(format!("Anthropic API error {status}: {text}")),
         });
     }
 
-    let data: serde_json::Value = resp.json().await.map_err(|e| {
-        AppError::Llm(format!("Failed to parse Anthropic response: {e}"))
-    })?;
+    let data: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Llm(format!("Failed to parse Anthropic response: {e}")))?;
 
     let output = extract_text_from_response(&data);
 
     Ok(GoalExecutionResult {
         success: true,
         output,
-        work_dir: work_dir.to_path_buf(),
         error: None,
     })
 }
@@ -423,9 +407,9 @@ fn parse_plan(plan_text: &str, max_steps: u32) -> Vec<PlanStep> {
         .take(max_steps as usize)
         .enumerate()
         .filter_map(|(i, line)| {
-            let content = line
-                .trim()
-                .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == ')' || c == ' ');
+            let content = line.trim().trim_start_matches(|c: char| {
+                c.is_ascii_digit() || c == '.' || c == '-' || c == ')' || c == ' '
+            });
             if content.is_empty() {
                 None
             } else {
@@ -453,34 +437,4 @@ fn strip_code_fences(text: &str) -> String {
         }
     }
     text.to_string()
-}
-
-/// Slugify a string for use as a directory name.
-fn slugify(input: &str) -> String {
-    let slug: String = input
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
-        .collect();
-    // Collapse multiple dashes
-    let mut result = String::new();
-    let mut prev_dash = false;
-    for c in slug.chars() {
-        if c == '-' {
-            if !prev_dash && !result.is_empty() {
-                result.push('-');
-            }
-            prev_dash = true;
-        } else {
-            result.push(c);
-            prev_dash = false;
-        }
-    }
-    // Trim trailing dash and limit length
-    let trimmed = result.trim_end_matches('-');
-    if trimmed.len() > 50 {
-        trimmed[..50].trim_end_matches('-').to_string()
-    } else {
-        trimmed.to_string()
-    }
 }

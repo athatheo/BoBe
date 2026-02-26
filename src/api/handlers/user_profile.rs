@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
-use crate::models::user_profile::UserProfile;
 use crate::error::AppError;
+use crate::models::user_profile::UserProfile;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 

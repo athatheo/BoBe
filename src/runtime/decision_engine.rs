@@ -10,15 +10,13 @@ use serde_json::Value;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::db::ObservationRepository;
+use crate::llm::LlmProvider;
 use crate::runtime::prompts::decision::DecisionPrompt;
 use crate::runtime::prompts::goal_decision::GoalDecisionPrompt;
-use crate::runtime::state::{
-    Decision, TriggerContext, TriggerType,
-};
+use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
-use crate::llm::LlmProvider;
-use crate::db::ObservationRepository;
 
 pub struct DecisionEngine {
     llm: Arc<dyn LlmProvider>,
@@ -71,8 +69,7 @@ impl DecisionEngine {
 
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout =
-                Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
+            let timeout = Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!(
@@ -174,8 +171,7 @@ impl DecisionEngine {
 
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout =
-                Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
+            let timeout = Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!("decision_engine.goal_blocked_by_conversation");
@@ -394,11 +390,5 @@ impl DecisionEngine {
         } else {
             obs.content.clone()
         }
-    }
-
-    /// User messages always get a response.
-    #[allow(dead_code)]
-    pub async fn decide_for_message(&self, _user_message: &str) -> Decision {
-        Decision::Engage
     }
 }

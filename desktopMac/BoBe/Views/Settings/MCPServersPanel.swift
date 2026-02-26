@@ -144,13 +144,11 @@ struct MCPServersPanel: View {
                     Text("Environment Variables (JSON)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    TextEditor(text: $newEnv)
-                        .font(.system(size: 12, design: .monospaced))
+                    CodeEditor(text: $newEnv, theme: theme, fontSize: 12)
                         .frame(height: 80)
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
+                                .fill(theme.colors.surface)
                                 .stroke(theme.colors.border, lineWidth: 1)
                         )
                 }

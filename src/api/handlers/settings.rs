@@ -175,8 +175,8 @@ pub async fn update_settings(
 ) -> Result<Json<SettingsUpdateResponse>, AppError> {
     // Validate llm_backend early (before passing to ConfigManager).
     if let Some(ref v) = body.llm_backend {
-        let _: LlmBackend = serde_json::from_value(serde_json::Value::String(v.clone()))
-            .map_err(|_| {
+        let _: LlmBackend =
+            serde_json::from_value(serde_json::Value::String(v.clone())).map_err(|_| {
                 AppError::Validation(format!(
                     "Invalid llm_backend '{v}'. Valid: ollama, openai, azure_openai, llamacpp"
                 ))

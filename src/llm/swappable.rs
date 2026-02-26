@@ -21,8 +21,9 @@ use async_trait::async_trait;
 use futures::Stream;
 
 use crate::error::AppError;
-use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
+use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
+use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
 /// A [`LlmProvider`] that delegates every call to whatever provider is
 /// currently stored in the inner [`ArcSwap`].
@@ -89,5 +90,38 @@ impl LlmProvider for SwappableLlmProvider {
 
     fn supports_tools(&self) -> bool {
         self.inner.load().supports_tools()
+    }
+}
+
+/// A [`EmbeddingProvider`] that delegates every call to the provider currently
+/// stored in an inner [`ArcSwap`].
+pub struct SwappableEmbeddingProvider {
+    inner: Arc<ArcSwap<Arc<dyn EmbeddingProvider>>>,
+}
+
+impl SwappableEmbeddingProvider {
+    pub fn new(
+        initial: Arc<dyn EmbeddingProvider>,
+    ) -> (Self, Arc<ArcSwap<Arc<dyn EmbeddingProvider>>>) {
+        let swappable = Arc::new(ArcSwap::from_pointee(initial));
+        let provider = Self {
+            inner: swappable.clone(),
+        };
+        (provider, swappable)
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for SwappableEmbeddingProvider {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, AppError> {
+        self.inner.load().embed(text).await
+    }
+
+    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, AppError> {
+        self.inner.load().embed_batch(texts).await
+    }
+
+    fn dimension(&self) -> usize {
+        self.inner.load().dimension()
     }
 }

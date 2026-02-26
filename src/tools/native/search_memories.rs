@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::db::MemoryRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
-use crate::db::MemoryRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 pub struct SearchMemoriesTool {
     memory_repo: Arc<dyn MemoryRepository>,
@@ -52,10 +52,6 @@ impl NativeTool for SearchMemoriesTool {
             },
             "required": ["query"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

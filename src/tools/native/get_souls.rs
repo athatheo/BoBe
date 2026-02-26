@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
-use crate::error::AppError;
 use crate::db::SoulRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::tools::ToolExecutionContext;
 
 pub struct GetSoulsTool {
     soul_repo: Arc<dyn SoulRepository>,
@@ -34,10 +34,6 @@ impl NativeTool for GetSoulsTool {
             "properties": {},
             "required": []
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

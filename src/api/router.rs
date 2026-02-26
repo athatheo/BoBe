@@ -4,7 +4,6 @@ use axum::{
 };
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::trace::TraceLayer;
 
 use super::handlers;
 use super::middleware::{AllowedHosts, host_validation, request_logging};
@@ -196,16 +195,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Tools (MCP sub-routes before wildcard)
         .route(
             "/tools/mcp",
-            get(handlers::tools::list_mcp_servers)
-                .post(handlers::tools::add_mcp_server),
+            get(handlers::tools_mcp::list_mcp_servers)
+                .post(handlers::tools_mcp::add_mcp_server),
         )
         .route(
             "/tools/mcp/{server_name}",
-            delete(handlers::tools::remove_mcp_server),
+            delete(handlers::tools_mcp::remove_mcp_server)
+                .patch(handlers::tools_mcp::update_mcp_server),
         )
         .route(
             "/tools/mcp/{server_name}/reconnect",
-            post(handlers::tools::reconnect_mcp_server),
+            post(handlers::tools_mcp::reconnect_mcp_server),
         )
         .route("/tools", get(handlers::tools::list_tools))
         .route(
@@ -221,10 +221,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::tools::disable_tool),
         )
         // Goal Worker
-        .route(
-            "/goal-worker/action-response",
-            post(handlers::goal_worker::submit_action_response),
-        )
         .route(
             "/goal-plans",
             get(handlers::goal_worker::list_goal_plans),
@@ -258,6 +254,5 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

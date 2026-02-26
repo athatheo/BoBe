@@ -23,7 +23,6 @@
 //!   > Noticed you debugging asyncio issues frequently (2026-02-01)
 //! ```
 
-use chrono::NaiveDate;
 use regex::Regex;
 
 /// A goal parsed from GOALS.md.
@@ -100,71 +99,6 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
     }
 
     goals
-}
-
-/// Format an inferred goal for appending to GOALS.md.
-#[allow(dead_code)]
-pub fn format_inferred_goal(content: &str, reason: &str, goal_date: NaiveDate) -> String {
-    format!("- [ ] {content}\n  > {reason} ({})\n", goal_date)
-}
-
-/// Format a complete GOALS.md file.
-#[allow(dead_code)]
-pub fn format_goals_file(
-    high_priority: &[(String, bool)],
-    medium_priority: &[(String, bool)],
-    low_priority: &[(String, bool)],
-    completed: &[String],
-    inferred: &[(String, String, NaiveDate)],
-) -> String {
-    fn format_goal(content: &str, is_completed: bool) -> String {
-        let checkbox = if is_completed { "[x]" } else { "[ ]" };
-        format!("- {checkbox} {content}")
-    }
-
-    let mut sections = vec!["# My Goals\n".to_owned()];
-
-    if !high_priority.is_empty() {
-        sections.push("## High Priority".to_owned());
-        for (content, completed_flag) in high_priority {
-            sections.push(format_goal(content, *completed_flag));
-        }
-        sections.push(String::new());
-    }
-
-    if !medium_priority.is_empty() {
-        sections.push("## Medium Priority".to_owned());
-        for (content, completed_flag) in medium_priority {
-            sections.push(format_goal(content, *completed_flag));
-        }
-        sections.push(String::new());
-    }
-
-    if !low_priority.is_empty() {
-        sections.push("## Low Priority".to_owned());
-        for (content, completed_flag) in low_priority {
-            sections.push(format_goal(content, *completed_flag));
-        }
-        sections.push(String::new());
-    }
-
-    if !completed.is_empty() {
-        sections.push("## Completed".to_owned());
-        for content in completed {
-            sections.push(format!("- [x] {content}"));
-        }
-        sections.push(String::new());
-    }
-
-    if !inferred.is_empty() {
-        sections.push("---".to_owned());
-        sections.push("## Inferred by BoBe\n".to_owned());
-        for (content, reason, date) in inferred {
-            sections.push(format_inferred_goal(content, reason, *date));
-        }
-    }
-
-    sections.join("\n")
 }
 
 #[cfg(test)]

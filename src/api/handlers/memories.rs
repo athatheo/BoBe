@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
+use crate::error::AppError;
 use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
-use crate::error::AppError;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 

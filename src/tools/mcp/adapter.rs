@@ -6,22 +6,20 @@ use tracing::{debug, info, warn};
 
 use super::client::{McpClient, McpToolInfo};
 use super::config::{McpParsedServer, load_default_mcp_config};
-use crate::models::mcp_server_config::McpServerConfig;
+use crate::db::McpConfigRepository;
 use crate::error::AppError;
 use crate::llm::types::{AiToolCall, ToolDefinition};
-use crate::db::McpConfigRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext, ToolResult, ToolSource};
+use crate::models::mcp_server_config::McpServerConfig;
+use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 
 const TOOL_NAME_SEPARATOR: &str = "__";
 
 /// Manages multiple MCP server connections and exposes their tools.
-#[allow(dead_code)]
 pub struct McpToolAdapter {
     clients: RwLock<HashMap<String, Arc<McpClient>>>,
     tool_to_server: RwLock<HashMap<String, String>>,
     server_configs: RwLock<HashMap<String, McpParsedServer>>,
     config_repo: Option<Arc<dyn McpConfigRepository>>,
-    categories: Vec<ToolCategory>,
     blocked_commands: Vec<String>,
     dangerous_env_keys: Vec<String>,
 }
@@ -37,7 +35,6 @@ impl McpToolAdapter {
             tool_to_server: RwLock::new(HashMap::new()),
             server_configs: RwLock::new(HashMap::new()),
             config_repo,
-            categories: vec![ToolCategory::Mcp],
             blocked_commands,
             dangerous_env_keys,
         }
@@ -243,10 +240,6 @@ impl ToolSource for McpToolAdapter {
         "mcp"
     }
 
-    fn categories(&self) -> &[ToolCategory] {
-        &self.categories
-    }
-
     async fn get_tools(&self, _include_disabled: bool) -> Result<Vec<ToolDefinition>, AppError> {
         let clients = self.clients.read().await;
         let mut all_defs = Vec::new();
@@ -353,19 +346,6 @@ impl ToolSource for McpToolAdapter {
             ),
         }
     }
-
-    async fn health_check(&self) -> bool {
-        let clients = self.clients.read().await;
-        if clients.is_empty() {
-            return true;
-        }
-        for client in clients.values() {
-            if client.health_check().await {
-                return true;
-            }
-        }
-        false
-    }
 }
 
 fn prefix_tool_name(server_name: &str, tool_name: &str) -> String {
@@ -386,7 +366,6 @@ pub fn db_config_to_parsed(c: &McpServerConfig) -> McpParsedServer {
         command: c.command.clone(),
         args: c.args_vec(),
         env: c.env_map(),
-        enabled: c.enabled,
         timeout_seconds: c.timeout_seconds,
         excluded_tools: c
             .excluded_tools

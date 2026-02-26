@@ -1,4 +1,7 @@
 import SwiftUI
+import OSLog
+
+private let logger = Logger(subsystem: "com.bobe.app", category: "PrivacyPanel")
 
 /// Privacy settings panel — data size display and danger zone.
 /// Based on PrivacySettings.tsx with beige data container and red danger zone.
@@ -107,11 +110,9 @@ struct PrivacyPanel: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let url = URL(string: "http://localhost:8766/app/data-size")!
-            let (data, _) = try await URLSession.shared.data(from: url)
-            dataSize = try JSONDecoder().decode(DataSizeResponse.self, from: data)
+            dataSize = try await DaemonClient.shared.getDataSize()
         } catch {
-            // Silently fail — data size is informational
+            logger.warning("Failed to load data size: \(error.localizedDescription)")
         }
     }
 
@@ -125,10 +126,28 @@ struct PrivacyPanel: View {
 
         if alert.runModal() == .alertFirstButtonReturn {
             Task {
-                _ = try? await URLSession.shared.data(for: URLRequest(url: URL(string: "http://localhost:8766/app/delete-all-data")!))
-                NSApplication.shared.terminate(nil)
+                do {
+                    try await DaemonClient.shared.deleteAllData()
+                    await MainActor.run {
+                        NSApplication.shared.terminate(nil)
+                    }
+                } catch {
+                    await MainActor.run {
+                        showDeleteError(error.localizedDescription)
+                    }
+                }
             }
         }
+    }
+
+    @MainActor
+    private func showDeleteError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Delete failed"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 

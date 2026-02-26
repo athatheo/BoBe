@@ -18,17 +18,6 @@ pub struct GoalIdRequest {
     pub goal_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ActionResponseRequest {
-    pub request_id: String,
-    pub response: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ActionResponseResult {
-    pub delivered: bool,
-}
-
 #[derive(Debug, Serialize)]
 pub struct GoalPlanResponse {
     pub id: String,
@@ -107,19 +96,6 @@ fn step_to_response(step: &GoalPlanStep) -> GoalPlanStepResponse {
 
 // ── Handlers ────────────────────────────────────────────────────────────────
 
-/// POST /api/goal-worker/action-response
-pub async fn submit_action_response(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<ActionResponseRequest>,
-) -> Result<Json<ActionResponseResult>, AppError> {
-    let delivered = state
-        .ask_user_bridge
-        .submit_response(&body.request_id, body.response)
-        .await?;
-
-    Ok(Json(ActionResponseResult { delivered }))
-}
-
 /// GET /api/goal-plans
 pub async fn list_goal_plans(
     State(state): State<Arc<AppState>>,
@@ -135,10 +111,8 @@ pub async fn list_goal_plans(
     };
 
     let count = plans.len();
-    let responses: Vec<GoalPlanResponse> = plans
-        .iter()
-        .map(|p| plan_to_response(p, None))
-        .collect();
+    let responses: Vec<GoalPlanResponse> =
+        plans.iter().map(|p| plan_to_response(p, None)).collect();
 
     Ok(Json(GoalPlanListResponse {
         plans: responses,

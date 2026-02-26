@@ -3,11 +3,9 @@
 //! Architecture:
 //! - `GoalExecutorProvider` trait: planning + execution backend (Claude SDK)
 //! - `GoalContextProvider` trait: assembles relevant context for a goal
-//! - `AskUserBridge`: in-memory SSE bridge for user interaction during execution
 //! - `GoalWorker`: single-goal lifecycle orchestrator
 //! - `GoalWorkerManager`: background loop managing concurrent goal workers
 
-pub mod ask_user;
 pub mod claude_provider;
 pub mod context_provider;
 pub mod manager;
@@ -37,7 +35,6 @@ pub struct PlanStep {
 pub struct GoalExecutionResult {
     pub success: bool,
     pub output: String,
-    pub work_dir: PathBuf,
     pub error: Option<String>,
 }
 

@@ -11,11 +11,11 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::models::goal::Goal;
-use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
+use crate::db::GoalRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
-use crate::db::GoalRepository;
+use crate::models::goal::Goal;
+use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 
 use super::goals_file_parser::parse_goals_file;
 
@@ -24,7 +24,6 @@ const MAX_GOALS_FILE_SIZE: u64 = 1024 * 1024;
 
 /// Result of syncing GOALS.md to database.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct SyncResult {
     pub created: u32,
     pub updated: u32,
@@ -93,12 +92,6 @@ impl GoalsService {
         Ok(goals)
     }
 
-    /// Get a goal by ID.
-    #[allow(dead_code)]
-    pub async fn get_by_id(&self, goal_id: Uuid) -> Result<Option<Goal>, AppError> {
-        self.repo.get_by_id(goal_id).await
-    }
-
     /// Semantic search for relevant goals.
     pub async fn get_by_embedding(
         &self,
@@ -133,24 +126,6 @@ impl GoalsService {
         Ok(goals)
     }
 
-    /// Update goal status (active/completed/archived).
-    #[allow(dead_code)]
-    pub async fn update_status(
-        &self,
-        goal_id: Uuid,
-        status: GoalStatus,
-    ) -> Result<Option<Goal>, AppError> {
-        let updated = self.repo.update_status(goal_id, Some(status), None).await?;
-        if updated.is_some() {
-            info!(
-                goal_id = %goal_id,
-                new_status = status.as_str(),
-                "goals_service.status_updated"
-            );
-        }
-        Ok(updated)
-    }
-
     /// Update a goal's content and re-generate its embedding.
     pub async fn update_content(
         &self,
@@ -177,24 +152,6 @@ impl GoalsService {
             "goals_service.content_updated"
         );
         Ok(Some(updated))
-    }
-
-    /// Check if a similar goal already exists (for deduplication).
-    #[allow(dead_code)]
-    pub async fn find_similar(
-        &self,
-        content: &str,
-        threshold: f64,
-    ) -> Result<Option<Goal>, AppError> {
-        let embedding_vec = self.embedding.embed(content).await?;
-        let results = self.repo.find_similar(&embedding_vec, 1, true).await?;
-
-        if let Some((goal, score)) = results.into_iter().next()
-            && score >= threshold
-        {
-            return Ok(Some(goal));
-        }
-        Ok(None)
     }
 
     /// Get all goals, optionally including archived.
@@ -319,42 +276,6 @@ impl GoalsService {
             updated, archived, "goals_service.sync_from_file.complete"
         );
         Ok(result)
-    }
-
-    /// Create GOALS.md with template if it doesn't exist.
-    #[allow(dead_code)]
-    pub fn ensure_goals_file_exists(&self) -> Result<(), AppError> {
-        let cfg = self.config.load();
-        let goals_file = cfg.resolved_goals_file_path();
-        if goals_file.exists() {
-            return Ok(());
-        }
-
-        if let Some(parent) = goals_file.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let template = r#"# My Goals
-
-## High Priority
-- [ ]
-
-## Medium Priority
-- [ ]
-
-## Low Priority
-- [ ]
-
-## Completed
-- [x] Example completed goal
-
----
-## Inferred by BoBe
-
-"#;
-        std::fs::write(&goals_file, template)?;
-        info!(file_path = %goals_file.display(), "goals_service.created_template");
-        Ok(())
     }
 }
 

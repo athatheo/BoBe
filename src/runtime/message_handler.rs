@@ -10,21 +10,21 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::types::IndicatorType;
-use crate::tools::preselector::ToolPreselector;
-use crate::tools::registry::ToolRegistry;
-use crate::tools::tool_call_loop::ToolCallLoop;
+use crate::db::CooldownRepository;
+use crate::llm::LlmProvider;
+use crate::models::types::TurnRole;
 use crate::runtime::learners::MessageLearner;
 use crate::runtime::learners::types::LearnerObservation;
 use crate::runtime::prompts::response::UserResponsePrompt;
 use crate::runtime::response_streamer::{stream_llm_response, stream_response};
 use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
 use crate::services::conversation_service::ConversationService;
-use crate::models::types::TurnRole;
-use crate::llm::LlmProvider;
-use crate::db::CooldownRepository;
 use crate::tools::ToolExecutionContext;
+use crate::tools::preselector::ToolPreselector;
+use crate::tools::registry::ToolRegistry;
+use crate::tools::tool_call_loop::ToolCallLoop;
+use crate::util::sse::event_queue::EventQueue;
+use crate::util::sse::types::IndicatorType;
 
 pub struct MessageHandler {
     llm: Arc<dyn LlmProvider>,
@@ -221,8 +221,6 @@ impl MessageHandler {
 
         let tool_context = ToolExecutionContext {
             conversation_id: Some(conversation_id.to_string()),
-            message_id: Some(msg_id.to_string()),
-            user_message: Some(user_content.to_string()),
         };
 
         // Stream with or without tools

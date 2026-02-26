@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
-use crate::error::AppError;
 use crate::db::ObservationRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::tools::ToolExecutionContext;
 
 pub struct GetRecentContextTool {
     observation_repo: Arc<dyn ObservationRepository>,
@@ -40,10 +40,6 @@ impl NativeTool for GetRecentContextTool {
             },
             "required": []
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

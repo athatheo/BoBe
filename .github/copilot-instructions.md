@@ -49,6 +49,10 @@ Things that MUST be migrated (non-exhaustive):
 ### 4. Verify completeness by file audit
 Before declaring the migration complete, do a full `find ~/Repos/BoBe/ProactiveAI/src -name '*.py' -not -name '__init__.py'` and confirm every file has a Rust counterpart. No exceptions besides STT/TTS voice files.
 
+### 5. Use internet research critically
+For open questions, you may always check the internet for up-to-date information.
+Internet information can be wrong; never treat web answers as automatically correct — evaluate them critically, cross-check sources, and verify against the codebase before acting.
+
 ---
 
 ## Architecture Rules

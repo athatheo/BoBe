@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
-use crate::models::types::AgentJobStatus;
-use crate::error::AppError;
 use crate::db::AgentJobRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::models::types::AgentJobStatus;
+use crate::tools::ToolExecutionContext;
 
 pub struct ListCodingAgentsTool {
     agent_job_repo: Arc<dyn AgentJobRepository>,
@@ -35,10 +35,6 @@ impl NativeTool for ListCodingAgentsTool {
             "properties": {},
             "required": []
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::System
     }
 
     async fn execute(

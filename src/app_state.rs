@@ -3,23 +3,8 @@ use reqwest::Client;
 use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
 
-use crate::util::capture::ScreenCapture;
-use crate::llm::ollama_manager::OllamaManager;
-use crate::util::network::MdnsAnnouncer;
-use crate::util::sse::connection_manager::SseConnectionManager;
-use crate::util::sse::event_queue::EventQueue;
-use crate::tools::mcp::adapter::McpToolAdapter;
-use crate::tools::registry::ToolRegistry;
-use crate::runtime::learning::LearningLoop;
-use crate::runtime::session::RuntimeSession;
-use crate::services::context_assembler::ContextAssembler;
-use crate::services::conversation_service::ConversationService;
-use crate::services::goal_worker::ask_user::AskUserBridge;
-use crate::services::goals::goals_service::GoalsService;
-use crate::config_manager::ConfigManager;
 use crate::config::Config;
-use crate::llm::EmbeddingProvider;
-use crate::llm::LlmProvider;
+use crate::config_manager::ConfigManager;
 use crate::db::AgentJobRepository;
 use crate::db::ConversationRepository;
 use crate::db::CooldownRepository;
@@ -31,6 +16,20 @@ use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
 use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
+use crate::llm::EmbeddingProvider;
+use crate::llm::LlmProvider;
+use crate::llm::ollama_manager::OllamaManager;
+use crate::runtime::learning::LearningLoop;
+use crate::runtime::session::RuntimeSession;
+use crate::services::context_assembler::ContextAssembler;
+use crate::services::conversation_service::ConversationService;
+use crate::services::goals::goals_service::GoalsService;
+use crate::tools::mcp::adapter::McpToolAdapter;
+use crate::tools::registry::ToolRegistry;
+use crate::util::capture::ScreenCapture;
+use crate::util::network::MdnsAnnouncer;
+use crate::util::sse::connection_manager::SseConnectionManager;
+use crate::util::sse::event_queue::EventQueue;
 
 /// Shared application state passed through Axum extractors.
 #[allow(dead_code)]
@@ -67,7 +66,6 @@ pub struct AppState {
     pub ollama_manager: Arc<OllamaManager>,
     pub config_manager: Arc<ConfigManager>,
     pub mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
-    pub ask_user_bridge: Arc<AskUserBridge>,
     pub mdns_announcer: Arc<MdnsAnnouncer>,
 }
 

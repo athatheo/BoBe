@@ -2,17 +2,15 @@ import SwiftUI
 
 /// Settings category for sidebar navigation
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case overview
     case souls, goals, memories, userProfiles = "user-profiles"
     case tools, mcpServers = "mcp-servers"
-    case appearance, aiModel = "ai-model", behavior, goalWorker = "goal-worker", privacy
+    case appearance, aiModel = "ai-model", behavior, privacy
     case advanced
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .overview: "Overview"
         case .souls: "Souls"
         case .goals: "Goals"
         case .memories: "Memories"
@@ -22,7 +20,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .appearance: "Appearance"
         case .aiModel: "AI Model"
         case .behavior: "Behavior"
-        case .goalWorker: "Goal Worker"
         case .privacy: "Privacy"
         case .advanced: "For Nerds"
         }
@@ -30,7 +27,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .overview: "house.fill"
         case .souls: "sparkles"
         case .goals: "target"
         case .memories: "brain.head.profile"
@@ -40,7 +36,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .appearance: "paintpalette.fill"
         case .aiModel: "cpu.fill"
         case .behavior: "slider.horizontal.3"
-        case .goalWorker: "play.circle.fill"
         case .privacy: "shield.fill"
         case .advanced: "terminal.fill"
         }
@@ -48,10 +43,9 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     var group: SettingsCategoryGroup? {
         switch self {
-        case .overview: nil
         case .souls, .goals, .memories, .userProfiles: .context
         case .tools, .mcpServers: .integrations
-        case .appearance, .aiModel, .behavior, .goalWorker, .privacy: .preferences
+        case .appearance, .aiModel, .behavior, .privacy: .preferences
         case .advanced: .advanced
         }
     }
@@ -64,52 +58,76 @@ enum SettingsCategoryGroup: String, CaseIterable {
     case advanced = "ADVANCED"
 
     var categories: [SettingsCategory] {
-        SettingsCategory.allCases.filter { $0.group == self }
+        switch self {
+        case .context:
+            [.souls, .goals, .memories, .userProfiles]
+        case .integrations:
+            [.tools, .mcpServers]
+        case .preferences:
+            [.appearance, .aiModel, .behavior, .privacy]
+        case .advanced:
+            [.advanced]
+        }
     }
 }
 
 /// Main settings window view with sidebar + content
 struct SettingsWindow: View {
-    @State private var selectedCategory: SettingsCategory? = .overview
-    @Environment(\.theme) private var theme
+    @State private var selectedCategory: SettingsCategory? = nil
+    @State private var themeStore = ThemeStore.shared
+
+    private var theme: ThemeConfig { themeStore.currentTheme }
+    private var headerGradient: LinearGradient {
+        LinearGradient(
+            colors: [theme.colors.tertiary.opacity(0.25), theme.colors.border.opacity(0.2)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             settingsSidebar
-                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 240)
-        } detail: {
-            settingsContent
+                .frame(width: 220)
+
+            VStack(spacing: 0) {
+                settingsHeader
+                settingsContent
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.colors.background)
         }
+        .environment(\.theme, theme)
+        .preferredColorScheme(theme.isDark ? .dark : .light)
+        .background(theme.colors.background)
     }
 
     // MARK: - Sidebar (matches settings-sidebar CSS)
 
     private var settingsSidebar: some View {
         VStack(spacing: 0) {
-            // Header (80px with gradient)
-            VStack(spacing: 4) {
-                Text("BoBe")
-                    .font(.system(size: 20, weight: .bold))
+            // Header (80px with traffic-light clearance)
+            HStack {
+                Text("BOBE TUNING")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.2)
                     .foregroundStyle(theme.colors.primary)
-                Text("Settings")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(theme.colors.textMuted)
+                Spacer()
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
             .frame(maxWidth: .infinity)
             .frame(height: 80)
-            .background(
-                LinearGradient(
-                    colors: [theme.colors.background, theme.colors.border.opacity(0.3)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+            .background(headerGradient)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(theme.colors.border)
+                    .frame(height: 1)
+            }
 
             // Navigation list
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
                         VStack(alignment: .leading, spacing: 4) {
                             // Section label
@@ -117,7 +135,7 @@ struct SettingsWindow: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .tracking(1)
                                 .foregroundStyle(theme.colors.textMuted)
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, 20)
                                 .padding(.top, 4)
 
                             // Nav items
@@ -131,6 +149,11 @@ struct SettingsWindow: View {
             }
         }
         .background(theme.colors.background)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(theme.colors.border)
+                .frame(width: 1)
+        }
     }
 
     private func sidebarItem(_ category: SettingsCategory) -> some View {
@@ -146,19 +169,35 @@ struct SettingsWindow: View {
 
                 Text(category.label)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? theme.colors.text : theme.colors.textMuted)
+                    .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.text)
 
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? theme.colors.primary.opacity(0.1) : .clear)
+                isSelected ? theme.colors.border.opacity(0.8) : .clear
             )
-            .padding(.horizontal, 8)
         }
         .buttonStyle(.plain)
+    }
+
+    private var settingsHeader: some View {
+        HStack(alignment: .bottom) {
+            Text(selectedCategory?.label ?? "")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(theme.colors.text)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
+        .frame(height: 80)
+        .background(headerGradient)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(theme.colors.border)
+                .frame(height: 1)
+        }
     }
 
     // MARK: - Content
@@ -166,7 +205,7 @@ struct SettingsWindow: View {
     @ViewBuilder
     private var settingsContent: some View {
         switch selectedCategory {
-        case .overview, nil:
+        case nil:
             SettingsOverview(onNavigate: { selectedCategory = $0 })
         case .appearance:
             AppearancePanel()
@@ -178,8 +217,6 @@ struct SettingsWindow: View {
             AdvancedPanel()
         case .privacy:
             PrivacyPanel()
-        case .goalWorker:
-            GoalWorkerPanel()
         case .souls:
             SoulsEditor()
         case .goals:

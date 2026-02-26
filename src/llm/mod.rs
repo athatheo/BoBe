@@ -1,11 +1,11 @@
-pub mod types;
-pub mod providers;
 pub mod circuit_breaker;
-pub mod factory;
-pub mod shared;
-pub mod ollama_manager;
 pub mod embedding;
+pub mod factory;
+pub mod ollama_manager;
+pub mod providers;
+pub mod shared;
 pub mod swappable;
+pub mod types;
 
 // ─── Trait definitions ──────────────────────────────────────────────────────
 

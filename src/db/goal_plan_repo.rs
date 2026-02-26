@@ -76,10 +76,7 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
         .map_err(AppError::Database)
     }
 
-    async fn get_active_plan_for_goal(
-        &self,
-        goal_id: Uuid,
-    ) -> Result<Option<GoalPlan>, AppError> {
+    async fn get_active_plan_for_goal(&self, goal_id: Uuid) -> Result<Option<GoalPlan>, AppError> {
         sqlx::query_as::<_, GoalPlan>(
             "SELECT * FROM goal_plans WHERE goal_id = ?1 AND status IN ('approved', 'auto_approved', 'in_progress') ORDER BY created_at DESC LIMIT 1",
         )
@@ -114,15 +111,13 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
             .await
             .map_err(AppError::Database)?;
         } else {
-            sqlx::query(
-                "UPDATE goal_plans SET status = ?1, updated_at = ?2 WHERE id = ?3",
-            )
-            .bind(status.as_str())
-            .bind(now)
-            .bind(plan_id)
-            .execute(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+            sqlx::query("UPDATE goal_plans SET status = ?1, updated_at = ?2 WHERE id = ?3")
+                .bind(status.as_str())
+                .bind(now)
+                .bind(plan_id)
+                .execute(&self.pool)
+                .await
+                .map_err(AppError::Database)?;
         }
 
         info!(plan_id = %plan_id, status = %status, has_error = error.is_some(), "goal_plan_repo.status_updated");
@@ -197,13 +192,12 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
         result: Option<&str>,
         error: Option<&str>,
     ) -> Result<Option<GoalPlanStep>, AppError> {
-        let existing = sqlx::query_as::<_, GoalPlanStep>(
-            "SELECT * FROM goal_plan_steps WHERE id = ?1",
-        )
-        .bind(step_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        let existing =
+            sqlx::query_as::<_, GoalPlanStep>("SELECT * FROM goal_plan_steps WHERE id = ?1")
+                .bind(step_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(AppError::Database)?;
 
         if existing.is_none() {
             warn!(step_id = %step_id, "goal_plan_repo.update_step.not_found");
@@ -237,13 +231,11 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
 
         info!(step_id = %step_id, status = %status, "goal_plan_repo.step_updated");
 
-        sqlx::query_as::<_, GoalPlanStep>(
-            "SELECT * FROM goal_plan_steps WHERE id = ?1",
-        )
-        .bind(step_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)
+        sqlx::query_as::<_, GoalPlanStep>("SELECT * FROM goal_plan_steps WHERE id = ?1")
+            .bind(step_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::Database)
     }
 
     async fn get_steps_for_plan(&self, plan_id: Uuid) -> Result<Vec<GoalPlanStep>, AppError> {

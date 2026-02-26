@@ -1,30 +1,30 @@
 // ─── SQLite repository implementations ──────────────────────────────────────
 
+mod agent_job_repo;
 mod conversation_repo;
-mod memory_repo;
+mod cooldown_repo;
+mod goal_plan_repo;
 mod goal_repo;
+mod learning_state_repo;
+mod mcp_config_repo;
+mod memory_repo;
 mod observation_repo;
 mod soul_repo;
-mod agent_job_repo;
 mod user_profile_repo;
-mod learning_state_repo;
-mod cooldown_repo;
-mod mcp_config_repo;
-mod goal_plan_repo;
 
 pub mod seeding;
 
+pub use agent_job_repo::SqliteAgentJobRepo;
 pub use conversation_repo::SqliteConversationRepo;
-pub use memory_repo::SqliteMemoryRepo;
+pub use cooldown_repo::SqliteCooldownRepo;
+pub use goal_plan_repo::SqliteGoalPlanRepo;
 pub use goal_repo::SqliteGoalRepo;
+pub use learning_state_repo::SqliteLearningStateRepo;
+pub use mcp_config_repo::SqliteMcpConfigRepo;
+pub use memory_repo::SqliteMemoryRepo;
 pub use observation_repo::SqliteObservationRepo;
 pub use soul_repo::SqliteSoulRepo;
-pub use agent_job_repo::SqliteAgentJobRepo;
 pub use user_profile_repo::SqliteUserProfileRepo;
-pub use learning_state_repo::SqliteLearningStateRepo;
-pub use cooldown_repo::SqliteCooldownRepo;
-pub use mcp_config_repo::SqliteMcpConfigRepo;
-pub use goal_plan_repo::SqliteGoalPlanRepo;
 
 // ─── Repository trait definitions ───────────────────────────────────────────
 
@@ -79,7 +79,6 @@ pub trait ConversationRepository: Send + Sync {
         conversation_id: Uuid,
         limit: i64,
     ) -> Result<Vec<ConversationTurn>, AppError>;
-    async fn get_recent_turns(&self, limit: i64) -> Result<Vec<ConversationTurn>, AppError>;
     async fn get_recent_turns_by_role(
         &self,
         role: TurnRole,
@@ -302,10 +301,7 @@ pub trait GoalPlanRepository: Send + Sync {
     ) -> Result<GoalPlan, AppError>;
     async fn get_plan(&self, plan_id: Uuid) -> Result<Option<GoalPlan>, AppError>;
     async fn get_plans_for_goal(&self, goal_id: Uuid) -> Result<Vec<GoalPlan>, AppError>;
-    async fn get_active_plan_for_goal(
-        &self,
-        goal_id: Uuid,
-    ) -> Result<Option<GoalPlan>, AppError>;
+    async fn get_active_plan_for_goal(&self, goal_id: Uuid) -> Result<Option<GoalPlan>, AppError>;
     async fn update_plan_status(
         &self,
         plan_id: Uuid,

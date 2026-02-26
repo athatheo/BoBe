@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::base::NativeTool;
 use crate::error::AppError;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 const MAX_RESULTS: usize = 100;
 
@@ -98,10 +98,6 @@ impl NativeTool for SearchFilesTool {
             },
             "required": ["path", "query"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::FileSystem
     }
 
     async fn execute(

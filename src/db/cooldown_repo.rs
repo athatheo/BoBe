@@ -5,9 +5,9 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::models::cooldown::{Cooldown, CooldownInfo};
-use crate::error::AppError;
 use crate::db::CooldownRepository;
+use crate::error::AppError;
+use crate::models::cooldown::{Cooldown, CooldownInfo};
 
 /// SQLite cooldown repository.
 ///

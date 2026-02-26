@@ -206,7 +206,7 @@ impl Default for Config {
             vision_azure_openai_deployment: String::new(),
             embedding_model: "BAAI/bge-small-en-v1.5".into(),
             embedding_dimension: 384,
-            capture_interval_seconds: 240,
+            capture_interval_seconds: 45,
             capture_enabled: true,
             soul_file: None,
             checkin_enabled: true,

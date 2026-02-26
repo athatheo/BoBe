@@ -22,16 +22,16 @@ struct JsonRpcRequest {
 /// JSON-RPC response.
 #[derive(serde::Deserialize)]
 struct JsonRpcResponse {
-    #[allow(dead_code)]
-    id: Option<u64>,
+    #[serde(rename = "id")]
+    _id: Option<u64>,
     result: Option<Value>,
     error: Option<JsonRpcError>,
 }
 
 #[derive(serde::Deserialize)]
 struct JsonRpcError {
-    #[allow(dead_code)]
-    code: i64,
+    #[serde(rename = "code")]
+    _code: i64,
     message: String,
 }
 
@@ -61,11 +61,6 @@ impl McpClient {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn server_name(&self) -> &str {
-        &self.config.name
-    }
-
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Acquire)
     }
@@ -76,11 +71,6 @@ impl McpClient {
 
     pub fn timeout_seconds(&self) -> f64 {
         self.config.timeout_seconds
-    }
-
-    #[allow(dead_code)]
-    pub fn excluded_tools(&self) -> &[String] {
-        &self.config.excluded_tools
     }
 
     /// Spawn the MCP server process and initialize the session.
@@ -241,15 +231,6 @@ impl McpClient {
         }
 
         Ok((!is_error, content))
-    }
-
-    /// Health check: try listing tools or reconnect.
-    #[allow(dead_code)]
-    pub async fn health_check(&self) -> bool {
-        if !self.is_connected() {
-            return self.connect().await.is_ok();
-        }
-        self.list_tools().await.is_ok()
     }
 
     async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, AppError> {

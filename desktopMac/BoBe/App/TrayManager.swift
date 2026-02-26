@@ -51,14 +51,6 @@ final class TrayManager: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        // Capture toggle
-        let captureTitle = store.isCapturing ? "Stop Looking" : "Allow Looking"
-        let captureItem = NSMenuItem(title: captureTitle, action: #selector(toggleCapture), keyEquivalent: "l")
-        captureItem.target = self
-        menu.addItem(captureItem)
-
-        menu.addItem(.separator())
-
         // Show/Hide
         let overlayVisible = OverlayWindowManager.shared.isVisible
         let showHideTitle = overlayVisible ? "Hide BoBe" : "Show BoBe"
@@ -85,13 +77,6 @@ final class TrayManager: NSObject, NSMenuDelegate {
     // Rebuild menu every time it opens — always shows fresh state
     nonisolated func menuWillOpen(_ menu: NSMenu) {
         Task { @MainActor in
-            updateMenu()
-        }
-    }
-
-    @objc private func toggleCapture() {
-        Task {
-            _ = await store.toggleCapture()
             updateMenu()
         }
     }

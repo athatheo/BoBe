@@ -21,7 +21,6 @@ final class SettingsWindowManager {
         NSApp.setActivationPolicy(.regular)
 
         let settingsView = SettingsWindow()
-            .environment(\.theme, ThemeStore.shared.currentTheme)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1050, height: 720),

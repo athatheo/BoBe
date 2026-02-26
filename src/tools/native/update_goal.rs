@@ -5,10 +5,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::base::NativeTool;
-use crate::models::types::GoalStatus;
-use crate::error::AppError;
 use crate::db::GoalRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::models::types::GoalStatus;
+use crate::tools::ToolExecutionContext;
 
 pub struct UpdateGoalTool {
     goal_repo: Arc<dyn GoalRepository>,
@@ -46,10 +46,6 @@ impl NativeTool for UpdateGoalTool {
             },
             "required": ["goal_id", "status"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

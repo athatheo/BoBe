@@ -13,16 +13,16 @@ use chrono::{Duration, Utc};
 use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
-use crate::runtime::learners::{GoalLearner, MemoryConsolidator, MemoryLearner};
-use crate::services::conversation_service::ConversationService;
-use crate::services::goals::goals_service::GoalsService;
-use crate::models::learning_state::LearningState;
-use crate::models::types::{MemorySource, MemoryType, ObservationSource};
-use crate::llm::EmbeddingProvider;
 use crate::db::GoalRepository;
 use crate::db::LearningStateRepository;
 use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
+use crate::llm::EmbeddingProvider;
+use crate::models::learning_state::LearningState;
+use crate::models::types::{MemorySource, MemoryType, ObservationSource};
+use crate::runtime::learners::{GoalLearner, MemoryConsolidator, MemoryLearner};
+use crate::services::conversation_service::ConversationService;
+use crate::services::goals::goals_service::GoalsService;
 
 #[derive(Default)]
 struct ReEmbedStats {

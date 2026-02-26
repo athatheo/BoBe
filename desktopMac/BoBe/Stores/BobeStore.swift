@@ -159,7 +159,7 @@ final class BobeStore {
             if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
                 logger.error("Daemon error: \(payload.message)")
             }
-        case .heartbeat, .endOfTurn, .actionRequest, .unknown:
+        case .heartbeat, .endOfTurn, .unknown:
             break
         }
     }
@@ -237,11 +237,6 @@ final class BobeStore {
                     id: $0.id, sender: $0.sender, content: self.streamingMessage,
                     timestamp: $0.timestamp, isStreaming: false, isPending: false
                 ) : $0
-            }
-
-            // Trim to max visible
-            if ctx.messages.count > maxVisibleMessages {
-                ctx.messages = Array(ctx.messages.suffix(maxVisibleMessages))
             }
 
             ctx.lastMessage = self.streamingMessage

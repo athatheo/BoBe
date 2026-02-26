@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use tokio::sync::Notify;
 
+use super::factories::{heartbeat_event, indicator_event};
 use super::types::{IndicatorType, StreamBundle};
 
 /// Bounded async queue for SSE events.
@@ -29,7 +30,7 @@ impl EventQueue {
 
     /// Push an event into the queue. Drops oldest if full.
     pub fn push(&self, event: StreamBundle) {
-        let mut queue = self.inner.lock().unwrap();
+        let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
         if queue.len() >= self.max_size {
             queue.pop_front();
             tracing::warn!("SSE event queue overflow, dropping oldest event");
@@ -45,7 +46,7 @@ impl EventQueue {
             // Register for notification BEFORE checking queue to avoid race
             let notified = self.notify.notified();
             {
-                let mut queue = self.inner.lock().unwrap();
+                let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
                 if let Some(event) = queue.pop_front() {
                     return event;
                 }
@@ -56,51 +57,47 @@ impl EventQueue {
 
     /// Get the current indicator state (for reconnection).
     pub fn current_indicator(&self) -> IndicatorType {
-        *self.current_indicator.lock().unwrap()
+        *lock_or_recover(&self.current_indicator, "event_queue.current_indicator")
     }
 
     /// Set the current indicator state and push an indicator event.
     pub fn set_indicator(&self, indicator: IndicatorType) {
-        *self.current_indicator.lock().unwrap() = indicator;
-        // Push indicator event so ConnectionManager stays in sync
-        use super::types::EventType;
-        let event = StreamBundle {
-            event_type: EventType::Indicator,
-            message_id: String::new(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            description: format!("{:?}", indicator),
-            payload: serde_json::json!({ "indicator": indicator }),
-        };
-        self.push(event);
+        *lock_or_recover(&self.current_indicator, "event_queue.current_indicator") = indicator;
+        self.push(indicator_event(indicator, None));
     }
 
     /// Number of events currently in the queue.
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
-        self.inner.lock().unwrap().len()
+        lock_or_recover(&self.inner, "event_queue.inner").len()
     }
 
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
-        self.inner.lock().unwrap().is_empty()
+        lock_or_recover(&self.inner, "event_queue.inner").is_empty()
     }
 
     /// Drain all events from the queue.
     pub fn clear(&self) -> Vec<StreamBundle> {
-        let mut queue = self.inner.lock().unwrap();
+        let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
         queue.drain(..).collect()
     }
 
     /// Push a heartbeat event.
     pub fn push_heartbeat(&self) {
-        use super::types::EventType;
-        let event = StreamBundle {
-            event_type: EventType::Heartbeat,
-            message_id: String::new(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            description: "heartbeat".to_owned(),
-            payload: serde_json::json!({}),
-        };
-        self.push(event);
+        self.push(heartbeat_event());
+    }
+}
+
+fn lock_or_recover<'a, T>(
+    mutex: &'a Mutex<T>,
+    lock_name: &'static str,
+) -> std::sync::MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::error!(lock = lock_name, "mutex poisoned, recovering");
+            poisoned.into_inner()
+        }
     }
 }

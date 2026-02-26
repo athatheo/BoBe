@@ -16,10 +16,35 @@ struct ChatStack: View {
         max(0, messages.count - 2)
     }
 
+    private var shouldShowToggle: Bool {
+        isExpanded || hiddenCount > 0
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            // Messages
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 8) {
+                        ForEach(visibleMessages) { message in
+                            ChatBubble(message: message)
+                                .id(message.id)
+                        }
+                    }
+                    .padding(.top, isExpanded ? 4 : 0)
+                }
+                .onChange(of: messages.count) { _, _ in
+                    if let last = visibleMessages.last {
+                        withAnimation {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+                .frame(maxHeight: isExpanded ? 520 : 420)
+            }
+
             // Expand/collapse button (chat-expand-button)
-            if hiddenCount > 0 {
+            if shouldShowToggle {
                 Button {
                     withAnimation(.spring(duration: 0.3, bounce: 0.1)) {
                         isExpanded.toggle()
@@ -28,7 +53,7 @@ struct ChatStack: View {
                     HStack(spacing: 4) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
                             .font(.system(size: 8))
-                        Text(isExpanded ? "Show less" : "\(hiddenCount) more")
+                        Text(isExpanded ? "collapse" : "+\(hiddenCount) more")
                             .font(.system(size: 10, weight: .medium))
                     }
                     .foregroundStyle(theme.colors.textMuted)
@@ -45,28 +70,7 @@ struct ChatStack: View {
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 8)
-            }
-
-            // Messages
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 8) {
-                        ForEach(visibleMessages) { message in
-                            ChatBubble(message: message)
-                                .id(message.id)
-                        }
-                    }
-                    .padding(.top, isExpanded ? 4 : 0)
-                }
-                .frame(maxHeight: isExpanded ? 280 : .infinity)
-                .onChange(of: messages.count) { _, _ in
-                    if let last = visibleMessages.last {
-                        withAnimation {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
+                .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity)
@@ -81,7 +85,7 @@ struct ChatBubble: View {
     @Environment(\.theme) private var theme
 
     private var isUser: Bool { message.sender == .user }
-    private var isPending: Bool { message.content.isEmpty && !isUser }
+    private var isPending: Bool { message.isPending }
     private var accentColor: Color {
         isUser ? theme.colors.secondary : theme.colors.primary
     }
@@ -100,31 +104,31 @@ struct ChatBubble: View {
                 // Content area (padding: 8px 12px 10px)
                 VStack(alignment: .leading, spacing: 0) {
                     // Sender label (9px semibold uppercase)
-                    Text(isUser ? "YOU" : "BOBE")
-                        .font(.system(size: 9, weight: .semibold))
-                        .tracking(0.8)
-                        .textCase(.uppercase)
-                        .foregroundStyle(accentColor)
-                        .padding(.bottom, 2)
+                    HStack(spacing: 0) {
+                        Text(isUser ? "you" : "bobe")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(0.8)
+                            .textCase(.uppercase)
+                            .foregroundStyle(accentColor)
+                        if isPending {
+                            Text(" - sending...")
+                                .font(.system(size: 8))
+                                .italic()
+                                .foregroundStyle(theme.colors.textMuted)
+                        }
+                    }
+                    .padding(.bottom, 2)
 
                     // Message text (12px)
-                    if isPending {
-                        Text("thinking...")
-                            .font(.system(size: 8))
-                            .italic()
-                            .foregroundStyle(theme.colors.textMuted)
-                            .opacity(0.5)
-                    } else {
-                        HStack(spacing: 0) {
-                            Text(message.content)
-                                .font(.system(size: 12))
-                                .lineSpacing(2)
-                                .foregroundStyle(theme.colors.text)
-                                .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 0) {
+                        Text(message.content)
+                            .font(.system(size: 12))
+                            .lineSpacing(2)
+                            .foregroundStyle(theme.colors.text)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                            if message.isStreaming {
-                                BlinkingCursor(color: theme.colors.primary)
-                            }
+                        if message.isStreaming {
+                            BlinkingCursor(color: theme.colors.primary)
                         }
                     }
                 }
@@ -142,8 +146,8 @@ struct ChatBubble: View {
                     .stroke(theme.colors.border, lineWidth: 1.5)
             )
             .shadow(color: Color(hex: "3A3A3A").opacity(0.06), radius: 4, y: 2)
-            // max-width: 80% for bobe, 70% for user (out of ~300px container)
-            .frame(maxWidth: isUser ? 210 : 240, alignment: isUser ? .trailing : .leading)
+            .opacity(isPending ? 0.5 : 1)
+            .frame(maxWidth: isUser ? 410 : 460, alignment: isUser ? .trailing : .leading)
             .transition(.asymmetric(
                 insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.95)),
                 removal: .opacity
@@ -161,7 +165,7 @@ struct BlinkingCursor: View {
     @State private var visible = true
 
     var body: some View {
-        Text("▌")
+        Text("|")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(color)
             .opacity(visible ? 1 : 0)

@@ -6,69 +6,26 @@ use tracing::{debug, warn};
 use super::base::NativeTool;
 use crate::error::AppError;
 use crate::llm::types::{AiToolCall, ToolDefinition};
-use crate::tools::{ToolCategory, ToolExecutionContext, ToolResult, ToolSource};
+use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 
 /// Aggregates all BoBe native tools as a single ToolSource.
-#[allow(dead_code)]
 pub struct NativeToolAdapter {
     tools: HashMap<String, Arc<dyn NativeTool>>,
-    categories: Vec<ToolCategory>,
     disabled_tools: std::sync::RwLock<std::collections::HashSet<String>>,
 }
 
 impl NativeToolAdapter {
     pub fn new(tools: Vec<Arc<dyn NativeTool>>) -> Self {
-        let mut categories = std::collections::HashSet::new();
         let mut map = HashMap::new();
 
         for tool in tools {
-            categories.insert(tool.category());
             map.insert(tool.name().to_owned(), tool);
         }
 
-        let cats: Vec<ToolCategory> = categories.into_iter().collect();
-
         Self {
             tools: map,
-            categories: cats,
             disabled_tools: std::sync::RwLock::new(std::collections::HashSet::new()),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn enable_tool(&self, name: &str) -> bool {
-        if !self.tools.contains_key(name) {
-            return false;
-        }
-        let mut disabled = self.disabled_tools.write().unwrap();
-        disabled.remove(name)
-    }
-
-    #[allow(dead_code)]
-    pub fn disable_tool(&self, name: &str) -> bool {
-        if !self.tools.contains_key(name) {
-            return false;
-        }
-        let mut disabled = self.disabled_tools.write().unwrap();
-        disabled.insert(name.to_owned())
-    }
-
-    #[allow(dead_code)]
-    pub fn set_tool_enabled(&self, name: &str, enabled: bool) -> bool {
-        if enabled {
-            self.enable_tool(name)
-        } else {
-            self.disable_tool(name)
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn is_tool_enabled(&self, name: &str) -> Option<bool> {
-        if !self.tools.contains_key(name) {
-            return None;
-        }
-        let disabled = self.disabled_tools.read().unwrap();
-        Some(!disabled.contains(name))
     }
 
     pub fn tool_names(&self) -> Vec<String> {
@@ -82,12 +39,8 @@ impl ToolSource for NativeToolAdapter {
         "bobe"
     }
 
-    fn categories(&self) -> &[ToolCategory] {
-        &self.categories
-    }
-
     async fn get_tools(&self, include_disabled: bool) -> Result<Vec<ToolDefinition>, AppError> {
-        let disabled = self.disabled_tools.read().unwrap();
+        let disabled = read_lock_or_recover(&self.disabled_tools, "native_tool.disabled_tools");
         let defs: Vec<ToolDefinition> = self
             .tools
             .values()
@@ -120,7 +73,7 @@ impl ToolSource for NativeToolAdapter {
 
         // Check if disabled
         {
-            let disabled = self.disabled_tools.read().unwrap();
+            let disabled = read_lock_or_recover(&self.disabled_tools, "native_tool.disabled_tools");
             if disabled.contains(&tool_call.name) {
                 return ToolResult::err(
                     tool_call.id.clone(),
@@ -140,8 +93,17 @@ impl ToolSource for NativeToolAdapter {
             }
         }
     }
+}
 
-    async fn health_check(&self) -> bool {
-        true // Native tools are always in-process
+fn read_lock_or_recover<'a, T>(
+    lock: &'a std::sync::RwLock<T>,
+    lock_name: &'static str,
+) -> std::sync::RwLockReadGuard<'a, T> {
+    match lock.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(lock = lock_name, "rwlock poisoned on read, recovering");
+            poisoned.into_inner()
+        }
     }
 }

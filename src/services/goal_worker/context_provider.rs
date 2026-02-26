@@ -9,8 +9,8 @@ use tracing::{debug, warn};
 
 use crate::db::{GoalRepository, MemoryRepository, SoulRepository};
 use crate::error::AppError;
-use crate::models::goal::Goal;
 use crate::llm::EmbeddingProvider;
+use crate::models::goal::Goal;
 
 use super::GoalContextProvider;
 
@@ -51,21 +51,14 @@ impl GoalContextProvider for DefaultGoalContextProvider {
             Ok(embedding) => {
                 match self
                     .memory_repo
-                    .find_similar(
-                        &embedding,
-                        MEMORY_SEARCH_LIMIT,
-                        true,
-                        MEMORY_MIN_SCORE,
-                    )
+                    .find_similar(&embedding, MEMORY_SEARCH_LIMIT, true, MEMORY_MIN_SCORE)
                     .await
                 {
                     Ok(memories) if !memories.is_empty() => {
                         let mut mem_section = String::from("## Relevant Memories\n");
                         for (memory, score) in &memories {
-                            mem_section.push_str(&format!(
-                                "- [score: {:.2}] {}\n",
-                                score, memory.content
-                            ));
+                            mem_section
+                                .push_str(&format!("- [score: {:.2}] {}\n", score, memory.content));
                         }
                         sections.push(mem_section);
                         debug!(
@@ -98,17 +91,12 @@ impl GoalContextProvider for DefaultGoalContextProvider {
         // 2. Active goals (for awareness of other ongoing work)
         match self.goal_repo.find_active(true).await {
             Ok(active_goals) => {
-                let other_goals: Vec<&Goal> = active_goals
-                    .iter()
-                    .filter(|g| g.id != goal.id)
-                    .collect();
+                let other_goals: Vec<&Goal> =
+                    active_goals.iter().filter(|g| g.id != goal.id).collect();
                 if !other_goals.is_empty() {
                     let mut goals_section = String::from("## Other Active Goals\n");
                     for g in &other_goals {
-                        goals_section.push_str(&format!(
-                            "- [{}] {}\n",
-                            g.priority, g.content
-                        ));
+                        goals_section.push_str(&format!("- [{}] {}\n", g.priority, g.content));
                     }
                     sections.push(goals_section);
                 }

@@ -104,9 +104,12 @@ struct GoalsEditor: View {
                                 ))
                             }
                             .tag(goal.id)
+                            .listRowBackground(theme.colors.background)
                         }
                     }
-                    .listStyle(.bordered)
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(theme.colors.background)
                 }
             }
             .frame(minWidth: 220, idealWidth: 300)
@@ -184,10 +187,7 @@ struct GoalsEditor: View {
                     }
 
                     // Editor
-                    TextEditor(text: $editorContent)
-                        .font(.system(size: 13, design: .monospaced))
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
+                    CodeEditor(text: $editorContent, theme: theme, fontSize: 13)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(theme.colors.surface)

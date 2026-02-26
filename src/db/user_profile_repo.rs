@@ -3,9 +3,9 @@ use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::models::user_profile::UserProfile;
-use crate::error::AppError;
 use crate::db::UserProfileRepository;
+use crate::error::AppError;
+use crate::models::user_profile::UserProfile;
 
 pub struct SqliteUserProfileRepo {
     pool: SqlitePool,

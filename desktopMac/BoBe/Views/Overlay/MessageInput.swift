@@ -22,20 +22,6 @@ struct MessageInput: View {
 
                 // Content area: textarea + buttons (padding: 8px 12px)
                 HStack(alignment: .bottom, spacing: 8) {
-                    // Close button (inline, left side)
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(theme.colors.textMuted)
-                    }
-                    .buttonStyle(.plain)
-                    .frame(width: 24, height: 24)
-                    .background(
-                        Circle()
-                            .fill(Color.clear)
-                    )
-                    .contentShape(Circle())
-
                     // Text field (13px, flexible height)
                     TextField(
                         isThinking ? "Draft a reply while thinking..." : "Type a message...",
@@ -54,9 +40,9 @@ struct MessageInput: View {
                         return .handled
                     }
 
-                    // Thinking hint (when thinking and no text)
-                    if isThinking && text.isEmpty {
-                        Text("thinking...")
+                    // Thinking hint (shown while drafting during thinking)
+                    if isThinking && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("waiting...")
                             .font(.system(size: 11))
                             .foregroundStyle(theme.colors.textMuted)
                             .lineLimit(1)
@@ -77,6 +63,20 @@ struct MessageInput: View {
                             .fill(canSend ? theme.colors.secondary : theme.colors.border)
                     )
                     .disabled(!canSend)
+
+                    // Close button (inline, right side)
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(theme.colors.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        Circle()
+                            .fill(Color.clear)
+                    )
+                    .contentShape(Circle())
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)

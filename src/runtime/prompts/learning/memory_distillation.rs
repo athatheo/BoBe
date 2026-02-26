@@ -3,8 +3,8 @@
 use serde_json::json;
 use std::sync::LazyLock;
 
-use crate::runtime::prompts::base::PromptConfig;
 use crate::llm::types::{AiMessage, ResponseFormat};
+use crate::runtime::prompts::base::PromptConfig;
 
 /// JSON Schema for memory extraction output.
 pub static MEMORY_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {

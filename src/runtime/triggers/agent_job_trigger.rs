@@ -9,14 +9,14 @@ use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
 use crate::config::Config;
-use crate::runtime::prompts::agent_job_evaluation::AgentJobEvaluationPrompt;
-use crate::runtime::proactive_generator::ProactiveGenerator;
-use crate::runtime::state::Decision;
-use crate::services::agent_job_manager::AgentJobManager;
+use crate::db::AgentJobRepository;
+use crate::llm::LlmProvider;
 use crate::models::agent_job::AgentJob;
 use crate::models::types::AgentJobStatus;
-use crate::llm::LlmProvider;
-use crate::db::AgentJobRepository;
+use crate::runtime::proactive_generator::ProactiveGenerator;
+use crate::runtime::prompts::agent_job_evaluation::AgentJobEvaluationPrompt;
+use crate::runtime::state::Decision;
+use crate::services::agent_job_manager::AgentJobManager;
 
 /// Maximum continuation attempts before giving up.
 const MAX_CONTINUATIONS: i32 = 3;

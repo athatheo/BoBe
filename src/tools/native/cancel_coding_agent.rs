@@ -5,9 +5,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::base::NativeTool;
-use crate::error::AppError;
 use crate::db::AgentJobRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::error::AppError;
+use crate::tools::ToolExecutionContext;
 
 pub struct CancelCodingAgentTool {
     agent_job_repo: Arc<dyn AgentJobRepository>,
@@ -40,10 +40,6 @@ impl NativeTool for CancelCodingAgentTool {
             },
             "required": ["job_id"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::System
     }
 
     async fn execute(

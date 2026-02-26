@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::base::NativeTool;
 use crate::error::AppError;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 const DEFAULT_SEARCH_DIRS: &[&str] = &[
     "Repos",
@@ -55,10 +55,6 @@ impl NativeTool for DiscoverGitReposTool {
             },
             "required": []
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::System
     }
 
     async fn execute(

@@ -11,7 +11,7 @@ use super::executor::ToolExecutor;
 use crate::config::Config;
 use crate::error::AppError;
 use crate::llm::LlmProvider;
-use crate::llm::types::{AiMessage, AiResponse, StreamItem, ToolDefinition};
+use crate::llm::types::{AiMessage, StreamItem, ToolDefinition};
 use crate::tools::{ToolExecutionContext, ToolExecutionNotification, ToolNotification, ToolResult};
 
 /// Agentic loop: LLM → tool calls → results → LLM, until stop or max iterations.
@@ -32,76 +32,6 @@ impl ToolCallLoop {
             executor,
             config,
         }
-    }
-
-    /// Run the non-streaming tool call loop.
-    #[allow(dead_code)]
-    pub async fn run(
-        &self,
-        messages: &[AiMessage],
-        tools: &[ToolDefinition],
-        temperature: f32,
-        max_tokens: u32,
-        context: Option<&ToolExecutionContext>,
-    ) -> Result<AiResponse, AppError> {
-        let cfg = self.config.load();
-        let max_iterations = cfg.tools_max_iterations as usize;
-        let mut working_messages = messages.to_vec();
-
-        for iteration in 0..max_iterations {
-            debug!(iteration, "Tool call loop iteration");
-
-            let response = self
-                .llm
-                .complete(
-                    &working_messages,
-                    Some(tools),
-                    None,
-                    temperature,
-                    max_tokens,
-                )
-                .await?;
-
-            if response.finish_reason != "tool_calls" || response.message.tool_calls.is_empty() {
-                info!(
-                    iteration,
-                    finish_reason = %response.finish_reason,
-                    "Tool call loop completed"
-                );
-                return Ok(response);
-            }
-
-            let tool_calls = &response.message.tool_calls;
-            info!(
-                iteration,
-                tool_count = tool_calls.len(),
-                "Executing tool calls"
-            );
-
-            working_messages.push(AiMessage::assistant_with_tool_calls(tool_calls.clone()));
-
-            let results = self.executor.execute_batch(tool_calls, context).await;
-
-            for result in &results {
-                working_messages.push(AiMessage::tool(
-                    result.tool_call_id.clone(),
-                    result.tool_name.clone(),
-                    result.content.clone(),
-                ));
-            }
-        }
-
-        warn!(
-            max_iterations,
-            "Tool call loop hit max iterations, making final call without tools"
-        );
-
-        let final_response = self
-            .llm
-            .complete(&working_messages, None, None, temperature, max_tokens)
-            .await?;
-
-        Ok(final_response)
     }
 
     /// Run the streaming tool call loop.
@@ -144,15 +74,6 @@ impl ToolCallLoop {
         });
 
         Box::pin(ReceiverStream::new(rx))
-    }
-
-    #[allow(dead_code)]
-    async fn execute_tools_with_notifications(
-        &self,
-        tool_calls: &[crate::llm::types::AiToolCall],
-        context: Option<&ToolExecutionContext>,
-    ) -> (Vec<ToolExecutionNotification>, Vec<ToolNotification>, Vec<ToolResult>) {
-        execute_tools_with_notifications(&self.executor, tool_calls, context).await
     }
 }
 
@@ -233,8 +154,7 @@ async fn run_streaming_loop(
         let mut assistant_msg =
             AiMessage::assistant_with_tool_calls(accumulated_tool_calls.clone());
         if !accumulated_content.is_empty() {
-            assistant_msg.content =
-                crate::llm::types::MessageContent::Text(accumulated_content);
+            assistant_msg.content = crate::llm::types::MessageContent::Text(accumulated_content);
         }
         current_messages.push(assistant_msg);
 
@@ -310,7 +230,11 @@ async fn execute_tools_with_notifications(
     executor: &ToolExecutor,
     tool_calls: &[crate::llm::types::AiToolCall],
     context: Option<&ToolExecutionContext>,
-) -> (Vec<ToolExecutionNotification>, Vec<ToolNotification>, Vec<ToolResult>) {
+) -> (
+    Vec<ToolExecutionNotification>,
+    Vec<ToolNotification>,
+    Vec<ToolResult>,
+) {
     let mut notifications = Vec::new();
     let mut typed_notifications = Vec::new();
 

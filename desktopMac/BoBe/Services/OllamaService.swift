@@ -45,7 +45,9 @@ actor OllamaService {
         try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
-        let downloadURL = URL(string: "https://github.com/ollama/ollama/releases/download/\(ollamaVersion)/ollama-darwin.tgz")!
+        guard let downloadURL = URL(string: "https://github.com/ollama/ollama/releases/download/\(ollamaVersion)/ollama-darwin.tgz") else {
+            throw OllamaError.invalidURL("release_download")
+        }
         logger.info("Downloading Ollama \(self.ollamaVersion) from \(downloadURL)")
         onProgress(0, "Downloading Ollama \(ollamaVersion)...")
 
@@ -113,7 +115,9 @@ actor OllamaService {
     }
 
     private func isOllamaResponding() async -> Bool {
-        let url = URL(string: "http://127.0.0.1:11434/api/tags")!
+        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else {
+            return false
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = 2
         do {
@@ -128,11 +132,13 @@ actor OllamaService {
 enum OllamaError: Error, LocalizedError {
     case downloadFailed
     case extractionFailed
+    case invalidURL(String)
 
     var errorDescription: String? {
         switch self {
         case .downloadFailed: "Failed to download Ollama"
         case .extractionFailed: "Failed to extract Ollama — binary not found after download"
+        case .invalidURL(let context): "Invalid URL for \(context)"
         }
     }
 }

@@ -8,18 +8,16 @@ use arc_swap::ArcSwap;
 use tracing::{debug, error, info};
 
 use crate::config::Config;
+use crate::db::CooldownRepository;
+use crate::db::ObservationRepository;
+use crate::models::observation::Observation;
+use crate::runtime::learners::CaptureLearner;
+use crate::runtime::learners::types::LearnerObservation;
+use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::indicator_event;
 use crate::util::sse::types::IndicatorType;
-use crate::runtime::learners::CaptureLearner;
-use crate::runtime::learners::types::LearnerObservation;
-use crate::runtime::state::{
-    Decision, TriggerContext, TriggerType,
-};
-use crate::models::observation::Observation;
-use crate::db::CooldownRepository;
-use crate::db::ObservationRepository;
 
 use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::proactive_generator::ProactiveGenerator;
@@ -60,16 +58,6 @@ impl CaptureTrigger {
             enabled: false,
             context_count: 0,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
-    }
-
-    #[allow(dead_code)]
-    pub fn context_count(&self) -> usize {
-        self.context_count
     }
 
     pub async fn start(&mut self) {
@@ -124,10 +112,7 @@ impl CaptureTrigger {
 
         if decision == Decision::Engage {
             self.generator
-                .generate_proactive_response(
-                    cfg.conversation_auto_close_minutes as i64,
-                    None,
-                )
+                .generate_proactive_response(cfg.conversation_auto_close_minutes as i64, None)
                 .await;
         }
 
@@ -163,19 +148,19 @@ impl CaptureTrigger {
                 self.event_queue
                     .push(indicator_event(IndicatorType::Idle, None));
                 match result {
-                    crate::runtime::learners::types::LearnerResult::Stored {
-                        observation_id,
-                    } => match self.observation_repo.get_by_id(observation_id).await {
-                        Ok(Some(obs)) => Some(obs),
-                        Ok(None) => {
-                            debug!("capture_trigger.observation_not_found_after_store");
-                            None
+                    crate::runtime::learners::types::LearnerResult::Stored { observation_id } => {
+                        match self.observation_repo.get_by_id(observation_id).await {
+                            Ok(Some(obs)) => Some(obs),
+                            Ok(None) => {
+                                debug!("capture_trigger.observation_not_found_after_store");
+                                None
+                            }
+                            Err(e) => {
+                                error!(error = %e, "capture_trigger.observation_fetch_failed");
+                                None
+                            }
                         }
-                        Err(e) => {
-                            error!(error = %e, "capture_trigger.observation_fetch_failed");
-                            None
-                        }
-                    },
+                    }
                     crate::runtime::learners::types::LearnerResult::Skipped { reason } => {
                         debug!(reason = %reason, "capture_trigger.observation_skipped");
                         None

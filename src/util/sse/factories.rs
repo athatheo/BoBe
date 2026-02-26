@@ -24,19 +24,23 @@ pub fn indicator_event_with_progress(
         event_type: EventType::Indicator,
         message_id: String::new(),
         timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
+        description: format!("{indicator:?}"),
         payload,
     }
 }
 
 /// Create a text delta event for streaming LLM output.
-#[allow(dead_code)]
-pub fn text_delta_event(message_id: &str, delta: &str, sequence: u64, done: bool) -> StreamBundle {
+pub fn text_delta_event(
+    message_id: &str,
+    delta: &str,
+    sequence: usize,
+    done: bool,
+) -> StreamBundle {
     StreamBundle {
         event_type: EventType::TextDelta,
         message_id: message_id.to_owned(),
         timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
+        description: "text_delta".to_owned(),
         payload: json!({
             "delta": delta,
             "sequence": sequence,
@@ -45,14 +49,13 @@ pub fn text_delta_event(message_id: &str, delta: &str, sequence: u64, done: bool
     }
 }
 
-/// Create an error event.
-#[allow(dead_code)]
-pub fn error_event(code: &str, message: &str, recoverable: bool) -> StreamBundle {
+/// Create an error event with code and recoverability classification.
+pub fn error_event(message_id: &str, code: &str, message: &str, recoverable: bool) -> StreamBundle {
     StreamBundle {
         event_type: EventType::Error,
-        message_id: String::new(),
+        message_id: message_id.to_owned(),
         timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
+        description: "stream_error".to_owned(),
         payload: json!({
             "code": code,
             "message": message,
@@ -61,66 +64,63 @@ pub fn error_event(code: &str, message: &str, recoverable: bool) -> StreamBundle
     }
 }
 
-/// Create a heartbeat event for keep-alive.
-#[allow(dead_code)]
-pub fn heartbeat_event() -> StreamBundle {
-    StreamBundle {
-        event_type: EventType::Heartbeat,
-        message_id: String::new(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
-        payload: json!({}),
-    }
-}
-
 /// Create a tool call start event.
-#[allow(dead_code)]
 pub fn tool_call_start_event(
     message_id: &str,
     tool_name: &str,
     tool_call_id: &str,
 ) -> StreamBundle {
     StreamBundle {
-        event_type: EventType::ToolCall,
+        event_type: EventType::ToolCallStart,
         message_id: message_id.to_owned(),
         timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
+        description: "tool_call_start".to_owned(),
         payload: json!({
-            "status": "start",
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
+            "status": "start",
         }),
     }
 }
 
-/// Create a tool call complete event.
-#[allow(dead_code)]
+/// Create a tool call completion event.
 pub fn tool_call_complete_event(
     message_id: &str,
     tool_name: &str,
     tool_call_id: &str,
-    success: bool,
+    success: Option<bool>,
     error: Option<&str>,
     duration_ms: Option<f64>,
 ) -> StreamBundle {
-    let mut payload = json!({
-        "status": "complete",
-        "tool_name": tool_name,
-        "tool_call_id": tool_call_id,
-        "success": success,
-    });
-    if let Some(err) = error {
-        payload["error"] = json!(err);
-    }
-    if let Some(ms) = duration_ms {
-        payload["duration_ms"] = json!(ms);
-    }
     StreamBundle {
-        event_type: EventType::ToolCall,
+        event_type: EventType::ToolCallComplete,
         message_id: message_id.to_owned(),
         timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
-        payload,
+        description: "tool_call_complete".to_owned(),
+        payload: json!({
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "success": success,
+            "error": error,
+            "duration_ms": duration_ms,
+            "status": "complete",
+        }),
+    }
+}
+
+/// Create an end-of-turn event.
+pub fn end_of_turn_event(message_id: &str, sequence: usize) -> StreamBundle {
+    text_delta_event(message_id, "", sequence, true)
+}
+
+/// Create a heartbeat event.
+pub fn heartbeat_event() -> StreamBundle {
+    StreamBundle {
+        event_type: EventType::Heartbeat,
+        message_id: String::new(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        description: "heartbeat".to_owned(),
+        payload: json!({}),
     }
 }
 
@@ -140,44 +140,5 @@ pub fn conversation_closed_event(
             "reason": reason,
             "turn_count": turn_count,
         }),
-    }
-}
-
-/// Create an end-of-turn event.
-#[allow(dead_code)]
-pub fn end_of_turn_event(message_id: &str) -> StreamBundle {
-    StreamBundle {
-        event_type: EventType::EndOfTurn,
-        message_id: message_id.to_owned(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
-        payload: json!({}),
-    }
-}
-
-/// Create an action request event for user interaction (e.g. goal worker ask_user).
-#[allow(dead_code)]
-pub fn action_request_event(
-    action: &str,
-    prompt: &str,
-    request_id: &str,
-    timeout_ms: u64,
-    options: Option<&[String]>,
-) -> StreamBundle {
-    let mut payload = json!({
-        "action": action,
-        "prompt": prompt,
-        "request_id": request_id,
-        "timeout_ms": timeout_ms,
-    });
-    if let Some(opts) = options {
-        payload["options"] = json!(opts);
-    }
-    StreamBundle {
-        event_type: EventType::ActionRequest,
-        message_id: String::new(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        description: String::new(),
-        payload,
     }
 }

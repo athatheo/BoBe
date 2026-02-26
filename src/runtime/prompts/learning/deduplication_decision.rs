@@ -1,7 +1,7 @@
 //! Prompts for LLM-based deduplication decisions.
 
-use crate::runtime::prompts::base::PromptConfig;
 use crate::llm::types::{AiMessage, ResponseFormat};
+use crate::runtime::prompts::base::PromptConfig;
 
 /// Prompt for deciding if a goal is a duplicate.
 ///

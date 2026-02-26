@@ -1,6 +1,9 @@
 import SwiftUI
 import AVFoundation
 import ScreenCaptureKit
+import OSLog
+
+private let logger = Logger(subsystem: "com.bobe.app", category: "SetupWizard")
 
 // MARK: - Step Flow
 
@@ -298,7 +301,9 @@ struct SetupWizard: View {
                 granted: screenPermission == "granted",
                 badge: screenPermission == "granted" ? "Granted" : "Not Set"
             ) {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                    NSWorkspace.shared.open(url)
+                }
             }
 
             // Vision model card
@@ -331,7 +336,10 @@ struct SetupWizard: View {
                     .buttonStyle(.bordered).foregroundStyle(theme.colors.textMuted)
                 Button("Continue") { step = .voiceSetup }
                     .buttonStyle(.borderedProminent).tint(theme.colors.primary)
-                    .disabled(selectedModel.separateVisionModel != nil && !visionDownloaded && !busy)
+                    .disabled(
+                        screenPermission != "granted"
+                            || (selectedModel.separateVisionModel != nil && !visionDownloaded && !busy)
+                    )
             }
         }
     }
@@ -352,7 +360,9 @@ struct SetupWizard: View {
                 badge: micPermission == "granted" ? "Granted" : (micPermission == "denied" ? "Denied" : "Not Set")
             ) {
                 if micPermission == "denied" {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                        NSWorkspace.shared.open(url)
+                    }
                 } else {
                     requestMicPermission()
                 }
@@ -606,7 +616,7 @@ struct SetupWizard: View {
                 }
                 visionDownloaded = true
             } catch {
-                // Non-fatal — user can retry or skip
+                logger.warning("Vision model download failed: \(error.localizedDescription)")
             }
         }
     }
@@ -629,7 +639,7 @@ struct SetupWizard: View {
                 // Auto-start TTS download
                 if !ttsDownloaded { downloadTTSModel() }
             } catch {
-                // Non-fatal
+                logger.warning("STT model download failed: \(error.localizedDescription)")
             }
         }
     }
@@ -650,7 +660,7 @@ struct SetupWizard: View {
                 }
                 ttsDownloaded = true
             } catch {
-                // Non-fatal
+                logger.warning("TTS model download failed: \(error.localizedDescription)")
             }
         }
     }
@@ -658,23 +668,33 @@ struct SetupWizard: View {
     private func skipCapture() {
         captureSkipped = true
         Task {
-            var settings = SettingsUpdateRequest()
-            settings.captureEnabled = false
-            settings.visionBackend = "none"
-            _ = try? await DaemonClient.shared.updateSettings(settings)
+            do {
+                var settings = SettingsUpdateRequest()
+                settings.captureEnabled = false
+                settings.visionBackend = "none"
+                _ = try await DaemonClient.shared.updateSettings(settings)
+                step = .voiceSetup
+            } catch {
+                errorMessage = error.localizedDescription
+                step = .error
+            }
         }
-        step = .voiceSetup
     }
 
     private func skipVoice() {
         voiceSkipped = true
         Task {
-            var settings = SettingsUpdateRequest()
-            settings.sttEnabled = false
-            settings.ttsEnabled = false
-            _ = try? await DaemonClient.shared.updateSettings(settings)
+            do {
+                var settings = SettingsUpdateRequest()
+                settings.sttEnabled = false
+                settings.ttsEnabled = false
+                _ = try await DaemonClient.shared.updateSettings(settings)
+                step = .complete
+            } catch {
+                errorMessage = error.localizedDescription
+                step = .error
+            }
         }
-        step = .complete
     }
 
     private func completeSetup() {

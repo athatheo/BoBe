@@ -3,7 +3,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::error::AppError;
-use crate::tools::ToolCategory;
 
 /// Base trait for all BoBe native tools.
 ///
@@ -19,9 +18,6 @@ pub trait NativeTool: Send + Sync {
 
     /// JSON Schema describing accepted parameters.
     fn parameters(&self) -> Value;
-
-    /// Tool category for filtering/grouping.
-    fn category(&self) -> ToolCategory;
 
     /// Execute the tool with the given arguments.
     async fn execute(

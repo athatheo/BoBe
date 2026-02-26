@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
-use crate::models::soul::Soul;
 use crate::error::AppError;
+use crate::models::soul::Soul;
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 

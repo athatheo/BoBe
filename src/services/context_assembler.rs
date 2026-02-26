@@ -8,15 +8,15 @@ use std::sync::Arc;
 
 use tracing::{debug, error, warn};
 
-use crate::models::goal::Goal;
-use crate::models::memory::Memory;
-use crate::models::observation::Observation;
-use crate::models::soul::Soul;
-use crate::llm::EmbeddingProvider;
 use crate::db::GoalRepository;
 use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
 use crate::db::SoulRepository;
+use crate::llm::EmbeddingProvider;
+use crate::models::goal::Goal;
+use crate::models::memory::Memory;
+use crate::models::observation::Observation;
+use crate::models::soul::Soul;
 
 use super::soul_service::SoulService;
 
@@ -107,14 +107,6 @@ impl AssembledContext {
             context = format!("Relevant memories:\n{memories}\n\n{context}");
         }
         (context, personality)
-    }
-
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.souls.is_empty()
-            && self.goals.is_empty()
-            && self.memories.is_empty()
-            && self.observations.is_empty()
     }
 }
 
@@ -253,43 +245,6 @@ impl ContextAssembler {
         results
     }
 
-    // ── Individual retrieval methods for tools ──────────────────────────
-
-    /// Search memories semantically.
-    #[allow(dead_code)]
-    pub async fn get_memories(&self, query: &str, limit: i64, min_score: f64) -> Vec<Memory> {
-        let emb = match self.embedding.embed(query).await {
-            Ok(v) => v,
-            Err(e) => {
-                error!(error = %e, "context_assembler.get_memories_failed");
-                return Vec::new();
-            }
-        };
-        match self
-            .memory_repo
-            .find_similar(&emb, limit, true, min_score)
-            .await
-        {
-            Ok(pairs) => pairs.into_iter().map(|(m, _)| m).collect(),
-            Err(e) => {
-                error!(error = %e, "context_assembler.get_memories_failed");
-                Vec::new()
-            }
-        }
-    }
-
-    /// Get all active goals ordered by priority.
-    #[allow(dead_code)]
-    pub async fn get_active_goals(&self) -> Vec<Goal> {
-        match self.goal_repo.find_active(true).await {
-            Ok(goals) => goals,
-            Err(e) => {
-                error!(error = %e, "context_assembler.get_active_goals_failed");
-                Vec::new()
-            }
-        }
-    }
-
     /// Get all enabled soul documents.
     pub async fn get_enabled_souls(&self) -> Vec<Soul> {
         match self.soul_repo.find_enabled().await {
@@ -298,44 +253,6 @@ impl ContextAssembler {
                 error!(error = %e, "context_assembler.get_enabled_souls_failed");
                 Vec::new()
             }
-        }
-    }
-
-    /// Get recent observations, optionally filtered by semantic relevance.
-    #[allow(dead_code)]
-    pub async fn get_recent_observations(
-        &self,
-        query: Option<&str>,
-        limit: i64,
-        minutes: i64,
-    ) -> Vec<Observation> {
-        match query {
-            Some(q) if !q.is_empty() => {
-                let emb = match self.embedding.embed(q).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!(error = %e, "context_assembler.get_recent_observations_failed");
-                        return Vec::new();
-                    }
-                };
-                match self.observation_repo.find_similar(&emb, limit).await {
-                    Ok(pairs) => pairs.into_iter().map(|(o, _)| o).collect(),
-                    Err(e) => {
-                        error!(error = %e, "context_assembler.get_recent_observations_failed");
-                        Vec::new()
-                    }
-                }
-            }
-            _ => match self.observation_repo.find_recent(minutes).await {
-                Ok(mut obs) => {
-                    obs.truncate(limit as usize);
-                    obs
-                }
-                Err(e) => {
-                    error!(error = %e, "context_assembler.get_recent_observations_failed");
-                    Vec::new()
-                }
-            },
         }
     }
 

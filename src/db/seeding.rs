@@ -1,10 +1,10 @@
 use tracing::{debug, info, warn};
 
-use crate::models::soul::Soul;
-use crate::models::user_profile::UserProfile;
-use crate::error::AppError;
 use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
+use crate::error::AppError;
+use crate::models::soul::Soul;
+use crate::models::user_profile::UserProfile;
 
 /// Default souls to seed from embedded assets.
 const DEFAULT_SOULS: &[(&str, &str)] = &[("SOUL.md", "default_soul")];

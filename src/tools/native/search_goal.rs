@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::db::GoalRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
-use crate::db::GoalRepository;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 pub struct SearchGoalTool {
     goal_repo: Arc<dyn GoalRepository>,
@@ -62,10 +62,6 @@ impl NativeTool for SearchGoalTool {
             },
             "required": ["query"]
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Memory
     }
 
     async fn execute(

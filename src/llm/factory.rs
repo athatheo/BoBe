@@ -5,9 +5,12 @@ use reqwest::Client;
 use tracing::info;
 
 use crate::config::{Config, LlmBackend};
+use crate::error::AppError;
+use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
 
 use super::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerLlmWrapper};
+use super::embedding::{LocalEmbeddingProvider, OpenAiEmbeddingProvider};
 use super::providers::llamacpp::LlamaCppProvider;
 use super::providers::ollama::OllamaProvider;
 use super::providers::openai::OpenAiProvider;
@@ -25,6 +28,57 @@ pub struct LlmProviderFactory {
 impl LlmProviderFactory {
     pub fn new(client: Client, config: Arc<ArcSwap<Config>>) -> Self {
         Self { client, config }
+    }
+
+    /// Create an embedding provider based on the active LLM backend.
+    pub fn create_embedding(&self) -> Result<Arc<dyn EmbeddingProvider>, AppError> {
+        let config = self.config.load();
+        match config.llm_backend {
+            LlmBackend::Openai => {
+                if config.openai_api_key.is_empty() {
+                    return Err(AppError::Config(
+                        "BOBE_OPENAI_API_KEY is required for OpenAI embedding backend".into(),
+                    ));
+                }
+                let model = resolve_openai_embedding_model(&config.embedding_model);
+                Ok(Arc::new(OpenAiEmbeddingProvider::openai(
+                    self.client.clone(),
+                    &config.openai_api_key,
+                    &model,
+                    config.embedding_dimension,
+                )))
+            }
+            LlmBackend::AzureOpenai => {
+                if config.azure_openai_endpoint.is_empty()
+                    || config.azure_openai_api_key.is_empty()
+                    || config.azure_openai_deployment.is_empty()
+                {
+                    return Err(AppError::Config(
+                        "BOBE_AZURE_OPENAI_ENDPOINT, BOBE_AZURE_OPENAI_API_KEY, and BOBE_AZURE_OPENAI_DEPLOYMENT are required for Azure embedding backend".into(),
+                    ));
+                }
+                Ok(Arc::new(OpenAiEmbeddingProvider::azure(
+                    self.client.clone(),
+                    &config.azure_openai_endpoint,
+                    &config.azure_openai_api_key,
+                    &config.azure_openai_deployment,
+                    config.embedding_dimension,
+                )))
+            }
+            _ => {
+                let model = if config.embedding_model.trim().is_empty() {
+                    "nomic-embed-text"
+                } else {
+                    &config.embedding_model
+                };
+                Ok(Arc::new(LocalEmbeddingProvider::new(
+                    self.client.clone(),
+                    &config.ollama_url,
+                    model,
+                    config.embedding_dimension,
+                )))
+            }
+        }
     }
 
     /// Create a provider (wrapped with a circuit breaker) for the given backend string.
@@ -76,8 +130,7 @@ impl LlmProviderFactory {
                 (Arc::new(p), "openai-vision".into())
             }
             LlmBackend::AzureOpenai => {
-                if config.azure_openai_endpoint.is_empty()
-                    || config.azure_openai_api_key.is_empty()
+                if config.azure_openai_endpoint.is_empty() || config.azure_openai_api_key.is_empty()
                 {
                     return Err(crate::error::AppError::Config(
                         "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY required for Azure vision".into(),
@@ -155,8 +208,7 @@ impl LlmProviderFactory {
                 Ok((Arc::new(provider), "llamacpp".into()))
             }
             LlmBackend::AzureOpenai => {
-                if config.azure_openai_endpoint.is_empty()
-                    || config.azure_openai_api_key.is_empty()
+                if config.azure_openai_endpoint.is_empty() || config.azure_openai_api_key.is_empty()
                 {
                     return Err(crate::error::AppError::Config(
                         "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY are required for Azure OpenAI backend".into(),
@@ -179,5 +231,14 @@ impl LlmProviderFactory {
                 "LLM backend is disabled (set to 'none')".into(),
             )),
         }
+    }
+}
+
+fn resolve_openai_embedding_model(configured: &str) -> String {
+    let model = configured.trim();
+    if model.starts_with("text-embedding-") {
+        model.to_string()
+    } else {
+        "text-embedding-3-small".to_string()
     }
 }

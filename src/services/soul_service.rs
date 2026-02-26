@@ -8,19 +8,16 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::error::AppError;
 use crate::db::SoulRepository;
+use crate::error::AppError;
 
 const DEFAULT_SOUL: &str = "You are BoBe, a helpful AI assistant.";
 
-#[allow(dead_code)]
 pub struct SoulService {
     soul_file: Option<PathBuf>,
     soul_repo: Option<Arc<dyn SoulRepository>>,
-    cached_content: RwLock<Option<String>>,
 }
 
 impl SoulService {
@@ -28,14 +25,7 @@ impl SoulService {
         Self {
             soul_file,
             soul_repo,
-            cached_content: RwLock::new(None),
         }
-    }
-
-    /// Get soul content synchronously (file-based fallback).
-    #[allow(dead_code)]
-    pub fn get_soul(&self) -> String {
-        self.load_soul_from_file()
     }
 
     /// Get soul content, preferring database over file.
@@ -48,27 +38,6 @@ impl SoulService {
         }
         // Fall back to file-based loading
         Ok(self.load_soul_from_file())
-    }
-
-    /// Force reload the soul from file.
-    #[allow(dead_code)]
-    pub fn reload(&self) -> String {
-        let content = self.load_soul_from_file();
-        // Clear cache so next async call re-fetches from DB
-        if let Ok(mut cached) = self.cached_content.try_write() {
-            *cached = None;
-        }
-        content
-    }
-
-    /// Force reload the soul, preferring database.
-    #[allow(dead_code)]
-    pub async fn reload_async(&self) -> Result<String, AppError> {
-        {
-            let mut cached = self.cached_content.write().await;
-            *cached = None;
-        }
-        self.get_soul_async().await
     }
 
     async fn load_soul_from_db(&self, repo: &Arc<dyn SoulRepository>) -> Option<String> {

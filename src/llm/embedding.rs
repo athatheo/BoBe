@@ -12,6 +12,17 @@ struct OllamaEmbedResponse {
     embeddings: Vec<Vec<f32>>,
 }
 
+/// Response from OpenAI/Azure OpenAI embeddings endpoint.
+#[derive(Debug, Deserialize)]
+struct OpenAiEmbedResponse {
+    data: Vec<OpenAiEmbedData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiEmbedData {
+    embedding: Vec<f32>,
+}
+
 /// Local embedding provider that calls Ollama's embedding endpoint.
 ///
 /// Uses the `/api/embed` API with a configurable model (default: nomic-embed-text).
@@ -48,6 +59,132 @@ impl LocalEmbeddingProvider {
             return false;
         }
         embedding.iter().all(|v| v.is_finite())
+    }
+}
+
+enum OpenAiAuth {
+    Bearer(String),
+    ApiKey(String),
+}
+
+/// Remote embedding provider for OpenAI and Azure OpenAI.
+pub struct OpenAiEmbeddingProvider {
+    client: Client,
+    endpoint_url: String,
+    auth: OpenAiAuth,
+    model: Option<String>,
+    dimension: usize,
+}
+
+impl OpenAiEmbeddingProvider {
+    pub fn openai(client: Client, api_key: &str, model: &str, dimension: usize) -> Self {
+        info!(
+            backend = "openai",
+            model = model,
+            dimension = dimension,
+            "embedding.provider_created"
+        );
+        Self {
+            client,
+            endpoint_url: "https://api.openai.com/v1/embeddings".to_string(),
+            auth: OpenAiAuth::Bearer(api_key.to_string()),
+            model: Some(model.to_string()),
+            dimension,
+        }
+    }
+
+    pub fn azure(
+        client: Client,
+        endpoint: &str,
+        api_key: &str,
+        deployment: &str,
+        dimension: usize,
+    ) -> Self {
+        let endpoint = endpoint.trim_end_matches('/');
+        let endpoint_url = format!(
+            "{endpoint}/openai/deployments/{deployment}/embeddings?api-version=2024-02-15-preview"
+        );
+        info!(
+            backend = "azure_openai",
+            deployment = deployment,
+            dimension = dimension,
+            "embedding.provider_created"
+        );
+        Self {
+            client,
+            endpoint_url,
+            auth: OpenAiAuth::ApiKey(api_key.to_string()),
+            model: None,
+            dimension,
+        }
+    }
+
+    fn validate_embedding(&self, embedding: &[f32]) -> bool {
+        if embedding.len() != self.dimension {
+            warn!(
+                expected = self.dimension,
+                actual = embedding.len(),
+                "embedding.dimension_mismatch"
+            );
+            return false;
+        }
+        embedding.iter().all(|v| v.is_finite())
+    }
+
+    async fn request_embeddings(
+        &self,
+        input: serde_json::Value,
+    ) -> Result<Vec<Vec<f32>>, AppError> {
+        let mut body = serde_json::json!({
+            "input": input,
+            "encoding_format": "float",
+            "dimensions": self.dimension,
+        });
+        if let Some(model) = &self.model {
+            body["model"] = serde_json::Value::String(model.clone());
+        }
+
+        let mut request = self.client.post(&self.endpoint_url).json(&body);
+        request = match &self.auth {
+            OpenAiAuth::Bearer(api_key) => {
+                request.header("Authorization", format!("Bearer {api_key}"))
+            }
+            OpenAiAuth::ApiKey(api_key) => request.header("api-key", api_key),
+        };
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AppError::Embedding(format!("Embedding request failed: {e}")))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(AppError::Embedding(format!(
+                "Embedding provider returned {status}: {text}"
+            )));
+        }
+
+        let resp: OpenAiEmbedResponse = response
+            .json()
+            .await
+            .map_err(|e| AppError::Embedding(format!("Failed to parse embedding response: {e}")))?;
+
+        if resp.data.is_empty() {
+            return Err(AppError::Embedding("No embeddings in response".into()));
+        }
+
+        let embeddings: Vec<Vec<f32>> = resp.data.into_iter().map(|item| item.embedding).collect();
+        for (index, emb) in embeddings.iter().enumerate() {
+            if !self.validate_embedding(emb) {
+                return Err(AppError::Embedding(format!(
+                    "Invalid embedding at index {index}: expected {} dimensions, got {}",
+                    self.dimension,
+                    emb.len()
+                )));
+            }
+        }
+        Ok(embeddings)
     }
 }
 
@@ -145,6 +282,36 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
 
         debug!(count = resp.embeddings.len(), "embedding.batch_complete");
         Ok(resp.embeddings)
+    }
+
+    fn dimension(&self) -> usize {
+        self.dimension
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for OpenAiEmbeddingProvider {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, AppError> {
+        let mut embeddings = self
+            .request_embeddings(serde_json::Value::String(text.to_string()))
+            .await?;
+        let embedding = embeddings
+            .drain(..)
+            .next()
+            .ok_or_else(|| AppError::Embedding("No embeddings in response".into()))?;
+        debug!(dimension = embedding.len(), "embedding.complete");
+        Ok(embedding)
+    }
+
+    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, AppError> {
+        if texts.is_empty() {
+            return Ok(vec![]);
+        }
+        let input = serde_json::to_value(texts)
+            .map_err(|e| AppError::Embedding(format!("Failed to serialize texts: {e}")))?;
+        let embeddings = self.request_embeddings(input).await?;
+        debug!(count = embeddings.len(), "embedding.batch_complete");
+        Ok(embeddings)
     }
 
     fn dimension(&self) -> usize {

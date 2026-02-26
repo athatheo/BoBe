@@ -12,10 +12,10 @@ use chrono::{DateTime, Utc};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::db::ConversationRepository;
+use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::types::{ConversationState, TurnRole};
-use crate::error::AppError;
-use crate::db::ConversationRepository;
 
 pub struct ConversationService {
     repo: Arc<dyn ConversationRepository>,
@@ -183,12 +183,6 @@ impl ConversationService {
         limit: i64,
     ) -> Result<Vec<ConversationTurn>, AppError> {
         self.repo.get_turns(conversation_id, limit).await
-    }
-
-    /// Get the most recent turns across all conversations.
-    #[allow(dead_code)]
-    pub async fn get_recent_turns(&self, limit: i64) -> Result<Vec<ConversationTurn>, AppError> {
-        self.repo.get_recent_turns(limit).await
     }
 
     /// Get conversations closed since a given timestamp (for LearningLoop).

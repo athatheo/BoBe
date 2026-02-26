@@ -11,7 +11,7 @@ This document maps every concept from the old hexagonal architecture to the new 
 | `src/ports/llm.rs` | `src/llm/mod.rs` | `LlmProvider` trait moved into `llm/mod.rs`. |
 | `src/ports/embedding.rs` | `src/llm/mod.rs` | `EmbeddingProvider` trait merged into `llm/mod.rs` alongside `LlmProvider`. |
 | `src/ports/llm_types.rs` | `src/llm/types.rs` | Renamed. `AiMessage`, `AiResponse`, `StreamChunk`, `ToolDefinition`, etc. |
-| `src/ports/tools.rs` | `src/tools/mod.rs` | `ToolSource` trait + `ToolCategory`, `ToolResult`, `ToolExecutionContext`, `ToolExecutionNotification` all in `tools/mod.rs`. |
+| `src/ports/tools.rs` | `src/tools/mod.rs` | `ToolSource` trait + `ToolResult`, `ToolExecutionContext`, `ToolExecutionNotification` in `tools/mod.rs`; native tool metadata now omits category tags. |
 | `src/adapters/persistence/repos/*.rs` | `src/db/*.rs` | SQLite implementations sit next to their trait definitions. |
 | `src/adapters/llm/providers/ollama.rs` | `src/llm/providers/ollama.rs` | Same file, shorter path. |
 | `src/adapters/llm/providers/openai.rs` | `src/llm/providers/openai.rs` | Same file, shorter path. |
@@ -70,7 +70,6 @@ This document maps every concept from the old hexagonal architecture to the new 
 | `crate::ports::embedding::EmbeddingProvider` | `crate::llm::EmbeddingProvider` |
 | `crate::ports::llm_types::*` | `crate::llm::types::*` |
 | `crate::ports::tools::ToolSource` | `crate::tools::ToolSource` |
-| `crate::ports::tools::ToolCategory` | `crate::tools::ToolCategory` |
 | `crate::ports::tools::ToolResult` | `crate::tools::ToolResult` |
 | `crate::adapters::llm::providers::ollama::*` | `crate::llm::providers::ollama::*` |
 | `crate::adapters::llm::providers::openai::*` | `crate::llm::providers::openai::*` |
@@ -182,7 +181,7 @@ src/
 │   └── embedding.rs        # LocalEmbeddingProvider
 │
 ├── tools/                  # Tool traits + all tool implementations
-│   ├── mod.rs              # ToolSource trait + ToolCategory, ToolResult, etc.
+│   ├── mod.rs              # ToolSource trait + ToolResult, ToolExecutionContext, etc.
 │   ├── registry.rs         # ToolRegistry (aggregates tool sources)
 │   ├── executor.rs         # Executes tool calls
 │   ├── preselector.rs      # LLM-based tool filtering

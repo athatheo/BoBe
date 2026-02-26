@@ -93,12 +93,13 @@ struct MemoriesEditor: View {
 
                 if isCreating {
                     VStack(spacing: 6) {
-                        TextEditor(text: $newContent)
-                            .font(.system(size: 12))
+                        CodeEditor(text: $newContent, theme: theme, fontSize: 12)
                             .frame(height: 50)
-                            .scrollContentBackground(.hidden)
-                            .padding(4)
-                            .background(RoundedRectangle(cornerRadius: 6).stroke(theme.colors.border))
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(theme.colors.surface)
+                                    .stroke(theme.colors.border, lineWidth: 1)
+                            )
                         HStack(spacing: 6) {
                             Button("Create") { createMemory() }
                                 .buttonStyle(.bordered)
@@ -156,9 +157,12 @@ struct MemoriesEditor: View {
                                 ))
                             }
                             .tag(memory.id)
+                            .listRowBackground(theme.colors.background)
                         }
                     }
-                    .listStyle(.bordered)
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(theme.colors.background)
                 }
             }
             .frame(minWidth: 220, idealWidth: 300)
@@ -214,10 +218,7 @@ struct MemoriesEditor: View {
                             .foregroundStyle(theme.colors.textMuted)
                     }
 
-                    TextEditor(text: $editorContent)
-                        .font(.system(size: 13, design: .monospaced))
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
+                    CodeEditor(text: $editorContent, theme: theme, fontSize: 13)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(theme.colors.surface)

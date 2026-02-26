@@ -7,27 +7,6 @@ use chrono::{DateTime, Duration, Local, NaiveTime, Utc};
 use rand::RngExt;
 use tracing::{debug, info, warn};
 
-/// Simple, friendly check-in messages.
-#[allow(dead_code)]
-const CHECKIN_MESSAGES: &[&str] = &[
-    "How's it going? Need any help?",
-    "Just checking in. Anything I can assist with?",
-    "Taking a moment to see how things are going. Let me know if you need anything!",
-    "Quick check-in - how can I help?",
-    "Hi! Anything on your mind I can help with?",
-    "Hey there! Just wanted to see if you need a hand with anything.",
-    "Checking in - everything going smoothly?",
-    "Here if you need me! What can I help you with?",
-    "Just popping in to see how things are going.",
-    "Need a fresh perspective on anything? I'm here!",
-];
-
-#[allow(dead_code)]
-pub fn get_random_checkin_message() -> &'static str {
-    let idx = rand::rng().random_range(0..CHECKIN_MESSAGES.len());
-    CHECKIN_MESSAGES[idx]
-}
-
 pub struct CheckinScheduler {
     times: Vec<NaiveTime>,
     interval_minutes: Option<u64>,
@@ -99,7 +78,7 @@ impl CheckinScheduler {
             }
             if let Some(next) = self.next_checkin
                 && now >= next
-                && (self.last_checkin.is_none() || self.last_checkin.unwrap() < next)
+                && self.last_checkin.is_none_or(|last| last < next)
             {
                 info!(
                     trigger_type = "scheduled_time",
@@ -241,73 +220,5 @@ impl CheckinScheduler {
 
         self.next_interval_checkin = Some(next_time);
         debug!(next = %next_time.format("%Y-%m-%d %H:%M:%S"), "checkin_scheduler.scheduled_interval");
-    }
-
-    #[allow(dead_code)]
-    pub fn update_schedule(
-        &mut self,
-        times: Option<&[String]>,
-        interval_minutes: Option<Option<u64>>,
-        jitter_minutes: Option<u32>,
-        enabled: Option<bool>,
-    ) {
-        if let Some(t) = times {
-            self.times = Self::parse_times(t);
-        }
-        if let Some(i) = interval_minutes {
-            self.interval_minutes = i;
-        }
-        if let Some(j) = jitter_minutes {
-            self.jitter_minutes = j as i32;
-        }
-        if let Some(e) = enabled {
-            self.enabled = e;
-        }
-
-        let now = Utc::now();
-        self.next_checkin = None;
-        self.next_interval_checkin = None;
-        if self.enabled {
-            if !self.times.is_empty() {
-                self.schedule_next_checkin(now);
-            }
-            if self.interval_minutes.is_some() {
-                self.schedule_next_interval(now);
-            }
-        }
-
-        info!(
-            times = ?self.times.iter().map(|t| t.format("%H:%M").to_string()).collect::<Vec<_>>(),
-            interval = ?self.interval_minutes,
-            jitter = self.jitter_minutes,
-            enabled = self.enabled,
-            "checkin_scheduler.updated"
-        );
-    }
-
-    #[allow(dead_code)]
-    pub fn enable(&mut self) {
-        self.enabled = true;
-        let now = Utc::now();
-        if !self.times.is_empty() {
-            self.schedule_next_checkin(now);
-        }
-        if self.interval_minutes.is_some() {
-            self.schedule_next_interval(now);
-        }
-        info!("checkin_scheduler.enabled");
-    }
-
-    #[allow(dead_code)]
-    pub fn disable(&mut self) {
-        self.enabled = false;
-        self.next_checkin = None;
-        self.next_interval_checkin = None;
-        info!("checkin_scheduler.disabled");
-    }
-
-    #[allow(dead_code)]
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
     }
 }

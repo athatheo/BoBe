@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::base::NativeTool;
 use crate::error::AppError;
-use crate::tools::{ToolCategory, ToolExecutionContext};
+use crate::tools::ToolExecutionContext;
 
 /// Known dev tools to check with --version or similar flags.
 const DEV_TOOLS: &[(&str, &[&str])] = &[
@@ -62,10 +62,6 @@ impl NativeTool for DiscoverInstalledToolsTool {
             "properties": {},
             "required": []
         })
-    }
-
-    fn category(&self) -> ToolCategory {
-        ToolCategory::System
     }
 
     async fn execute(

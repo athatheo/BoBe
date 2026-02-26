@@ -225,12 +225,12 @@ impl OllamaManager {
         let ollama_path = self
             .binary_path
             .clone()
-            .or_else(|| {
-                which::which("ollama")
-                    .ok()
-                    .map(|p| p.to_string_lossy().into_owned())
-            })
-            .ok_or_else(|| AppError::LlmUnavailable("Ollama binary not found in PATH".into()))?;
+            .filter(|p| !p.trim().is_empty())
+            .ok_or_else(|| {
+                AppError::LlmUnavailable(
+                    "Ollama binary path is not configured (set BOBE_OLLAMA_BINARY_PATH)".into(),
+                )
+            })?;
 
         let child = tokio::process::Command::new(&ollama_path)
             .arg("serve")
@@ -242,9 +242,9 @@ impl OllamaManager {
             .map_err(|e| AppError::LlmUnavailable(format!("Failed to start ollama: {e}")))?;
 
         if let Some(pid) = child.id() {
-            *self.child.lock().unwrap() = Some(pid);
+            *lock_or_recover(&self.child, "ollama_manager.child") = Some(pid);
         }
-        *self.started_by_us.lock().unwrap() = true;
+        *lock_or_recover(&self.started_by_us, "ollama_manager.started_by_us") = true;
 
         // Wait for Ollama to be ready (up to 30 seconds)
         for _ in 0..30 {
@@ -262,20 +262,33 @@ impl OllamaManager {
     /// Stop Ollama if we started it.
     #[allow(unsafe_code)]
     pub async fn stop(&self) {
-        let started = *self.started_by_us.lock().unwrap();
+        let started = *lock_or_recover(&self.started_by_us, "ollama_manager.started_by_us");
         if !started {
             return;
         }
 
-        if let Some(pid) = self.child.lock().unwrap().take() {
+        if let Some(pid) = lock_or_recover(&self.child, "ollama_manager.child").take() {
             info!(pid = pid, "ollama.stopping");
             // SAFETY: libc::kill with a valid PID is safe; we obtained this PID
             // from a child process we spawned and hold under a lock.
             unsafe {
                 libc::kill(pid as i32, libc::SIGTERM);
             }
-            *self.started_by_us.lock().unwrap() = false;
+            *lock_or_recover(&self.started_by_us, "ollama_manager.started_by_us") = false;
             info!("ollama.stopped");
+        }
+    }
+}
+
+fn lock_or_recover<'a, T>(
+    mutex: &'a Mutex<T>,
+    lock_name: &'static str,
+) -> std::sync::MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(lock = lock_name, "mutex poisoned, recovering");
+            poisoned.into_inner()
         }
     }
 }

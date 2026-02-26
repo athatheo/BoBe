@@ -10,17 +10,17 @@ use serde_json::Value;
 use tracing::{info, warn};
 
 use crate::config::Config;
-use crate::runtime::prompts::learning::deduplication_decision::MemoryDeduplicationPrompt;
-use crate::runtime::prompts::learning::memory_distillation::{
-    ConversationMemoryPrompt, MemoryDistillationPrompt,
-};
+use crate::db::MemoryRepository;
+use crate::llm::EmbeddingProvider;
+use crate::llm::LlmProvider;
 use crate::models::goal::Goal;
 use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::types::{MemorySource, MemoryType};
-use crate::llm::EmbeddingProvider;
-use crate::llm::LlmProvider;
-use crate::db::MemoryRepository;
+use crate::runtime::prompts::learning::deduplication_decision::MemoryDeduplicationPrompt;
+use crate::runtime::prompts::learning::memory_distillation::{
+    ConversationMemoryPrompt, MemoryDistillationPrompt,
+};
 
 /// Valid values for memory categories.
 const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];

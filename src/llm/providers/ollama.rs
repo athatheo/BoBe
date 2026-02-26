@@ -6,9 +6,11 @@ use regex::Regex;
 use reqwest::Client;
 use tracing::{debug, error, warn};
 
-use crate::llm::shared::{build_chat_request, parse_response, parse_stream_chunk};
 use crate::error::AppError;
 use crate::llm::LlmProvider;
+use crate::llm::shared::{
+    ToolCallAccumulator, build_chat_request, parse_response, parse_stream_chunk,
+};
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
 /// Ollama LLM provider using the OpenAI-compatible /v1/chat/completions endpoint.
@@ -105,9 +107,7 @@ impl LlmProvider for OllamaProvider {
 
         let mut response = parse_response(&data)?;
         // Strip think tags from qwen3 models
-        if let crate::llm::types::MessageContent::Text(ref mut text) =
-            response.message.content
-        {
+        if let crate::llm::types::MessageContent::Text(ref mut text) = response.message.content {
             *text = self.strip_think_tags(text);
         }
 
@@ -163,6 +163,7 @@ impl LlmProvider for OllamaProvider {
             let mut byte_stream = resp.bytes_stream();
             let mut buffer = String::new();
             let mut inside_think = false;
+            let mut tool_accumulator = ToolCallAccumulator::new();
 
             while let Some(bytes_result) = byte_stream.next().await {
                 let bytes = match bytes_result {
@@ -200,12 +201,18 @@ impl LlmProvider for OllamaProvider {
 
                     let Some(data) = data else { continue };
 
+                    tool_accumulator.feed(&data);
+
                     if let Some(mut chunk) = parse_stream_chunk(&data) {
                         if is_qwen3 {
                             chunk.delta = filter_think_tags_streaming(
                                 &chunk.delta,
                                 &mut inside_think,
                             );
+                        }
+                        if chunk.finish_reason.is_some() && tool_accumulator.has_tool_calls() {
+                            let acc = std::mem::take(&mut tool_accumulator);
+                            chunk.tool_calls = acc.finish();
                         }
                         if !chunk.delta.is_empty()
                             || !chunk.tool_calls.is_empty()

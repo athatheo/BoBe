@@ -8,15 +8,13 @@ use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
-use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::types::IndicatorType;
-use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::proactive_generator::ProactiveGenerator;
-use crate::runtime::state::{
-    Decision, TriggerContext, TriggerType,
-};
 use crate::db::CooldownRepository;
 use crate::db::GoalRepository;
+use crate::runtime::decision_engine::DecisionEngine;
+use crate::runtime::proactive_generator::ProactiveGenerator;
+use crate::runtime::state::{Decision, TriggerContext, TriggerType};
+use crate::util::sse::event_queue::EventQueue;
+use crate::util::sse::types::IndicatorType;
 
 pub struct GoalTrigger {
     goal_repo: Arc<dyn GoalRepository>,

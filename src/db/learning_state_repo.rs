@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use sqlx::SqlitePool;
 use tracing::{debug, info};
 
-use crate::models::learning_state::LearningState;
-use crate::error::AppError;
 use crate::db::LearningStateRepository;
+use crate::error::AppError;
+use crate::models::learning_state::LearningState;
 
 pub struct SqliteLearningStateRepo {
     pool: SqlitePool,

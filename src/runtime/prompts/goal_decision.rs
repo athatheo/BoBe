@@ -3,8 +3,8 @@
 use serde_json::json;
 use std::sync::LazyLock;
 
-use crate::runtime::prompts::base::{DEFAULT_SOUL, PromptConfig};
 use crate::llm::types::{AiMessage, ResponseFormat};
+use crate::runtime::prompts::base::{DEFAULT_SOUL, PromptConfig};
 
 /// JSON Schema for structured goal decision output.
 pub static GOAL_DECISION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {

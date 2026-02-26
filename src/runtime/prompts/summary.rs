@@ -1,7 +1,7 @@
 //! Conversation summary prompt.
 
-use crate::runtime::prompts::base::PromptConfig;
 use crate::llm::types::AiMessage;
+use crate::runtime::prompts::base::PromptConfig;
 
 /// Prompt for generating conversation summaries when closing conversations.
 pub struct ConversationSummaryPrompt;

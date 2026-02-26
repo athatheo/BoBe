@@ -1,6 +1,3 @@
-use std::collections::HashSet;
-use std::net::UdpSocket;
-
 use tracing::{debug, error, info, warn};
 
 /// Retrieve the system hostname via `libc::gethostname`, falling back to `"bobe"`.
@@ -14,45 +11,6 @@ fn get_hostname() -> String {
     }
     let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
     String::from_utf8_lossy(&buf[..end]).into_owned()
-}
-
-/// Get all local network interface IPs (IPv4 only).
-#[allow(dead_code)]
-pub fn get_local_ips() -> HashSet<String> {
-    let mut ips = HashSet::new();
-
-    let hostname_str = get_hostname();
-    if let Ok(addrs) = std::net::ToSocketAddrs::to_socket_addrs(&(hostname_str.as_str(), 0)) {
-        for addr in addrs {
-            if addr.is_ipv4() {
-                ips.insert(addr.ip().to_string());
-            }
-        }
-    }
-
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0")
-        && socket.connect("10.255.255.255:1").is_ok()
-        && let Ok(local_addr) = socket.local_addr()
-    {
-        ips.insert(local_addr.ip().to_string());
-    }
-
-    debug!(count = ips.len(), "network.local_ips_discovered");
-    ips
-}
-
-/// Information about the local network.
-#[allow(dead_code)]
-pub struct NetworkInfo;
-
-#[allow(dead_code)]
-impl NetworkInfo {
-    pub fn primary_ip() -> Option<String> {
-        let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
-        socket.connect("10.255.255.255:1").ok()?;
-        let addr = socket.local_addr().ok()?;
-        Some(addr.ip().to_string())
-    }
 }
 
 const SERVICE_TYPE: &str = "_bobe._tcp.local.";

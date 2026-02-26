@@ -6,13 +6,13 @@ use std::sync::Arc;
 
 use tracing::{debug, info};
 
+use crate::db::ObservationRepository;
+use crate::llm::EmbeddingProvider;
+use crate::models::observation::Observation;
+use crate::models::types::ObservationSource;
 use crate::runtime::learners::types::{
     LearnerError, LearnerObservation, LearnerObservationSource, LearnerResult,
 };
-use crate::models::observation::Observation;
-use crate::models::types::ObservationSource;
-use crate::llm::EmbeddingProvider;
-use crate::db::ObservationRepository;
 
 pub struct MessageLearner {
     embedding: Arc<dyn EmbeddingProvider>,

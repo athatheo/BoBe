@@ -4,10 +4,10 @@ use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::db::ConversationRepository;
+use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::types::{ConversationState, TurnRole};
-use crate::error::AppError;
-use crate::db::ConversationRepository;
 
 pub struct SqliteConversationRepo {
     pool: SqlitePool,
@@ -253,17 +253,6 @@ impl ConversationRepository for SqliteConversationRepo {
             "SELECT * FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at ASC LIMIT ?2",
         )
         .bind(conversation_id)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
-        Ok(rows)
-    }
-
-    async fn get_recent_turns(&self, limit: i64) -> Result<Vec<ConversationTurn>, AppError> {
-        let rows = sqlx::query_as::<_, ConversationTurn>(
-            "SELECT * FROM conversation_turns ORDER BY created_at DESC LIMIT ?1",
-        )
         .bind(limit)
         .fetch_all(&self.pool)
         .await

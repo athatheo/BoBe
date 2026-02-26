@@ -221,22 +221,6 @@ struct BehaviorPanel: View {
 
 // MARK: - Shared Components
 
-struct SettingsSection<Content: View>: View {
-    let title: String
-    let icon: String
-    @ViewBuilder let content: Content
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon)
-                .font(.headline)
-                .foregroundStyle(theme.colors.text)
-            content
-        }
-    }
-}
-
 /// Simple flow layout for pills/tags
 struct FlowLayout: Layout {
     let spacing: CGFloat

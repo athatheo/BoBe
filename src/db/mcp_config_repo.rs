@@ -3,9 +3,9 @@ use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::models::mcp_server_config::McpServerConfig;
-use crate::error::AppError;
 use crate::db::McpConfigRepository;
+use crate::error::AppError;
+use crate::models::mcp_server_config::McpServerConfig;
 
 pub struct SqliteMcpConfigRepo {
     pool: SqlitePool,
