@@ -150,27 +150,29 @@ impl MemoryConsolidator {
     }
 
     fn compute_centroid(memories: &[&Memory]) -> Vec<f32> {
-        let vectors: Vec<Vec<f32>> = memories
-            .iter()
-            .filter_map(|m| Self::parse_embedding(m))
-            .collect();
+        let mut centroid: Vec<f32> = Vec::new();
+        let mut count = 0usize;
 
-        if vectors.is_empty() {
-            return Vec::new();
-        }
-
-        let dim = vectors[0].len();
-        let mut centroid = vec![0.0f32; dim];
-        for vec in &vectors {
-            for (i, &v) in vec.iter().enumerate() {
-                if i < dim {
-                    centroid[i] += v;
+        for m in memories {
+            if let Some(vec) = Self::parse_embedding(m) {
+                if centroid.is_empty() {
+                    centroid = vec;
+                } else {
+                    for (i, &v) in vec.iter().enumerate() {
+                        if i < centroid.len() {
+                            centroid[i] += v;
+                        }
+                    }
                 }
+                count += 1;
             }
         }
-        let count = vectors.len() as f32;
-        for v in &mut centroid {
-            *v /= count;
+
+        if count > 1 {
+            let c = count as f32;
+            for v in &mut centroid {
+                *v /= c;
+            }
         }
         centroid
     }

@@ -102,10 +102,10 @@ pub async fn pull_model(
 
     let ollama_url = cfg.ollama_url.clone();
     let model_name = body.name.clone();
+    let client = state.http_client.clone();
 
     let stream = async_stream::stream! {
         let url = format!("{}/api/pull", ollama_url);
-        let client = reqwest::Client::new();
         match client.post(&url)
             .json(&serde_json::json!({"name": model_name, "stream": true}))
             .send()
@@ -169,7 +169,8 @@ pub async fn delete_model(
     }
 
     let url = format!("{}/api/delete", cfg.ollama_url);
-    let resp = reqwest::Client::new()
+    let resp = state
+        .http_client
         .delete(&url)
         .json(&serde_json::json!({"name": model_name}))
         .timeout(std::time::Duration::from_secs(30))
@@ -198,22 +199,25 @@ const REGISTRY_CACHE_TTL_SECS: u64 = 3600;
 /// Cached for 1 hour.
 pub async fn list_registry_models() -> Json<ModelsListResponse> {
     let cache = REGISTRY_CACHE.get_or_init(|| Mutex::new((None, None)));
-    let mut guard = cache.lock().await;
 
-    // Return cached if fresh
-    if let (Some(ref models), Some(ref ts)) = *guard
-        && ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS
+    // Check cache under lock, then release before network I/O
     {
-        return Json(ModelsListResponse {
-            backend: LlmBackend::Ollama,
-            models: models.clone(),
-            supports_pull: true,
-        });
+        let guard = cache.lock().await;
+        if let (Some(ref models), Some(ref ts)) = *guard {
+            if ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS {
+                return Json(ModelsListResponse {
+                    backend: LlmBackend::Ollama,
+                    models: models.clone(),
+                    supports_pull: true,
+                });
+            }
+        }
     }
 
-    // Fetch from ollama.com
+    // Fetch outside lock
     match fetch_registry_models().await {
         Ok(models) => {
+            let mut guard = cache.lock().await;
             *guard = (Some(models.clone()), Some(Instant::now()));
             Json(ModelsListResponse {
                 backend: LlmBackend::Ollama,
@@ -223,7 +227,7 @@ pub async fn list_registry_models() -> Json<ModelsListResponse> {
         }
         Err(e) => {
             tracing::warn!(error = %e, "Failed to fetch registry models");
-            // Return stale cache or empty
+            let guard = cache.lock().await;
             let models = guard.0.clone().unwrap_or_default();
             Json(ModelsListResponse {
                 backend: LlmBackend::Ollama,

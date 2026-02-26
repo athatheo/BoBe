@@ -36,59 +36,70 @@ impl AssembledContext {
         let mut sections = std::collections::HashMap::new();
 
         if !self.souls.is_empty() {
-            let content: Vec<String> = self.souls.iter().map(|s| s.content.clone()).collect();
-            sections.insert("personality".into(), content.join("\n\n"));
+            let mut buf = String::new();
+            for (i, s) in self.souls.iter().enumerate() {
+                if i > 0 {
+                    buf.push_str("\n\n");
+                }
+                buf.push_str(&s.content);
+            }
+            sections.insert("personality".into(), buf);
         }
 
         if !self.goals.is_empty() {
-            let lines: Vec<String> = self
-                .goals
-                .iter()
-                .map(|g| format!("- {} (priority: {})", g.content, g.priority))
-                .collect();
-            sections.insert("current_goals".into(), lines.join("\n"));
+            use std::fmt::Write;
+            let mut buf = String::new();
+            for (i, g) in self.goals.iter().enumerate() {
+                if i > 0 {
+                    buf.push('\n');
+                }
+                let _ = write!(buf, "- {} (priority: {})", g.content, g.priority);
+            }
+            sections.insert("current_goals".into(), buf);
         }
 
         if !self.memories.is_empty() {
-            let lines: Vec<String> = self
-                .memories
-                .iter()
-                .map(|m| format!("- {}", m.content))
-                .collect();
-            sections.insert("relevant_memories".into(), lines.join("\n"));
+            use std::fmt::Write;
+            let mut buf = String::new();
+            for (i, m) in self.memories.iter().enumerate() {
+                if i > 0 {
+                    buf.push('\n');
+                }
+                let _ = write!(buf, "- {}", m.content);
+            }
+            sections.insert("relevant_memories".into(), buf);
         }
 
         if !self.observations.is_empty() {
-            let lines: Vec<String> = self
-                .observations
-                .iter()
-                .map(|o| {
-                    // Check metadata for pre-computed summary
-                    let summary = o
-                        .metadata
-                        .as_ref()
-                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                        .and_then(|v| {
-                            v.get("summary")
-                                .and_then(|s| s.as_str())
-                                .map(|s| s.to_string())
-                        })
-                        .unwrap_or_else(|| {
-                            if o.content.len() > 100 {
-                                o.content[..100].to_string()
-                            } else {
-                                o.content.clone()
-                            }
-                        });
-                    let category = if o.category.is_empty() {
-                        "general"
-                    } else {
-                        &o.category
-                    };
-                    format!("- [{}] {}", category, summary)
-                })
-                .collect();
-            sections.insert("recent_context".into(), lines.join("\n"));
+            use std::fmt::Write;
+            let mut buf = String::new();
+            for (i, o) in self.observations.iter().enumerate() {
+                if i > 0 {
+                    buf.push('\n');
+                }
+                let category = if o.category.is_empty() {
+                    "general"
+                } else {
+                    &o.category
+                };
+                let summary = o
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                    .and_then(|v| {
+                        v.get("summary")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.to_string())
+                    });
+                if let Some(ref s) = summary {
+                    let _ = write!(buf, "- [{}] {}", category, s);
+                } else if o.content.len() > 100 {
+                    let _ = write!(buf, "- [{}] {}...", category, &o.content[..100]);
+                } else {
+                    let _ = write!(buf, "- [{}] {}", category, o.content);
+                }
+            }
+            sections.insert("recent_context".into(), buf);
         }
 
         sections
@@ -96,9 +107,9 @@ impl AssembledContext {
 
     /// Format assembled context into a single context string and optional personality.
     pub fn to_context_string(&self) -> (String, Option<String>) {
-        let sections = self.to_prompt_sections();
-        let mut context = sections.get("recent_context").cloned().unwrap_or_default();
-        let personality = sections.get("personality").cloned();
+        let mut sections = self.to_prompt_sections();
+        let personality = sections.remove("personality");
+        let mut context = sections.remove("recent_context").unwrap_or_default();
 
         if let Some(goals) = sections.get("current_goals") {
             context = format!("User goals:\n{goals}\n\n{context}");

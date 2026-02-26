@@ -123,10 +123,10 @@ async fn run_streaming_loop(
                         accumulated_content.push_str(&chunk.delta);
                     }
                     if !chunk.tool_calls.is_empty() {
-                        accumulated_tool_calls.extend(chunk.tool_calls.clone());
+                        accumulated_tool_calls.extend(chunk.tool_calls.iter().cloned());
                     }
-                    if chunk.finish_reason.is_some() {
-                        finish_reason = chunk.finish_reason.clone();
+                    if let Some(ref reason) = chunk.finish_reason {
+                        finish_reason = Some(reason.clone());
                     }
                     // Yield text deltas immediately
                     if tx.send(Ok(StreamItem::Chunk(chunk))).await.is_err() {

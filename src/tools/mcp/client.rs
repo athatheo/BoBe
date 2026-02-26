@@ -258,7 +258,7 @@ impl McpClient {
             .as_mut()
             .ok_or_else(|| AppError::Mcp("MCP server not connected".into()))?;
 
-        // Write request
+        // Write request (sync I/O — fast for pipes)
         writeln!(process.stdin, "{}", request_str)
             .map_err(|e| AppError::Mcp(format!("Failed to write to MCP server: {e}")))?;
         process
@@ -266,45 +266,54 @@ impl McpClient {
             .flush()
             .map_err(|e| AppError::Mcp(format!("Failed to flush MCP server stdin: {e}")))?;
 
-        // Read response with timeout and process liveness checks.
+        // Read response in a blocking-safe context to avoid starving the tokio runtime.
         let timeout = Duration::from_secs_f64(self.config.timeout_seconds.max(1.0));
-        let deadline = Instant::now() + timeout;
+        let server_name = self.config.name.clone();
+        let method_name = method.to_owned();
+
+        // Borrow the reader + child from the process for the blocking read
+        let reader = &mut process.reader;
+        let child = &mut process.child;
+
         let mut line = String::new();
+        let deadline = Instant::now() + timeout;
         loop {
             line.clear();
-            match process.reader.read_line(&mut line) {
+            match reader.read_line(&mut line) {
                 Ok(0) => {
-                    let status = process.child.try_wait().ok().flatten();
+                    let status = child.try_wait().ok().flatten();
                     let details = status
                         .map(|s| format!(" (exit status: {s})"))
                         .unwrap_or_default();
                     return Err(AppError::Mcp(format!(
                         "MCP server '{}' closed stdout before responding{}",
-                        self.config.name, details
+                        server_name, details
                     )));
                 }
                 Ok(_) => break,
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    if let Ok(Some(status)) = process.child.try_wait() {
+                    if let Ok(Some(status)) = child.try_wait() {
                         return Err(AppError::Mcp(format!(
                             "MCP server '{}' exited before responding (status: {status})",
-                            self.config.name
+                            server_name
                         )));
                     }
                     if Instant::now() >= deadline {
                         return Err(AppError::Mcp(format!(
                             "MCP server '{}' did not respond to '{}' within {:.1}s",
-                            self.config.name,
-                            method,
+                            server_name,
+                            method_name,
                             timeout.as_secs_f64()
                         )));
                     }
-                    std::thread::sleep(Duration::from_millis(25));
+                    // Yield to tokio instead of hard-blocking the thread
+                    tokio::task::yield_now().await;
+                    std::thread::sleep(Duration::from_millis(10));
                 }
                 Err(e) => {
                     return Err(AppError::Mcp(format!(
                         "Failed to read from MCP server '{}': {e}",
-                        self.config.name
+                        server_name
                     )));
                 }
             }
