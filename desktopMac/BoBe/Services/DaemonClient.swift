@@ -183,10 +183,6 @@ actor DaemonClient {
         try await fetch("/health")
     }
 
-    func status() async throws -> [String: AnyCodableValue] {
-        try await fetch("/status")
-    }
-
     // MARK: - App Maintenance
 
     func getDataSize() async throws -> DataSizeResponse {
@@ -223,10 +219,6 @@ actor DaemonClient {
         try await fetch("/goals")
     }
 
-    func getGoal(_ id: String) async throws -> Goal {
-        try await fetch("/goals/\(id)")
-    }
-
     func createGoal(_ request: GoalCreateRequest) async throws -> Goal {
         try await fetch("/goals", method: "POST", body: request)
     }
@@ -251,10 +243,6 @@ actor DaemonClient {
 
     func listSouls() async throws -> SoulListResponse {
         try await fetch("/souls")
-    }
-
-    func getSoul(_ id: String) async throws -> Soul {
-        try await fetch("/souls/\(id)")
     }
 
     func createSoul(_ request: SoulCreateRequest) async throws -> Soul {

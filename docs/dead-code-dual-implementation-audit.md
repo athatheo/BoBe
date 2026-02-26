@@ -99,6 +99,7 @@ After the critical-path wiring fixes, a second sweep removed dormant helpers tha
 
 ### Swift removals
 - `desktopMac/BoBe/Models/EntityTypes.swift`: removed unused `MCPConfig` type.
+- `desktopMac/BoBe/Services/DaemonClient.swift`: removed unused frontend API helpers (`status`, `getGoal`, `getSoul`) after full desktop callsite sweep.
 
 ---
 
