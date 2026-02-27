@@ -7,17 +7,17 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "DaemonClient")
 actor DaemonClient {
     static let shared = DaemonClient()
 
-    private let baseURL: URL = {
+    let baseURL: URL = {
         if let url = URL(string: DaemonConfig.baseURL) {
             return url
         }
         logger.error("Invalid daemon base URL, falling back to localhost")
         return URL(string: "http://127.0.0.1:8766") ?? URL(fileURLWithPath: "/")
     }()
-    private let session: URLSession
+    let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
-    private let fetchTimeout: TimeInterval = 10
+    let fetchTimeout: TimeInterval = 10
 
     private var sseTask: Task<Void, Never>?
     private var eventHandler: ((StreamBundle) -> Void)?
@@ -25,7 +25,7 @@ actor DaemonClient {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 10
 
-    private func endpointURL(_ path: String) -> URL {
+    func endpointURL(_ path: String) -> URL {
         let normalized = path.hasPrefix("/") ? String(path.dropFirst()) : path
         return baseURL.appendingPathComponent(normalized)
     }
@@ -126,7 +126,7 @@ actor DaemonClient {
 
     // MARK: - HTTP Helpers
 
-    private func fetch<T: Decodable>(
+    func fetch<T: Decodable>(
         _ path: String,
         method: String = "GET",
         body: (any Encodable)? = nil
@@ -141,18 +141,32 @@ actor DaemonClient {
             request.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            logger.error("\(method) \(path): network error — \(error.localizedDescription)")
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
+            logger.error("\(method) \(path): invalid response (not HTTP)")
             throw DaemonError.invalidResponse
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            logger.error("\(method) \(path) failed: HTTP \(httpResponse.statusCode) — \(message)")
             throw DaemonError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
-        return try decoder.decode(T.self, from: data)
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            logger.error("\(method) \(path): decode error — \(error.localizedDescription)")
+            throw error
+        }
     }
 
-    private func fetchVoid(
+    func fetchVoid(
         _ path: String,
         method: String = "POST",
         body: (any Encodable)? = nil
@@ -167,12 +181,21 @@ actor DaemonClient {
             request.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            logger.error("\(method) \(path): network error — \(error.localizedDescription)")
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
+            logger.error("\(method) \(path): invalid response (not HTTP)")
             throw DaemonError.invalidResponse
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            logger.error("\(method) \(path) failed: HTTP \(httpResponse.statusCode) — \(message)")
             throw DaemonError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
     }
@@ -307,11 +330,19 @@ actor DaemonClient {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = fetchTimeout
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            logger.error("GET /memories: network error — \(error.localizedDescription)")
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            logger.error("GET /memories failed: HTTP \(code) — \(message)")
             throw DaemonError.httpError(statusCode: code, message: message)
         }
         return try decoder.decode(MemoryListResponse.self, from: data)
@@ -335,165 +366,5 @@ actor DaemonClient {
 
     func disableMemory(_ id: String) async throws -> MemoryActionResponse {
         try await fetch("/memories/\(id)/disable", method: "POST")
-    }
-
-    // MARK: - Tools
-
-    func listTools() async throws -> ToolListResponse {
-        try await fetch("/tools")
-    }
-
-    func enableTool(_ name: String) async throws -> ToolUpdateResponse {
-        try await fetch("/tools/\(name)/enable", method: "POST")
-    }
-
-    func disableTool(_ name: String) async throws -> ToolUpdateResponse {
-        try await fetch("/tools/\(name)/disable", method: "POST")
-    }
-
-    // MARK: - MCP Servers
-
-    func listMCPServers() async throws -> MCPServerListResponse {
-        try await fetch("/tools/mcp")
-    }
-
-    func createMCPServer(_ request: MCPServerCreateRequest) async throws -> MCPServerCreateResponse {
-        try await fetch("/tools/mcp", method: "POST", body: request)
-    }
-
-    func deleteMCPServer(_ name: String) async throws {
-        try await fetchVoid("/tools/mcp/\(name)", method: "DELETE")
-    }
-
-    func reconnectMCPServer(_ name: String) async throws -> MCPServerReconnectResponse {
-        try await fetch("/tools/mcp/\(name)/reconnect", method: "POST")
-    }
-
-    func updateMCPServer(_ name: String, _ request: MCPServerUpdateRequest) async throws -> MCPServerUpdateResponse {
-        try await fetch("/tools/mcp/\(name)", method: "PATCH", body: request)
-    }
-
-    // MARK: - Goal Worker
-
-    func goalWorkerStatus() async throws -> GoalWorkerStatusResponse {
-        try await fetch("/goal-plans/status")
-    }
-
-    // MARK: - Settings
-
-    func getSettings() async throws -> DaemonSettings {
-        try await fetch("/settings")
-    }
-
-    func updateSettings(_ request: SettingsUpdateRequest) async throws -> SettingsUpdateResponse {
-        try await fetch("/settings", method: "PATCH", body: request)
-    }
-
-    // MARK: - Models
-
-    func listModels() async throws -> ModelsListResponse {
-        try await fetch("/models")
-    }
-
-    func pullModel(_ name: String) async throws {
-        try await pullModelSSE(model: name) { _, _ in }
-    }
-
-    func deleteModel(_ name: String) async throws {
-        try await fetchVoid("/models/\(name)", method: "DELETE")
-    }
-
-    // MARK: - Onboarding
-
-    func getOnboardingStatus() async throws -> OnboardingStatusResponse {
-        try await fetch("/onboarding/status")
-    }
-
-    func configureLLM(_ request: ConfigureLLMRequest) async throws {
-        try await fetchVoid("/onboarding/configure-llm", method: "POST", body: request)
-    }
-
-    func markOnboardingComplete() async throws {
-        try await fetchVoid("/onboarding/mark-complete", method: "POST")
-    }
-
-    /// Stream model pull progress via SSE — returns (status, percent) updates
-    /// Uses /models/pull which is the SSE streaming endpoint
-    func pullModelSSE(model: String, onProgress: @Sendable @escaping (String, Double) -> Void) async throws {
-        let url = baseURL.appendingPathComponent("models/pull")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 600
-        let body = ["name": model]
-        request.httpBody = try JSONEncoder().encode(body)
-
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw DaemonError.invalidResponse
-        }
-
-        for try await line in bytes.lines {
-            if line.hasPrefix("data: ") {
-                let json = String(line.dropFirst(6))
-                if let data = json.data(using: .utf8),
-                   let event = try? JSONDecoder().decode(PullProgressEvent.self, from: data) {
-                    if event.status == "error" {
-                        throw DaemonError.httpError(statusCode: 500, message: "Model pull failed")
-                    }
-                    let total = event.total ?? 0
-                    let completed = event.completed ?? 0
-                    let percent = total > 0 ? Double(completed) / Double(total) * 100.0 : 0
-                    onProgress(event.status, percent)
-                    if event.status == "success" || event.status == "complete" { return }
-                }
-            }
-        }
-    }
-
-    /// Warmup the embedding model (2 minute timeout — first download can be slow)
-    func warmupEmbedding() async throws {
-        let url = baseURL.appendingPathComponent("onboarding/warmup-embedding")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 120
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw DaemonError.httpError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0, message: message)
-        }
-    }
-
-}
-
-// MARK: - Errors
-
-enum DaemonError: Error, LocalizedError {
-    case invalidResponse
-    case httpError(statusCode: Int, message: String)
-    case connectionFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidResponse: "Invalid response from daemon"
-        case .httpError(let code, let msg): "HTTP \(code): \(msg)"
-        case .connectionFailed: "Failed to connect to daemon"
-        }
-    }
-}
-
-// MARK: - Type-Erased Encodable
-
-private struct AnyEncodable: Encodable {
-    private let encode: (Encoder) throws -> Void
-
-    init(_ wrapped: any Encodable) {
-        self.encode = wrapped.encode
-    }
-
-    func encode(to encoder: Encoder) throws {
-        try encode(encoder)
     }
 }
