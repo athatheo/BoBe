@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+
+use dashmap::DashMap;
 use tracing::{debug, warn};
 
 use crate::error::AppError;
@@ -8,11 +8,13 @@ use crate::llm::types::ToolDefinition;
 use crate::tools::ToolSource;
 
 /// Central registry that aggregates all tool sources (native + MCP).
+///
+/// Uses `DashMap` for lock-free concurrent reads on the hot path
+/// (tool lookups during every LLM call) with rare writes (registration).
 pub struct ToolRegistry {
-    sources: RwLock<HashMap<String, Arc<dyn ToolSource>>>,
-    tool_to_source: RwLock<HashMap<String, String>>,
-    /// Per-tool enabled/disabled overrides.
-    enabled_overrides: RwLock<HashMap<String, bool>>,
+    sources: DashMap<String, Arc<dyn ToolSource>>,
+    tool_to_source: DashMap<String, String>,
+    enabled_overrides: DashMap<String, bool>,
 }
 
 impl Default for ToolRegistry {
@@ -24,39 +26,36 @@ impl Default for ToolRegistry {
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
-            sources: RwLock::new(HashMap::new()),
-            tool_to_source: RwLock::new(HashMap::new()),
-            enabled_overrides: RwLock::new(HashMap::new()),
+            sources: DashMap::new(),
+            tool_to_source: DashMap::new(),
+            enabled_overrides: DashMap::new(),
         }
     }
 
-    /// Register a tool source.
+    /// Register a tool source and index its tools.
     pub async fn register(&self, source: Arc<dyn ToolSource>) {
         let name = source.name().to_owned();
         debug!(source = %name, "Registering tool source");
 
-        // Index tool→source mappings
         if let Ok(tools) = source.get_tools(true).await {
-            let mut t2s = self.tool_to_source.write().await;
             for tool in &tools {
-                t2s.insert(tool.name.clone(), name.clone());
+                self.tool_to_source.insert(tool.name.clone(), name.clone());
             }
         }
 
-        self.sources.write().await.insert(name, source);
+        self.sources.insert(name, source);
     }
 
-    /// Get all available tool definitions from all sources.
+    /// Collect all tool definitions from every registered source.
     pub async fn get_all_tools(&self, include_disabled: bool) -> Vec<ToolDefinition> {
-        let sources = self.sources.read().await;
-        let mut all = Vec::new();
+        let sources: Vec<Arc<dyn ToolSource>> =
+            self.sources.iter().map(|e| e.value().clone()).collect();
 
-        for source in sources.values() {
+        let mut all = Vec::new();
+        for source in &sources {
             match source.get_tools(include_disabled).await {
                 Ok(tools) => all.extend(tools),
-                Err(e) => {
-                    warn!(source = %source.name(), error = %e, "Failed to get tools from source");
-                }
+                Err(e) => warn!(source = %source.name(), error = %e, "Failed to get tools"),
             }
         }
         all
@@ -64,49 +63,50 @@ impl ToolRegistry {
 
     /// Find the source that provides a given tool.
     pub async fn get_source_for_tool(&self, tool_name: &str) -> Option<Arc<dyn ToolSource>> {
-        let t2s = self.tool_to_source.read().await;
-        let source_name = t2s.get(tool_name)?;
-        let sources = self.sources.read().await;
-        sources.get(source_name).cloned()
+        let source_name = self.tool_to_source.get(tool_name)?;
+        self.sources
+            .get(source_name.value())
+            .map(|e| e.value().clone())
     }
 
-    /// Rebuild the tool→source index.
+    /// Rebuild the tool→source index from all registered sources.
     pub async fn refresh_index(&self) -> Result<(), AppError> {
-        let sources = self.sources.read().await;
-        let mut t2s = self.tool_to_source.write().await;
-        t2s.clear();
+        self.tool_to_source.clear();
+        let sources: Vec<(String, Arc<dyn ToolSource>)> = self
+            .sources
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
 
-        for (source_name, source) in sources.iter() {
+        for (source_name, source) in &sources {
             if let Ok(tools) = source.get_tools(true).await {
                 for tool in tools {
-                    t2s.insert(tool.name, source_name.clone());
+                    self.tool_to_source.insert(tool.name, source_name.clone());
                 }
             }
         }
         Ok(())
     }
 
-    /// Check whether a tool is enabled (returns None if tool is unknown).
+    /// Check whether a tool is enabled (`None` if tool is unknown).
     pub async fn is_tool_enabled(&self, tool_name: &str) -> Option<bool> {
-        let t2s = self.tool_to_source.read().await;
-        if !t2s.contains_key(tool_name) {
+        if !self.tool_to_source.contains_key(tool_name) {
             return None;
         }
-        let overrides = self.enabled_overrides.read().await;
-        Some(overrides.get(tool_name).copied().unwrap_or(true))
+        Some(
+            self.enabled_overrides
+                .get(tool_name)
+                .map(|e| *e.value())
+                .unwrap_or(true),
+        )
     }
 
     /// Set the enabled state of a tool. Returns `true` if the tool exists.
     pub async fn set_tool_enabled(&self, tool_name: &str, enabled: bool) -> bool {
-        let t2s = self.tool_to_source.read().await;
-        if !t2s.contains_key(tool_name) {
+        if !self.tool_to_source.contains_key(tool_name) {
             return false;
         }
-        drop(t2s);
-        self.enabled_overrides
-            .write()
-            .await
-            .insert(tool_name.to_owned(), enabled);
+        self.enabled_overrides.insert(tool_name.to_owned(), enabled);
         debug!(tool = %tool_name, enabled, "Tool enabled state changed");
         true
     }

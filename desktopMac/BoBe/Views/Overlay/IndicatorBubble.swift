@@ -10,6 +10,7 @@ struct IndicatorBubble: View {
     @State private var displayIndicator: IndicatorType?
     @State private var showTime: Date?
     @State private var isExpanded = false
+    @State private var delayTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -62,7 +63,7 @@ struct IndicatorBubble: View {
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(theme.colors.border, lineWidth: 1.5)
                 )
-                .shadow(color: Color(hex: "3A3A3A").opacity(0.08), radius: 4, y: 2)
+                .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
         )
     }
 
@@ -144,20 +145,21 @@ struct IndicatorBubble: View {
     }
 
     private func handleIndicatorChange(_ newIndicator: IndicatorType?) {
+        delayTask?.cancel()
         if let newIndicator, newIndicator == .thinking || newIndicator == .toolCalling {
-            Task { @MainActor in
+            delayTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(IndicatorTiming.delayBeforeShow))
-                if indicator == newIndicator {
-                    displayIndicator = newIndicator
-                    showTime = .now
-                }
+                guard !Task.isCancelled, indicator == newIndicator else { return }
+                displayIndicator = newIndicator
+                showTime = .now
             }
         } else if newIndicator == nil {
             if let showTime {
                 let elapsed = Date().timeIntervalSince(showTime)
                 if elapsed < IndicatorTiming.minDisplayTime {
-                    Task { @MainActor in
+                    delayTask = Task { @MainActor in
                         try? await Task.sleep(for: .seconds(IndicatorTiming.minDisplayTime - elapsed))
+                        guard !Task.isCancelled else { return }
                         displayIndicator = nil
                         self.showTime = nil
                     }
@@ -204,13 +206,7 @@ struct AnimatedDots: View {
             }
         }
         .frame(width: 16, alignment: .leading)
-        .onAppear {
-            animateDots()
-        }
-    }
-
-    private func animateDots() {
-        Task { @MainActor in
+        .task {
             var step = 0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(400))

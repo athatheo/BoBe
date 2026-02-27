@@ -452,22 +452,70 @@ impl LearningLoop {
         let mut stats = ReEmbedStats::default();
 
         // Observations
-        let (re, del, skip) = self.re_embed_observations(50).await;
-        stats.re_embedded += re;
-        stats.deleted += del;
-        stats.skipped += skip;
+        if let Ok(records) = self.observation_repo.find_null_embedding(50).await {
+            let (r, d, s) = re_embed_batch(
+                records.into_iter().map(|o| (o.id, o.content)).collect(),
+                &*self.embedding,
+                |id, emb| {
+                    let repo = self.observation_repo.clone();
+                    Box::pin(async move { repo.update_embedding(id, &emb).await })
+                },
+                |id| {
+                    let repo = self.observation_repo.clone();
+                    Box::pin(async move {
+                        let _ = repo.delete(id).await;
+                    })
+                },
+            )
+            .await;
+            stats.re_embedded += r;
+            stats.deleted += d;
+            stats.skipped += s;
+        }
 
         // Memories
-        let (re, del, skip) = self.re_embed_memories(50).await;
-        stats.re_embedded += re;
-        stats.deleted += del;
-        stats.skipped += skip;
+        if let Ok(records) = self.memory_repo.find_null_embedding(50).await {
+            let (r, d, s) = re_embed_batch(
+                records.into_iter().map(|m| (m.id, m.content)).collect(),
+                &*self.embedding,
+                |id, emb| {
+                    let repo = self.memory_repo.clone();
+                    Box::pin(async move { repo.update_embedding(id, &emb).await })
+                },
+                |id| {
+                    let repo = self.memory_repo.clone();
+                    Box::pin(async move {
+                        let _ = repo.delete(id).await;
+                    })
+                },
+            )
+            .await;
+            stats.re_embedded += r;
+            stats.deleted += d;
+            stats.skipped += s;
+        }
 
         // Goals
-        let (re, del, skip) = self.re_embed_goals(50).await;
-        stats.re_embedded += re;
-        stats.deleted += del;
-        stats.skipped += skip;
+        if let Ok(records) = self.goal_repo.find_null_embedding(50).await {
+            let (r, d, s) = re_embed_batch(
+                records.into_iter().map(|g| (g.id, g.content)).collect(),
+                &*self.embedding,
+                |id, emb| {
+                    let repo = self.goal_repo.clone();
+                    Box::pin(async move { repo.update_embedding(id, &emb).await })
+                },
+                |id| {
+                    let repo = self.goal_repo.clone();
+                    Box::pin(async move {
+                        let _ = repo.delete(id).await;
+                    })
+                },
+            )
+            .await;
+            stats.re_embedded += r;
+            stats.deleted += d;
+            stats.skipped += s;
+        }
 
         if stats.re_embedded > 0 || stats.deleted > 0 {
             info!(
@@ -479,124 +527,6 @@ impl LearningLoop {
         }
 
         stats
-    }
-
-    async fn re_embed_observations(&self, limit: i64) -> (usize, usize, usize) {
-        let records = match self.observation_repo.find_null_embedding(limit).await {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(error = %e, "learning_loop.re_embed_observations_fetch_failed");
-                return (0, 0, 0);
-            }
-        };
-
-        let mut re_embedded = 0usize;
-        let mut deleted = 0usize;
-        let mut skipped = 0usize;
-
-        for record in records {
-            if record.content.trim().is_empty() {
-                let _ = self.observation_repo.delete(record.id).await;
-                deleted += 1;
-                continue;
-            }
-            match self.embedding.embed(&record.content).await {
-                Ok(emb) if !emb.is_empty() => {
-                    if let Err(e) = self
-                        .observation_repo
-                        .update_embedding(record.id, &emb)
-                        .await
-                    {
-                        warn!(error = %e, id = %record.id, "learning_loop.re_embed_observation_update_failed");
-                        skipped += 1;
-                    } else {
-                        re_embedded += 1;
-                    }
-                }
-                _ => {
-                    let _ = self.observation_repo.delete(record.id).await;
-                    deleted += 1;
-                }
-            }
-        }
-
-        (re_embedded, deleted, skipped)
-    }
-
-    async fn re_embed_memories(&self, limit: i64) -> (usize, usize, usize) {
-        let records = match self.memory_repo.find_null_embedding(limit).await {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(error = %e, "learning_loop.re_embed_memories_fetch_failed");
-                return (0, 0, 0);
-            }
-        };
-
-        let mut re_embedded = 0usize;
-        let mut deleted = 0usize;
-        let mut skipped = 0usize;
-
-        for record in records {
-            if record.content.trim().is_empty() {
-                let _ = self.memory_repo.delete(record.id).await;
-                deleted += 1;
-                continue;
-            }
-            match self.embedding.embed(&record.content).await {
-                Ok(emb) if !emb.is_empty() => {
-                    if let Err(e) = self.memory_repo.update_embedding(record.id, &emb).await {
-                        warn!(error = %e, id = %record.id, "learning_loop.re_embed_memory_update_failed");
-                        skipped += 1;
-                    } else {
-                        re_embedded += 1;
-                    }
-                }
-                _ => {
-                    let _ = self.memory_repo.delete(record.id).await;
-                    deleted += 1;
-                }
-            }
-        }
-
-        (re_embedded, deleted, skipped)
-    }
-
-    async fn re_embed_goals(&self, limit: i64) -> (usize, usize, usize) {
-        let records = match self.goal_repo.find_null_embedding(limit).await {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(error = %e, "learning_loop.re_embed_goals_fetch_failed");
-                return (0, 0, 0);
-            }
-        };
-
-        let mut re_embedded = 0usize;
-        let mut deleted = 0usize;
-        let mut skipped = 0usize;
-
-        for record in records {
-            if record.content.trim().is_empty() {
-                let _ = self.goal_repo.delete(record.id).await;
-                deleted += 1;
-                continue;
-            }
-            match self.embedding.embed(&record.content).await {
-                Ok(emb) if !emb.is_empty() => {
-                    if let Err(e) = self.goal_repo.update_embedding(record.id, &emb).await {
-                        warn!(error = %e, id = %record.id, "learning_loop.re_embed_goal_update_failed");
-                        skipped += 1;
-                    } else {
-                        re_embedded += 1;
-                    }
-                }
-                _ => {
-                    let _ = self.goal_repo.delete(record.id).await;
-                    deleted += 1;
-                }
-            }
-        }
-
-        (re_embedded, deleted, skipped)
     }
 
     async fn get_all_memories(&self) -> Vec<crate::models::memory::Memory> {
@@ -617,4 +547,46 @@ impl LearningLoop {
         }
         all
     }
+}
+
+/// Generic re-embed: for each `(id, content)` pair, embed via provider, save
+/// via `on_update`, or delete via `on_delete` if content is blank / embed fails.
+///
+/// Returns `(re_embedded, deleted, skipped)`.
+async fn re_embed_batch<U, D>(
+    records: Vec<(uuid::Uuid, String)>,
+    embedding: &dyn EmbeddingProvider,
+    on_update: impl Fn(uuid::Uuid, Vec<f32>) -> U,
+    on_delete: impl Fn(uuid::Uuid) -> D,
+) -> (usize, usize, usize)
+where
+    U: std::future::Future<Output = Result<(), crate::error::AppError>>,
+    D: std::future::Future<Output = ()>,
+{
+    let mut re_embedded = 0usize;
+    let mut deleted = 0usize;
+    let mut skipped = 0usize;
+
+    for (id, content) in records {
+        if content.trim().is_empty() {
+            on_delete(id).await;
+            deleted += 1;
+            continue;
+        }
+        match embedding.embed(&content).await {
+            Ok(emb) if !emb.is_empty() => {
+                if on_update(id, emb).await.is_ok() {
+                    re_embedded += 1;
+                } else {
+                    skipped += 1;
+                }
+            }
+            _ => {
+                on_delete(id).await;
+                deleted += 1;
+            }
+        }
+    }
+
+    (re_embedded, deleted, skipped)
 }

@@ -35,7 +35,7 @@ actor BackendService {
         guard state != .starting && state != .ready else { return }
         stopping = false
 
-        cleanStalePID()
+        await cleanStalePID()
         try createDataDirIfNeeded()
 
         state = .starting
@@ -193,14 +193,14 @@ actor BackendService {
         try? "\(pid)".write(to: pidFilePath, atomically: true, encoding: .utf8)
     }
 
-    private func cleanStalePID() {
+    private func cleanStalePID() async {
         guard let pidStr = try? String(contentsOf: pidFilePath, encoding: .utf8),
               let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
 
         if kill(pid, 0) == 0 {
             logger.info("Cleaning stale process (PID: \(pid))")
             kill(pid, SIGTERM)
-            usleep(2_000_000) // 2s
+            try? await Task.sleep(for: .seconds(2))
             if kill(pid, 0) == 0 {
                 kill(pid, SIGKILL)
             }

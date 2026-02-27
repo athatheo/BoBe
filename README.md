@@ -166,8 +166,9 @@ BOBE_AZURE_OPENAI_DEPLOYMENT=gpt-5-mini
 | `/souls/{id}` | GET/PUT/DELETE | Soul CRUD |
 | `/tools` | GET | List available tools |
 | `/tools/refresh` | POST | Refresh MCP connections |
-| `/mcp-configs` | GET/POST | MCP server configs |
-| `/mcp-configs/{id}` | PUT/DELETE | MCP config CRUD |
+| `/tools/mcp` | GET/POST | MCP server management |
+| `/tools/mcp/{name}` | PATCH/DELETE | MCP server CRUD |
+| `/tools/mcp/{name}/reconnect` | POST | Reconnect MCP server |
 | `/settings` | GET/PATCH | Runtime settings |
 | `/models` | GET | List installed models |
 | `/models/registry` | GET | Browse model registry |

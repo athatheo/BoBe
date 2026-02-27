@@ -8,6 +8,7 @@ struct BehaviorPanel: View {
     @State private var isSaving = false
     @State private var error: String?
     @State private var newCheckinTime = ""
+    @State private var saveTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -166,11 +167,15 @@ struct BehaviorPanel: View {
     }
 
     private func debounceSave() {
+        saveTask?.cancel()
         isSaving = true
         let currentSettings = settings
-        Task {
+        saveTask = Task {
             try? await Task.sleep(for: .seconds(0.6))
-            guard let currentSettings else { return }
+            guard !Task.isCancelled, let currentSettings else {
+                isSaving = false
+                return
+            }
             do {
                 var req = SettingsUpdateRequest()
                 req.captureEnabled = currentSettings.captureEnabled

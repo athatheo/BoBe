@@ -10,6 +10,8 @@ struct StatusLabel: View {
     @State private var isTyping = false
     @State private var showCursor = true
     @State private var lastShownAt: Date = .distantPast
+    @State private var typewriterTask: Task<Void, Never>?
+    @State private var delayTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
     private let charDelay: TimeInterval = 0.04
@@ -50,10 +52,12 @@ struct StatusLabel: View {
         .onChange(of: stateType) { _, newState in
             let newText = labelText(for: newState)
             if newText != targetText {
+                delayTask?.cancel()
                 let elapsed = Date().timeIntervalSince(lastShownAt)
                 if elapsed < minDisplayTime && !targetText.isEmpty {
-                    Task { @MainActor in
+                    delayTask = Task { @MainActor in
                         try? await Task.sleep(for: .seconds(minDisplayTime - elapsed))
+                        guard !Task.isCancelled else { return }
                         startTypewriter(newText)
                     }
                 } else {
@@ -61,39 +65,30 @@ struct StatusLabel: View {
                 }
             }
         }
-        .onAppear {
+        .task {
             startTypewriter(labelText(for: stateType))
-            startCursorBlink()
-        }
-    }
-
-    private func startTypewriter(_ text: String) {
-        targetText = text
-        displayedText = ""
-        isTyping = true
-        lastShownAt = .now
-        typeNextChar(of: text, index: 0)
-    }
-
-    private func typeNextChar(of text: String, index: Int) {
-        guard index < text.count else {
-            isTyping = false
-            return
-        }
-        let idx = text.index(text.startIndex, offsetBy: index)
-        displayedText.append(text[idx])
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(charDelay))
-            typeNextChar(of: text, index: index + 1)
-        }
-    }
-
-    private func startCursorBlink() {
-        Task { @MainActor in
+            // Cursor blink loop — auto-cancelled when view disappears
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(0.3))
                 showCursor.toggle()
             }
+        }
+    }
+
+    private func startTypewriter(_ text: String) {
+        typewriterTask?.cancel()
+        targetText = text
+        displayedText = ""
+        isTyping = true
+        lastShownAt = .now
+        typewriterTask = Task { @MainActor in
+            for i in 0..<text.count {
+                guard !Task.isCancelled else { return }
+                let idx = text.index(text.startIndex, offsetBy: i)
+                displayedText.append(text[idx])
+                try? await Task.sleep(for: .seconds(charDelay))
+            }
+            isTyping = false
         }
     }
 
@@ -153,30 +148,22 @@ private struct BubblingChar: View {
             .frame(width: 16, height: 16)
             .offset(x: xPosition, y: yOffset)
             .opacity(opacity)
-            .onAppear {
+            .task {
                 let delay = Double(index) * 0.4
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(delay))
-                    animate()
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                let duration = 2.5 + Double(index % 3) * 0.3
+                while !Task.isCancelled {
+                    yOffset = 30
+                    opacity = 0
+                    withAnimation(.easeOut(duration: duration)) { yOffset = -40 }
+                    withAnimation(.easeIn(duration: 0.3)) { opacity = 1 }
+                    try? await Task.sleep(for: .seconds(duration * 0.7))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: duration * 0.3)) { opacity = 0 }
+                    try? await Task.sleep(for: .seconds(duration * 0.3))
                 }
             }
-    }
-
-    private func animate() {
-        let duration = 2.5 + Double(index % 3) * 0.3
-        withAnimation(.easeOut(duration: duration).repeatForever(autoreverses: false)) {
-            yOffset = -40
-        }
-        // Fade in then out
-        withAnimation(.easeIn(duration: 0.3)) {
-            opacity = 1
-        }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(duration * 0.7))
-            withAnimation(.easeOut(duration: duration * 0.3)) {
-                opacity = 0
-            }
-        }
     }
 }
 

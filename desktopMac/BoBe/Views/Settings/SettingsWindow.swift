@@ -263,35 +263,35 @@ struct SettingsOverview: View {
                 ], spacing: 16) {
                     overviewCard(
                         icon: "eye.fill",
-                        color: Color(hex: "C67B5C"),
+                        color: theme.colors.primary,
                         heading: "What BoBe sees",
                         body: "Control screen capture, context window, and what information BoBe has access to.",
                         target: .behavior
                     )
                     overviewCard(
                         icon: "brain.head.profile",
-                        color: Color(hex: "8B9A7D"),
+                        color: theme.colors.secondary,
                         heading: "What BoBe remembers",
                         body: "Manage memories, conversation history, and how BoBe learns from interactions.",
                         target: .memories
                     )
                     overviewCard(
                         icon: "message.fill",
-                        color: Color(hex: "D4A574"),
+                        color: theme.colors.tertiary,
                         heading: "When BoBe speaks up",
                         body: "Configure check-in frequency, proactive messages, and notification preferences.",
                         target: .behavior
                     )
                     overviewCard(
                         icon: "paintbrush.fill",
-                        color: Color(hex: "A69080"),
+                        color: theme.colors.primary.opacity(0.7),
                         heading: "How BoBe sounds",
                         body: "Choose and customize personality templates that shape BoBe's communication style.",
                         target: .souls
                     )
                     overviewCard(
                         icon: "bolt.fill",
-                        color: Color(hex: "8B9A7D"),
+                        color: theme.colors.secondary,
                         heading: "What BoBe can do",
                         body: "Enable tools, connect MCP servers, and extend BoBe's capabilities.",
                         target: .tools
@@ -350,7 +350,7 @@ struct SettingsOverview: View {
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(theme.colors.border, lineWidth: 1)
                     )
-                    .shadow(color: Color(hex: "3A3A3A").opacity(0.04), radius: 4, y: 2)
+                    .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
             )
         }
         .buttonStyle(.plain)

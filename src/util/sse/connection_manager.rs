@@ -78,11 +78,13 @@ impl SseConnectionManager {
         {
             let mut st = self.state.lock().await;
             st.current_indicator = match ind {
-                "idle" => IndicatorType::Idle,
-                "screen_capture" => IndicatorType::ScreenCapture,
-                "thinking" => IndicatorType::Thinking,
-                "tool_calling" => IndicatorType::ToolCalling,
-                "streaming" => IndicatorType::Streaming,
+                "IDLE" | "idle" | "Idle" => IndicatorType::Idle,
+                "SCREEN_CAPTURE" | "screen_capture" | "ScreenCapture" => {
+                    IndicatorType::ScreenCapture
+                }
+                "THINKING" | "thinking" | "Thinking" => IndicatorType::Thinking,
+                "TOOL_CALLING" | "tool_calling" | "ToolCalling" => IndicatorType::ToolCalling,
+                "STREAMING" | "streaming" | "Streaming" => IndicatorType::Streaming,
                 _ => IndicatorType::Idle,
             };
         }
@@ -195,5 +197,32 @@ impl SseConnectionManager {
         if trimmed_count > 0 {
             info!(count = trimmed_count, "connection_manager.trimmed_stale");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::sse::types::{EventType, StreamBundle};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn track_indicator_accepts_screaming_snake_case() {
+        let queue = Arc::new(EventQueue::new(100));
+        let manager = SseConnectionManager::new(queue, None, None);
+        let bundle = StreamBundle {
+            event_type: EventType::Indicator,
+            message_id: String::new(),
+            timestamp: Utc::now().to_rfc3339(),
+            description: String::new(),
+            payload: json!({ "indicator": "TOOL_CALLING" }),
+        };
+
+        manager.track_indicator(&bundle).await;
+
+        assert_eq!(
+            manager.current_indicator().await,
+            IndicatorType::ToolCalling
+        );
     }
 }

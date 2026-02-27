@@ -62,10 +62,16 @@ actor OllamaService {
         let extract = Process()
         extract.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
         extract.arguments = ["-xzf", tempURL.path, "-C", binDir.path]
-        try extract.run()
-        extract.waitUntilExit()
-        guard extract.terminationStatus == 0 else {
-            throw OllamaError.extractionFailed
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            extract.terminationHandler = { proc in
+                if proc.terminationStatus == 0 {
+                    cont.resume()
+                } else {
+                    cont.resume(throwing: OllamaError.extractionFailed)
+                }
+            }
+            do { try extract.run() }
+            catch { cont.resume(throwing: error) }
         }
 
         // Verify the binary exists after extraction

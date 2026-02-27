@@ -55,7 +55,7 @@ struct AvatarView: View {
                 .overlay(
                     Circle().stroke(theme.colors.border, lineWidth: 2)
                 )
-                .shadow(color: Color(hex: "3A3A3A").opacity(0.12), radius: 10, y: 4)
+                .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
 
             // Thinking numbers ring (in the gap between outer and inner)
             if stateType == .thinking {
@@ -96,7 +96,7 @@ struct AvatarView: View {
                 .overlay(
                     Circle().stroke(theme.colors.avatarRing, lineWidth: 2)
                 )
-                .shadow(color: Color(hex: "3A3A3A").opacity(0.15), radius: 4, y: 2)
+                .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
                 // Inner highlight (inset shadow equivalent)
                 .overlay(
                     Circle()
@@ -181,7 +181,7 @@ struct ChatToggleButton: View {
         .overlay(
             Circle().stroke(theme.colors.background, lineWidth: 2)
         )
-        .shadow(color: Color(hex: "3A3A3A").opacity(0.1), radius: 3, y: 1)
+        .shadow(color: Color.black.opacity(0.1), radius: 3, y: 1)
     }
 }
 

@@ -122,7 +122,13 @@ impl NativeTool for FetchUrlTool {
         }
 
         let body = String::from_utf8_lossy(&bytes);
-        let mut content = body.to_string();
+        let is_html = content_type.contains("html");
+
+        let mut content = if is_html {
+            extract_visible_text(&body)
+        } else {
+            body.to_string()
+        };
 
         if content.len() > MAX_OUTPUT_SIZE {
             content.truncate(MAX_OUTPUT_SIZE);
@@ -133,5 +139,47 @@ impl NativeTool for FetchUrlTool {
             "URL: {url}\nStatus: {status}\nContent-Type: {content_type}\nSize: {} bytes\n\n{content}",
             bytes.len()
         ))
+    }
+}
+
+/// Extract visible text from HTML, stripping tags, scripts, and styles.
+fn extract_visible_text(html: &str) -> String {
+    use scraper::{Html, Selector};
+
+    let document = Html::parse_document(html);
+    let body_sel = Selector::parse("body").ok();
+
+    let root = if let Some(ref sel) = body_sel {
+        document.select(sel).next()
+    } else {
+        None
+    };
+
+    let mut out = String::new();
+    let target = root.unwrap_or_else(|| document.root_element());
+    collect_visible_text(&target, &mut out);
+    out
+}
+
+/// Hidden tags whose text content should be excluded.
+const HIDDEN_TAGS: &[&str] = &["script", "style", "noscript", "svg", "template"];
+
+fn collect_visible_text(node: &scraper::ElementRef, out: &mut String) {
+    let tag = node.value().name();
+    if HIDDEN_TAGS.contains(&tag) {
+        return;
+    }
+    for child in node.children() {
+        if let Some(text) = child.value().as_text() {
+            let t = text.trim();
+            if !t.is_empty() {
+                if !out.is_empty() {
+                    out.push(' ');
+                }
+                out.push_str(t);
+            }
+        } else if let Some(el) = scraper::ElementRef::wrap(child) {
+            collect_visible_text(&el, out);
+        }
     }
 }

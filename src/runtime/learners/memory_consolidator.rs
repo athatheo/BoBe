@@ -16,6 +16,7 @@ use crate::llm::LlmProvider;
 use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
 use crate::runtime::prompts::learning::memory_consolidation::MemoryConsolidationPrompt;
+use crate::util::similarity::cosine_similarity;
 
 /// Valid values for memory categories.
 const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];
@@ -289,19 +290,4 @@ impl MemoryConsolidator {
 
         created
     }
-}
-
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
-    if a.len() != b.len() || a.is_empty() {
-        return 0.0;
-    }
-    let dot: f64 = a
-        .iter()
-        .zip(b.iter())
-        .map(|(x, y)| (*x as f64) * (*y as f64))
-        .sum();
-    let norm_a: f64 = a.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
-    let norm_b: f64 = b.iter().map(|x| (*x as f64).powi(2)).sum::<f64>().sqrt();
-    let denom = norm_a * norm_b;
-    if denom < 1e-8 { 0.0 } else { dot / denom }
 }

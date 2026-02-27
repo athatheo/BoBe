@@ -183,16 +183,6 @@ actor DaemonClient {
         try await fetch("/health")
     }
 
-    // MARK: - App Maintenance
-
-    func getDataSize() async throws -> DataSizeResponse {
-        try await fetch("/app/data-size")
-    }
-
-    func deleteAllData() async throws {
-        try await fetchVoid("/app/delete-all-data", method: "GET")
-    }
-
     // MARK: - Capture
 
     func startCapture() async throws {
@@ -317,7 +307,13 @@ actor DaemonClient {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = fetchTimeout
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw DaemonError.httpError(statusCode: code, message: message)
+        }
         return try decoder.decode(MemoryListResponse.self, from: data)
     }
 
@@ -393,12 +389,12 @@ actor DaemonClient {
         try await fetch("/models")
     }
 
-    func pullModel(_ name: String) async throws -> ModelActionResponse {
-        try await fetch("/models/pull", method: "POST", body: ["name": name])
+    func pullModel(_ name: String) async throws {
+        try await pullModelSSE(model: name) { _, _ in }
     }
 
-    func deleteModel(_ name: String) async throws -> ModelActionResponse {
-        try await fetch("/models/\(name)", method: "DELETE")
+    func deleteModel(_ name: String) async throws {
+        try await fetchVoid("/models/\(name)", method: "DELETE")
     }
 
     // MARK: - Onboarding
@@ -464,51 +460,6 @@ actor DaemonClient {
         }
     }
 
-    /// Download a voice model (STT or TTS) via SSE progress stream.
-    /// NOTE: Voice endpoints are not yet implemented in the Rust backend (STT/TTS excluded from migration).
-    /// This is a placeholder that will work once /voice/models/download is added.
-    func downloadVoiceModel(
-        backend: String,
-        modelName: String,
-        onProgress: @Sendable @escaping (String, Double) -> Void
-    ) async throws {
-        let url = baseURL.appendingPathComponent("voice/models/download")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 300
-        let body: [String: String] = ["backend": backend, "model_name": modelName]
-        request.httpBody = try JSONEncoder().encode(body)
-
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw DaemonError.httpError(statusCode: 0, message: "Voice model download not yet available — voice endpoints are not implemented in the backend")
-        }
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 404 {
-                throw DaemonError.httpError(statusCode: 404, message: "Voice model download not available — backend does not support voice features yet")
-            }
-            throw DaemonError.invalidResponse
-        }
-
-        for try await line in bytes.lines {
-            if line.hasPrefix("data: ") {
-                let json = String(line.dropFirst(6))
-                if let data = json.data(using: .utf8),
-                   let event = try? JSONDecoder().decode(PullProgressEvent.self, from: data) {
-                    if event.status == "error" {
-                        throw DaemonError.httpError(statusCode: 500, message: "Voice model download failed")
-                    }
-                    let total = event.total ?? 0
-                    let completed = event.completed ?? 0
-                    let percent = total > 0 ? Double(completed) / Double(total) * 100.0 : 0
-                    onProgress(event.status, percent)
-                    if event.status == "complete" || event.status == "success" { return }
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Errors

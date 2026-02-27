@@ -315,7 +315,7 @@ struct AIModelPanel: View {
         isPulling = true
         defer { isPulling = false }
         do {
-            _ = try await DaemonClient.shared.pullModel(pullModelName)
+            try await DaemonClient.shared.pullModel(pullModelName)
             pullModelName = ""
             let resp = try await DaemonClient.shared.listModels()
             models = resp.models
@@ -326,7 +326,7 @@ struct AIModelPanel: View {
 
     private func deleteModel(_ name: String) async {
         do {
-            _ = try await DaemonClient.shared.deleteModel(name)
+            try await DaemonClient.shared.deleteModel(name)
             let resp = try await DaemonClient.shared.listModels()
             models = resp.models
         } catch {

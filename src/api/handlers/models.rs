@@ -1,11 +1,9 @@
-use std::sync::{Arc, OnceLock};
-use std::time::Instant;
+use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 use crate::app_state::AppState;
 use crate::config::LlmBackend;
@@ -189,49 +187,33 @@ pub async fn delete_model(
     }
 }
 
-// Cache for registry models (1 hour TTL)
-static REGISTRY_CACHE: OnceLock<Mutex<(Option<Vec<ModelInfo>>, Option<Instant>)>> = OnceLock::new();
-const REGISTRY_CACHE_TTL_SECS: u64 = 3600;
+/// Moka cache for registry models — 1 hour TTL, single entry.
+static REGISTRY_CACHE: std::sync::LazyLock<moka::future::Cache<(), Vec<ModelInfo>>> =
+    std::sync::LazyLock::new(|| {
+        moka::future::Cache::builder()
+            .max_capacity(1)
+            .time_to_live(std::time::Duration::from_secs(3600))
+            .build()
+    });
 
 /// GET /api/models/registry
 ///
 /// List trending models from the Ollama public registry (ollama.com).
-/// Cached for 1 hour.
+/// Cached for 1 hour via moka with automatic eviction.
 pub async fn list_registry_models() -> Json<ModelsListResponse> {
-    let cache = REGISTRY_CACHE.get_or_init(|| Mutex::new((None, None)));
-    let mut guard = cache.lock().await;
-
-    // Return cached if fresh
-    if let (Some(ref models), Some(ref ts)) = *guard {
-        if ts.elapsed().as_secs() < REGISTRY_CACHE_TTL_SECS {
-            return Json(ModelsListResponse {
-                backend: LlmBackend::Ollama,
-                models: models.clone(),
-                supports_pull: true,
-            });
-        }
-    }
-
-    // Fetch while holding lock to prevent cache stampede (low-traffic endpoint, 1h TTL)
-    match fetch_registry_models().await {
-        Ok(models) => {
-            *guard = (Some(models.clone()), Some(Instant::now()));
-            Json(ModelsListResponse {
-                backend: LlmBackend::Ollama,
-                models,
-                supports_pull: true,
-            })
-        }
-        Err(e) => {
+    let models = REGISTRY_CACHE
+        .try_get_with((), fetch_registry_models())
+        .await
+        .unwrap_or_else(|e| {
             tracing::warn!(error = %e, "Failed to fetch registry models");
-            let models = guard.0.clone().unwrap_or_default();
-            Json(ModelsListResponse {
-                backend: LlmBackend::Ollama,
-                models,
-                supports_pull: true,
-            })
-        }
-    }
+            Vec::new()
+        });
+
+    Json(ModelsListResponse {
+        backend: LlmBackend::Ollama,
+        models,
+        supports_pull: true,
+    })
 }
 
 async fn fetch_registry_models() -> Result<Vec<ModelInfo>, AppError> {

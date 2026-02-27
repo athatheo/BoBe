@@ -4,7 +4,6 @@ pub mod events;
 pub mod goal_worker;
 pub mod goals;
 pub mod health;
-pub mod mcp_configs;
 pub mod memories;
 pub mod models;
 pub mod onboarding;

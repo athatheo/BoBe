@@ -228,7 +228,7 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
     println!("\nChecking BoBe setup status...\n");
 
     let resp = match client
-        .get(format!("{base_url}/api/onboarding/status"))
+        .get(format!("{base_url}/onboarding/status"))
         .send()
         .await
     {
@@ -260,12 +260,10 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
     println!("\nChoose your LLM backend:");
     println!("  1. Ollama (local, private, free)");
     println!("  2. OpenAI (cloud, API key required)");
-    println!("  3. Anthropic Claude (cloud, API key required)");
 
     let mode = prompt("Choice [1]: ").unwrap_or_else(|| "1".into());
     let mode = match mode.trim() {
         "2" => "openai",
-        "3" => "anthropic",
         _ => "ollama",
     };
 
@@ -283,7 +281,7 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
         };
 
         client
-            .post(format!("{base_url}/api/onboarding/configure-llm"))
+            .post(format!("{base_url}/onboarding/configure-llm"))
             .json(&serde_json::json!({"mode": "ollama", "model": model}))
             .send()
             .await?;
@@ -291,7 +289,7 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
 
         println!("\nDownloading {model}...");
         let pull_resp = client
-            .post(format!("{base_url}/api/onboarding/pull-model"))
+            .post(format!("{base_url}/onboarding/pull-model"))
             .json(&serde_json::json!({"model": model}))
             .timeout(std::time::Duration::from_secs(3600))
             .send()
@@ -322,11 +320,7 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
         }
         println!();
     } else {
-        let default_model = if mode == "openai" {
-            "gpt-4o-mini"
-        } else {
-            "claude-sonnet-4-5-20250929"
-        };
+        let default_model = "gpt-4o-mini";
 
         let api_key = prompt("API Key: ").unwrap_or_default();
         let model_input = prompt(&format!("Model [{default_model}]: ")).unwrap_or_default();
@@ -337,7 +331,7 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
         };
 
         client
-            .post(format!("{base_url}/api/onboarding/configure-llm"))
+            .post(format!("{base_url}/onboarding/configure-llm"))
             .json(&serde_json::json!({"mode": mode, "api_key": api_key, "model": model}))
             .send()
             .await?;
@@ -346,7 +340,7 @@ async fn run_setup(host: &str, port: u16) -> anyhow::Result<()> {
 
     // Mark complete
     client
-        .post(format!("{base_url}/api/onboarding/mark-complete"))
+        .post(format!("{base_url}/onboarding/mark-complete"))
         .send()
         .await?;
     println!("\n✓ BoBe is ready!\n");

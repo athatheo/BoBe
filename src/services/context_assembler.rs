@@ -12,11 +12,13 @@ use crate::db::GoalRepository;
 use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
 use crate::db::SoulRepository;
+use crate::db::UserProfileRepository;
 use crate::llm::EmbeddingProvider;
 use crate::models::goal::Goal;
 use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::soul::Soul;
+use crate::models::user_profile::UserProfile;
 use crate::util::text::truncate_str;
 
 use super::soul_service::SoulService;
@@ -28,6 +30,7 @@ pub struct AssembledContext {
     pub goals: Vec<Goal>,
     pub memories: Vec<Memory>,
     pub observations: Vec<Observation>,
+    pub user_profiles: Vec<UserProfile>,
 }
 
 impl AssembledContext {
@@ -45,6 +48,17 @@ impl AssembledContext {
                 buf.push_str(&s.content);
             }
             sections.insert("personality".into(), buf);
+        }
+
+        if !self.user_profiles.is_empty() {
+            let mut buf = String::new();
+            for (i, p) in self.user_profiles.iter().enumerate() {
+                if i > 0 {
+                    buf.push_str("\n\n");
+                }
+                buf.push_str(&p.content);
+            }
+            sections.insert("user_profile".into(), buf);
         }
 
         if !self.goals.is_empty() {
@@ -115,6 +129,9 @@ impl AssembledContext {
         if let Some(goals) = sections.get("current_goals") {
             context = format!("User goals:\n{goals}\n\n{context}");
         }
+        if let Some(profile) = sections.get("user_profile") {
+            context = format!("User profile:\n{profile}\n\n{context}");
+        }
         if let Some(memories) = sections.get("relevant_memories") {
             context = format!("Relevant memories:\n{memories}\n\n{context}");
         }
@@ -153,6 +170,7 @@ pub struct ContextAssembler {
     goal_repo: Arc<dyn GoalRepository>,
     memory_repo: Arc<dyn MemoryRepository>,
     observation_repo: Arc<dyn ObservationRepository>,
+    user_profile_repo: Arc<dyn UserProfileRepository>,
     embedding: Arc<dyn EmbeddingProvider>,
     soul_service: Option<Arc<SoulService>>,
 }
@@ -163,6 +181,7 @@ impl ContextAssembler {
         goal_repo: Arc<dyn GoalRepository>,
         memory_repo: Arc<dyn MemoryRepository>,
         observation_repo: Arc<dyn ObservationRepository>,
+        user_profile_repo: Arc<dyn UserProfileRepository>,
         embedding: Arc<dyn EmbeddingProvider>,
         soul_service: Option<Arc<SoulService>>,
     ) -> Self {
@@ -171,6 +190,7 @@ impl ContextAssembler {
             goal_repo,
             memory_repo,
             observation_repo,
+            user_profile_repo,
             embedding,
             soul_service,
         }
@@ -198,6 +218,10 @@ impl ContextAssembler {
             match self.soul_repo.find_enabled().await {
                 Ok(souls) => results.souls = souls,
                 Err(e) => error!(error = %e, "context_assembler.souls_failed"),
+            }
+            match self.user_profile_repo.find_enabled().await {
+                Ok(profiles) => results.user_profiles = profiles,
+                Err(e) => error!(error = %e, "context_assembler.user_profiles_failed"),
             }
         }
 

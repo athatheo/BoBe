@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 import ScreenCaptureKit
 import OSLog
 
@@ -10,11 +9,9 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "SetupWizard")
 /// Wizard steps — feature-based with skip support
 enum SetupStep {
     case chooseMode
-    case noInternet
     case downloadingEngine
     case downloadingModel
     case captureSetup
-    case voiceSetup
     case complete
     case error
 }
@@ -76,13 +73,11 @@ enum ModelSize: String, CaseIterable {
 /// Cloud provider options
 enum CloudProvider: String, CaseIterable {
     case openai = "OpenAI"
-    case anthropic = "Anthropic"
     case azure = "Azure OpenAI"
 
     var defaultModel: String {
         switch self {
         case .openai: "gpt-4o-mini"
-        case .anthropic: "claude-sonnet-4-5-20250929"
         case .azure: "gpt-5-mini"
         }
     }
@@ -104,12 +99,8 @@ struct SetupWizard: View {
     @State private var busy = false
     // Feature setup tracking
     @State private var captureSkipped = false
-    @State private var voiceSkipped = false
     @State private var visionDownloaded = false
-    @State private var sttDownloaded = false
-    @State private var ttsDownloaded = false
     @State private var screenPermission = "not-determined"
-    @State private var micPermission = "not-determined"
     @State private var permissionPollTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
@@ -126,10 +117,8 @@ struct SetupWizard: View {
             Group {
                 switch step {
                 case .chooseMode: chooseModeView
-                case .noInternet: noInternetView
                 case .downloadingEngine, .downloadingModel: downloadingView
                 case .captureSetup: captureSetupView
-                case .voiceSetup: voiceSetupView
                 case .complete: completeView
                 case .error: errorView
                 }
@@ -145,9 +134,6 @@ struct SetupWizard: View {
             if newStep == .captureSetup {
                 checkScreenPermission()
                 startPermissionPolling { checkScreenPermission() }
-            } else if newStep == .voiceSetup {
-                checkMicPermission()
-                startPermissionPolling { checkMicPermission() }
             }
         }
     }
@@ -156,22 +142,6 @@ struct SetupWizard: View {
 
     private func checkScreenPermission() {
         screenPermission = CGPreflightScreenCaptureAccess() ? "granted" : "not-determined"
-    }
-
-    private func checkMicPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: micPermission = "granted"
-        case .denied, .restricted: micPermission = "denied"
-        default: micPermission = "not-determined"
-        }
-    }
-
-    private func requestMicPermission() {
-        AVCaptureDevice.requestAccess(for: .audio) { granted in
-            Task { @MainActor in
-                micPermission = granted ? "granted" : "denied"
-            }
-        }
     }
 
     private func startPermissionPolling(check: @escaping @MainActor () -> Void) {
@@ -242,19 +212,6 @@ struct SetupWizard: View {
         }
         .padding(.top, 4)
         .onAppear { cloudModel = cloudProvider.defaultModel }
-    }
-
-    // MARK: - No Internet
-
-    private var noInternetView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "wifi.slash").font(.system(size: 40)).foregroundStyle(theme.colors.textMuted)
-            Text("No Internet Connection").font(.headline)
-            Text("BoBe needs internet for the first setup to download AI models.")
-                .multilineTextAlignment(.center).foregroundStyle(theme.colors.textMuted)
-            Button("Try Again") { step = .chooseMode }
-                .buttonStyle(.borderedProminent).tint(theme.colors.primary)
-        }
     }
 
     // MARK: - Downloading
@@ -334,7 +291,7 @@ struct SetupWizard: View {
             HStack(spacing: 12) {
                 Button("Skip") { skipCapture() }
                     .buttonStyle(.bordered).foregroundStyle(theme.colors.textMuted)
-                Button("Continue") { step = .voiceSetup }
+                Button("Continue") { step = .complete }
                     .buttonStyle(.borderedProminent).tint(theme.colors.primary)
                     .disabled(
                         screenPermission != "granted"
@@ -344,69 +301,7 @@ struct SetupWizard: View {
         }
     }
 
-    // MARK: - Step 5: Voice Setup
-
-    private var voiceSetupView: some View {
-        VStack(spacing: 14) {
-            Text("Voice Features").font(.headline)
-            Text("Talk to BoBe using your voice and hear responses spoken aloud.")
-                .font(.subheadline).foregroundStyle(theme.colors.textMuted).multilineTextAlignment(.center)
-
-            // Microphone permission
-            featureCard(
-                title: "Microphone Permission",
-                description: "Required for voice input (speech-to-text).",
-                granted: micPermission == "granted",
-                badge: micPermission == "granted" ? "Granted" : (micPermission == "denied" ? "Denied" : "Not Set")
-            ) {
-                if micPermission == "denied" {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
-                        NSWorkspace.shared.open(url)
-                    }
-                } else {
-                    requestMicPermission()
-                }
-            }
-
-            // STT model
-            featureCard(
-                title: "Speech Recognition (Whisper)",
-                description: "Converts your speech to text. ~150 MB download.",
-                granted: sttDownloaded,
-                badge: sttDownloaded ? "Downloaded" : "Not Downloaded"
-            ) {
-                downloadSTTModel()
-            }
-
-            // TTS model
-            featureCard(
-                title: "Text-to-Speech (Kokoro)",
-                description: "Natural voice output. ~305 MB download.",
-                granted: ttsDownloaded,
-                badge: ttsDownloaded ? "Downloaded" : "Not Downloaded"
-            ) {
-                downloadTTSModel()
-            }
-
-            if busy {
-                ProgressView(value: progressPercent, total: 100).progressViewStyle(.linear)
-                Text(progressMessage).font(.caption).foregroundStyle(theme.colors.textMuted)
-            }
-
-            Text("Voice features can be enabled later in Settings.")
-                .font(.caption).foregroundStyle(theme.colors.textMuted)
-
-            HStack(spacing: 12) {
-                Button("Skip") { skipVoice() }
-                    .buttonStyle(.bordered).foregroundStyle(theme.colors.textMuted)
-                Button("Continue") { step = .complete }
-                    .buttonStyle(.borderedProminent).tint(theme.colors.primary)
-                    .disabled(!sttDownloaded || !ttsDownloaded)
-            }
-        }
-    }
-
-    // MARK: - Step 6: Complete
+    // MARK: - Step 5: Complete
 
     private var completeView: some View {
         VStack(spacing: 16) {
@@ -420,11 +315,6 @@ struct SetupWizard: View {
                     icon: captureSkipped ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
                     color: captureSkipped ? .orange : .green,
                     text: captureSkipped ? "Screen Capture: Disabled (skipped)" : "Screen Capture: Enabled"
-                )
-                summaryRow(
-                    icon: voiceSkipped ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
-                    color: voiceSkipped ? .orange : .green,
-                    text: voiceSkipped ? "Voice: Disabled (skipped)" : "Voice: Enabled"
                 )
             }
             .padding(16)
@@ -474,10 +364,10 @@ struct SetupWizard: View {
                 Spacer()
                 Text(badge)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(granted ? Color(hex: "#2E7D32") : theme.colors.textMuted)
+                    .foregroundStyle(granted ? theme.colors.secondary : theme.colors.textMuted)
                     .padding(.horizontal, 8).padding(.vertical, 2)
                     .background(RoundedRectangle(cornerRadius: 8)
-                        .fill(granted ? Color(hex: "#E8F5E9") : theme.colors.surface))
+                        .fill(granted ? theme.colors.secondary.opacity(0.15) : theme.colors.surface))
             }
             Text(description).font(.system(size: 11)).foregroundStyle(theme.colors.textMuted)
             if let action, !granted {
@@ -514,7 +404,7 @@ struct SetupWizard: View {
 
                 // Configure LLM
                 try await DaemonClient.shared.configureLLM(
-                    ConfigureLLMRequest(mode: "local", model: selectedModel.rawValue, apiKey: nil, endpoint: nil)
+                    ConfigureLLMRequest(mode: "ollama", model: selectedModel.rawValue, apiKey: nil, endpoint: nil)
                 )
 
                 // Ensure Ollama is installed and running
@@ -590,9 +480,9 @@ struct SetupWizard: View {
                 apiKey = ""
                 progressMessage = "Downloading embedding model..."
                 try await DaemonClient.shared.warmupEmbedding()
-                // Cloud mode doesn't have local vision — skip to voice
+                // Cloud mode doesn't have local vision setup.
                 captureSkipped = true
-                step = .voiceSetup
+                step = .complete
             } catch {
                 errorMessage = error.localizedDescription
                 step = .error
@@ -621,50 +511,6 @@ struct SetupWizard: View {
         }
     }
 
-    private func downloadSTTModel() {
-        guard !busy else { return }
-        busy = true
-        progressPercent = 0
-        progressMessage = "Downloading Whisper..."
-        Task {
-            defer { busy = false }
-            do {
-                try await DaemonClient.shared.downloadVoiceModel(backend: "faster_whisper", modelName: "base.en") { status, percent in
-                    Task { @MainActor in
-                        progressPercent = percent
-                        progressMessage = "Downloading Whisper... \(Int(percent))%"
-                    }
-                }
-                sttDownloaded = true
-                // Auto-start TTS download
-                if !ttsDownloaded { downloadTTSModel() }
-            } catch {
-                logger.warning("STT model download failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func downloadTTSModel() {
-        guard !busy else { return }
-        busy = true
-        progressPercent = 0
-        progressMessage = "Downloading Kokoro TTS..."
-        Task {
-            defer { busy = false }
-            do {
-                try await DaemonClient.shared.downloadVoiceModel(backend: "kokoro", modelName: "v1.0") { status, percent in
-                    Task { @MainActor in
-                        progressPercent = percent
-                        progressMessage = "Downloading Kokoro TTS... \(Int(percent))%"
-                    }
-                }
-                ttsDownloaded = true
-            } catch {
-                logger.warning("TTS model download failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
     private func skipCapture() {
         captureSkipped = true
         Task {
@@ -672,22 +518,6 @@ struct SetupWizard: View {
                 var settings = SettingsUpdateRequest()
                 settings.captureEnabled = false
                 settings.visionBackend = "none"
-                _ = try await DaemonClient.shared.updateSettings(settings)
-                step = .voiceSetup
-            } catch {
-                errorMessage = error.localizedDescription
-                step = .error
-            }
-        }
-    }
-
-    private func skipVoice() {
-        voiceSkipped = true
-        Task {
-            do {
-                var settings = SettingsUpdateRequest()
-                settings.sttEnabled = false
-                settings.ttsEnabled = false
                 _ = try await DaemonClient.shared.updateSettings(settings)
                 step = .complete
             } catch {

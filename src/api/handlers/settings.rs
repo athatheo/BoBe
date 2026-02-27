@@ -46,6 +46,10 @@ pub struct SettingsResponse {
 
     // Goals
     pub goal_check_interval_seconds: f64,
+    pub projects_directory: String,
+    pub goal_worker_enabled: bool,
+    pub goal_worker_autonomous: bool,
+    pub goal_worker_max_concurrent: u32,
 
     // Tools
     pub tools_enabled: bool,
@@ -99,6 +103,10 @@ pub struct SettingsUpdateRequest {
 
     // Goals
     pub goal_check_interval_seconds: Option<f64>,
+    pub projects_directory: Option<String>,
+    pub goal_worker_enabled: Option<bool>,
+    pub goal_worker_autonomous: Option<bool>,
+    pub goal_worker_max_concurrent: Option<u32>,
 
     // Tools
     pub tools_enabled: Option<bool>,
@@ -122,6 +130,8 @@ pub struct SettingsUpdateResponse {
     pub message: String,
     pub applied_fields: Vec<String>,
     pub restart_required_fields: Vec<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub persist_failed: bool,
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
@@ -153,6 +163,10 @@ pub async fn get_settings(
         conversation_auto_close_minutes: cfg.conversation_auto_close_minutes,
         conversation_summary_enabled: cfg.conversation_summary_enabled,
         goal_check_interval_seconds: cfg.goal_check_interval_seconds,
+        projects_directory: cfg.resolved_projects_dir().to_string_lossy().to_string(),
+        goal_worker_enabled: cfg.goal_worker_enabled,
+        goal_worker_autonomous: cfg.goal_worker_autonomous,
+        goal_worker_max_concurrent: cfg.goal_worker_max_concurrent,
         tools_enabled: cfg.tools_enabled,
         tools_max_iterations: cfg.tools_max_iterations,
         mcp_enabled: cfg.mcp_enabled,
@@ -216,6 +230,9 @@ pub async fn update_settings(
     collect_opt!(conversation_auto_close_minutes);
     collect_opt!(conversation_summary_enabled);
     collect_opt!(goal_check_interval_seconds);
+    collect_opt!(goal_worker_enabled);
+    collect_opt!(goal_worker_autonomous);
+    collect_opt!(goal_worker_max_concurrent);
     collect_opt!(tools_enabled);
     collect_opt!(tools_max_iterations);
     collect_opt!(mcp_enabled);
@@ -233,11 +250,20 @@ pub async fn update_settings(
         );
     }
 
+    // Keep frontend compatibility while writing canonical config key.
+    if let Some(ref v) = body.projects_directory {
+        changes.insert(
+            "projects_dir".to_owned(),
+            serde_json::Value::String(v.clone()),
+        );
+    }
+
     if changes.is_empty() {
         return Ok(Json(SettingsUpdateResponse {
             message: "No changes provided".into(),
             applied_fields: vec![],
             restart_required_fields: vec![],
+            persist_failed: false,
         }));
     }
 
@@ -256,5 +282,6 @@ pub async fn update_settings(
         message: format!("Updated {} setting(s)", total),
         applied_fields: result.applied_fields,
         restart_required_fields: result.restart_required_fields,
+        persist_failed: result.persist_failed,
     }))
 }

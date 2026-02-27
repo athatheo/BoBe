@@ -9,11 +9,11 @@ struct ChatStack: View {
 
     private var visibleMessages: [ChatMessage] {
         if isExpanded { return messages }
-        return Array(messages.suffix(2))
+        return Array(messages.suffix(4))
     }
 
     private var hiddenCount: Int {
-        max(0, messages.count - 2)
+        max(0, messages.count - 4)
     }
 
     private var shouldShowToggle: Bool {
@@ -145,7 +145,7 @@ struct ChatBubble: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(theme.colors.border, lineWidth: 1.5)
             )
-            .shadow(color: Color(hex: "3A3A3A").opacity(0.06), radius: 4, y: 2)
+            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
             .opacity(isPending ? 0.5 : 1)
             .frame(maxWidth: isUser ? 410 : 460, alignment: isUser ? .trailing : .leading)
             .transition(.asymmetric(
@@ -160,7 +160,7 @@ struct ChatBubble: View {
 
 /// Blinking cursor shown during streaming
 struct BlinkingCursor: View {
-    var color: Color = .primary
+    let color: Color
 
     @State private var visible = true
 
@@ -169,12 +169,10 @@ struct BlinkingCursor: View {
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(color)
             .opacity(visible ? 1 : 0)
-            .onAppear {
-                Task { @MainActor in
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(0.3))
-                        visible.toggle()
-                    }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(0.3))
+                    visible.toggle()
                 }
             }
     }

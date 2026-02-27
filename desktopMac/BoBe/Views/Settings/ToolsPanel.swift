@@ -25,19 +25,6 @@ struct ToolsPanel: View {
                         .font(.system(size: 12))
                         .foregroundStyle(theme.colors.textMuted)
 
-                    Button {} label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "magnifyingglass")
-                            Text("Discover my Work")
-                        }
-                        .font(.system(size: 11))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(true)
-                    .opacity(0.5)
-                    .help("Coming soon")
-
                     Button { Task { await loadTools() } } label: {
                         Image(systemName: "arrow.clockwise")
                     }

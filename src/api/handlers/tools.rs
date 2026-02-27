@@ -41,88 +41,44 @@ pub async fn list_tools(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ToolListResponse>, AppError> {
     let cfg = state.config();
+    let _ = state.tool_registry.refresh_index().await;
+    let mut defs = state.tool_registry.get_all_tools(true).await;
+    defs.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut tools = Vec::new();
-    let mut providers = vec!["bobe".to_owned()];
+    let mut providers: Vec<String> = Vec::new();
+    for def in defs {
+        let provider = state
+            .tool_registry
+            .get_source_for_tool(&def.name)
+            .await
+            .map(|s| s.name().to_owned())
+            .unwrap_or_else(|| "unknown".to_owned());
 
-    if cfg.tools_enabled {
-        let native_tools = [
-            (
-                "search_memories",
-                "Search memories by semantic similarity",
-                "memory",
-            ),
-            (
-                "search_context",
-                "Search recent observations/context",
-                "memory",
-            ),
-            (
-                "search_goal",
-                "Search goals by semantic similarity",
-                "goals",
-            ),
-            ("get_goals", "Get all active goals", "goals"),
-            (
-                "get_souls",
-                "Get active personality documents",
-                "personality",
-            ),
-            ("get_recent_context", "Get recent observations", "context"),
-            ("create_memory", "Create a new memory", "memory"),
-            ("update_memory", "Update an existing memory", "memory"),
-            ("create_goal", "Create a new goal", "goals"),
-            ("update_goal", "Update an existing goal", "goals"),
-            ("complete_goal", "Mark a goal as completed", "goals"),
-            ("archive_goal", "Archive a goal", "goals"),
-            ("file_reader", "Read file contents", "filesystem"),
-            ("list_directory", "List directory contents", "filesystem"),
-            ("search_files", "Search for files by pattern", "filesystem"),
-            ("fetch_url", "Fetch a URL and extract text", "web"),
-            ("browser_history", "Search browser history", "web"),
-            ("discover_git_repos", "Discover Git repositories", "code"),
-            (
-                "discover_installed_tools",
-                "Discover installed dev tools",
-                "code",
-            ),
-            (
-                "launch_coding_agent",
-                "Launch an autonomous coding agent",
-                "agents",
-            ),
-            (
-                "check_coding_agent",
-                "Check status of a coding agent",
-                "agents",
-            ),
-            (
-                "cancel_coding_agent",
-                "Cancel a running coding agent",
-                "agents",
-            ),
-            ("list_coding_agents", "List all coding agents", "agents"),
-        ];
-
-        for (name, desc, category) in native_tools {
-            let enabled = state
-                .tool_registry
-                .is_tool_enabled(name)
-                .await
-                .unwrap_or(true);
-
-            tools.push(ToolResponse {
-                name: name.into(),
-                description: desc.into(),
-                provider: "bobe".into(),
-                enabled,
-                category: Some(category.into()),
-            });
+        if provider == "bobe" && !cfg.tools_enabled {
+            continue;
         }
-    }
+        if provider == "mcp" && !cfg.mcp_enabled {
+            continue;
+        }
 
-    if cfg.mcp_enabled {
-        providers.push("mcp".to_owned());
+        let enabled = state
+            .tool_registry
+            .is_tool_enabled(&def.name)
+            .await
+            .unwrap_or(true);
+
+        if !providers.contains(&provider) {
+            providers.push(provider.clone());
+        }
+
+        tools.push(ToolResponse {
+            name: def.name,
+            description: def.description,
+            provider,
+            enabled,
+            category: None,
+        });
     }
 
     let count = tools.len();

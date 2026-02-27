@@ -63,7 +63,7 @@ pub struct WarmupEmbeddingResponse {
 
 // ── Handlers ────────────────────────────────────────────────────────────────
 
-/// GET /api/onboarding/status
+/// GET /onboarding/status
 ///
 /// Checks database health, LLM availability, and required models.
 pub async fn onboarding_status(
@@ -197,7 +197,7 @@ pub async fn onboarding_status(
     }))
 }
 
-/// POST /api/onboarding/complete
+/// POST /onboarding/complete
 pub async fn mark_complete(
     State(_state): State<Arc<AppState>>,
 ) -> Result<Json<MarkCompleteResponse>, AppError> {
@@ -205,7 +205,7 @@ pub async fn mark_complete(
     Ok(Json(MarkCompleteResponse { ok: true }))
 }
 
-/// POST /api/onboarding/configure-llm
+/// POST /onboarding/configure-llm
 ///
 /// Validates and persists the LLM configuration via ConfigManager.
 /// API keys and models are persisted through ConfigManager for restart safety.
@@ -335,7 +335,7 @@ pub async fn configure_llm(
     }
 }
 
-/// POST /api/onboarding/pull-model
+/// POST /onboarding/pull-model
 ///
 /// Pulls an Ollama model by delegating to the OllamaManager.
 pub async fn pull_model(
@@ -351,7 +351,7 @@ pub async fn pull_model(
     }))
 }
 
-/// POST /api/onboarding/warmup-embedding
+/// POST /onboarding/warmup-embedding
 ///
 /// Warms up the embedding model by generating a test embedding.
 pub async fn warmup_embedding(

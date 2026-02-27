@@ -45,11 +45,8 @@ struct DaemonSettings: Codable, Sendable {
     var goalWorkerEnabled: Bool
     var goalWorkerAutonomous: Bool
     var goalWorkerMaxConcurrent: Int
-    var projectsDir: String?
     var visionBackend: String?
     var visionOllamaModel: String?
-    var sttEnabled: Bool?
-    var ttsEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case llmBackend = "llm_backend"
@@ -82,11 +79,8 @@ struct DaemonSettings: Codable, Sendable {
         case goalWorkerEnabled = "goal_worker_enabled"
         case goalWorkerAutonomous = "goal_worker_autonomous"
         case goalWorkerMaxConcurrent = "goal_worker_max_concurrent"
-        case projectsDir = "projects_dir"
         case visionBackend = "vision_backend"
         case visionOllamaModel = "vision_ollama_model"
-        case sttEnabled = "stt_enabled"
-        case ttsEnabled = "tts_enabled"
     }
 }
 
@@ -121,11 +115,8 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var goalWorkerEnabled: Bool?
     var goalWorkerAutonomous: Bool?
     var goalWorkerMaxConcurrent: Int?
-    var projectsDir: String?
     var visionBackend: String?
     var visionOllamaModel: String?
-    var sttEnabled: Bool?
-    var ttsEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case llmBackend = "llm_backend"
@@ -158,11 +149,8 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case goalWorkerEnabled = "goal_worker_enabled"
         case goalWorkerAutonomous = "goal_worker_autonomous"
         case goalWorkerMaxConcurrent = "goal_worker_max_concurrent"
-        case projectsDir = "projects_dir"
         case visionBackend = "vision_backend"
         case visionOllamaModel = "vision_ollama_model"
-        case sttEnabled = "stt_enabled"
-        case ttsEnabled = "tts_enabled"
     }
 }
 
@@ -202,11 +190,6 @@ struct ModelsListResponse: Codable, Sendable {
         case backend, models
         case supportsPull = "supports_pull"
     }
-}
-
-struct ModelActionResponse: Codable, Sendable {
-    let ok: Bool
-    let message: String
 }
 
 // MARK: - Message / Health
@@ -250,23 +233,4 @@ struct ConfigureLLMRequest: Codable, Sendable {
         case apiKey = "api_key"
         case endpoint
     }
-}
-
-// MARK: - Data Size
-
-struct DataSizeResponse: Codable, Sendable {
-    let totalBytes: Int
-    let breakdown: DataSizeBreakdown
-
-    enum CodingKeys: String, CodingKey {
-        case totalBytes = "total_bytes"
-        case breakdown
-    }
-}
-
-struct DataSizeBreakdown: Codable, Sendable {
-    let data: Int
-    let models: Int
-    let logs: Int
-    let ollama: Int
 }

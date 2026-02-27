@@ -476,7 +476,10 @@ impl CaptureLearner {
         };
         let max_len = 200;
         let summary = if description.len() > max_len {
-            format!("{}...", &description[..max_len - 3])
+            format!(
+                "{}...",
+                crate::util::text::truncate_str(description, max_len - 3)
+            )
         } else {
             description.to_owned()
         };

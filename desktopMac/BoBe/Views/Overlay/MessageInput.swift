@@ -87,7 +87,7 @@ struct MessageInput: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(theme.colors.border, lineWidth: 1.5)
             )
-            .shadow(color: Color(hex: "3A3A3A").opacity(0.08), radius: 4, y: 2)
+            .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
         }
         .frame(maxWidth: .infinity)
         .padding(.leading, 16)

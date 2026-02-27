@@ -297,7 +297,7 @@ impl GoalLearner {
         .await
         {
             Ok(Ok(r)) => r,
-            _ => return DeduplicationDecision::Create,
+            _ => return DeduplicationDecision::Skip,
         };
 
         let resp_content = response.message.content.text_or_empty().to_string();

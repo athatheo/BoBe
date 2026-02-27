@@ -4,17 +4,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
-use crate::db::AgentJobRepository;
 use crate::error::AppError;
+use crate::services::agent_job_manager::AgentJobManager;
 use crate::tools::ToolExecutionContext;
 
 pub struct LaunchCodingAgentTool {
-    agent_job_repo: Arc<dyn AgentJobRepository>,
+    manager: Option<Arc<AgentJobManager>>,
 }
 
 impl LaunchCodingAgentTool {
-    pub fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
-        Self { agent_job_repo }
+    pub fn new(manager: Option<Arc<AgentJobManager>>) -> Self {
+        Self { manager }
     }
 }
 
@@ -73,22 +73,19 @@ impl NativeTool for LaunchCodingAgentTool {
             .and_then(|c| c.conversation_id.as_deref())
             .unwrap_or("unknown");
 
-        // Create the agent job record
-        let mut job = crate::models::agent_job::AgentJob::new(
-            profile.to_owned(),
-            profile.to_owned(), // command comes from profile resolution
-            task.to_owned(),
-            working_dir.to_owned(),
-        );
-        if let Ok(cid) = uuid::Uuid::parse_str(conversation_id) {
-            job.conversation_id = Some(cid);
-        }
+        let manager = self
+            .manager
+            .as_ref()
+            .ok_or_else(|| AppError::Validation("Coding agents are disabled".into()))?;
 
-        let saved = self.agent_job_repo.save(&job).await?;
+        let conversation_uuid = uuid::Uuid::parse_str(conversation_id).ok();
+        let job = manager
+            .launch(profile, task, Some(working_dir), conversation_uuid)
+            .await?;
 
         Ok(format!(
-            "Coding agent launched.\nJob ID: {}\nProfile: {}\nTask: {}\nWorking Directory: {}\n\nUse check_coding_agent with this job_id to monitor progress.",
-            saved.id, profile, task, working_dir,
+            "Coding agent launched.\nJob ID: {}\nProfile: {}\nTask: {}\nWorking Directory: {}\nStatus: {}\n\nUse check_coding_agent with this job_id to monitor progress.",
+            job.id, profile, task, working_dir, job.status,
         ))
     }
 }

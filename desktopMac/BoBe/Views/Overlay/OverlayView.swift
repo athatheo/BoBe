@@ -89,6 +89,9 @@ struct OverlayView: View {
             resizeWindow()
             startInactivityTimer()
         }
+        .onDisappear {
+            inactivityTimer?.cancel()
+        }
     }
 
     // MARK: - Derived State

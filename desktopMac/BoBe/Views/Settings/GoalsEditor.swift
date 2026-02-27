@@ -268,7 +268,7 @@ struct GoalsEditor: View {
     private func priorityColor(_ priority: GoalPriority) -> Color {
         switch priority {
         case .high: theme.colors.primary
-        case .medium: Color(hex: "C8B090")
+        case .medium: theme.colors.tertiary
         case .low: theme.colors.secondary
         case .unknown: theme.colors.textMuted
         }

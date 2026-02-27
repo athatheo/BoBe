@@ -4,6 +4,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::timeout::TimeoutLayer;
 
 use super::handlers;
 use super::middleware::{AllowedHosts, host_validation, request_logging};
@@ -132,34 +133,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/user-profiles/{profile_id}/disable",
             post(handlers::user_profile::disable_profile),
         )
-        // MCP Configs
-        .route(
-            "/mcp-configs",
-            get(handlers::mcp_configs::list_configs)
-                .post(handlers::mcp_configs::create_config),
-        )
-        .route(
-            "/mcp-configs/{config_id}",
-            get(handlers::mcp_configs::get_config)
-                .patch(handlers::mcp_configs::update_config)
-                .delete(handlers::mcp_configs::delete_config),
-        )
-        .route(
-            "/mcp-configs/{config_id}/enable",
-            post(handlers::mcp_configs::enable_config),
-        )
-        .route(
-            "/mcp-configs/{config_id}/disable",
-            post(handlers::mcp_configs::disable_config),
-        )
-        .route(
-            "/mcp-configs/{config_id}/connect",
-            post(handlers::mcp_configs::connect_server),
-        )
-        .route(
-            "/mcp-configs/{config_id}/disconnect",
-            post(handlers::mcp_configs::disconnect_server),
-        )
         // Settings
         .route(
             "/settings",
@@ -254,5 +227,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)
+        // Global request timeout (30s). SSE is unaffected — its handler returns
+        // the Sse response immediately; the background stream runs independently.
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::GATEWAY_TIMEOUT,
+            std::time::Duration::from_secs(30),
+        ))
+        // Cap concurrent in-flight requests to prevent resource exhaustion.
+        .layer(tower::limit::ConcurrencyLimitLayer::new(64))
         .with_state(state)
 }

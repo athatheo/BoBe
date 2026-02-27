@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+
+use dashmap::DashMap;
 use tracing::{debug, info, warn};
 
 use super::client::{McpClient, McpToolInfo};
@@ -15,10 +15,12 @@ use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 const TOOL_NAME_SEPARATOR: &str = "__";
 
 /// Manages multiple MCP server connections and exposes their tools.
+///
+/// Uses `DashMap` for lock-free concurrent access to client/tool/config maps.
 pub struct McpToolAdapter {
-    clients: RwLock<HashMap<String, Arc<McpClient>>>,
-    tool_to_server: RwLock<HashMap<String, String>>,
-    server_configs: RwLock<HashMap<String, McpParsedServer>>,
+    clients: DashMap<String, Arc<McpClient>>,
+    tool_to_server: DashMap<String, String>,
+    server_configs: DashMap<String, McpParsedServer>,
     config_repo: Option<Arc<dyn McpConfigRepository>>,
     blocked_commands: Vec<String>,
     dangerous_env_keys: Vec<String>,
@@ -31,9 +33,9 @@ impl McpToolAdapter {
         dangerous_env_keys: Vec<String>,
     ) -> Self {
         Self {
-            clients: RwLock::new(HashMap::new()),
-            tool_to_server: RwLock::new(HashMap::new()),
-            server_configs: RwLock::new(HashMap::new()),
+            clients: DashMap::new(),
+            tool_to_server: DashMap::new(),
+            server_configs: DashMap::new(),
             config_repo,
             blocked_commands,
             dangerous_env_keys,
@@ -43,14 +45,12 @@ impl McpToolAdapter {
     /// Initialize all MCP servers from DB or file config.
     pub async fn initialize(&self) -> Result<(), AppError> {
         let servers = self.load_enabled_servers().await;
-
         if servers.is_empty() {
             debug!("No MCP servers configured");
             return Ok(());
         }
 
         info!(count = servers.len(), "Initializing MCP servers");
-
         for server in servers {
             if let Err(e) = self.connect_server(server).await {
                 warn!(error = %e, "Failed to connect MCP server");
@@ -61,36 +61,29 @@ impl McpToolAdapter {
 
     /// Shut down all MCP server connections.
     pub async fn shutdown(&self) {
-        let clients = self.clients.read().await;
-        for (name, client) in clients.iter() {
+        let snapshot: Vec<(String, Arc<McpClient>)> = self
+            .clients
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
+
+        for (name, client) in &snapshot {
             info!(server = %name, "Disconnecting MCP server");
             client.disconnect().await;
         }
-        drop(clients);
-
-        self.clients.write().await.clear();
-        self.tool_to_server.write().await.clear();
-        self.server_configs.write().await.clear();
+        self.clients.clear();
+        self.tool_to_server.clear();
+        self.server_configs.clear();
     }
 
     /// Reconnect a single server by name.
     pub async fn reconnect_server(&self, name: &str) -> Result<(), AppError> {
-        // Disconnect existing
-        let mut clients = self.clients.write().await;
-        if let Some(client) = clients.remove(name) {
+        if let Some((_, client)) = self.clients.remove(name) {
             client.disconnect().await;
         }
-        drop(clients);
+        self.tool_to_server.retain(|_, v| v != name);
 
-        // Remove tool mappings
-        let mut t2s = self.tool_to_server.write().await;
-        t2s.retain(|_, v| v != name);
-        drop(t2s);
-
-        // Reload config and reconnect
-        let configs = self.server_configs.read().await;
-        if let Some(config) = configs.get(name).cloned() {
-            drop(configs);
+        if let Some(config) = self.server_configs.get(name).map(|e| e.value().clone()) {
             self.connect_server(config).await?;
         }
         Ok(())
@@ -101,19 +94,13 @@ impl McpToolAdapter {
         let name = config.name.clone();
 
         // Disconnect existing if present
-        {
-            let mut clients = self.clients.write().await;
-            if let Some(client) = clients.remove(&name) {
-                client.disconnect().await;
-            }
+        if let Some((_, client)) = self.clients.remove(&name) {
+            client.disconnect().await;
         }
-        {
-            let mut t2s = self.tool_to_server.write().await;
-            t2s.retain(|_, v| v != &name);
-        }
+        self.tool_to_server.retain(|_, v| v != &name);
 
         match self.connect_server(config).await {
-            Ok(_) => Ok(true),
+            Ok(()) => Ok(true),
             Err(e) => {
                 warn!(server = %name, error = %e, "Failed to connect MCP server");
                 Ok(false)
@@ -123,16 +110,10 @@ impl McpToolAdapter {
 
     /// Disconnect and remove a server by name.
     pub async fn disconnect_server_by_name(&self, name: &str) -> bool {
-        let mut clients = self.clients.write().await;
-        if let Some(client) = clients.remove(name) {
+        if let Some((_, client)) = self.clients.remove(name) {
             client.disconnect().await;
-            drop(clients);
-
-            let mut t2s = self.tool_to_server.write().await;
-            t2s.retain(|_, v| v != name);
-
-            self.server_configs.write().await.remove(name);
-
+            self.tool_to_server.retain(|_, v| v != name);
+            self.server_configs.remove(name);
             info!(server = %name, "MCP server disconnected");
             true
         } else {
@@ -142,12 +123,8 @@ impl McpToolAdapter {
 
     /// Get the last error for a specific server.
     pub async fn get_server_error(&self, name: &str) -> Option<String> {
-        let clients = self.clients.read().await;
-        if let Some(client) = clients.get(name) {
-            client.last_error().await
-        } else {
-            None
-        }
+        let client = self.clients.get(name)?;
+        client.value().last_error().await
     }
 
     /// Get tools for a specific server.
@@ -155,8 +132,8 @@ impl McpToolAdapter {
         &self,
         server_name: &str,
     ) -> Result<Vec<ToolDefinition>, AppError> {
-        let clients = self.clients.read().await;
-        let client = clients
+        let client = self
+            .clients
             .get(server_name)
             .ok_or_else(|| AppError::Mcp(format!("Server '{server_name}' not found")))?;
 
@@ -167,24 +144,20 @@ impl McpToolAdapter {
         }
 
         let tools = client.list_tools().await?;
-        let configs = self.server_configs.read().await;
-        let excluded = configs
+        let excluded = self
+            .server_configs
             .get(server_name)
-            .map(|c| &c.excluded_tools)
-            .cloned()
+            .map(|e| e.excluded_tools.clone())
             .unwrap_or_default();
 
-        let defs = tools
+        Ok(tools
             .into_iter()
             .filter(|t| !excluded.contains(&t.name))
-            .map(|t| self.to_tool_definition(server_name, &t))
-            .collect();
-
-        Ok(defs)
+            .map(|t| to_tool_definition(server_name, &t))
+            .collect())
     }
 
     async fn load_enabled_servers(&self) -> Vec<McpParsedServer> {
-        // Try DB first
         if let Some(repo) = &self.config_repo
             && let Ok(configs) = repo.find_enabled().await
         {
@@ -193,7 +166,6 @@ impl McpToolAdapter {
                 .map(|c| db_config_to_parsed(&c))
                 .collect();
         }
-        // Fall back to file
         load_default_mcp_config(&self.blocked_commands, &self.dangerous_env_keys)
     }
 
@@ -204,33 +176,19 @@ impl McpToolAdapter {
         let client = Arc::new(McpClient::new(config.clone()));
         client.connect().await?;
 
-        // List tools and build mappings
         let tools = client.list_tools().await?;
-        let mut t2s = self.tool_to_server.write().await;
         for tool in &tools {
             if !config.excluded_tools.contains(&tool.name) {
-                let prefixed = prefix_tool_name(&name, &tool.name);
-                t2s.insert(prefixed, name.clone());
+                self.tool_to_server
+                    .insert(prefix_tool_name(&name, &tool.name), name.clone());
             }
         }
-        drop(t2s);
 
-        self.clients.write().await.insert(name.clone(), client);
-        self.server_configs
-            .write()
-            .await
-            .insert(name.clone(), config);
+        self.clients.insert(name.clone(), client);
+        self.server_configs.insert(name.clone(), config);
 
         info!(server = %name, tool_count = tools.len(), "MCP server connected");
         Ok(())
-    }
-
-    fn to_tool_definition(&self, server_name: &str, tool: &McpToolInfo) -> ToolDefinition {
-        ToolDefinition {
-            name: prefix_tool_name(server_name, &tool.name),
-            description: format!("[MCP: {}] {}", server_name, tool.description),
-            parameters: tool.input_schema.clone(),
-        }
     }
 }
 
@@ -241,32 +199,35 @@ impl ToolSource for McpToolAdapter {
     }
 
     async fn get_tools(&self, _include_disabled: bool) -> Result<Vec<ToolDefinition>, AppError> {
-        let clients = self.clients.read().await;
         let mut all_defs = Vec::new();
 
-        for (server_name, client) in clients.iter() {
+        // Collect client refs outside the DashMap iterator to avoid !Send guards across awaits.
+        let snapshot: Vec<(String, Arc<McpClient>)> = self
+            .clients
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
+
+        for (server_name, client) in &snapshot {
             if !client.is_connected() {
                 continue;
             }
 
             match client.list_tools().await {
                 Ok(tools) => {
-                    let configs = self.server_configs.read().await;
-                    let excluded = configs
+                    let excluded = self
+                        .server_configs
                         .get(server_name)
-                        .map(|c| &c.excluded_tools)
-                        .cloned()
+                        .map(|e| e.excluded_tools.clone())
                         .unwrap_or_default();
 
                     for tool in tools {
                         if !excluded.contains(&tool.name) {
-                            all_defs.push(self.to_tool_definition(server_name, &tool));
+                            all_defs.push(to_tool_definition(server_name, &tool));
                         }
                     }
                 }
-                Err(e) => {
-                    warn!(server = %server_name, error = %e, "Failed to list MCP tools");
-                }
+                Err(e) => warn!(server = %server_name, error = %e, "Failed to list MCP tools"),
             }
         }
 
@@ -278,9 +239,8 @@ impl ToolSource for McpToolAdapter {
         tool_call: &AiToolCall,
         _context: Option<&ToolExecutionContext>,
     ) -> ToolResult {
-        let t2s = self.tool_to_server.read().await;
-        let server_name = match t2s.get(&tool_call.name) {
-            Some(s) => s.clone(),
+        let server_name = match self.tool_to_server.get(&tool_call.name) {
+            Some(e) => e.value().clone(),
             None => {
                 return ToolResult::err(
                     tool_call.id.clone(),
@@ -289,11 +249,9 @@ impl ToolSource for McpToolAdapter {
                 );
             }
         };
-        drop(t2s);
 
-        let clients = self.clients.read().await;
-        let client = match clients.get(&server_name) {
-            Some(c) => c.clone(),
+        let client = match self.clients.get(&server_name) {
+            Some(e) => e.value().clone(),
             None => {
                 return ToolResult::err(
                     tool_call.id.clone(),
@@ -302,7 +260,6 @@ impl ToolSource for McpToolAdapter {
                 );
             }
         };
-        drop(clients);
 
         if !client.is_connected() {
             return ToolResult::err(
@@ -313,20 +270,15 @@ impl ToolSource for McpToolAdapter {
         }
 
         let original_name = unprefix_tool_name(&tool_call.name);
-        debug!(
-            server = %server_name,
-            tool = %original_name,
-            "Executing MCP tool"
-        );
+        debug!(server = %server_name, tool = %original_name, "Executing MCP tool");
 
         let timeout = std::time::Duration::from_secs_f64(client.timeout_seconds());
-        let result = tokio::time::timeout(
+        match tokio::time::timeout(
             timeout,
             client.call_tool(&original_name, tool_call.arguments.clone()),
         )
-        .await;
-
-        match result {
+        .await
+        {
             Ok(Ok((true, content))) => {
                 ToolResult::ok(tool_call.id.clone(), tool_call.name.clone(), content)
             }
@@ -345,6 +297,14 @@ impl ToolSource for McpToolAdapter {
                 ),
             ),
         }
+    }
+}
+
+fn to_tool_definition(server_name: &str, tool: &McpToolInfo) -> ToolDefinition {
+    ToolDefinition {
+        name: prefix_tool_name(server_name, &tool.name),
+        description: format!("[MCP: {server_name}] {}", tool.description),
+        parameters: tool.input_schema.clone(),
     }
 }
 

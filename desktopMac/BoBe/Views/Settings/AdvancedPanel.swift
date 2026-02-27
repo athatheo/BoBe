@@ -6,6 +6,7 @@ struct AdvancedPanel: View {
     @State private var settings: DaemonSettings?
     @State private var isLoading = false
     @State private var error: String?
+    @State private var saveTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -152,9 +153,10 @@ struct AdvancedPanel: View {
     }
 
     private func debounceSave() {
-        Task {
+        saveTask?.cancel()
+        saveTask = Task {
             try? await Task.sleep(for: .seconds(0.6))
-            guard let settings else { return }
+            guard !Task.isCancelled, let settings else { return }
             do {
                 var req = SettingsUpdateRequest()
                 req.similarityDeduplicationThreshold = settings.similarityDeduplicationThreshold
