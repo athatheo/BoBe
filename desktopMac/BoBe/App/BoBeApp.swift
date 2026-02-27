@@ -1,6 +1,6 @@
-import SwiftUI
 import AppKit
 import OSLog
+import SwiftUI
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "App")
 

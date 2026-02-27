@@ -25,8 +25,8 @@ struct IndicatorBubble: View {
                     )
             }
         }
-        .animation(.spring(duration: 0.3, bounce: 0.15), value: displayIndicator != nil)
-        .animation(.spring(duration: 0.3, bounce: 0.15), value: activeTools.count)
+        .animation(OverlayMotionRuntime.animation(for: .indicatorTransition), value: displayIndicator != nil)
+        .animation(OverlayMotionRuntime.animation(for: .indicatorTransition), value: activeTools.count)
         .onChange(of: indicator) { _, newValue in
             handleIndicatorChange(newValue)
         }
@@ -65,6 +65,7 @@ struct IndicatorBubble: View {
                 )
                 .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
         )
+        .frame(maxWidth: 220, alignment: .leading)
     }
 
     private func indicatorContent(_ indicator: IndicatorType) -> some View {
@@ -95,9 +96,9 @@ struct IndicatorBubble: View {
                 AnimatedDots(color: theme.colors.textMuted)
 
                 // Expand button with count badge
-                if completedTools.count > 0 {
+                if !completedTools.isEmpty {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(OverlayMotionRuntime.animation(for: .indicatorTransition)) {
                             isExpanded.toggle()
                         }
                     } label: {

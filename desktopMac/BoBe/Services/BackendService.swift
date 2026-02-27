@@ -228,10 +228,8 @@ actor BackendService {
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cargo/bin/bobe").path,
             "/usr/local/bin/bobe"
         ]
-        for path in devPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
+        for path in devPaths where FileManager.default.isExecutableFile(atPath: path) {
+            return path
         }
         return nil
     }

@@ -34,11 +34,10 @@ actor OllamaService {
         }
 
         // 2. Check for system-installed Ollama (Homebrew, manual)
-        for systemPath in ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"] {
-            if FileManager.default.isExecutableFile(atPath: systemPath) {
-                logger.info("System Ollama found at \(systemPath)")
-                return systemPath
-            }
+        for systemPath in ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
+            where FileManager.default.isExecutableFile(atPath: systemPath) {
+            logger.info("System Ollama found at \(systemPath)")
+            return systemPath
         }
 
         // 3. Download and extract

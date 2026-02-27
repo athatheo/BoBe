@@ -24,16 +24,7 @@ struct MCPServersPanel: View {
         HSplitView {
             // Left pane
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("MCP Servers")
-                        .font(.headline)
-                        .foregroundStyle(theme.colors.text)
-                    Spacer()
-                    Button { isAdding = true } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                }
+                SettingsPaneHeader(title: "MCP Servers") { isAdding = true }
 
                 if isLoading && servers.isEmpty {
                     HStack(spacing: 8) {
@@ -61,29 +52,34 @@ struct MCPServersPanel: View {
                 } else {
                     List(selection: $selectedId) {
                         ForEach(servers) { server in
-                            HStack(spacing: 8) {
-                                Image(systemName: server.connected ? "wifi" : "wifi.slash")
-                                    .foregroundStyle(server.connected ? theme.colors.secondary : theme.colors.primary)
-                                    .font(.system(size: 12))
+                            SettingsListRow {
+                                HStack(spacing: 8) {
+                                    Image(systemName: server.connected ? "wifi" : "wifi.slash")
+                                        .foregroundStyle(server.connected ? theme.colors.secondary : theme.colors.primary)
+                                        .font(.system(size: 12))
 
-                                VStack(alignment: .leading) {
-                                    Text(server.name)
-                                        .font(.system(size: 13, weight: .medium))
-                                    Text("\(server.command) • \(server.toolCount) tools")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(theme.colors.textMuted)
-                                }
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(server.name)
+                                            .font(.system(size: 13, weight: .semibold))
+                                        Text("\(server.command) • \(server.toolCount) tools")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(theme.colors.textMuted)
+                                    }
 
-                                if server.error != nil {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(.orange)
-                                        .font(.system(size: 10))
+                                    if server.error != nil {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundStyle(.orange)
+                                            .font(.system(size: 10))
+                                    }
                                 }
                             }
                             .tag(server.id)
+                            .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
                         }
                     }
-                    .listStyle(.bordered)
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(theme.colors.background)
                 }
             }
             .frame(minWidth: 220, idealWidth: 280)
@@ -93,7 +89,17 @@ struct MCPServersPanel: View {
             if isAdding {
                 addServerForm
             } else if let server = selectedServer {
-                serverDetail(server)
+                MCPServerDetail(
+                    server: server,
+                    deleteConfirm: $deleteConfirm,
+                    isReconnecting: $isReconnecting,
+                    addExcludedText: $addExcludedText,
+                    error: $error,
+                    onReconnect: reconnectServer,
+                    onRemove: removeServer,
+                    onAddExcluded: addExcludedTool,
+                    onRemoveExcluded: removeExcludedTool
+                )
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
@@ -185,152 +191,6 @@ struct MCPServersPanel: View {
             }
             .padding(16)
         }
-    }
-
-    private func serverDetail(_ server: MCPServer) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text(server.name)
-                    .font(.headline)
-                    .foregroundStyle(theme.colors.text)
-
-                Text(server.connected ? "connected" : "disconnected")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(server.connected ? theme.colors.secondary : theme.colors.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule().fill(
-                            (server.connected ? theme.colors.secondary : theme.colors.primary).opacity(0.15)
-                        )
-                    )
-
-                Text("\(server.toolCount) tools")
-                    .font(.system(size: 10))
-                    .foregroundStyle(theme.colors.textMuted)
-
-                Spacer()
-            }
-
-            if let serverError = server.error {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(theme.colors.primary)
-                    Text(serverError)
-                        .font(.system(size: 12))
-                        .foregroundStyle(theme.colors.primary)
-                }
-            }
-
-            // Excluded tools
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "nosign")
-                        .font(.system(size: 12))
-                    Text("Excluded Tools")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("(hidden from BoBe)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(theme.colors.textMuted)
-                }
-
-                if server.excludedTools.isEmpty {
-                    Text("No tools excluded")
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.colors.textMuted)
-                } else {
-                    FlowLayout(spacing: 4) {
-                        ForEach(server.excludedTools, id: \.self) { tool in
-                            HStack(spacing: 3) {
-                                Text(tool)
-                                    .font(.system(size: 10, design: .monospaced))
-                                Button {
-                                    removeExcludedTool(server: server, tool: tool)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 8))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Capsule().fill(theme.colors.surface))
-                        }
-                    }
-                }
-
-                HStack(spacing: 6) {
-                    TextField("tool name", text: $addExcludedText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
-                        .onSubmit { addExcludedTool(server: server) }
-                    Button("Add") { addExcludedTool(server: server) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(addExcludedText.isEmpty)
-                }
-            }
-
-            Divider()
-
-            // Config display
-            Text("Configuration")
-                .font(.system(size: 13, weight: .semibold))
-            Text("Command: \(server.command) \(server.args.joined(separator: " "))")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(theme.colors.textMuted)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 6).fill(theme.colors.surface))
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                if deleteConfirm {
-                    HStack(spacing: 6) {
-                        Text("Remove server?")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.red)
-                        Button("Yes") { removeServer(server); deleteConfirm = false }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .tint(.red)
-                        Button("No") { deleteConfirm = false }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-                } else {
-                    Button { deleteConfirm = true } label: {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(.red)
-                }
-
-                Spacer()
-
-                Button {
-                    reconnectServer(server)
-                } label: {
-                    HStack(spacing: 4) {
-                        if isReconnecting {
-                            ProgressView().controlSize(.mini)
-                        }
-                        Text(isReconnecting ? "Reconnecting..." : "Reconnect")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(isReconnecting)
-            }
-
-            if let error {
-                Text(error).font(.caption).foregroundStyle(.red)
-            }
-        }
-        .padding(12)
     }
 
     // MARK: - Actions

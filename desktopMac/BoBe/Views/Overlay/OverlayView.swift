@@ -8,7 +8,7 @@ struct OverlayView: View {
     @State private var themeStore = ThemeStore.shared
     @State private var showChat = false
     @State private var lastMessageActivity: Date = .now
-    @State private var measuredContentHeight: CGFloat = 0
+    @State private var measuredContentSize: CGSize = .zero
     @State private var inactivityTimer: Task<Void, Never>?
 
     var body: some View {
@@ -20,18 +20,31 @@ struct OverlayView: View {
                 if showChat && !store.messages.isEmpty {
                     ChatStack(messages: store.messages)
                         .padding(.horizontal, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(
+                            .move(edge: .bottom)
+                                .combined(with: .opacity)
+                                .combined(with: .scale(scale: 0.96, anchor: .bottomTrailing))
+                        )
                 }
 
                 // Message input (between chat and avatar)
                 if showChat {
                     MessageInput(
                         onSend: handleSendMessage,
-                        onClose: { withAnimation { showChat = false } },
+                        onClose: {
+                            withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
+                                showChat = false
+                            }
+                        },
                         isThinking: store.isThinking
                     )
                     .padding(.horizontal, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(2)
+                    .transition(
+                        .move(edge: .bottom)
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 0.94, anchor: .bottomTrailing))
+                    )
                 }
 
                 // Error banner (dismissible)
@@ -60,44 +73,45 @@ struct OverlayView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                // Avatar with indicator row
-                // CSS: .avatar-with-indicator is relative, indicator is absolutely positioned left
+                // Avatar (right-aligned, no indicator bubble)
                 HStack(spacing: 12) {
                     Spacer()
 
-                    // Indicator bubble (left of avatar)
-                    IndicatorBubble(
-                        indicator: displayIndicator,
-                        toolExecutions: store.toolExecutions
-                    )
-
-                    // Avatar (right side)
                     AvatarView(
                         stateType: store.stateType,
                         isCapturing: store.isCapturing,
                         isConnected: store.isConnected,
                         hasMessage: hasUnreadMessages,
                         showInput: showChat,
+                        statusOverride: toolStatusText,
                         onClick: handleAvatarClick,
                         onToggleCapture: { Task { _ = await store.toggleCapture() } },
-                        onToggleInput: { withAnimation { showChat.toggle() } }
+                        onToggleInput: {
+                            withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
+                                showChat.toggle()
+                            }
+                        }
                     )
                 }
                 .padding(.trailing, 12)
                 .padding(.bottom, 8)
+                .padding(.top, showChat ? 6 : 0)
+                .zIndex(1)
             }
             .background(
                 GeometryReader { geo in
                     Color.clear
                         .preference(
-                            key: OverlayContentHeightPreferenceKey.self,
-                            value: ceil(geo.size.height)
+                            key: OverlayContentSizePreferenceKey.self,
+                            value: CGSize(width: ceil(geo.size.width), height: ceil(geo.size.height))
                         )
                 }
             )
-            .onPreferenceChange(OverlayContentHeightPreferenceKey.self) { newHeight in
-                if newHeight > 0, abs(newHeight - measuredContentHeight) > 0.5 {
-                    measuredContentHeight = newHeight
+            .onPreferenceChange(OverlayContentSizePreferenceKey.self) { newSize in
+                if newSize.width > 0, newSize.height > 0,
+                   abs(newSize.width - measuredContentSize.width) > 0.5 ||
+                    abs(newSize.height - measuredContentSize.height) > 0.5 {
+                    measuredContentSize = newSize
                     resizeWindow()
                 }
             }
@@ -109,6 +123,9 @@ struct OverlayView: View {
             resizeWindow()
         }
         .onChange(of: showChat) { _, _ in
+            resizeWindow()
+        }
+        .onChange(of: store.toolExecutions.count) { _, _ in
             resizeWindow()
         }
         .onAppear {
@@ -126,18 +143,18 @@ struct OverlayView: View {
         !store.messages.isEmpty && !showChat
     }
 
-    private var displayIndicator: IndicatorType? {
-        guard let indicator = store.activeIndicator else { return nil }
-        if showChat && (indicator == .thinking || indicator == .toolCalling) {
-            return nil
+    /// Text override for StatusLabel when tools are running (e.g. "Using search_memories...")
+    private var toolStatusText: String? {
+        if let tool = store.runningTools.first {
+            return "Using \(tool.toolName)..."
         }
-        return indicator
+        return nil
     }
 
     // MARK: - Actions
 
     private func handleAvatarClick() {
-        withAnimation(.spring(duration: 0.3, bounce: 0.2)) {
+        withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
             showChat.toggle()
         }
     }
@@ -164,14 +181,17 @@ struct OverlayView: View {
     }
 
     private func calculateWindowSize() -> CGSize {
+        let measuredWidth = max(WindowSizes.widthCollapsed, measuredContentSize.width)
+        let measuredHeight = max(WindowSizes.heightCollapsed, measuredContentSize.height)
+
         if !showChat {
-            return CGSize(width: WindowSizes.widthCollapsed, height: WindowSizes.heightCollapsed)
+            return CGSize(width: WindowSizes.widthCollapsed, height: measuredHeight)
         }
 
         let minExpandedHeight = WindowSizes.heightAvatar + WindowSizes.heightInput
-        let measured = max(measuredContentHeight, minExpandedHeight)
+        let measured = max(measuredContentSize.height, minExpandedHeight)
         let clampedHeight = min(measured, WindowSizes.heightMax)
-        return CGSize(width: WindowSizes.widthExpanded, height: clampedHeight)
+        return CGSize(width: max(WindowSizes.widthExpanded, measuredWidth), height: clampedHeight)
     }
 
     // MARK: - Inactivity Timer
@@ -192,10 +212,11 @@ struct OverlayView: View {
     }
 }
 
-private enum OverlayContentHeightPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
+private enum OverlayContentSizePreferenceKey: PreferenceKey {
+    static let defaultValue: CGSize = .zero
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let next = nextValue()
+        value = CGSize(width: max(value.width, next.width), height: max(value.height, next.height))
     }
 }

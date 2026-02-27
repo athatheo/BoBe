@@ -1,6 +1,6 @@
 import AppKit
-import SwiftUI
 import Observation
+import SwiftUI
 
 /// System tray (menu bar) manager. Based on TrayManager.
 @MainActor

@@ -27,7 +27,7 @@ struct BehaviorPanel: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.08)))
                 }
 
-                if let _ = settings {
+                if settings != nil {
                     captureSection
                     checkinSection
                     memorySection
@@ -158,9 +158,14 @@ struct BehaviorPanel: View {
 
     private func binding<V>(_ keyPath: WritableKeyPath<DaemonSettings, V>) -> Binding<V> {
         Binding(
-            get: { settings![keyPath: keyPath] },
+            get: {
+                guard let settings else { fatalError("Binding accessed before settings loaded") }
+                return settings[keyPath: keyPath]
+            },
             set: { newValue in
-                settings![keyPath: keyPath] = newValue
+                guard var current = settings else { return }
+                current[keyPath: keyPath] = newValue
+                settings = current
                 debounceSave()
             }
         )

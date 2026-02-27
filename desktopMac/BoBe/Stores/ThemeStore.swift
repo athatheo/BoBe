@@ -1,5 +1,5 @@
-import SwiftUI
 import Observation
+import SwiftUI
 
 /// Manages the active theme with UserDefaults persistence
 @Observable
