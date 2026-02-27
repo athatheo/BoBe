@@ -2,88 +2,116 @@ import Foundation
 
 // MARK: - Step Flow
 
-/// Wizard steps — feature-based with skip support
+/// Wizard steps matching Electron: welcome → choose-mode → downloading → capture → complete
 enum SetupStep {
+    case welcome
     case chooseMode
     case downloadingEngine
     case downloadingModel
+    case initializing
     case captureSetup
     case complete
     case error
 }
 
-// MARK: - Model Tiers
+// MARK: - Local Model Options
 
-/// Model tiers: Small/Medium use unified VL model, Large uses separate LLM + vision
-enum ModelSize: String, CaseIterable {
-    case small = "qwen3-vl:2b"
-    case medium = "qwen3-vl:4b"
-    case large = "qwen3:14b"
-
-    var displayName: String {
-        switch self {
-        case .small: "Small (2B)"
-        case .medium: "Medium (4B)"
-        case .large: "Large (14B)"
-        }
-    }
-
-    var sizeDescription: String {
-        switch self {
-        case .small: "~2.7 GB total"
-        case .medium: "~4.1 GB total"
-        case .large: "~15 GB total"
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .small: "Fast, works on any Mac. Good for getting started."
-        case .medium: "Smarter responses. Recommended for 32GB+ RAM."
-        case .large: "Best quality. Recommended for 64GB+ RAM."
-        }
-    }
-
-    /// For Small/Medium the LLM IS the vision model (unified VL)
-    var isUnifiedVL: Bool { self != .large }
-
-    /// Separate vision model only needed for Large tier
-    var separateVisionModel: String? {
-        self == .large ? "qwen3-vl:8b" : nil
-    }
-
-    /// Vision model name (same as LLM for small/medium, separate for large)
-    var visionModelName: String {
-        separateVisionModel ?? rawValue
-    }
+/// All tiers use separate text (qwen3) and vision (qwen3-vl) models.
+struct ModelOption: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let size: String
+    let description: String
+    let modelName: String
+    let visionModel: String
 
     var diskRequirement: Int64 {
-        switch self {
-        case .small: 2_700_000_000
-        case .medium: 4_100_000_000
-        case .large: 15_000_000_000
+        switch id {
+        case "small": 6_000_000_000
+        case "medium": 11_000_000_000
+        case "large": 15_000_000_000
+        default: 6_000_000_000
         }
     }
 }
 
-/// Cloud provider options
-enum CloudProvider: String, CaseIterable {
-    case openai = "OpenAI"
-    case azure = "Azure OpenAI"
+let localModelOptions: [ModelOption] = [
+    ModelOption(
+        id: "small", label: "Small (4B)", size: "~6 GB",
+        description: "Good balance of speed and quality. Any Apple Silicon Mac, 16 GB+ RAM.",
+        modelName: "qwen3:4b", visionModel: "qwen3-vl:4b"
+    ),
+    ModelOption(
+        id: "medium", label: "Medium (8B)", size: "~11 GB",
+        description: "Better quality. M1 Pro / M2 or newer, 24 GB+ RAM.",
+        modelName: "qwen3:8b", visionModel: "qwen3-vl:8b"
+    ),
+    ModelOption(
+        id: "large", label: "Large (14B)", size: "~15 GB",
+        description: "Best quality. M2 Pro / M3 or newer, 48 GB+ RAM.",
+        modelName: "qwen3:14b", visionModel: "qwen3-vl:8b"
+    ),
+]
 
-    var defaultModel: String {
-        switch self {
-        case .openai: "gpt-4o-mini"
-        case .azure: "gpt-5-mini"
-        }
-    }
+let defaultModelOption: ModelOption = localModelOptions[0]
+
+// MARK: - OpenAI Model Options
+
+struct OpenAIModelOption: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let description: String
+    let modelName: String
 }
+
+let openAIModelOptions: [OpenAIModelOption] = [
+    OpenAIModelOption(
+        id: "gpt-5-mini", label: "GPT-5 mini",
+        description: "Fast, cost-effective",
+        modelName: "gpt-5-mini-2025-08-07"
+    ),
+    OpenAIModelOption(
+        id: "gpt-5-1", label: "GPT-5.1",
+        description: "Higher capability",
+        modelName: "gpt-5.1-2025-08-07"
+    ),
+]
+
+let defaultOpenAIModelOption: OpenAIModelOption = openAIModelOptions[0]
+
+// MARK: - Cloud Provider Options
+
+struct OnlineProvider: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let placeholder: String
+    let defaultModel: String
+    var needsEndpoint: Bool = false
+    var endpointPlaceholder: String = ""
+}
+
+let onlineProviders: [OnlineProvider] = [
+    OnlineProvider(
+        id: "openai", label: "OpenAI",
+        placeholder: "sk-...", defaultModel: "gpt-5-mini-2025-08-07"
+    ),
+    OnlineProvider(
+        id: "azure_openai", label: "Azure OpenAI",
+        placeholder: "Your Azure API key", defaultModel: "gpt-5-mini",
+        needsEndpoint: true,
+        endpointPlaceholder: "https://your-resource.cognitiveservices.azure.com/openai/v1/"
+    ),
+]
+
+// MARK: - Errors
 
 enum SetupError: Error, LocalizedError {
     case diskSpace(String)
+    case general(String)
     var errorDescription: String? {
         switch self {
         case .diskSpace(let msg): msg
+        case .general(let msg): msg
         }
     }
 }
