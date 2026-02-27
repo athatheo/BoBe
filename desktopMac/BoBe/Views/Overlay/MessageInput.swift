@@ -24,7 +24,7 @@ struct MessageInput: View {
                 HStack(alignment: .bottom, spacing: 8) {
                     // Text field (13px, flexible height)
                     TextField(
-                        isThinking ? "Draft a reply while thinking..." : "Type a message...",
+                        isThinking ? "BoBe is thinking…" : "Type a message...",
                         text: $text,
                         axis: .vertical
                     )

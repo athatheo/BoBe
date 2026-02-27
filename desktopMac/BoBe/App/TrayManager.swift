@@ -58,6 +58,13 @@ final class TrayManager: NSObject, NSMenuDelegate {
         showHideItem.target = self
         menu.addItem(showHideItem)
 
+        // Capture toggle
+        let captureTitle = store.isCapturing ? "Stop Capture" : "Start Capture"
+        let captureItem = NSMenuItem(title: captureTitle, action: #selector(toggleCapture), keyEquivalent: "")
+        captureItem.target = self
+        captureItem.state = store.isCapturing ? .on : .off
+        menu.addItem(captureItem)
+
         // Settings
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -89,6 +96,13 @@ final class TrayManager: NSObject, NSMenuDelegate {
             manager.show()
         }
         updateMenu()
+    }
+
+    @objc private func toggleCapture() {
+        Task {
+            _ = await store.toggleCapture()
+            updateMenu()
+        }
     }
 
     @objc private func openSettings() {

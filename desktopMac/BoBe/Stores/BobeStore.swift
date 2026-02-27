@@ -24,6 +24,7 @@ final class BobeStore {
     var currentMessage: String { context.currentMessage }
     var currentMessageId: String? { context.currentMessageId }
     var messages: [ChatMessage] { context.messages }
+    var errorMessage: String? { context.errorMessage }
     var activeIndicator: IndicatorType? { context.activeIndicator }
     var toolExecutions: [ToolExecution] { context.toolExecutions }
     var runningTools: [ToolExecution] { context.toolExecutions.filter { $0.status == .running } }
@@ -72,6 +73,10 @@ final class BobeStore {
     }
 
     // MARK: - Actions
+
+    func dismissError() {
+        updateState { $0.errorMessage = nil }
+    }
 
     func toggleCapture() async -> Bool {
         let newState = !context.capturing
@@ -158,8 +163,13 @@ final class BobeStore {
         case .error:
             if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
                 logger.error("Daemon error: \(payload.message)")
+                if !payload.recoverable {
+                    updateState { $0.errorMessage = payload.message }
+                }
             }
-        case .heartbeat, .endOfTurn, .unknown:
+        case .endOfTurn:
+            finalizeStreamingMessage()
+        case .heartbeat, .unknown:
             break
         }
     }
@@ -179,7 +189,8 @@ final class BobeStore {
         updateState { ctx in
             switch indicator {
             case .idle:
-                ctx.capturing = false; ctx.thinking = false; ctx.speaking = false
+                // Don't reset capturing — that's a persistent user toggle
+                ctx.thinking = false; ctx.speaking = false
             case .screenCapture:
                 ctx.capturing = true; ctx.thinking = false; ctx.speaking = false
             case .toolCalling, .thinking:
@@ -190,6 +201,8 @@ final class BobeStore {
                 break
             }
             ctx.activeIndicator = activeIndicator
+            // Clear any error when backend resumes normal operation
+            if indicator != .unknown { ctx.errorMessage = nil }
         }
     }
 
@@ -286,7 +299,7 @@ final class BobeStore {
             // Clean up completed tools after 2s
             let completedId = complete.toolCallId
             Task {
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(5))
                 updateState { ctx in
                     ctx.toolExecutions.removeAll { $0.toolCallId == completedId && $0.status != .running }
                 }
@@ -296,12 +309,16 @@ final class BobeStore {
 
     private func handleConversationClosed(_ payload: ConversationClosedPayload) {
         logger.info("Conversation closed: \(payload.conversationId) (\(payload.reason), \(payload.turnCount) turns)")
-        clearMessages()
         updateState {
             $0.thinking = false
             $0.speaking = false
             $0.activeIndicator = nil
             $0.toolExecutions = []
+        }
+        // Delay message clear so user sees the conversation end naturally
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            clearMessages()
         }
     }
 

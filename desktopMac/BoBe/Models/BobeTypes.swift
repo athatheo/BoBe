@@ -87,6 +87,7 @@ struct BobeContext: Sendable {
     var thinking: Bool = false
     var speaking: Bool = false
     var lastMessage: String?
+    var errorMessage: String?
     var currentMessage: String = ""
     var currentMessageId: String?
     var messages: [ChatMessage] = []

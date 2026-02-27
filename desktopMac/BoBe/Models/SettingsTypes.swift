@@ -45,8 +45,8 @@ struct DaemonSettings: Codable, Sendable {
     var goalWorkerEnabled: Bool
     var goalWorkerAutonomous: Bool
     var goalWorkerMaxConcurrent: Int
-    var visionBackend: String?
-    var visionOllamaModel: String?
+    var visionBackend: String
+    var visionOllamaModel: String
 
     enum CodingKeys: String, CodingKey {
         case llmBackend = "llm_backend"
@@ -163,6 +163,22 @@ struct SettingsUpdateResponse: Codable, Sendable {
         case message
         case appliedFields = "applied_fields"
         case restartRequiredFields = "restart_required_fields"
+    }
+}
+
+// MARK: - Goal Worker
+
+struct GoalWorkerStatusResponse: Codable, Sendable {
+    let enabled: Bool
+    let maxConcurrent: Int
+    let activeGoalsCount: Int
+    let pendingApprovalCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case maxConcurrent = "max_concurrent"
+        case activeGoalsCount = "active_goals_count"
+        case pendingApprovalCount = "pending_approval_count"
     }
 }
 

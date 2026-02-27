@@ -34,6 +34,32 @@ struct OverlayView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
+                // Error banner (dismissible)
+                if let error = store.errorMessage {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                        Text(error)
+                            .font(.system(size: 10))
+                            .lineLimit(2)
+                        Spacer()
+                        Button {
+                            // Dismiss error
+                            BobeStore.shared.dismissError()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
+                    .padding(.horizontal, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 // Avatar with indicator row
                 // CSS: .avatar-with-indicator is relative, indicator is absolutely positioned left
                 HStack(spacing: 12) {

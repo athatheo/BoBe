@@ -4,7 +4,7 @@ import SwiftUI
 enum SettingsCategory: String, CaseIterable, Identifiable {
     case souls, goals, memories, userProfiles = "user-profiles"
     case tools, mcpServers = "mcp-servers"
-    case appearance, aiModel = "ai-model", behavior, privacy
+    case appearance, aiModel = "ai-model", behavior, privacy, goalWorker = "goal-worker"
     case advanced
 
     var id: String { rawValue }
@@ -21,6 +21,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .aiModel: "AI Model"
         case .behavior: "Behavior"
         case .privacy: "Privacy"
+        case .goalWorker: "Goal Worker"
         case .advanced: "For Nerds"
         }
     }
@@ -37,6 +38,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .aiModel: "cpu.fill"
         case .behavior: "slider.horizontal.3"
         case .privacy: "shield.fill"
+        case .goalWorker: "gearshape.2.fill"
         case .advanced: "terminal.fill"
         }
     }
@@ -45,7 +47,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         switch self {
         case .souls, .goals, .memories, .userProfiles: .context
         case .tools, .mcpServers: .integrations
-        case .appearance, .aiModel, .behavior, .privacy: .preferences
+        case .appearance, .aiModel, .behavior, .privacy, .goalWorker: .preferences
         case .advanced: .advanced
         }
     }
@@ -64,7 +66,7 @@ enum SettingsCategoryGroup: String, CaseIterable {
         case .integrations:
             [.tools, .mcpServers]
         case .preferences:
-            [.appearance, .aiModel, .behavior, .privacy]
+            [.appearance, .aiModel, .behavior, .privacy, .goalWorker]
         case .advanced:
             [.advanced]
         }
@@ -217,6 +219,8 @@ struct SettingsWindow: View {
             AdvancedPanel()
         case .privacy:
             PrivacyPanel()
+        case .goalWorker:
+            GoalWorkerPanel()
         case .souls:
             SoulsEditor()
         case .goals:

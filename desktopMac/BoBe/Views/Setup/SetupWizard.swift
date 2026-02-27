@@ -439,7 +439,8 @@ struct SetupWizard: View {
                 }
 
                 // Warmup embedding
-                progressMessage = "Downloading embedding model..."
+                progressMessage = "Preparing embedding model…"
+                progressPercent = 100 // Show full bar during warmup
                 try await DaemonClient.shared.warmupEmbedding()
 
                 // Configure vision model name (for small/medium it's the same model)
@@ -480,9 +481,8 @@ struct SetupWizard: View {
                 apiKey = ""
                 progressMessage = "Downloading embedding model..."
                 try await DaemonClient.shared.warmupEmbedding()
-                // Cloud mode doesn't have local vision setup.
-                captureSkipped = true
-                step = .complete
+                // Cloud users should still set up screen capture
+                step = .captureSetup
             } catch {
                 errorMessage = error.localizedDescription
                 step = .error

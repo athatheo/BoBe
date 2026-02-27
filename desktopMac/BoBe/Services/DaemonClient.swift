@@ -373,6 +373,12 @@ actor DaemonClient {
         try await fetch("/tools/mcp/\(name)", method: "PATCH", body: request)
     }
 
+    // MARK: - Goal Worker
+
+    func goalWorkerStatus() async throws -> GoalWorkerStatusResponse {
+        try await fetch("/goal-plans/status")
+    }
+
     // MARK: - Settings
 
     func getSettings() async throws -> DaemonSettings {

@@ -34,7 +34,7 @@ struct ChatStack: View {
                     .padding(.top, isExpanded ? 4 : 0)
                 }
                 .onChange(of: messages.count) { _, _ in
-                    if let last = visibleMessages.last {
+                    if let last = messages.last {
                         withAnimation {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
