@@ -192,7 +192,7 @@ static REGISTRY_CACHE: std::sync::LazyLock<moka::future::Cache<(), Vec<ModelInfo
     std::sync::LazyLock::new(|| {
         moka::future::Cache::builder()
             .max_capacity(1)
-            .time_to_live(std::time::Duration::from_secs(3600))
+            .time_to_live(std::time::Duration::from_hours(1))
             .build()
     });
 

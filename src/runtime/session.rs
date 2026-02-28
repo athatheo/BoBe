@@ -132,7 +132,7 @@ impl RuntimeSession {
         }
 
         let mut loop_counter: u64 = 0;
-        let maintenance_interval = std::time::Duration::from_secs(60);
+        let maintenance_interval = std::time::Duration::from_mins(1);
         let mut last_goal_check = Instant::now();
         let mut last_capture_time = Instant::now();
 
@@ -145,7 +145,7 @@ impl RuntimeSession {
             }
 
             // CheckinTrigger (with timeout)
-            match tokio::time::timeout(std::time::Duration::from_secs(60), async {
+            match tokio::time::timeout(std::time::Duration::from_mins(1), async {
                 let mut checkin = self.checkin_trigger.lock().await;
                 checkin.fire().await
             })
@@ -213,7 +213,7 @@ impl RuntimeSession {
 
             // AgentJobTrigger (error-safe)
             if let Some(ref agent_trigger) = self.agent_job_trigger {
-                match tokio::time::timeout(std::time::Duration::from_secs(60), agent_trigger.fire())
+                match tokio::time::timeout(std::time::Duration::from_mins(1), agent_trigger.fire())
                     .await
                 {
                     Ok(Decision::Engage) => {

@@ -106,7 +106,7 @@ impl LearningLoop {
 
             // Interruptible sleep — re-read interval each cycle
             let cfg = self.config.load();
-            let sleep_duration = std::time::Duration::from_secs(cfg.learning.interval_minutes * 60);
+            let sleep_duration = std::time::Duration::from_mins(cfg.learning.interval_minutes);
             tokio::select! {
                 _ = tokio::time::sleep(sleep_duration) => {},
                 _ = self.stop_notify.notified() => {
