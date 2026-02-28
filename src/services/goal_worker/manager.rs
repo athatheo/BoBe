@@ -62,7 +62,7 @@ impl GoalWorkerManager {
     /// Main loop. Runs until a shutdown signal is received.
     pub async fn run(&mut self, mut shutdown: broadcast::Receiver<()>) {
         let cfg = self.cfg();
-        if !cfg.goal_worker_enabled {
+        if !cfg.goal_worker.enabled {
             warn!(
                 enabled = false,
                 hint = "Set BOBE_GOAL_WORKER_ENABLED=true",
@@ -71,7 +71,7 @@ impl GoalWorkerManager {
             return;
         }
 
-        let has_key = !cfg.anthropic_api_key.is_empty();
+        let has_key = !cfg.llm.anthropic_api_key.is_empty();
         if !has_key && !cli_authenticated() {
             warn!(
                 enabled = true,
@@ -82,8 +82,8 @@ impl GoalWorkerManager {
             return;
         }
 
-        let max_concurrent = cfg.goal_worker_max_concurrent;
-        let poll_interval = cfg.goal_worker_poll_interval_seconds;
+        let max_concurrent = cfg.goal_worker.max_concurrent;
+        let poll_interval = cfg.goal_worker.poll_interval_seconds;
         drop(cfg);
 
         info!(
@@ -104,7 +104,7 @@ impl GoalWorkerManager {
 
             // Interruptible sleep
             let sleep = tokio::time::sleep(std::time::Duration::from_secs(
-                self.cfg().goal_worker_poll_interval_seconds,
+                self.cfg().goal_worker.poll_interval_seconds,
             ));
             tokio::select! {
                 () = sleep => {}
@@ -204,7 +204,7 @@ impl GoalWorkerManager {
     // ── Expiration ──────────────────────────────────────────────────────
 
     async fn expire_pending_plans(&self) -> Result<(), AppError> {
-        let timeout_minutes = self.cfg().goal_worker_approval_timeout_minutes as i64;
+        let timeout_minutes = self.cfg().goal_worker.approval_timeout_minutes as i64;
         let expired = self
             .plan_repo
             .get_expired_pending_plans(timeout_minutes)
@@ -260,7 +260,7 @@ impl GoalWorkerManager {
     // ── Plan new goals ──────────────────────────────────────────────────
 
     async fn plan_new_goals(&mut self) -> Result<(), AppError> {
-        let max_concurrent = self.cfg().goal_worker_max_concurrent;
+        let max_concurrent = self.cfg().goal_worker.max_concurrent;
         let active_count = self
             .active_tasks
             .values()
@@ -381,7 +381,7 @@ impl GoalWorkerManager {
     }
 
     fn is_exhausted(&self, goal_id: Uuid) -> bool {
-        let max_retries = self.cfg().goal_worker_max_failure_retries;
+        let max_retries = self.cfg().goal_worker.max_failure_retries;
         self.failure_counts
             .get(&goal_id)
             .is_some_and(|&count| count >= max_retries)

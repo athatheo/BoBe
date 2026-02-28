@@ -94,18 +94,10 @@ actor BackendService {
         proc.arguments = ["serve"]
         proc.currentDirectoryURL = dataDir
 
+        // Only pass BOBE_DATA_DIR — backend derives all paths internally
         var env = ProcessInfo.processInfo.environment
         env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
-        env["BOBE_HOST"] = DaemonConfig.host
-        env["BOBE_PORT"] = "\(DaemonConfig.port)"
-        let dbPath = dataDir.appendingPathComponent("bobe.db").path
-        env["BOBE_DATABASE_URL"] = "sqlite:\(dbPath)"
-        let ollamaBinDir = dataDir.appendingPathComponent("ollama/bin").path
-        env["PATH"] = [ollamaBinDir, env["PATH"] ?? ""].joined(separator: ":")
-        env["BOBE_OLLAMA_BINARY_PATH"] = ollamaBinDir + "/ollama"
-        env["OLLAMA_HOST"] = "127.0.0.1:11434"
-        env["OLLAMA_ORIGINS"] = "http://127.0.0.1:*"
-        env["OLLAMA_MODELS"] = dataDir.appendingPathComponent("models").path
+        env["BOBE_DATA_DIR"] = dataDir.path
         proc.environment = env
 
         // Capture stdout/stderr for logging

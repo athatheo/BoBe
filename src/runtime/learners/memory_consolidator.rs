@@ -92,7 +92,7 @@ impl MemoryConsolidator {
 
     fn cluster_memories<'a>(&self, memories: &'a [Memory]) -> Vec<Vec<&'a Memory>> {
         let cfg = self.config.load();
-        let cap = cfg.learning_max_memories_per_consolidation as usize;
+        let cap = cfg.learning.max_memories_per_consolidation as usize;
         let memories: Vec<&Memory> = if memories.len() > cap {
             let mut sorted: Vec<&Memory> = memories.iter().collect();
             sorted.sort_by_key(|m| m.created_at);
@@ -102,7 +102,7 @@ impl MemoryConsolidator {
             memories.iter().collect()
         };
 
-        let threshold = cfg.similarity_clustering_threshold;
+        let threshold = cfg.similarity.clustering_threshold;
         let mut clusters: Vec<Vec<&'a Memory>> = Vec::new();
         let mut centroids: Vec<Vec<f32>> = Vec::new();
 

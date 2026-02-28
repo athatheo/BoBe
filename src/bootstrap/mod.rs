@@ -27,7 +27,7 @@ use crate::services::goal_worker::manager::GoalWorkerManager;
 /// Returns the shared `AppState` (for Axum) and a `GoalWorkerManager`
 /// (owned by `main` so it can be shut down independently).
 pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), AppError> {
-    let pool = database::connect_and_migrate(&config.database_url).await?;
+    let pool = database::connect_and_migrate(&config.database.url).await?;
 
     let infra = infra::Infrastructure::build(&config)?;
     let repos = repos::Repositories::from_pool(&pool);
@@ -49,7 +49,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         }
     }
 
-    if config.goals_sync_on_startup {
+    if config.goals.sync_on_startup {
         if let Err(e) = wired.goals_service.sync_from_file().await {
             tracing::warn!(error = %e, "bootstrap.goals_sync_failed");
         }
@@ -91,6 +91,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         learning_loop: wired.learning_loop,
         screen_capture: wired.screen_capture,
         ollama_manager: infra.ollama_manager,
+        binary_manager: infra.binary_manager,
         config_manager: wired.config_manager,
         mcp_tool_adapter: Some(wired.mcp_adapter),
         mdns_announcer: infra.mdns_announcer,
@@ -102,10 +103,10 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
 fn print_banner(config: &Config) {
     info!("═══════════════════════════════════════════════════════");
     info!("  BoBe Server Started");
-    info!("  LLM backend: {}", config.llm_backend);
-    info!("  Model: {}", config.ollama_model);
-    info!("  Capture enabled: {}", config.capture_enabled);
-    info!("  Learning enabled: {}", config.learning_enabled);
-    info!("  Tools enabled: {}", config.tools_enabled);
+    info!("  LLM backend: {}", config.llm.backend);
+    info!("  Model: {}", config.ollama.model);
+    info!("  Capture enabled: {}", config.capture.enabled);
+    info!("  Learning enabled: {}", config.learning.enabled);
+    info!("  Tools enabled: {}", config.tools.enabled);
     info!("═══════════════════════════════════════════════════════");
 }

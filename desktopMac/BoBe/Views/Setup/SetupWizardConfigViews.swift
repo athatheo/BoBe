@@ -15,90 +15,83 @@ extension SetupWizard {
                     .foregroundStyle(theme.colors.text)
                     .frame(maxWidth: .infinity, alignment: .center)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("OpenAI API Key")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(theme.colors.text)
-                    BobeSecureField(placeholder: "sk-...", text: $apiKey)
-
-                    Text("Model")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(theme.colors.text)
-                    BobeMenuPicker(
-                        selection: $selectedOpenAIModel,
-                        options: openAIModelOptions.map(\.modelName),
-                        label: { modelName in
-                            openAIModelOptions.first(where: { $0.modelName == modelName })?.label ?? modelName
-                        }
-                    )
-
-                    Button(busy ? "Configuring..." : "Continue with OpenAI") {
-                        handleChooseOpenAI()
-                    }
-                    .bobeButton(.primary, size: .regular)
-                    .disabled(apiKey.trimmingCharacters(in: .whitespaces).isEmpty || busy)
-                    .frame(maxWidth: .infinity)
-                }
-
-                SetupCollapsibleSection(
-                    title: "Use another cloud provider",
-                    collapsedTitle: "Hide cloud options",
-                    isExpanded: $showAzure
-                ) {
+                if let providers = options?.cloudProviders, !providers.isEmpty {
                     Text("Provider")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
                     BobeMenuPicker(
-                        selection: $onlineProvider,
-                        options: onlineProviders.filter { $0.id != "openai" }.map(\.id),
+                        selection: $selectedProvider,
+                        options: providers.map(\.id),
                         label: { providerId in
-                            onlineProviders.first(where: { $0.id == providerId })?.label ?? providerId
+                            providers.first(where: { $0.id == providerId })?.label ?? providerId
                         }
                     )
-                    .onChange(of: onlineProvider) { _, newProvider in
-                        onlineModel = onlineProviders.first(where: { $0.id == newProvider })?.defaultModel ?? ""
+                    .onChange(of: selectedProvider) { _, newProvider in
+                        let provider = providers.first(where: { $0.id == newProvider })
+                        selectedModel = provider?.recommended ?? provider?.models.first ?? ""
+                        apiKey = ""
                         endpoint = ""
+                        deployment = ""
                     }
+                }
 
-                    Text("API Key")
+                Text("API Key")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.colors.text)
+                BobeSecureField(placeholder: "Your API key", text: $apiKey)
+
+                if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
+                   provider.needsEndpoint {
+                    Text("Endpoint URL")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    BobeSecureField(
-                        placeholder: onlineProviders.first { $0.id == onlineProvider }?.placeholder ?? "API Key",
-                        text: $apiKey
-                    )
+                    BobeTextField(placeholder: "https://your-resource.openai.azure.com/", text: $endpoint)
+                }
 
-                    if let p = onlineProviders.first(where: { $0.id == onlineProvider }),
-                       p.needsEndpoint {
-                        Text("Endpoint URL")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(theme.colors.text)
-                        BobeTextField(placeholder: p.endpointPlaceholder, text: $endpoint)
-                    }
+                if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
+                   provider.needsDeployment {
+                    Text("Deployment Name")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(theme.colors.text)
+                    BobeTextField(placeholder: "my-deployment", text: $deployment)
+                }
 
+                if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
+                   !provider.models.isEmpty {
                     Text("Model")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    BobeTextField(placeholder: "Model name", text: $onlineModel)
-
-                    let provider = onlineProviders.first { $0.id == onlineProvider }
-                    let needsEndpoint = provider?.needsEndpoint ?? false
-                    let canSubmit = !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
-                        && (!needsEndpoint || !endpoint.trimmingCharacters(in: .whitespaces).isEmpty)
-                        && !busy
-
-                    Button(busy ? "Configuring..." : "Continue with cloud LLM") {
-                        handleChooseOnline()
-                    }
-                    .bobeButton(.primary, size: .regular)
-                    .disabled(!canSubmit)
-                    .frame(maxWidth: .infinity)
+                    BobeMenuPicker(
+                        selection: $selectedModel,
+                        options: provider.models,
+                        label: { model in
+                            if model == provider.recommended {
+                                return "\(model) (recommended)"
+                            }
+                            return model
+                        }
+                    )
                 }
+
+                let provider = options?.cloudProviders.first { $0.id == selectedProvider }
+                let needsEndpoint = provider?.needsEndpoint ?? false
+                let needsDeployment = provider?.needsDeployment ?? false
+                let canSubmit = !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
+                    && (!needsEndpoint || !endpoint.trimmingCharacters(in: .whitespaces).isEmpty)
+                    && (!needsDeployment || !deployment.trimmingCharacters(in: .whitespaces).isEmpty)
+                    && !busy
+
+                Button(busy ? "Setting up..." : "Continue") {
+                    handleCloudSetup()
+                }
+                .bobeButton(.primary, size: .regular)
+                .disabled(!canSubmit)
+                .frame(maxWidth: .infinity)
 
                 backToChooseModeButton {
                     apiKey = ""
                     endpoint = ""
-                    onlineModel = onlineProviders.first { $0.id == "azure_openai" }?.defaultModel ?? ""
+                    deployment = ""
                 }
             }
             .frame(maxWidth: 440)
@@ -120,14 +113,16 @@ extension SetupWizard {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
-            ForEach(localModelOptions) { model in
-                ThemedModelCard(model: model, isSelected: selectedLocalModel == model.id) {
-                    selectedLocalModel = model.id
+            if let tiers = options?.localTiers {
+                ForEach(tiers) { tier in
+                    TierCard(tier: tier, isSelected: selectedTier == tier.id) {
+                        selectedTier = tier.id
+                    }
                 }
             }
 
-            Button(busy ? "Checking connection..." : "Continue") {
-                handleChooseLocal()
+            Button(busy ? "Setting up..." : "Continue") {
+                handleLocalSetup()
             }
             .bobeButton(.primary, size: .regular)
             .disabled(busy)
@@ -154,5 +149,45 @@ extension SetupWizard {
             .foregroundStyle(theme.colors.textMuted)
         }
         .bobeButton(.ghost, size: .small)
+    }
+}
+
+// MARK: - Tier Card (local config)
+
+struct TierCard: View {
+    let tier: LocalTier
+    let isSelected: Bool
+    let onSelect: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.border)
+                .font(.system(size: 14))
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(tier.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.colors.text)
+                    Text(tier.diskLabel)
+                        .font(.system(size: 12))
+                        .foregroundStyle(theme.colors.textMuted)
+                }
+                Text(tier.description)
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.colors.textMuted)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? theme.colors.primary.opacity(0.12) : theme.colors.surface)
+                .stroke(isSelected ? theme.colors.primary : theme.colors.border, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect() }
     }
 }

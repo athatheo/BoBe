@@ -242,7 +242,7 @@ impl MemoryLearner {
             .collect();
 
         let mut created: Vec<Memory> = Vec::new();
-        let max_memories = cfg.learning_max_memories_per_cycle as usize;
+        let max_memories = cfg.learning.max_memories_per_cycle as usize;
 
         for raw in raw_memories {
             if created.len() >= max_memories {

@@ -32,7 +32,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .allow_headers([axum::http::header::CONTENT_TYPE])
         .allow_credentials(true);
 
-    let allowed_hosts = AllowedHosts::new(&cfg.host, cfg.port);
+    let allowed_hosts = AllowedHosts::new(&cfg.server.host, cfg.server.port);
 
     Router::new()
         // Health & Status
@@ -144,7 +144,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/models/pull", post(handlers::models::pull_model))
         .route("/models/registry", get(handlers::models::list_registry_models))
         .route("/models/{model_name}", delete(handlers::models::delete_model))
-        // Onboarding
+        // Onboarding & Setup
         .route(
             "/onboarding/status",
             get(handlers::onboarding::onboarding_status),
@@ -154,12 +154,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::onboarding::mark_complete),
         )
         .route(
-            "/onboarding/configure-llm",
-            post(handlers::onboarding::configure_llm),
+            "/onboarding/options",
+            get(handlers::setup::get_options),
         )
         .route(
-            "/onboarding/pull-model",
-            post(handlers::onboarding::pull_model),
+            "/onboarding/setup",
+            post(handlers::setup::create_setup_job),
+        )
+        .route(
+            "/onboarding/setup/{job_id}",
+            get(handlers::setup::get_setup_status)
+                .delete(handlers::setup::cancel_setup_job),
         )
         .route(
             "/onboarding/warmup-embedding",

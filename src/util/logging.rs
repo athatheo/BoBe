@@ -9,10 +9,11 @@ use crate::config::Config;
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 pub fn init_tracing(config: &Config) {
-    let filter = EnvFilter::try_new(&config.log_level).unwrap_or_else(|_| EnvFilter::new("info"));
-    let file_writer = build_file_writer(config.log_file.as_deref());
+    let filter =
+        EnvFilter::try_new(&config.logging.level).unwrap_or_else(|_| EnvFilter::new("info"));
+    let file_writer = build_file_writer(config.logging.file.as_deref());
 
-    if config.log_json {
+    if config.logging.json {
         if let Some(writer) = file_writer {
             tracing_subscriber::registry()
                 .with(filter)

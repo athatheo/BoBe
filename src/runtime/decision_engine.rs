@@ -70,7 +70,7 @@ impl DecisionEngine {
 
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout = Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
+            let timeout = Duration::seconds(cfg.conversation.inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!(
@@ -90,7 +90,7 @@ impl DecisionEngine {
         // Get recent AI messages
         let recent_ai_messages = self
             .conversation
-            .get_recent_ai_messages(cfg.recent_ai_messages_limit)
+            .get_recent_ai_messages(cfg.decision.recent_ai_messages_limit)
             .await
             .unwrap_or_default();
 
@@ -170,7 +170,7 @@ impl DecisionEngine {
 
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout = Duration::seconds(cfg.conversation_inactivity_timeout_seconds as i64);
+            let timeout = Duration::seconds(cfg.conversation.inactivity_timeout_seconds as i64);
             let time_since = Utc::now() - active.updated_at;
             if time_since < timeout {
                 debug!("decision_engine.goal_blocked_by_conversation");
@@ -317,7 +317,7 @@ impl DecisionEngine {
                 let start = std::time::Instant::now();
                 match self
                     .observation_repo
-                    .find_similar(emb, cfg.semantic_search_limit)
+                    .find_similar(emb, cfg.decision.semantic_search_limit)
                     .await
                 {
                     Ok(results) => {

@@ -260,7 +260,7 @@ impl ProactiveGenerator {
         let cfg = self.config.load();
         let mut summary: Option<String> = None;
 
-        if cfg.conversation_summary_enabled
+        if cfg.conversation.summary_enabled
             && let Ok(turns) = self
                 .conversation
                 .get_conversation_turns(old_conversation.id, 50)

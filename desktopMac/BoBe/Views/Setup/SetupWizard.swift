@@ -2,38 +2,29 @@ import AppKit
 import SwiftUI
 
 struct SetupWizard: View {
-    // @State vars are internal (not private) because they are accessed
-    // from extension files (SetupWizardActions, ConfigViews, ProgressViews).
     @State var step: SetupStep = .welcome
     @State var setupMode: SetupMode = .local
-    @State var selectedLocalModel = "small"
-    @State var selectedOpenAIModel = defaultOpenAIModelOption.modelName
+    @State var options: OnboardingOptions?
+    @State var selectedTier = "small"
+    @State var selectedProvider = "openai"
+    @State var selectedModel = ""
     @State var apiKey = ""
-    @State var onlineProvider = "azure_openai"
-    @State var onlineModel = onlineProviders.first { $0.id == "azure_openai" }?.defaultModel ?? ""
     @State var endpoint = ""
-    @State var showAzure = false
+    @State var deployment = ""
+    @State var setupJob: SetupJobState?
+    @State var pollTask: Task<Void, Never>?
     @State var progressPercent: Double = 0
     @State var progressMessage = ""
     @State var errorMessage = ""
     @State var busy = false
     @State var isFinishingSetup = false
-    @State var captureSkipped = false
-    @State var visionDownloaded = false
-    @State var visionProgress: Double = 0
-    @State var visionMessage = ""
-    @State var visionDownloading = false
-    @State var visionError = ""
     @State var screenPermission = "not-determined"
     @State var permissionPollTask: Task<Void, Never>?
     @Environment(\.theme) var theme
 
-    var selectedModelOption: ModelOption {
-        localModelOptions.first { $0.id == selectedLocalModel } ?? defaultModelOption
-    }
-
     var body: some View {
         VStack(spacing: 0) {
+            // Header
             HStack(spacing: 6) {
                 if let logoURL = Bundle.main.url(forResource: "logo-128", withExtension: "png"),
                    let nsImage = NSImage(contentsOf: logoURL) {
@@ -58,7 +49,7 @@ struct SetupWizard: View {
                 case .chooseMode: chooseModeView
                 case .cloudConfig: cloudConfigView
                 case .localConfig: localConfigView
-                case .downloadingEngine, .downloadingModel, .initializing: downloadingView
+                case .setupInProgress: setupProgressView
                 case .captureSetup: captureSetupView
                 case .complete: completeView
                 case .error: errorView
@@ -70,15 +61,15 @@ struct SetupWizard: View {
         }
         .frame(width: 540, height: 700)
         .background(theme.colors.background)
-        .onDisappear { permissionPollTask?.cancel() }
+        .onDisappear { permissionPollTask?.cancel(); pollTask?.cancel() }
         .onChange(of: step) { _, newStep in
             permissionPollTask?.cancel()
             if newStep == .captureSetup {
                 checkScreenPermission()
                 startPermissionPolling()
-                autoStartVisionDownload()
             }
         }
+        .task { await loadOptions() }
     }
 
     // MARK: - Welcome
@@ -104,31 +95,29 @@ struct SetupWizard: View {
                 .padding(.bottom, 24)
 
             VStack(spacing: 12) {
-                ConceptCard(
-                    icon: "person.fill",
-                    title: "BoBe Souls",
-                    description: "BoBe's personality that shapes how it communicates. Warm, focused, and respectful of your workflow."
-                )
-                ConceptCard(
-                    icon: "target",
-                    title: "Goals",
-                    description: "BoBe tracks what you're working toward and helps you make progress — automatically or when you ask."
-                )
-                ConceptCard(
-                    icon: "brain.head.profile",
-                    title: "Memories",
-                    description: "BoBe remembers your preferences, projects, and context so every conversation builds on the last."
-                )
+                ConceptCard(icon: "person.fill", title: "BoBe Souls",
+                    description: "BoBe's personality that shapes how it communicates.")
+                ConceptCard(icon: "target", title: "Goals",
+                    description: "BoBe tracks what you're working toward and helps you make progress.")
+                ConceptCard(icon: "brain.head.profile", title: "Memories",
+                    description: "BoBe remembers your preferences, projects, and context.")
             }
             .padding(.bottom, 24)
 
             Button("Get Started") { step = .chooseMode }
                 .bobeButton(.primary, size: .regular)
+                .disabled(options == nil)
+
+            if options == nil {
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .padding(.top, 8)
+            }
         }
         .frame(maxWidth: 440)
     }
 
-    // MARK: - AI Choice
+    // MARK: - Choose Mode
 
     private var chooseModeView: some View {
         VStack(spacing: 0) {
@@ -143,19 +132,12 @@ struct SetupWizard: View {
                 .padding(.bottom, 24)
 
             HStack(spacing: 16) {
-                AIChoiceCard(
-                    icon: "cloud.fill",
-                    title: "Cloud Models",
-                    subtitle: "Recommended — fastest setup"
-                ) {
+                AIChoiceCard(icon: "cloud.fill", title: "Cloud Models", subtitle: "Recommended — fastest setup") {
+                    setupMode = .online
                     step = .cloudConfig
                 }
-
-                AIChoiceCard(
-                    icon: "desktopcomputer",
-                    title: "Local Models",
-                    subtitle: "Runs entirely on your Mac"
-                ) {
+                AIChoiceCard(icon: "desktopcomputer", title: "Local Models", subtitle: "Runs entirely on your Mac") {
+                    setupMode = .local
                     step = .localConfig
                 }
             }
@@ -184,5 +166,16 @@ struct SetupWizard: View {
             .bobeButton(.primary, size: .regular)
         }
         .frame(maxWidth: 420)
+    }
+
+    func loadOptions() async {
+        do {
+            options = try await DaemonClient.shared.getOnboardingOptions()
+            if let rec = options?.cloudProviders.first?.recommended {
+                selectedModel = rec
+            }
+        } catch {
+            // Non-fatal — will retry or show loading state
+        }
     }
 }

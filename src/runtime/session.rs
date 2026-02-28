@@ -84,10 +84,10 @@ impl RuntimeSession {
     pub async fn on_connection(&self) {
         let cfg = self.config.load();
         info!(
-            capture_enabled = cfg.capture_enabled,
+            capture_enabled = cfg.capture.enabled,
             "runtime_session.sse_client_connected"
         );
-        if cfg.capture_enabled {
+        if cfg.capture.enabled {
             self.start_capture().await;
         }
     }
@@ -167,7 +167,7 @@ impl RuntimeSession {
 
             // GoalTrigger (error-safe)
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
-            if time_since_goal >= cfg.goal_check_interval_seconds {
+            if time_since_goal >= cfg.goals.check_interval_seconds {
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(300),
                     self.goal_trigger.fire(),
@@ -191,7 +191,7 @@ impl RuntimeSession {
                 .load(std::sync::atomic::Ordering::Acquire)
             {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
-                if time_since_capture >= cfg.capture_interval_seconds {
+                if time_since_capture >= cfg.capture.interval_seconds {
                     match tokio::time::timeout(std::time::Duration::from_secs(300), async {
                         let mut ct = self.capture_trigger.lock().await;
                         ct.fire().await
@@ -243,7 +243,7 @@ impl RuntimeSession {
             .conversation
             .get_conversation_turns(existing.id, 100)
             .await?;
-        if !existing.is_stale(cfg.conversation_auto_close_minutes as i64, &turns) {
+        if !existing.is_stale(cfg.conversation.auto_close_minutes as i64, &turns) {
             return Ok(());
         }
 
@@ -257,7 +257,7 @@ impl RuntimeSession {
             .conversation
             .get_conversation_turns(refetched.id, 100)
             .await?;
-        if !refetched.is_stale(cfg.conversation_auto_close_minutes as i64, &turns) {
+        if !refetched.is_stale(cfg.conversation.auto_close_minutes as i64, &turns) {
             return Ok(());
         }
 

@@ -1,114 +1,124 @@
 import Foundation
-import SwiftUI
 
 // MARK: - Step Flow
 
-/// Wizard steps: welcome → aiChoice → cloud/local config → downloading → capture → complete
 enum SetupStep {
     case welcome
     case chooseMode
     case cloudConfig
     case localConfig
-    case downloadingEngine
-    case downloadingModel
-    case initializing
+    case setupInProgress
     case captureSetup
     case complete
     case error
 }
 
-// MARK: - Local Model Options
+enum SetupMode {
+    case local
+    case online
+}
 
-/// All tiers use separate text (qwen3) and vision (qwen3-vl) models.
-struct ModelOption: Identifiable, Equatable {
+// MARK: - Backend-Driven Options (from GET /onboarding/options)
+
+struct LocalTier: Codable, Identifiable, Equatable {
     let id: String
     let label: String
-    let size: String
     let description: String
-    let modelName: String
-    let visionModel: String
+    let diskEstimateBytes: Int64
 
-    var diskRequirement: Int64 {
-        switch id {
-        case "small": 6_000_000_000
-        case "medium": 11_000_000_000
-        case "large": 15_000_000_000
-        default: 6_000_000_000
-        }
+    enum CodingKeys: String, CodingKey {
+        case id, label, description
+        case diskEstimateBytes = "disk_estimate_bytes"
+    }
+
+    var diskLabel: String {
+        String(format: "~%.0f GB", Double(diskEstimateBytes) / 1_000_000_000)
     }
 }
 
-let localModelOptions: [ModelOption] = [
-    ModelOption(
-        id: "small", label: "Small (4B)", size: "~6 GB",
-        description: "Good balance of speed and quality. Any Apple Silicon Mac, 16 GB+ RAM.",
-        modelName: "qwen3:4b", visionModel: "qwen3-vl:4b"
-    ),
-    ModelOption(
-        id: "medium", label: "Medium (8B)", size: "~11 GB",
-        description: "Better quality. M1 Pro / M2 or newer, 24 GB+ RAM.",
-        modelName: "qwen3:8b", visionModel: "qwen3-vl:8b"
-    ),
-    ModelOption(
-        id: "large", label: "Large (14B)", size: "~15 GB",
-        description: "Best quality. M2 Pro / M3 or newer, 48 GB+ RAM.",
-        modelName: "qwen3:14b", visionModel: "qwen3-vl:8b"
-    ),
-]
-
-let defaultModelOption: ModelOption = localModelOptions[0]
-
-// MARK: - OpenAI Model Options
-
-struct OpenAIModelOption: Identifiable, Equatable {
+struct CloudProvider: Codable, Identifiable, Equatable {
     let id: String
     let label: String
-    let description: String
-    let modelName: String
+    let requires: [String]
+    let models: [String]
+    let recommended: String?
+
+    var needsEndpoint: Bool { requires.contains("endpoint") }
+    var needsDeployment: Bool { requires.contains("deployment") }
 }
 
-let openAIModelOptions: [OpenAIModelOption] = [
-    OpenAIModelOption(
-        id: "gpt-5-mini", label: "GPT-5 mini",
-        description: "Fast, cost-effective",
-        modelName: "gpt-5-mini-2025-08-07"
-    ),
-    OpenAIModelOption(
-        id: "gpt-5-1", label: "GPT-5.1",
-        description: "Higher capability",
-        modelName: "gpt-5.1-2025-08-07"
-    ),
-]
+struct OnboardingOptions: Codable {
+    let localTiers: [LocalTier]
+    let cloudProviders: [CloudProvider]
 
-let defaultOpenAIModelOption: OpenAIModelOption = openAIModelOptions[0]
+    enum CodingKeys: String, CodingKey {
+        case localTiers = "local_tiers"
+        case cloudProviders = "cloud_providers"
+    }
+}
 
-// MARK: - Cloud Provider Options
+// MARK: - Setup Job Types (from POST/GET /onboarding/setup)
 
-struct OnlineProvider: Identifiable, Equatable {
+struct SetupJobStep: Codable, Identifiable {
     let id: String
-    let label: String
-    let placeholder: String
-    let defaultModel: String
-    var needsEndpoint: Bool = false
-    var endpointPlaceholder: String = ""
+    let status: String
+    let message: String?
+    let progress: StepProgressInfo?
 }
 
-let onlineProviders: [OnlineProvider] = [
-    OnlineProvider(
-        id: "openai", label: "OpenAI",
-        placeholder: "sk-...", defaultModel: "gpt-5-mini-2025-08-07"
-    ),
-    OnlineProvider(
-        id: "azure_openai", label: "Azure OpenAI",
-        placeholder: "Your Azure API key", defaultModel: "gpt-5-mini",
-        needsEndpoint: true,
-        endpointPlaceholder: "https://your-resource.cognitiveservices.azure.com/openai/v1/"
-    ),
-]
+struct StepProgressInfo: Codable {
+    let percent: Int?
+    let currentBytes: Int64?
+    let totalBytes: Int64?
 
-// MARK: - Setup Mode
+    enum CodingKeys: String, CodingKey {
+        case percent
+        case currentBytes = "current_bytes"
+        case totalBytes = "total_bytes"
+    }
+}
 
-enum SetupMode { case local, online }
+struct SetupJobState: Codable {
+    let jobId: String
+    let status: String
+    let currentStep: String?
+    let steps: [SetupJobStep]
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case jobId = "job_id"
+        case status
+        case currentStep = "current_step"
+        case steps, error
+    }
+
+    var isTerminal: Bool {
+        ["succeeded", "failed", "canceled"].contains(status)
+    }
+
+    var overallPercent: Double {
+        let total = steps.count
+        guard total > 0 else { return 0 }
+        let completed = steps.filter { $0.status == "succeeded" || $0.status == "skipped" }.count
+        let currentPct = Double(steps.first { $0.status == "in_progress" }?.progress?.percent ?? 0) / 100.0
+        return (Double(completed) + currentPct) / Double(total) * 100
+    }
+}
+
+struct SetupRequest: Encodable {
+    let mode: String
+    var tier: String?
+    var provider: String?
+    var apiKey: String?
+    var model: String?
+    var endpoint: String?
+    var deployment: String?
+
+    enum CodingKeys: String, CodingKey {
+        case mode, tier, provider, model, endpoint, deployment
+        case apiKey = "api_key"
+    }
+}
 
 // MARK: - Errors
 

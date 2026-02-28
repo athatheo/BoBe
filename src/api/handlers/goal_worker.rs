@@ -289,8 +289,8 @@ pub async fn goal_worker_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<GoalWorkerStatus>, AppError> {
     let cfg = state.config();
-    let enabled = cfg.goal_worker_enabled;
-    let max_concurrent = cfg.goal_worker_max_concurrent;
+    let enabled = cfg.goal_worker.enabled;
+    let max_concurrent = cfg.goal_worker.max_concurrent;
 
     let active_goals = state.goal_repo.find_active(true).await?;
     let pending_plans = state.goal_plan_repo.get_pending_approval_plans().await?;

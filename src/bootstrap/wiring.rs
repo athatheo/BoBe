@@ -76,7 +76,7 @@ impl Wired {
             "bootstrap.native_tools_registered"
         );
 
-        if config.mcp_enabled {
+        if config.mcp.enabled {
             match self.mcp_adapter.initialize().await {
                 Ok(()) => {
                     self.tool_registry
@@ -145,15 +145,15 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
     ));
 
     // ── Agent job manager (optional) ───────────────────────────────────
-    let agent_job_manager = config.coding_agents_enabled.then(|| {
+    let agent_job_manager = config.coding_agent.enabled.then(|| {
         let profiles: HashMap<String, _> =
-            serde_json::from_str(&config.coding_agent_profiles).unwrap_or_default();
+            serde_json::from_str(&config.coding_agent.profiles).unwrap_or_default();
         Arc::new(AgentJobManager::new(
             repos.agent_job_repo.clone(),
             profiles,
-            PathBuf::from(&config.coding_agent_output_dir),
-            config.coding_agent_max_concurrent as usize,
-            config.coding_agent_max_runtime_seconds,
+            PathBuf::from(&config.coding_agent.output_dir),
+            config.coding_agent.max_concurrent as usize,
+            config.coding_agent.max_runtime_seconds,
         ))
     });
 
@@ -165,9 +165,9 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         agent_job_manager.as_ref(),
     )));
     let mcp_adapter = Arc::new(McpToolAdapter::new(
-        config.mcp_enabled.then(|| repos.mcp_config_repo.clone()),
-        config.mcp_blocked_commands_vec(),
-        config.mcp_dangerous_env_keys_vec(),
+        config.mcp.enabled.then(|| repos.mcp_config_repo.clone()),
+        config.mcp_blocked_commands_vec().to_vec(),
+        config.mcp_dangerous_env_keys_vec().to_vec(),
     ));
 
     // ── Learners ───────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
 
     let tool_executor = Arc::new(ToolExecutor::new(
         tool_registry.clone(),
-        config.tools_timeout_seconds,
+        config.tools.timeout_seconds,
     ));
     let tool_preselector = Arc::new(ToolPreselector::new(
         infra.llm_provider.clone(),
@@ -255,10 +255,10 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
 
     let checkin_trigger = CheckinTrigger::new(
         CheckinScheduler::new(
-            &config.checkin_times_vec(),
-            config.checkin_interval_minutes,
-            config.checkin_jitter_minutes,
-            config.checkin_enabled,
+            config.checkin_times_vec(),
+            config.checkin.interval_minutes,
+            config.checkin.jitter_minutes,
+            config.checkin.enabled,
         ),
         proactive_generator.clone(),
         conversation_service.clone(),
@@ -310,7 +310,7 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
     ));
 
     // ── Learning loop (optional) ───────────────────────────────────────
-    let learning_loop = config.learning_enabled.then(|| {
+    let learning_loop = config.learning.enabled.then(|| {
         Arc::new(LearningLoop::new(
             conversation_service.clone(),
             goals_service.clone(),

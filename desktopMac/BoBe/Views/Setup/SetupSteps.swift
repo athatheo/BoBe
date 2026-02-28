@@ -78,46 +78,6 @@ struct AIChoiceCard: View {
     }
 }
 
-// MARK: - Themed Model Card (local config)
-
-struct ThemedModelCard: View {
-    let model: ModelOption
-    let isSelected: Bool
-    let onSelect: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.border)
-                .font(.system(size: 14))
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(model.label)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(theme.colors.text)
-                    Text(model.size)
-                        .font(.system(size: 12))
-                        .foregroundStyle(theme.colors.textMuted)
-                }
-                Text(model.description)
-                    .font(.system(size: 12))
-                    .foregroundStyle(theme.colors.textMuted)
-            }
-            Spacer()
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? theme.colors.primary.opacity(0.12) : theme.colors.surface)
-                .stroke(isSelected ? theme.colors.primary : theme.colors.border, lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
-    }
-}
-
 // MARK: - Step Indicator (downloading progress steps)
 
 struct StepIndicator: View {
@@ -353,15 +313,15 @@ struct SetupCollapsibleSection<Content: View>: View {
     .padding()
 }
 
-#Preview("Themed Model Card") {
+#Preview("Tier Card") {
     VStack(spacing: 8) {
-        ThemedModelCard(
-            model: ModelOption(id: "small", label: "Compact", size: "4 GB", description: "Fast, lightweight", modelName: "qwen2.5:3b", visionModel: "moondream"),
+        TierCard(
+            tier: LocalTier(id: "small", label: "Compact (4B)", description: "Fast, lightweight", diskEstimateBytes: 6_000_000_000),
             isSelected: true,
             onSelect: {}
         )
-        ThemedModelCard(
-            model: ModelOption(id: "medium", label: "Balanced", size: "8 GB", description: "Best balance of speed and quality", modelName: "qwen2.5:7b", visionModel: "llava"),
+        TierCard(
+            tier: LocalTier(id: "medium", label: "Balanced (8B)", description: "Best balance of speed and quality", diskEstimateBytes: 11_000_000_000),
             isSelected: false,
             onSelect: {}
         )

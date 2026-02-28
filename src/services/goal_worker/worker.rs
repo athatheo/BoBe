@@ -62,7 +62,7 @@ impl GoalWorker {
     /// Returns `true` if the goal was completed, `false` otherwise.
     pub async fn work_on_goal(&self, goal: &Goal) -> bool {
         let goal_id = goal.id;
-        let autonomous = self.cfg().goal_worker_autonomous;
+        let autonomous = self.cfg().goal_worker.autonomous;
 
         info!(
             goal_id = %goal_id,

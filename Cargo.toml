@@ -81,8 +81,16 @@ async-trait = "0.1.89"
 axum = { version = "0.8.8", features = ["macros"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.5.60", features = ["derive"] }
-dotenvy = "0.15.7"
-envy = "0.4.2"
+figment = { version = "0.10.19", features = ["toml", "env"] }
+toml_edit = "0.22.27"
+flate2 = "1.1.2"
+tar = "0.4.44"
+sha2 = "0.10.9"
+hex = "0.4.3"
+security-framework = "3.2.1"
+security-framework-sys = "2.14.0"
+core-foundation = "0.10.1"
+core-foundation-sys = "0.8.7"
 futures = "0.3.32"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", features = ["json", "stream"] }

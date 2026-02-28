@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 mod api;
 mod app_state;
+mod binary_manager;
 mod bootstrap;
 mod config;
 mod config_manager;
@@ -10,6 +11,8 @@ mod error;
 mod llm;
 mod models;
 mod runtime;
+#[allow(unsafe_code)]
+mod secrets;
 mod services;
 mod tools;
 mod util;
@@ -58,15 +61,19 @@ async fn main() -> anyhow::Result<()> {
             port,
             log_level,
         } => {
-            let mut config = config::Config::from_env()?;
-            config.host = host;
-            config.port = port;
-            config.log_level = log_level;
+            let mut config = config::Config::load()?;
+            config.server.host = host;
+            config.server.port = port;
+            config.logging.level = log_level;
 
             // Initialize tracing
             util::logging::init_tracing(&config);
 
-            tracing::info!("Starting BoBe on {}:{}", config.host, config.port);
+            tracing::info!(
+                "Starting BoBe on {}:{}",
+                config.server.host,
+                config.server.port
+            );
 
             // Bootstrap: create pool, run migrations, seed, wire deps, build state
             let (state, goal_worker_manager) = bootstrap::run(config.clone()).await?;
@@ -133,9 +140,16 @@ async fn main() -> anyhow::Result<()> {
             };
 
             // ── Serve with graceful shutdown ────────────────────────────
-            let listener =
-                tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
-            tracing::info!("BoBe listening on {}:{}", config.host, config.port);
+            let listener = tokio::net::TcpListener::bind(format!(
+                "{}:{}",
+                config.server.host, config.server.port
+            ))
+            .await?;
+            tracing::info!(
+                "BoBe listening on {}:{}",
+                config.server.host,
+                config.server.port
+            );
 
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {
@@ -172,21 +186,21 @@ async fn main() -> anyhow::Result<()> {
                     .ok();
             }
 
-            if config.llm_backend == crate::config::LlmBackend::Ollama
-                || config.vision_backend == crate::config::LlmBackend::Ollama
+            if config.llm.backend == crate::config::LlmBackend::Ollama
+                || config.vision.backend == crate::config::LlmBackend::Ollama
             {
                 // Unload Ollama models to free VRAM immediately
                 tracing::info!("Unloading Ollama models...");
                 let unload_client = reqwest::Client::new();
                 for model_name in [
-                    &config.ollama_model,
-                    &config.vision_ollama_model,
-                    &config.embedding_model,
+                    &config.ollama.model,
+                    &config.vision.ollama_model,
+                    &config.embedding.model,
                 ] {
                     let _ = tokio::time::timeout(
                         std::time::Duration::from_secs(2),
                         unload_client
-                            .post(format!("{}/api/generate", config.ollama_url))
+                            .post(format!("{}/api/generate", config.ollama.url))
                             .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
                             .send(),
                     )

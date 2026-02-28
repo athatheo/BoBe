@@ -1,30 +1,24 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Download, Capture & Complete Views
+// MARK: - Progress, Capture & Complete Views
 
 extension SetupWizard {
 
-    // MARK: - Downloading
+    // MARK: - Setup Progress (job polling)
 
-    var downloadingView: some View {
+    var setupProgressView: some View {
         VStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 0) {
-                StepIndicator(
-                    label: "Downloading AI engine",
-                    active: step == .downloadingEngine,
-                    done: step == .downloadingModel || step == .initializing
-                )
-                StepIndicator(
-                    label: "Downloading language model",
-                    active: step == .downloadingModel,
-                    done: step == .initializing
-                )
-                StepIndicator(
-                    label: "Initializing BoBe",
-                    active: step == .initializing,
-                    done: false
-                )
+            Text("Setting up BoBe")
+                .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(theme.colors.text)
+
+            if let job = setupJob {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(job.steps) { step in
+                        JobStepRow(step: step)
+                    }
+                }
             }
 
             BobeLinearProgressBar(progress: progressPercent / 100)
@@ -81,25 +75,6 @@ extension SetupWizard {
                 }
             }
 
-            if setupMode == .local {
-                PermissionCard(title: "Vision Model", badge: visionBadge) {
-                    Text("\(selectedModelOption.visionModel) for screen analysis.")
-                        .font(.system(size: 12)).foregroundStyle(theme.colors.textMuted)
-                    if visionDownloading {
-                        BobeLinearProgressBar(progress: visionProgress / 100)
-                        Text(visionMessage)
-                            .font(.system(size: 12)).foregroundStyle(theme.colors.textMuted)
-                    }
-                    if !visionError.isEmpty {
-                        Text(visionError)
-                            .font(.system(size: 12)).foregroundStyle(theme.colors.primary)
-                        Button("Retry download") { startVisionDownload() }
-                            .font(.system(size: 13, weight: .medium)).foregroundStyle(theme.colors.primary)
-                            .bobeButton(.ghost, size: .small)
-                    }
-                }
-            }
-
             Text(setupMode == .local
                 ? "Screenshots never leave your machine — all analysis happens locally."
                 : "Screenshots are sent to the cloud provider you selected for analysis.")
@@ -110,43 +85,25 @@ extension SetupWizard {
                     .bobeButton(.secondary, size: .regular)
                     .foregroundStyle(theme.colors.textMuted)
                 Spacer()
-                let visionReady = setupMode != .local || visionDownloaded
-                let canContinue = screenPermission == "granted" && visionReady
                 Button("Continue") { continueFromCapture() }
                     .bobeButton(.primary, size: .regular)
-                    .disabled(!canContinue)
+                    .disabled(screenPermission != "granted")
             }
         }
         .frame(maxWidth: 440)
-    }
-
-    var visionBadge: String {
-        if visionDownloaded { return "granted" }
-        if visionDownloading { return "not-determined" }
-        if !visionError.isEmpty { return "denied" }
-        return "not-determined"
     }
 
     // MARK: - Complete
 
     var completeView: some View {
         VStack(spacing: 16) {
-            Text("You're all set!")
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(theme.colors.secondary)
+
+            Text("Setup Complete!")
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(theme.colors.text)
-
-            VStack(spacing: 6) {
-                SummaryRow(
-                    label: "AI Model",
-                    value: setupMode == .online ? "Cloud LLM" : selectedModelOption.label,
-                    ok: true
-                )
-                SummaryRow(
-                    label: "Screen Capture",
-                    value: captureSkipped ? "Disabled (skipped)" : "Enabled",
-                    ok: !captureSkipped
-                )
-            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("You can always change these settings later.")
@@ -174,5 +131,52 @@ extension SetupWizard {
                 .padding(.top, 4)
         }
         .frame(maxWidth: 440)
+    }
+}
+
+// MARK: - Job Step Row
+
+struct JobStepRow: View {
+    let step: SetupJobStep
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            stepIcon
+                .frame(width: 16, height: 16)
+            Text(step.message ?? step.id)
+                .font(.system(size: 14, weight: step.status == "in_progress" ? .semibold : .regular))
+                .foregroundStyle(stepColor)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var stepIcon: some View {
+        switch step.status {
+        case "succeeded", "skipped":
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(theme.colors.secondary)
+        case "in_progress":
+            BobeSpinner(size: 14)
+        case "failed":
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(theme.colors.primary)
+        default:
+            Image(systemName: "circle")
+                .font(.system(size: 13))
+                .foregroundStyle(theme.colors.textMuted)
+        }
+    }
+
+    private var stepColor: Color {
+        switch step.status {
+        case "succeeded", "skipped": theme.colors.secondary
+        case "in_progress": theme.colors.text
+        case "failed": theme.colors.primary
+        default: theme.colors.textMuted
+        }
     }
 }

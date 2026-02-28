@@ -169,10 +169,10 @@ pub async fn add_mcp_server(
     }
 
     let cfg = state.config.load();
-    let blocked_cmds: Vec<String> = cfg.mcp_blocked_commands_vec();
-    let dangerous_keys: Vec<String> = cfg.mcp_dangerous_env_keys_vec();
-    crate::tools::mcp::security::validate_mcp_command(&body.command, &blocked_cmds)?;
-    crate::tools::mcp::security::validate_mcp_env(&body.env, &dangerous_keys)?;
+    let blocked_cmds = cfg.mcp_blocked_commands_vec();
+    let dangerous_keys = cfg.mcp_dangerous_env_keys_vec();
+    crate::tools::mcp::security::validate_mcp_command(&body.command, blocked_cmds)?;
+    crate::tools::mcp::security::validate_mcp_env(&body.env, dangerous_keys)?;
 
     let repo = state.mcp_config_repo.clone();
 

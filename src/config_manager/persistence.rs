@@ -1,69 +1,59 @@
-//! Atomic `.env` persistence for runtime config changes.
+//! Atomic `config.toml` persistence for runtime config changes.
+//!
+//! Uses `toml_edit` for comment-preserving round-trip editing.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use tracing::{error, info};
 
-/// Serialize a JSON value to a flat string for `.env` storage.
-pub fn serialize_value(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Bool(b) => if *b { "true" } else { "false" }.to_owned(),
-        serde_json::Value::Array(arr) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect::<Vec<_>>()
-            .join(","),
-        other => other.to_string().trim_matches('"').to_owned(),
-    }
-}
-
-/// Persist key=value pairs to `~/.bobe/.env` via atomic temp-write + rename.
+/// Persist nested key=value pairs to `~/.bobe/config.toml` via atomic temp-write + rename.
 ///
+/// Keys use dotted notation: `"server.host"`, `"llm.backend"`, etc.
 /// Returns `true` on success.
-pub fn persist(changes: &BTreeMap<String, String>) -> bool {
-    for (key, value) in changes {
-        if value.contains('\n') || value.contains('\r') {
-            error!(key = key.as_str(), "config_persistence.newline_in_value");
-            return false;
-        }
-        if value.len() > 10_000 {
-            error!(
-                key = key.as_str(),
-                length = value.len(),
-                "config_persistence.value_too_long"
-            );
-            return false;
-        }
-    }
-
+pub fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
     let dir = bobe_dir();
     if let Err(e) = std::fs::create_dir_all(&dir) {
         error!(error = %e, "config_persistence.mkdir_failed");
         return false;
     }
 
-    let env_path = dir.join(".env");
-    let tmp_path = dir.join(".env.tmp");
+    let config_path = dir.join("config.toml");
+    let tmp_path = dir.join("config.toml.tmp");
 
-    let mut existing = read_env_file(&env_path);
-    for (k, v) in changes {
-        existing.insert(k.clone(), v.clone());
+    // Read existing TOML or start fresh
+    let existing = if config_path.exists() {
+        match std::fs::read_to_string(&config_path) {
+            Ok(s) => s,
+            Err(e) => {
+                error!(error = %e, "config_persistence.read_failed");
+                return false;
+            }
+        }
+    } else {
+        "# BoBe configuration\nconfig_version = 1\n".to_string()
+    };
+
+    let mut doc: toml_edit::DocumentMut = match existing.parse() {
+        Ok(d) => d,
+        Err(e) => {
+            error!(error = %e, "config_persistence.parse_failed");
+            return false;
+        }
+    };
+
+    // Apply each change using dotted key paths
+    for (dotted_key, value) in changes {
+        set_toml_value(&mut doc, dotted_key, value);
     }
 
-    let content: String = existing
-        .iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n";
+    let content = doc.to_string();
 
     if let Err(e) = std::fs::write(&tmp_path, &content) {
         error!(error = %e, "config_persistence.write_failed");
         return false;
     }
-    if let Err(e) = std::fs::rename(&tmp_path, &env_path) {
+    if let Err(e) = std::fs::rename(&tmp_path, &config_path) {
         error!(error = %e, "config_persistence.rename_failed");
         return false;
     }
@@ -72,24 +62,74 @@ pub fn persist(changes: &BTreeMap<String, String>) -> bool {
     true
 }
 
-fn bobe_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())))
-        .join(".bobe")
-}
+/// Set a value in the TOML document using a dotted key path (e.g. "server.host").
+fn set_toml_value(doc: &mut toml_edit::DocumentMut, dotted_key: &str, value: &serde_json::Value) {
+    let parts: Vec<&str> = dotted_key.split('.').collect();
 
-fn read_env_file(path: &PathBuf) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    if let Ok(content) = std::fs::read_to_string(path) {
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+    match parts.len() {
+        1 => {
+            // Top-level key
+            doc[parts[0]] = json_to_toml_item(value);
+        }
+        2 => {
+            // Section.field
+            let section = parts[0];
+            let field = parts[1];
+
+            // Ensure section table exists
+            if doc.get(section).is_none() {
+                doc[section] = toml_edit::Item::Table(toml_edit::Table::new());
             }
-            if let Some((k, v)) = line.split_once('=') {
-                map.insert(k.trim().to_owned(), v.trim().to_owned());
-            }
+            doc[section][field] = json_to_toml_item(value);
+        }
+        _ => {
+            // Deeper nesting not currently needed
+            tracing::warn!(key = dotted_key, "config_persistence.unsupported_nesting");
         }
     }
-    map
+}
+
+/// Convert a serde_json::Value to a toml_edit::Item.
+fn json_to_toml_item(value: &serde_json::Value) -> toml_edit::Item {
+    match value {
+        serde_json::Value::Bool(b) => toml_edit::value(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                toml_edit::value(i)
+            } else if let Some(f) = n.as_f64() {
+                toml_edit::value(f)
+            } else {
+                toml_edit::value(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => toml_edit::value(s.as_str()),
+        serde_json::Value::Array(arr) => {
+            let mut toml_arr = toml_edit::Array::new();
+            for item in arr {
+                match item {
+                    serde_json::Value::String(s) => toml_arr.push(s.as_str()),
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            toml_arr.push(i);
+                        } else if let Some(f) = n.as_f64() {
+                            toml_arr.push(f);
+                        }
+                    }
+                    serde_json::Value::Bool(b) => toml_arr.push(*b),
+                    _ => {}
+                }
+            }
+            toml_edit::value(toml_arr)
+        }
+        serde_json::Value::Null | serde_json::Value::Object(_) => {
+            // For null, we store empty string; objects not supported at field level
+            toml_edit::value("")
+        }
+    }
+}
+
+fn bobe_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let data_dir = std::env::var("BOBE_DATA_DIR").unwrap_or_else(|_| format!("{home}/.bobe"));
+    PathBuf::from(data_dir)
 }

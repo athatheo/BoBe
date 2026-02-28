@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var setupCloseObserver: Any?
     private var setupCompletedObserver: Any?
     private var isShowingSetupAlert = false
+    private var setupCloseCount = 0
     /// Set by SetupWizard when onboarding completes successfully — prevents
     /// the willCloseNotification handler from showing "Setup isn't complete".
     var setupCompletedSuccessfully = false
@@ -276,10 +277,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if self.setupCompletedSuccessfully {
                     logger.info("setup.wizard_closed_after_success")
                     self.setupCompletedSuccessfully = false
+                    self.setupCloseCount = 0
                     return
                 }
 
-                logger.info("setup.wizard_closed_incomplete_reopening")
+                self.setupCloseCount += 1
+                if self.setupCloseCount >= 3 {
+                    logger.info("setup.wizard_closed_3x_showing_escape")
+                    self.isShowingSetupAlert = true
+                    let alert = NSAlert()
+                    alert.messageText = "Setup incomplete"
+                    alert.informativeText = "BoBe needs to be configured before it can work."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Retry Setup")
+                    alert.addButton(withTitle: "Open Settings")
+                    alert.addButton(withTitle: "Quit")
+                    let response = alert.runModal()
+                    self.isShowingSetupAlert = false
+                    switch response {
+                    case .alertFirstButtonReturn:
+                        self.setupCloseCount = 0
+                        DispatchQueue.main.async { self.showSetupWizard() }
+                    case .alertSecondButtonReturn:
+                        self.showOverlay()
+                        BobeStore.shared.connect()
+                        SettingsWindowManager.shared.show()
+                    default:
+                        NSApp.terminate(nil)
+                    }
+                    return
+                }
+
+                logger.info("setup.wizard_closed_incomplete_reopening (\(self.setupCloseCount)/3)")
                 DispatchQueue.main.async { [weak self] in
                     self?.showSetupWizard()
                 }

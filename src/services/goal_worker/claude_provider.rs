@@ -76,9 +76,9 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
         max_steps: Option<u32>,
     ) -> Result<Vec<PlanStep>, AppError> {
         let cfg = self.cfg();
-        let effective_max_steps = max_steps.unwrap_or(cfg.goal_worker_plan_max_steps);
-        let api_key = cfg.anthropic_api_key.clone();
-        let model = cfg.goal_worker_claude_model.clone();
+        let effective_max_steps = max_steps.unwrap_or(cfg.goal_worker.plan_max_steps);
+        let api_key = cfg.llm.anthropic_api_key.clone();
+        let model = cfg.goal_worker.claude_model.clone();
         drop(cfg);
 
         if api_key.is_empty() {
@@ -144,8 +144,8 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
         work_dir: &Path,
     ) -> Result<GoalExecutionResult, AppError> {
         let cfg = self.cfg();
-        let model = cfg.goal_worker_claude_model.clone();
-        let api_key = cfg.anthropic_api_key.clone();
+        let model = cfg.goal_worker.claude_model.clone();
+        let api_key = cfg.llm.anthropic_api_key.clone();
         drop(cfg);
 
         let step_list: String = steps
