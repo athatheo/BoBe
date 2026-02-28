@@ -1,0 +1,141 @@
+# Default recipe
+default:
+    @just --list
+
+# Build Rust backend (release)
+build-backend arch="arm64":
+    cargo build --release
+
+# Build Swift frontend (release)
+build-frontend:
+    cd desktopMac && swift build -c release
+
+# Assemble .app bundle
+bundle version="1.0.0":
+    #!/bin/bash
+    set -euo pipefail
+    APP="build/BoBe.app"
+    rm -rf "$APP"
+    mkdir -p "$APP/Contents/MacOS"
+    mkdir -p "$APP/Contents/Resources"
+
+    # Copy binaries (ditto preserves symlinks per Apple docs)
+    # Backend named "bobe-daemon" to avoid case-insensitive collision with "BoBe" on APFS
+    ditto target/release/bobe "$APP/Contents/MacOS/bobe-daemon"
+    ditto desktopMac/.build/release/BoBe "$APP/Contents/MacOS/BoBe"
+
+    # Copy Info.plist and update version
+    cp desktopMac/BoBe/Resources/Info.plist "$APP/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{version}}" "$APP/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{version}}" "$APP/Contents/Info.plist"
+
+    # Copy all resources (icons, images)
+    cp -r desktopMac/BoBe/Resources/ "$APP/Contents/Resources/" 2>/dev/null || true
+    # Remove Info.plist from Resources (it's at Contents/Info.plist)
+    rm -f "$APP/Contents/Resources/Info.plist"
+
+    # Strip debug symbols for smaller binary
+    strip -x "$APP/Contents/MacOS/bobe-daemon" 2>/dev/null || true
+    strip -x "$APP/Contents/MacOS/BoBe" 2>/dev/null || true
+
+    echo "Bundle created at $APP"
+    echo "  Backend: $(wc -c < "$APP/Contents/MacOS/bobe-daemon" | tr -d ' ') bytes"
+    echo "  Frontend: $(wc -c < "$APP/Contents/MacOS/BoBe" | tr -d ' ') bytes"
+
+# Full build + bundle
+build version="1.0.0": build-backend build-frontend (bundle version)
+
+# Sign the bundle — inside-out order per Apple docs
+sign identity="Developer ID Application":
+    #!/bin/bash
+    set -euo pipefail
+    APP="build/BoBe.app"
+
+    # 1. Sign the embedded backend binary first (non-bundled main executable)
+    codesign -s "{{identity}}" --options runtime --timestamp \
+        --entitlements desktopMac/entitlements.plist \
+        "$APP/Contents/MacOS/bobe-daemon"
+
+    # 2. Sign the app bundle (signs the frontend binary + seals the bundle)
+    codesign -s "{{identity}}" --options runtime --timestamp --force \
+        --entitlements desktopMac/entitlements.plist \
+        "$APP"
+
+    # 3. Verify
+    codesign --verify --deep --strict "$APP"
+    echo "Signing verified successfully"
+
+# Create signed DMG
+dmg version="1.0.0": (build version)
+    #!/bin/bash
+    set -euo pipefail
+    DMG_DIR="build/dmg-staging"
+    DMG_NAME="BoBe-{{version}}.dmg"
+    rm -rf "$DMG_DIR" "build/$DMG_NAME"
+    mkdir -p "$DMG_DIR"
+
+    ditto build/BoBe.app "$DMG_DIR/BoBe.app"
+    ln -s /Applications "$DMG_DIR/Applications"
+
+    hdiutil create -volname "BoBe {{version}}" \
+        -srcfolder "$DMG_DIR" \
+        -ov -format UDZO \
+        "build/$DMG_NAME"
+
+    rm -rf "$DMG_DIR"
+    echo "DMG created: build/$DMG_NAME"
+    ls -lh "build/$DMG_NAME"
+
+# Sign the DMG (after signing the app inside it)
+sign-dmg identity="Developer ID Application" version="1.0.0":
+    codesign -s "{{identity}}" --timestamp \
+        -i com.bobe.app.dmg \
+        "build/BoBe-{{version}}.dmg"
+    echo "DMG signed"
+
+# Notarize (requires Apple ID credentials)
+notarize version="1.0.0" apple-id="" team-id="" password="":
+    xcrun notarytool submit "build/BoBe-{{version}}.dmg" \
+        --apple-id "{{apple-id}}" \
+        --team-id "{{team-id}}" \
+        --password "{{password}}" \
+        --wait
+    echo "Notarization complete"
+
+# Staple the notarization ticket
+staple version="1.0.0":
+    xcrun stapler staple "build/BoBe-{{version}}.dmg"
+    echo "Stapled successfully"
+
+# Full release: build → sign app → create DMG → sign DMG
+release version="1.0.0" identity="Developer ID Application": (build version) (sign identity) (dmg version) (sign-dmg identity version)
+    echo "Release build complete: build/BoBe-{{version}}.dmg"
+    echo "Next: just notarize {{version}} apple-id=... team-id=... password=..."
+    echo "Then: just staple {{version}}"
+
+# Dev: build debug + run
+dev:
+    cargo build
+    cd desktopMac && swift build -c debug
+
+# Clean all build artifacts
+clean:
+    cargo clean
+    cd desktopMac && swift package clean
+    rm -rf build/
+
+# Generate Xcode project (for previews/debugging)
+xcode:
+    cd desktopMac && xcodegen generate
+
+# Run backend only (dev)
+serve:
+    cargo run -- serve
+
+# Run tests
+test:
+    cargo fmt --check
+    cargo clippy -q
+    cargo test -q
+    cd desktopMac && swiftlint lint --quiet
+    cd desktopMac && swift build -c debug

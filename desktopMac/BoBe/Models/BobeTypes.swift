@@ -4,7 +4,7 @@ import Foundation
 
 /// UI state type derived from daemon connection + activity flags.
 /// Priority order: loading > speaking > thinking > wants_to_speak > capturing > idle
-enum BobeStateType: String, Sendable {
+enum BobeStateType: String, Sendable, Equatable {
     case loading
     case error
     case idle
@@ -12,10 +12,11 @@ enum BobeStateType: String, Sendable {
     case thinking
     case speaking
     case wantsToSpeak = "wants_to_speak"
+    case shuttingDown = "shutting_down"
 }
 
 /// Indicator types from daemon SSE events — matches Rust SCREAMING_SNAKE_CASE
-enum IndicatorType: String, Codable, Sendable {
+enum IndicatorType: String, Codable, Sendable, Equatable {
     case idle = "IDLE"
     case screenCapture = "SCREEN_CAPTURE"
     case thinking = "THINKING"
@@ -84,26 +85,30 @@ struct BobeContext: Sendable {
     var daemonConnected: Bool = false
     var daemonError: Bool = false
     var capturing: Bool = false
+    var captureInProgress: Bool = false
     var thinking: Bool = false
     var speaking: Bool = false
+    var shuttingDown: Bool = false
     var lastMessage: String?
     var errorMessage: String?
     var currentMessage: String = ""
     var currentMessageId: String?
     var messages: [ChatMessage] = []
     var activeIndicator: IndicatorType?
+    var capturePermissionMissing: Bool = false
     var toolExecutions: [ToolExecution] = []
     var stateType: BobeStateType = .loading
 }
 
 /// Derive UI state type from context flags
 func deriveStateType(from context: BobeContext) -> BobeStateType {
+    if context.shuttingDown { return .shuttingDown }
     if context.daemonError { return .error }
     if !context.daemonConnected { return .loading }
     if context.speaking { return .speaking }
     if context.thinking { return .thinking }
     if context.lastMessage != nil && !context.speaking { return .wantsToSpeak }
-    if context.capturing { return .capturing }
+    if context.captureInProgress { return .capturing }
     return .idle
 }
 
@@ -116,11 +121,14 @@ enum DaemonConfig {
 }
 
 enum WindowSizes {
-    static let widthCollapsed: CGFloat = 148
+    static let widthCollapsed: CGFloat = 184
     static let widthExpanded: CGFloat = 540
-    static let heightCollapsed: CGFloat = 180
+    static let heightCollapsed: CGFloat = 196
     static let heightAvatar: CGFloat = 180
     static let heightInput: CGFloat = 70
+    static let heightExpandedChrome: CGFloat = 56
+    static let heightChatViewportMin: CGFloat = 120
+    static let heightChatViewportMax: CGFloat = 560
     static let heightMax: CGFloat = 900
     static let margin: CGFloat = 16
 }

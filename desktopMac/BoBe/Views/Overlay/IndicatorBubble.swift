@@ -220,3 +220,30 @@ struct AnimatedDots: View {
         }
     }
 }
+
+// MARK: - Previews
+
+#Preview("Thinking Indicator") {
+    IndicatorBubble(indicator: .thinking, toolExecutions: [])
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Tool Calling") {
+    IndicatorBubble(
+        indicator: .toolCalling,
+        toolExecutions: [
+            ToolExecution(toolName: "search_files", toolCallId: "1", status: .running, startedAt: .now),
+            ToolExecution(toolName: "fetch_url", toolCallId: "2", status: .success, durationMs: 230, startedAt: .now, completedAt: .now),
+        ]
+    )
+    .environment(\.theme, allThemes[0])
+    .padding()
+    .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Animated Dots") {
+    AnimatedDots(color: .secondary)
+        .padding()
+}

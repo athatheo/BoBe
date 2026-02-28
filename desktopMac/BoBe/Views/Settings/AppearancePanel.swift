@@ -48,44 +48,51 @@ struct ThemeCard: View {
     @State private var isHovered = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            // Mini avatar preview
+        VStack(alignment: .leading, spacing: 10) {
             ZStack {
-                // Outer ring
-                Circle()
-                    .fill(themeConfig.colors.avatarRing)
-                    .frame(width: 48, height: 48)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(themeConfig.colors.background)
                     .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(themeConfig.colors.border, lineWidth: 1)
+                    )
+
+                VStack(spacing: 8) {
+                    // Mini avatar preview
+                    ZStack {
                         Circle()
-                            .stroke(themeConfig.colors.border, lineWidth: 1.5)
-                    )
+                            .fill(themeConfig.colors.avatarRing)
+                            .frame(width: 48, height: 48)
+                            .overlay(
+                                Circle()
+                                    .stroke(themeConfig.colors.border, lineWidth: 1.5)
+                            )
 
-                // Face gradient
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [themeConfig.colors.avatarFaceLight, themeConfig.colors.avatarFaceDark],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 32, height: 32)
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [themeConfig.colors.avatarFaceLight, themeConfig.colors.avatarFaceDark],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 32, height: 32)
 
-                // Closed eyes (sleeping)
-                HStack(spacing: 6) {
-                    ClosedEyeArc(color: themeConfig.colors.avatarRing)
-                    ClosedEyeArc(color: themeConfig.colors.avatarRing)
+                        HStack(spacing: 6) {
+                            ClosedEyeArc(color: themeConfig.colors.avatarRing)
+                            ClosedEyeArc(color: themeConfig.colors.avatarRing)
+                        }
+                        .offset(y: 1)
+                    }
+
+                    HStack(spacing: 4) {
+                        Circle().fill(themeConfig.colors.primary).frame(width: 14, height: 14)
+                        Circle().fill(themeConfig.colors.secondary).frame(width: 14, height: 14)
+                        Circle().fill(themeConfig.colors.tertiary).frame(width: 14, height: 14)
+                    }
                 }
-                .offset(y: 1)
             }
+            .frame(height: 92)
 
-            // Color swatches
-            HStack(spacing: 4) {
-                Circle().fill(themeConfig.colors.primary).frame(width: 14, height: 14)
-                Circle().fill(themeConfig.colors.secondary).frame(width: 14, height: 14)
-                Circle().fill(themeConfig.colors.tertiary).frame(width: 14, height: 14)
-            }
-
-            // Theme info
             HStack(spacing: 4) {
                 Text(themeConfig.name)
                     .font(.system(size: 12, weight: .semibold))
@@ -96,8 +103,14 @@ struct ThemeCard: View {
                         .foregroundStyle(themeConfig.colors.primary)
                 }
             }
+
+            Text(themeConfig.description)
+                .font(.system(size: 10))
+                .foregroundStyle(themeConfig.colors.textMuted)
+                .lineLimit(1)
         }
-        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 152, alignment: .topLeading)
+        .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(themeConfig.colors.surface)
@@ -126,4 +139,21 @@ private struct ClosedEyeArc: View {
         .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
         .frame(width: 6, height: 5)
     }
+}
+
+// MARK: - Previews
+
+#Preview("Appearance Panel") {
+    AppearancePanel()
+        .environment(\.theme, allThemes[0])
+        .frame(width: 600, height: 500)
+}
+
+#Preview("Theme Card") {
+    HStack(spacing: 16) {
+        ThemeCard(themeConfig: allThemes[0], isSelected: true, onSelect: {})
+        ThemeCard(themeConfig: allThemes[1], isSelected: false, onSelect: {})
+    }
+    .padding()
+    .frame(width: 500)
 }

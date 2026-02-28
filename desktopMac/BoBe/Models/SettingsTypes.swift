@@ -250,3 +250,8 @@ struct ConfigureLLMRequest: Codable, Sendable {
         case endpoint
     }
 }
+
+struct ConfigureLLMResponse: Codable, Sendable {
+    let ok: Bool
+    let message: String
+}

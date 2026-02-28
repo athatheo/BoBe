@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+private final class OverlayHostingView<Content: View>: NSHostingView<Content> {
+    override var mouseDownCanMoveWindow: Bool { true }
+}
+
 /// Manages the overlay panel's position and sizing.
 /// Anchors the panel to the bottom-right of the screen, matching the original behavior.
 @MainActor
@@ -27,10 +31,16 @@ final class OverlayWindowManager {
         let rect = NSRect(origin: origin, size: NSSize(width: initialWidth, height: initialHeight))
 
         let panel = OverlayPanel(contentRect: rect)
+        panel.contentView?.wantsLayer = true
+        panel.contentView?.layer?.masksToBounds = false
 
-        let hostView = NSHostingView(rootView: rootView)
-        hostView.frame = panel.contentView!.bounds
+        let hostView = OverlayHostingView(rootView: rootView)
+        if let contentView = panel.contentView {
+            hostView.frame = contentView.bounds
+        }
         hostView.autoresizingMask = [.width, .height]
+        hostView.wantsLayer = true
+        hostView.layer?.masksToBounds = false
         panel.contentView?.addSubview(hostView)
 
         panel.orderFrontRegardless()
@@ -42,11 +52,23 @@ final class OverlayWindowManager {
         guard let panel, let screen = panel.screen ?? NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
 
-        let clampedWidth = min(width, screenFrame.width - WindowSizes.margin * 2)
-        let clampedHeight = min(height, screenFrame.height - WindowSizes.margin * 2)
+        let maxWidth = screenFrame.width - WindowSizes.margin * 2
+        let maxHeight = screenFrame.height - WindowSizes.margin * 2
+        let clampedWidth = min(max(width, WindowSizes.widthCollapsed), maxWidth)
+        let clampedHeight = min(max(height, WindowSizes.heightCollapsed), maxHeight)
 
-        let newX = screenFrame.maxX - clampedWidth - WindowSizes.margin
-        let newY = screenFrame.minY + WindowSizes.margin
+        // Preserve the panel's current right and bottom edges so manual dragging sticks.
+        let currentFrame = panel.frame
+        var newX = currentFrame.maxX - clampedWidth
+        var newY = currentFrame.minY
+        newX = min(
+            max(newX, screenFrame.minX + WindowSizes.margin),
+            screenFrame.maxX - clampedWidth - WindowSizes.margin
+        )
+        newY = min(
+            max(newY, screenFrame.minY + WindowSizes.margin),
+            screenFrame.maxY - clampedHeight - WindowSizes.margin
+        )
 
         let newFrame = NSRect(
             x: newX, y: newY,

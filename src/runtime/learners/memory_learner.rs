@@ -28,6 +28,44 @@ const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"]
 
 /// Threshold for initial semantic search.
 const SIMILARITY_SEARCH_THRESHOLD: f64 = 0.5;
+const SPECULATIVE_MARKERS: &[&str] = &[
+    "probably",
+    "maybe",
+    "might",
+    "possibly",
+    "seems",
+    "appears",
+    "likely",
+    "i think",
+    "guess",
+    "could be",
+    "apparently",
+];
+const RECURRING_PATTERN_MARKERS: &[&str] = &[
+    "often",
+    "usually",
+    "regularly",
+    "frequently",
+    "repeatedly",
+    "habit",
+    "routine",
+    "recurring",
+    "tends to",
+    "every ",
+    "each ",
+    "daily",
+    "weekly",
+    "always",
+];
+const TRANSIENT_PATTERN_MARKERS: &[&str] = &[
+    "today",
+    "currently",
+    "right now",
+    "at the moment",
+    "this time",
+    "just now",
+    "for now",
+];
 
 pub struct MemoryLearner {
     llm: Arc<dyn LlmProvider>,
@@ -211,25 +249,12 @@ impl MemoryLearner {
                 break;
             }
 
-            let content = raw
-                .get("content")
-                .and_then(|c| c.as_str())
-                .unwrap_or("")
-                .trim();
-            if content.is_empty() {
+            let Some((content, category)) = Self::sanitize_candidate_memory(raw) else {
                 continue;
-            }
-
-            let mut category = raw
-                .get("category")
-                .and_then(|c| c.as_str())
-                .unwrap_or("fact");
-            if !VALID_CATEGORIES.contains(&category) {
-                category = "fact";
-            }
+            };
 
             // Generate embedding
-            let new_embedding = match self.embedding.embed(content).await {
+            let new_embedding = match self.embedding.embed(&content).await {
                 Ok(e) => e,
                 Err(e) => {
                     warn!(error = %e, "memory_learner.embedding_failed");
@@ -240,14 +265,14 @@ impl MemoryLearner {
             // Check batch duplicates
             let is_batch_dup = created
                 .iter()
-                .any(|m| m.content.to_lowercase().trim() == content.to_lowercase().trim());
+                .any(|m| m.content.trim().eq_ignore_ascii_case(content.as_str()));
             if is_batch_dup {
                 continue;
             }
 
             // LLM-based deduplication
             if !self
-                .should_create_memory(content, category, &new_embedding, &existing_embeddings)
+                .should_create_memory(&content, &category, &new_embedding, &existing_embeddings)
                 .await
             {
                 continue;
@@ -255,12 +280,18 @@ impl MemoryLearner {
 
             // Create and store
             let mut memory = Memory::new(
-                content.to_owned(),
+                content.clone(),
                 MemoryType::ShortTerm,
                 MemorySource::Observation,
-                category.to_owned(),
+                category.clone(),
             );
-            memory.embedding = Some(serde_json::to_string(&new_embedding).unwrap_or_default());
+            memory.embedding = match serde_json::to_string(&new_embedding) {
+                Ok(serialized) => Some(serialized),
+                Err(e) => {
+                    warn!(error = %e, "memory_learner.embedding_serialize_failed");
+                    continue;
+                }
+            };
 
             match self.memory_repo.save(&memory).await {
                 Ok(stored) => {
@@ -278,6 +309,79 @@ impl MemoryLearner {
         }
 
         created
+    }
+
+    fn sanitize_candidate_memory(raw: &Value) -> Option<(String, String)> {
+        let content_raw = raw.get("content").and_then(|c| c.as_str()).unwrap_or("");
+        let content = Self::normalize_memory_content(content_raw);
+        if content.is_empty() {
+            return None;
+        }
+
+        if Self::contains_speculative_language(&content) {
+            warn!(
+                content_preview = %Self::preview(&content),
+                "memory_learner.speculative_memory_rejected"
+            );
+            return None;
+        }
+
+        let mut category = raw
+            .get("category")
+            .and_then(|c| c.as_str())
+            .unwrap_or("fact")
+            .to_ascii_lowercase();
+        if !VALID_CATEGORIES.contains(&category.as_str()) {
+            category = "fact".into();
+        }
+
+        if category == "pattern" && !Self::is_high_signal_pattern(&content) {
+            warn!(
+                content_preview = %Self::preview(&content),
+                "memory_learner.low_signal_pattern_rejected"
+            );
+            return None;
+        }
+
+        Some((content, category))
+    }
+
+    fn normalize_memory_content(content: &str) -> String {
+        content
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim_matches('"')
+            .trim()
+            .to_owned()
+    }
+
+    fn contains_speculative_language(content: &str) -> bool {
+        let lowered = content.to_ascii_lowercase();
+        SPECULATIVE_MARKERS
+            .iter()
+            .any(|marker| lowered.contains(marker))
+    }
+
+    fn is_high_signal_pattern(content: &str) -> bool {
+        let lowered = content.to_ascii_lowercase();
+        let has_recurring_signal = RECURRING_PATTERN_MARKERS
+            .iter()
+            .any(|marker| lowered.contains(marker));
+        let has_transient_signal = TRANSIENT_PATTERN_MARKERS
+            .iter()
+            .any(|marker| lowered.contains(marker));
+
+        has_recurring_signal && !has_transient_signal
+    }
+
+    fn preview(content: &str) -> String {
+        const MAX_CHARS: usize = 120;
+        let mut out = String::new();
+        for ch in content.chars().take(MAX_CHARS) {
+            out.push(ch);
+        }
+        out
     }
 
     async fn should_create_memory(
@@ -323,7 +427,14 @@ impl MemoryLearner {
         .await
         {
             Ok(Ok(r)) => r,
-            _ => return false, // Skip on LLM error to avoid duplicate burst
+            Ok(Err(e)) => {
+                warn!(error = %e, "memory_learner.dedup_llm_error");
+                return true;
+            }
+            Err(_) => {
+                warn!("memory_learner.dedup_llm_timeout");
+                return true;
+            }
         };
 
         let resp_content = response.message.content.text_or_empty().to_string();
@@ -333,9 +444,69 @@ impl MemoryLearner {
                     .get("decision")
                     .and_then(|d| d.as_str())
                     .unwrap_or("CREATE");
-                decision.to_uppercase() == "CREATE"
+                match decision.to_ascii_uppercase().as_str() {
+                    "CREATE" => true,
+                    "SKIP" => false,
+                    _ => {
+                        warn!(decision = %decision, "memory_learner.dedup_unknown_decision");
+                        true
+                    }
+                }
             }
-            Err(_) => true,
+            Err(e) => {
+                warn!(error = %e, "memory_learner.dedup_json_parse_error");
+                true
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::MemoryLearner;
+
+    #[test]
+    fn rejects_speculative_claims() {
+        let raw = json!({
+            "content": "User probably prefers working late nights.",
+            "category": "pattern"
+        });
+
+        assert!(MemoryLearner::sanitize_candidate_memory(&raw).is_none());
+    }
+
+    #[test]
+    fn rejects_low_signal_patterns() {
+        let raw = json!({
+            "content": "User worked on Rust today.",
+            "category": "pattern"
+        });
+
+        assert!(MemoryLearner::sanitize_candidate_memory(&raw).is_none());
+    }
+
+    #[test]
+    fn keeps_high_signal_patterns() {
+        let raw = json!({
+            "content": "User usually reviews CI failures every morning before standup.",
+            "category": "pattern"
+        });
+
+        let sanitized = MemoryLearner::sanitize_candidate_memory(&raw).expect("expected memory");
+        assert_eq!(sanitized.1, "pattern");
+    }
+
+    #[test]
+    fn normalizes_content_and_category() {
+        let raw = json!({
+            "content": "  \"User prefers concise PR reviews\"  ",
+            "category": "unsupported"
+        });
+
+        let sanitized = MemoryLearner::sanitize_candidate_memory(&raw).expect("expected memory");
+        assert_eq!(sanitized.0, "User prefers concise PR reviews");
+        assert_eq!(sanitized.1, "fact");
     }
 }

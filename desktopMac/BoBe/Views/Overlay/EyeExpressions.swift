@@ -49,14 +49,26 @@ struct CapturingEyes: View {
 
     var body: some View {
         ZStack {
-            ViewfinderCorners(opacity: bracketOpacity, color: theme.colors.text)
-
-            EyeUnit(theme: theme.colors, irisOffset: CGPoint(x: pupilOffset, y: 0),
-                    outlineSize: CGSize(width: 11, height: 10), irisSize: 5, pupilSize: 2)
-                .offset(x: -8)
-            EyeUnit(theme: theme.colors, irisOffset: CGPoint(x: pupilOffset, y: 0),
-                    outlineSize: CGSize(width: 11, height: 10), irisSize: 5, pupilSize: 2)
-                .offset(x: 8)
+            HStack(spacing: 5) {
+                EyeUnit(
+                    theme: theme.colors,
+                    irisOffset: CGPoint(x: pupilOffset, y: 0),
+                    outlineSize: CGSize(width: 11, height: 10),
+                    irisSize: 5,
+                    pupilSize: 2
+                )
+                EyeUnit(
+                    theme: theme.colors,
+                    irisOffset: CGPoint(x: pupilOffset, y: 0),
+                    outlineSize: CGSize(width: 11, height: 10),
+                    irisSize: 5,
+                    pupilSize: 2
+                )
+            }
+            .overlay {
+                ViewfinderCorners(opacity: bracketOpacity, color: theme.colors.text)
+                    .frame(width: 31, height: 14)
+            }
 
             Rectangle()
                 .fill(theme.colors.secondary.opacity(0.4))
@@ -112,12 +124,13 @@ struct SpeakingEyes: View {
                 .scaleEffect(y: mouthScaleY)
         }
         .task {
+            // Match Electron: scaleY [1, 1.75, 0.75, 1.5, 1] over 0.5s
             let frames: [CGFloat] = [1, 1.75, 0.75, 1.5, 1]
             var i = 0
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(125))
                 withAnimation(.easeInOut(duration: 0.1)) { mouthScaleY = frames[i % frames.count] }
                 i &+= 1
+                try? await Task.sleep(for: .milliseconds(100))
             }
         }
     }
@@ -165,17 +178,18 @@ struct EagerEyes: View {
 // MARK: - Attentive Eyes
 
 struct AttentiveEyes: View {
-    @State private var bobOffset: CGFloat = 0
+    @State private var irisNudge: CGFloat = 0
     @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(spacing: 8) {
-            EyeUnit(theme: theme.colors, showHighlight: true)
-            EyeUnit(theme: theme.colors, showHighlight: true)
+            EyeUnit(theme: theme.colors, irisOffset: CGPoint(x: 0, y: irisNudge), showHighlight: true)
+            EyeUnit(theme: theme.colors, irisOffset: CGPoint(x: 0, y: irisNudge), showHighlight: true)
         }
-        .offset(y: bobOffset)
         .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { bobOffset = 1 }
+            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                irisNudge = -0.3
+            }
         }
     }
 }
@@ -187,20 +201,34 @@ private struct ViewfinderCorners: View {
     let color: Color
 
     var body: some View {
-        let style = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
-        ZStack {
-            cornerPath(moves: [(0, 4), (0, 0), (4, 0)]).stroke(color.opacity(opacity), style: style).offset(x: -15, y: -9)
-            cornerPath(moves: [(0, 0), (4, 0), (4, 4)]).stroke(color.opacity(opacity), style: style).offset(x: 11, y: -9)
-            cornerPath(moves: [(0, 0), (0, 4), (4, 4)]).stroke(color.opacity(opacity), style: style).offset(x: -15, y: 5)
-            cornerPath(moves: [(4, 4), (0, 4), (0, 0)]).stroke(color.opacity(opacity), style: style).offset(x: 11, y: 5)
-        }
-    }
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let corner: CGFloat = 4
+            let style = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
 
-    private func cornerPath(moves: [(CGFloat, CGFloat)]) -> Path {
-        Path { p in
-            guard let first = moves.first else { return }
-            p.move(to: CGPoint(x: first.0, y: first.1))
-            for pt in moves.dropFirst() { p.addLine(to: CGPoint(x: pt.0, y: pt.1)) }
+            Path { p in
+                // top-left
+                p.move(to: CGPoint(x: 0, y: corner))
+                p.addLine(to: CGPoint(x: 0, y: 0))
+                p.addLine(to: CGPoint(x: corner, y: 0))
+
+                // top-right
+                p.move(to: CGPoint(x: width - corner, y: 0))
+                p.addLine(to: CGPoint(x: width, y: 0))
+                p.addLine(to: CGPoint(x: width, y: corner))
+
+                // bottom-left
+                p.move(to: CGPoint(x: 0, y: height - corner))
+                p.addLine(to: CGPoint(x: 0, y: height))
+                p.addLine(to: CGPoint(x: corner, y: height))
+
+                // bottom-right
+                p.move(to: CGPoint(x: width - corner, y: height))
+                p.addLine(to: CGPoint(x: width, y: height))
+                p.addLine(to: CGPoint(x: width, y: height - corner))
+            }
+            .stroke(color.opacity(opacity), style: style)
         }
     }
 }
@@ -221,4 +249,51 @@ private struct SmilePath: Shape {
         p.addQuadCurve(to: CGPoint(x: rect.width, y: 0), control: CGPoint(x: rect.width / 2, y: rect.height))
         return p
     }
+}
+
+// MARK: - Previews
+
+#Preview("Eye Unit") {
+    HStack(spacing: 20) {
+        EyeUnit(theme: allThemes[0].colors)
+        EyeUnit(theme: allThemes[0].colors, showHighlight: true)
+        EyeUnit(theme: allThemes[0].colors, irisOffset: CGPoint(x: 2, y: -1))
+    }
+    .padding()
+    .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Capturing Eyes") {
+    CapturingEyes()
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Thinking Eyes") {
+    ThinkingEyes()
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Speaking Eyes") {
+    SpeakingEyes()
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Eager Eyes") {
+    EagerEyes()
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Attentive Eyes") {
+    AttentiveEyes()
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
 }

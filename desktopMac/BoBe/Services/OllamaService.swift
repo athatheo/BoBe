@@ -69,8 +69,11 @@ actor OllamaService {
                     cont.resume(throwing: OllamaError.extractionFailed)
                 }
             }
-            do { try extract.run() }
-            catch { cont.resume(throwing: error) }
+            do {
+                try extract.run()
+            } catch {
+                cont.resume(throwing: error)
+            }
         }
 
         // Verify the binary exists after extraction
@@ -119,7 +122,7 @@ actor OllamaService {
         return false
     }
 
-    private func isOllamaResponding() async -> Bool {
+    nonisolated private func isOllamaResponding() async -> Bool {
         guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else {
             return false
         }

@@ -110,7 +110,12 @@ extension DaemonClient {
     }
 
     func configureLLM(_ request: ConfigureLLMRequest) async throws {
-        try await fetchVoid("/onboarding/configure-llm", method: "POST", body: request)
+        let response: ConfigureLLMResponse = try await fetch(
+            "/onboarding/configure-llm", method: "POST", body: request
+        )
+        guard response.ok else {
+            throw DaemonError.httpError(statusCode: 400, message: response.message)
+        }
     }
 
     func markOnboardingComplete() async throws {

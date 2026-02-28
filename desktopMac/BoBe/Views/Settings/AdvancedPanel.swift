@@ -19,14 +19,14 @@ struct AdvancedPanel: View {
                 if let error {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.primary)
                         Text(error)
                             .font(.system(size: 12))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.primary)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.08)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.colors.primary.opacity(0.08)))
                 }
 
                 if settings != nil {
@@ -38,7 +38,7 @@ struct AdvancedPanel: View {
                     mcpSection
                 } else if isLoading {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        BobeSpinner(size: 14)
                         Text("Loading daemon settings...")
                             .font(.system(size: 13))
                             .foregroundStyle(theme.colors.textMuted)
@@ -119,11 +119,9 @@ struct AdvancedPanel: View {
             description: "Default directory where BoBe creates project folders from goals"
         ) {
             HStack(spacing: 8) {
-                TextField("/path/to/projects", text: binding(\.projectsDirectory))
-                    .textFieldStyle(.roundedBorder)
+                BobeTextField(placeholder: "/path/to/projects", text: binding(\.projectsDirectory))
                 Button("Browse...") { browseDirectory() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .bobeButton(.secondary, size: .small)
             }
         }
     }

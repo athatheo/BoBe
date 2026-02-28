@@ -24,10 +24,12 @@ struct MCPServerDetail: View {
             actionsSection
 
             if let error {
-                Text(error).font(.caption).foregroundStyle(.red)
+                Text(error).font(.caption).foregroundStyle(theme.colors.primary)
             }
         }
-        .padding(12)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
     }
 
     private var headerSection: some View {
@@ -97,7 +99,7 @@ struct MCPServerDetail: View {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 8))
                             }
-                            .buttonStyle(.plain)
+                            .bobeButton(.ghost, size: .mini)
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -107,13 +109,11 @@ struct MCPServerDetail: View {
             }
 
             HStack(spacing: 6) {
-                TextField("tool name", text: $addExcludedText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 150)
-                    .onSubmit { onAddExcluded(server) }
+                BobeTextField(placeholder: "tool name", text: $addExcludedText, width: 150) {
+                    onAddExcluded(server)
+                }
                 Button("Add") { onAddExcluded(server) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .bobeButton(.secondary, size: .small)
                     .disabled(addExcludedText.isEmpty)
             }
         }
@@ -138,22 +138,17 @@ struct MCPServerDetail: View {
                 HStack(spacing: 6) {
                     Text("Remove server?")
                         .font(.system(size: 12))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.colors.primary)
                     Button("Yes") { onRemove(server); deleteConfirm = false }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .tint(.red)
+                        .bobeButton(.destructive, size: .small)
                     Button("No") { deleteConfirm = false }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .bobeButton(.secondary, size: .small)
                 }
             } else {
                 Button { deleteConfirm = true } label: {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(.red)
+                .bobeButton(.destructive, size: .small)
             }
 
             Spacer()
@@ -163,14 +158,44 @@ struct MCPServerDetail: View {
             } label: {
                 HStack(spacing: 4) {
                     if isReconnecting {
-                        ProgressView().controlSize(.mini)
+                        BobeSpinner(size: 12)
                     }
                     Text(isReconnecting ? "Reconnecting..." : "Reconnect")
                 }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .bobeButton(.secondary, size: .small)
             .disabled(isReconnecting)
         }
     }
+}
+
+// MARK: - Previews
+
+#Preview("MCP Server Detail") {
+    @Previewable @State var deleteConfirm = false
+    @Previewable @State var isReconnecting = false
+    @Previewable @State var addExcludedText = ""
+    @Previewable @State var error: String? = nil
+    MCPServerDetail(
+        server: MCPServer(
+            id: "preview-1",
+            name: "filesystem",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+            connected: true,
+            enabled: true,
+            toolCount: 5,
+            excludedTools: ["delete_file"]
+        ),
+        deleteConfirm: $deleteConfirm,
+        isReconnecting: $isReconnecting,
+        addExcludedText: $addExcludedText,
+        error: $error,
+        onReconnect: { _ in },
+        onRemove: { _ in },
+        onAddExcluded: { _ in },
+        onRemoveExcluded: { _, _ in }
+    )
+    .environment(\.theme, allThemes[0])
+    .frame(width: 400, height: 500)
 }

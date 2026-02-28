@@ -37,7 +37,18 @@ impl FileReaderTool {
                 canonical.display()
             )));
         }
-        Ok(canonical)
+
+        // Re-validate after canonicalize to prevent symlink-swap TOCTOU attacks
+        let re_canon = canonical
+            .canonicalize()
+            .map_err(|e| AppError::Tool(format!("Path changed during validation: {e}")))?;
+        if !re_canon.starts_with(&home) && !re_canon.starts_with(&tmp) {
+            return Err(AppError::Tool(
+                "Access denied: path escaped allowed directories after re-validation".into(),
+            ));
+        }
+
+        Ok(re_canon)
     }
 }
 

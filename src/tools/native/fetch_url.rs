@@ -1,10 +1,54 @@
 use async_trait::async_trait;
+use reqwest::redirect::Policy;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 use super::base::NativeTool;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
+
+/// Check whether a host string (IP literal or hostname) resolves to a
+/// private, loopback, or link-local address that must be blocked for SSRF.
+fn is_private_host(host: &str) -> bool {
+    // Hostname-based checks
+    if host == "localhost" || host.ends_with(".local") {
+        return true;
+    }
+
+    // Try parsing as IP address for precise CIDR checks
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return match ip {
+            IpAddr::V4(v4) => {
+                let octets = v4.octets();
+                v4.is_loopback()                                     // 127.0.0.0/8
+                    || octets[0] == 10                               // 10.0.0.0/8
+                    || (octets[0] == 172 && (16..=31).contains(&octets[1])) // 172.16.0.0/12
+                    || (octets[0] == 192 && octets[1] == 168)        // 192.168.0.0/16
+                    || (octets[0] == 169 && octets[1] == 254)        // 169.254.0.0/16
+                    || v4.is_unspecified() // 0.0.0.0
+            }
+            IpAddr::V6(v6) => {
+                let segs = v6.segments();
+                v6.is_loopback()                                     // ::1
+                    || v6.is_unspecified()                            // ::
+                    || (segs[0] & 0xffc0) == 0xfe80                  // fe80::/10 link-local
+                    || (segs[0] & 0xfe00) == 0xfc00                  // fc00::/7  unique local
+                    || v6.to_ipv4_mapped().is_some_and(|v4| {
+                        let o = v4.octets();
+                        v4.is_loopback()
+                            || o[0] == 10
+                            || (o[0] == 172 && (16..=31).contains(&o[1]))
+                            || (o[0] == 192 && o[1] == 168)
+                            || (o[0] == 169 && o[1] == 254)
+                            || v4.is_unspecified()
+                    })
+            }
+        };
+    }
+
+    false
+}
 
 pub struct FetchUrlTool {
     client: reqwest::Client,
@@ -18,9 +62,23 @@ impl Default for FetchUrlTool {
 
 impl FetchUrlTool {
     pub fn new() -> Self {
+        // Custom redirect policy that validates each hop against the SSRF blocklist
+        let redirect_policy = Policy::custom(|attempt| {
+            if attempt.previous().len() >= 10 {
+                return attempt.error("too many redirects");
+            }
+            if let Some(host) = attempt.url().host_str() {
+                if is_private_host(host) {
+                    return attempt.error("redirect to private/internal address blocked");
+                }
+            }
+            attempt.follow()
+        });
+
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
+                .redirect(redirect_policy)
                 .user_agent("BoBe/1.0")
                 .build()
                 .unwrap_or_default(),
@@ -77,16 +135,7 @@ impl NativeTool for FetchUrlTool {
             .map_err(|e| AppError::Validation(format!("Invalid URL: {e}")))?;
 
         if let Some(host) = parsed.host_str() {
-            let is_private = host == "localhost"
-                || host == "127.0.0.1"
-                || host == "::1"
-                || host == "0.0.0.0"
-                || host.starts_with("10.")
-                || host.starts_with("192.168.")
-                || host.starts_with("172.")
-                || host.ends_with(".local");
-
-            if is_private {
+            if is_private_host(host) {
                 return Err(AppError::Tool(
                     "Access to private/internal addresses is blocked".into(),
                 ));

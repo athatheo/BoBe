@@ -28,26 +28,25 @@ struct ToolsPanel: View {
                     Button { Task { await loadTools() } } label: {
                         Image(systemName: "arrow.clockwise")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .bobeButton(.secondary, size: .small)
                 }
 
                 if let error {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.primary)
                         Text(error)
                             .font(.system(size: 12))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.primary)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.08)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.colors.primary.opacity(0.08)))
                 }
 
                 if isLoading && tools.isEmpty {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        BobeSpinner(size: 14)
                         Text("Loading tools...")
                             .font(.system(size: 13))
                             .foregroundStyle(theme.colors.textMuted)
@@ -166,7 +165,7 @@ struct ToolsPanel: View {
                                 }
                                 .foregroundStyle(theme.colors.textMuted)
                             }
-                            .buttonStyle(.plain)
+                            .bobeButton(.ghost, size: .mini)
                         }
                         .padding(.horizontal, 4)
                         .padding(.bottom, 4)

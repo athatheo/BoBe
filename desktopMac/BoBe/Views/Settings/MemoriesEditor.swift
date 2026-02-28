@@ -28,66 +28,68 @@ struct MemoriesEditor: View {
     }
 
     private let categoryLabels: [MemoryCategory: String] = [
-        .general: "GEN", .preference: "PRF", .pattern: "PAT",
-        .fact: "FCT", .interest: "INT", .observation: "OBS"
+        .general: "General", .preference: "Preference", .pattern: "Pattern",
+        .fact: "Fact", .interest: "Interest", .observation: "Observation"
     ]
 
     private let typeLabels: [MemoryType: String] = [
-        .shortTerm: "ST", .longTerm: "LT", .explicit: "EX"
+        .shortTerm: "Short-term", .longTerm: "Long-term", .explicit: "Explicit"
     ]
 
     var body: some View {
-        HSplitView {
+        ThemedSplitPane(leftWidth: 300) {
             // Left pane
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                SettingsPaneHeader(title: "Memories") { isCreating.toggle() }
+                    .padding(.bottom, 12)
+
                 // Header with filters
                 HStack(spacing: 6) {
-                    Picker("", selection: $filterCategory) {
-                        Text("All").tag(MemoryCategory?.none)
-                        ForEach(MemoryCategory.allCases, id: \.self) { cat in
-                            Text(cat.rawValue.capitalized).tag(MemoryCategory?.some(cat))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .controlSize(.small)
-                    .frame(maxWidth: 100)
+                    BobeMenuPicker(
+                        selection: $filterCategory,
+                        options: [MemoryCategory?.none] + MemoryCategory.allCases.map { .some($0) },
+                        label: { selected in
+                            if let selected { return selected.rawValue.capitalized }
+                            return "All"
+                        },
+                        width: 110,
+                        size: .small
+                    )
 
-                    Picker("", selection: $filterType) {
-                        Text("All").tag(MemoryType?.none)
-                        Text("Short").tag(MemoryType?.some(.shortTerm))
-                        Text("Long").tag(MemoryType?.some(.longTerm))
-                        Text("Explicit").tag(MemoryType?.some(.explicit))
-                    }
-                    .pickerStyle(.menu)
-                    .controlSize(.small)
-                    .frame(maxWidth: 80)
+                    BobeMenuPicker(
+                        selection: $filterType,
+                        options: [MemoryType?.none, .some(.shortTerm), .some(.longTerm), .some(.explicit)],
+                        label: { selected in
+                            switch selected {
+                            case .shortTerm?: "Short"
+                            case .longTerm?: "Long"
+                            case .explicit?: "Explicit"
+                            default: "All"
+                            }
+                        },
+                        width: 90,
+                        size: .small
+                    )
 
                     Spacer()
 
                     Text("\(filteredMemories.count)")
-                        .font(.system(size: 10, weight: .medium))
+                        .bobeTextStyle(.badge)
                         .foregroundStyle(theme.colors.textMuted)
-
-                    Button { isCreating.toggle() } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
                 }
 
                 if let error {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.circle.fill")
                             .font(.system(size: 10))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.primary)
                         Text(error)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.red)
+                            .bobeTextStyle(.badge)
+                            .foregroundStyle(theme.colors.primary)
                             .lineLimit(1)
                         Spacer()
                         Button("Retry") { Task { await loadMemories() } }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
+                            .bobeButton(.secondary, size: .mini)
                     }
                 }
 
@@ -102,12 +104,10 @@ struct MemoriesEditor: View {
                             )
                         HStack(spacing: 6) {
                             Button("Create") { createMemory() }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .bobeButton(.primary, size: .small)
                                 .disabled(newContent.isEmpty)
                             Button("Cancel") { isCreating = false; newContent = "" }
-                                .buttonStyle(.plain)
-                                .controlSize(.small)
+                                .bobeButton(.secondary, size: .small)
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -115,9 +115,9 @@ struct MemoriesEditor: View {
 
                 if isLoading && memories.isEmpty {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        BobeSpinner(size: 14)
                         Text("Loading memories...")
-                            .font(.system(size: 12))
+                            .bobeTextStyle(.body)
                             .foregroundStyle(theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -128,46 +128,49 @@ struct MemoriesEditor: View {
                             .font(.system(size: 28))
                             .foregroundStyle(theme.colors.textMuted)
                         Text("No memories")
-                            .font(.system(size: 13, weight: .medium))
+                            .bobeTextStyle(.rowTitle)
                             .foregroundStyle(theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    List(selection: $selectedId) {
-                        ForEach(filteredMemories) { memory in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(String(memory.content.prefix(45)))
-                                        .font(.system(size: 12, weight: .medium))
-                                        .lineLimit(1)
-                                    HStack(spacing: 4) {
-                                        Text(categoryLabels[memory.category] ?? memory.category.rawValue)
-                                            .font(.system(size: 9, weight: .medium))
-                                        Text(typeLabels[memory.memoryType] ?? memory.memoryType.rawValue)
-                                            .font(.system(size: 9, weight: .medium))
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(filteredMemories) { memory in
+                                BobeSelectableRow(
+                                    isSelected: selectedId == memory.id,
+                                    action: { selectedId = memory.id },
+                                    content: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(String(memory.content.prefix(45)))
+                                                .bobeTextStyle(.rowTitle)
+                                                .lineLimit(1)
+                                            let catLabel = categoryLabels[memory.category] ?? memory.category.rawValue
+                                            let typeLabel = typeLabels[memory.memoryType] ?? memory.memoryType.rawValue
+                                            Text("\(catLabel) · \(typeLabel)")
+                                                .bobeTextStyle(.rowMeta)
+                                                .foregroundStyle(theme.colors.textMuted)
+                                        }
+                                        .opacity(memory.enabled ? 1 : 0.45)
+                                        Spacer()
+                                        BobeToggle(isOn: Binding(
+                                            get: { memory.enabled },
+                                            set: { _ in toggleMemory(memory) }
+                                        ))
                                     }
-                                    .foregroundStyle(theme.colors.textMuted)
-                                }
-                                .opacity(memory.enabled ? 1 : 0.4)
-                                Spacer()
-                                BobeToggle(isOn: Binding(
-                                    get: { memory.enabled },
-                                    set: { _ in toggleMemory(memory) }
-                                ))
+                                })
                             }
-                            .tag(memory.id)
-                            .listRowBackground(theme.colors.background)
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
                     .background(theme.colors.background)
                 }
             }
             .frame(minWidth: 220, idealWidth: 300)
-            .padding(12)
-
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
+            .padding(.top, BobeMetrics.paneTopPadding)
+        } right: {
             // Right pane
             if let memory = selectedMemory {
                 VStack(alignment: .leading, spacing: 8) {
@@ -181,10 +184,10 @@ struct MemoriesEditor: View {
                         if isDirty {
                             Text("unsaved")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(theme.colors.tertiary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(.orange.opacity(0.15)))
+                                .background(Capsule().fill(theme.colors.tertiary.opacity(0.15)))
                         }
 
                         Text(categoryLabels[memory.category] ?? memory.category.rawValue)
@@ -203,18 +206,17 @@ struct MemoriesEditor: View {
 
                         Spacer()
 
-                        Picker("", selection: $selectedCategory) {
-                            ForEach(MemoryCategory.allCases, id: \.self) { cat in
-                                Text(cat.rawValue.capitalized).tag(cat)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .controlSize(.small)
-                        .frame(width: 130)
+                        BobeMenuPicker(
+                            selection: $selectedCategory,
+                            options: MemoryCategory.allCases,
+                            label: { $0.rawValue.capitalized },
+                            width: 130,
+                            size: .small
+                        )
                         .onChange(of: selectedCategory) { _, _ in isDirty = true }
 
                         Text(memory.createdAt.prefix(10))
-                            .font(.system(size: 10))
+                            .bobeTextStyle(.badge)
                             .foregroundStyle(theme.colors.textMuted)
                     }
 
@@ -233,46 +235,40 @@ struct MemoriesEditor: View {
                             HStack(spacing: 6) {
                                 Text("Delete?")
                                     .font(.system(size: 12))
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(theme.colors.primary)
                                 Button("Yes") { deleteMemory(memory); deleteConfirm = false }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .tint(.red)
+                                    .bobeButton(.destructive, size: .small)
                                 Button("No") { deleteConfirm = false }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
+                                    .bobeButton(.secondary, size: .small)
                             }
                         } else {
                             Button { deleteConfirm = true } label: {
                                 Image(systemName: "trash")
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .tint(.red)
+                            .bobeButton(.destructive, size: .small)
                         }
 
                         Spacer()
 
                         if isDirty {
                             Button("Discard") { discardChanges() }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .bobeButton(.secondary, size: .small)
                         }
                         Button(isSaving ? "Saving..." : "Save") { saveMemory() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(theme.colors.primary)
-                            .controlSize(.small)
+                            .bobeButton(.primary, size: .small)
                             .disabled(!isDirty || isSaving)
                     }
                 }
-                .padding(12)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
+                .padding(.top, BobeMetrics.paneTopPadding)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "brain.head.profile")
                         .font(.system(size: 28))
                         .foregroundStyle(theme.colors.textMuted)
                     Text("Select a memory to edit")
-                        .font(.system(size: 13))
+                        .bobeTextStyle(.rowTitle)
                         .foregroundStyle(theme.colors.textMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

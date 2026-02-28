@@ -23,13 +23,14 @@ struct EyesIndicator: View {
     @ViewBuilder
     private var eyeView: some View {
         switch state {
-        case .error:      ErrorEyes()
-        case .loading:    AttentiveEyes()
-        case .idle:       idleEyes
-        case .capturing:  CapturingEyes()
-        case .thinking:   ThinkingEyes()
-        case .speaking:   SpeakingEyes()
+        case .error:        ErrorEyes()
+        case .loading:      AttentiveEyes()
+        case .idle:         idleEyes
+        case .capturing:    CapturingEyes()
+        case .thinking:     ThinkingEyes()
+        case .speaking:     SpeakingEyes()
         case .wantsToSpeak: EagerEyes()
+        case .shuttingDown: SleepingEyes()
         }
     }
 
@@ -126,4 +127,41 @@ private struct FrownArc: Shape {
         )
         return path
     }
+}
+
+// MARK: - Previews
+
+#Preview("Idle") {
+    EyesIndicator(state: .idle)
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Thinking") {
+    EyesIndicator(state: .thinking)
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Speaking") {
+    EyesIndicator(state: .speaking)
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Error") {
+    EyesIndicator(state: .error)
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
+}
+
+#Preview("Sleeping") {
+    EyesIndicator(state: .shuttingDown)
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .background(Color.gray.opacity(0.2))
 }

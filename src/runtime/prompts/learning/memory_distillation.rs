@@ -64,6 +64,9 @@ Guidelines:
 5. Each memory should be a single, atomic fact
 6. Avoid duplicating information across memories
 7. Assign importance based on how useful the memory would be long-term
+8. Use category \"pattern\" ONLY when recurrence is directly evidenced by multiple moments/signals
+9. If evidence is one-off or uncertain, use \"fact\" or return no memory
+10. Do not use speculative wording (e.g. \"probably\", \"might\", \"seems\") in memory content
 
 Return an empty memories array if no meaningful memories can be extracted.";
 
@@ -120,7 +123,8 @@ Return an empty memories array if no meaningful memories can be extracted.";
                  {memories_text}\n\n\
                  ## User's Goals (for context)\n\
                  {goals_text}\n\n\
-                 Extract any new memories that would help personalize future interactions."
+                 Extract any new memories that would help personalize future interactions.\n\
+                 Use \"pattern\" only when repeated behavior is clearly supported by the provided context."
             )),
         ]
     }
@@ -144,6 +148,7 @@ DO NOT extract:
 - Things the AI taught them (they now know it)
 - Frustrations or temporary states
 - Information that's only relevant to this conversation
+- Pattern claims unless recurrence is explicitly supported by multiple references in the conversation
 
 Return an empty memories array if the conversation doesn't reveal lasting insights about the user.";
 

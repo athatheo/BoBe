@@ -119,6 +119,29 @@ pub async fn onboarding_status(
         },
     );
 
+    let has_runtime_backend_override = std::env::var("BOBE_LLM_BACKEND")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let has_persisted_backend = has_persisted_backend_config();
+    let config_source_ready = has_runtime_backend_override || has_persisted_backend;
+
+    steps.insert(
+        "configuration".into(),
+        OnboardingStepStatus {
+            status: if config_source_ready {
+                "complete"
+            } else {
+                "incomplete"
+            }
+            .into(),
+            detail: if config_source_ready {
+                "Persistent or explicit backend configuration detected".into()
+            } else {
+                "No persisted ~/.bobe/.env backend configuration found".into()
+            },
+        },
+    );
+
     let ollama_reachable = if matches!(cfg.llm_backend, LlmBackend::Ollama | LlmBackend::LlamaCpp) {
         let model_url = format!("{}/api/tags", cfg.ollama_url);
         reqwest::get(&model_url)
@@ -188,13 +211,36 @@ pub async fn onboarding_status(
     );
 
     let complete = steps.values().all(|s| s.status == "complete");
-    let needs_onboarding = !llm_configured;
+    let needs_onboarding = !llm_configured || !config_source_ready;
 
     Ok(Json(OnboardingStatusResponse {
         complete,
         needs_onboarding,
         steps,
     }))
+}
+
+fn has_persisted_backend_config() -> bool {
+    let env_path = dirs::home_dir()
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()))
+        })
+        .join(".bobe")
+        .join(".env");
+    let Ok(content) = std::fs::read_to_string(env_path) else {
+        return false;
+    };
+
+    content.lines().any(|line| {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return false;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            return false;
+        };
+        key.trim() == "BOBE_LLM_BACKEND" && !value.trim().is_empty()
+    })
 }
 
 /// POST /onboarding/complete
@@ -223,13 +269,28 @@ pub async fn configure_llm(
                 "llm_backend".to_string(),
                 serde_json::Value::String("ollama".into()),
             );
-            if let Some(ref model) = body.model {
+            changes.insert(
+                "vision_backend".to_string(),
+                serde_json::Value::String("ollama".into()),
+            );
+            if let Some(model) = body
+                .model
+                .as_ref()
+                .map(|m| m.trim())
+                .filter(|m| !m.is_empty())
+            {
                 changes.insert(
                     "ollama_model".to_string(),
-                    serde_json::Value::String(model.clone()),
+                    serde_json::Value::String(model.to_string()),
                 );
             }
-            state.config_manager.update(&changes);
+            let result = state.config_manager.update(&changes);
+            if result.persist_failed {
+                return Ok(Json(ConfigureLlmResponse {
+                    ok: false,
+                    message: "Failed to persist configuration to ~/.bobe/.env".into(),
+                }));
+            }
             let model = body.model.unwrap_or_else(|| cfg.ollama_model.clone());
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
@@ -237,7 +298,12 @@ pub async fn configure_llm(
             }))
         }
         "openai" => {
-            if body.api_key.as_ref().is_none_or(|k| k.is_empty()) {
+            let api_key = body
+                .api_key
+                .as_ref()
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty());
+            if api_key.is_none() {
                 return Ok(Json(ConfigureLlmResponse {
                     ok: false,
                     message: "API key required for OpenAI".into(),
@@ -248,36 +314,74 @@ pub async fn configure_llm(
                 "llm_backend".to_string(),
                 serde_json::Value::String("openai".into()),
             );
-            if let Some(ref model) = body.model {
+            changes.insert(
+                "vision_backend".to_string(),
+                serde_json::Value::String("openai".into()),
+            );
+            if let Some(model) = body
+                .model
+                .as_ref()
+                .map(|m| m.trim())
+                .filter(|m| !m.is_empty())
+            {
                 changes.insert(
                     "openai_model".to_string(),
-                    serde_json::Value::String(model.clone()),
+                    serde_json::Value::String(model.to_string()),
                 );
             }
-            if let Some(ref key) = body.api_key {
+            let vision_model = body
+                .model
+                .as_ref()
+                .map(|m| m.trim())
+                .filter(|m| !m.is_empty())
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| cfg.openai_model.clone());
+            changes.insert(
+                "vision_openai_model".to_string(),
+                serde_json::Value::String(vision_model),
+            );
+            if let Some(ref key) = api_key {
                 changes.insert(
                     "openai_api_key".to_string(),
                     serde_json::Value::String(key.clone()),
                 );
             }
-            state.config_manager.update(&changes);
+            let result = state.config_manager.update(&changes);
+            if result.persist_failed {
+                return Ok(Json(ConfigureLlmResponse {
+                    ok: false,
+                    message: "Failed to persist configuration to ~/.bobe/.env".into(),
+                }));
+            }
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
                 message: "Configured OpenAI".into(),
             }))
         }
         "azure_openai" => {
-            let deployment = body.model.clone().filter(|m| !m.is_empty()).or_else(|| {
-                if cfg.azure_openai_deployment.is_empty() {
-                    None
-                } else {
-                    Some(cfg.azure_openai_deployment.clone())
-                }
-            });
-            if body.api_key.as_ref().is_none_or(|k| k.is_empty())
-                || body.endpoint.as_ref().is_none_or(|e| e.is_empty())
-                || deployment.is_none()
-            {
+            let api_key = body
+                .api_key
+                .as_ref()
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty());
+            let endpoint = body
+                .endpoint
+                .as_ref()
+                .map(|e| e.trim().to_string())
+                .filter(|e| !e.is_empty());
+            let deployment = body
+                .model
+                .clone()
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty())
+                .or_else(|| {
+                    if cfg.azure_openai_deployment.is_empty() {
+                        None
+                    } else {
+                        Some(cfg.azure_openai_deployment.clone())
+                    }
+                });
+            if api_key.is_none() || endpoint.is_none() || deployment.is_none() {
                 return Ok(Json(ConfigureLlmResponse {
                     ok: false,
                     message: "API key, endpoint, and deployment required for Azure OpenAI".into(),
@@ -288,7 +392,11 @@ pub async fn configure_llm(
                 "llm_backend".to_string(),
                 serde_json::Value::String("azure_openai".into()),
             );
-            if let Some(ref endpoint) = body.endpoint {
+            changes.insert(
+                "vision_backend".to_string(),
+                serde_json::Value::String("azure_openai".into()),
+            );
+            if let Some(ref endpoint) = endpoint {
                 changes.insert(
                     "azure_openai_endpoint".to_string(),
                     serde_json::Value::String(endpoint.clone()),
@@ -296,15 +404,25 @@ pub async fn configure_llm(
             }
             changes.insert(
                 "azure_openai_deployment".to_string(),
+                serde_json::Value::String(deployment.clone().unwrap_or_default()),
+            );
+            changes.insert(
+                "vision_azure_openai_deployment".to_string(),
                 serde_json::Value::String(deployment.unwrap_or_default()),
             );
-            if let Some(ref key) = body.api_key {
+            if let Some(ref key) = api_key {
                 changes.insert(
                     "azure_openai_api_key".to_string(),
                     serde_json::Value::String(key.clone()),
                 );
             }
-            state.config_manager.update(&changes);
+            let result = state.config_manager.update(&changes);
+            if result.persist_failed {
+                return Ok(Json(ConfigureLlmResponse {
+                    ok: false,
+                    message: "Failed to persist configuration to ~/.bobe/.env".into(),
+                }));
+            }
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
                 message: "Configured Azure OpenAI".into(),
@@ -316,13 +434,28 @@ pub async fn configure_llm(
                 "llm_backend".to_string(),
                 serde_json::Value::String("llamacpp".into()),
             );
-            if let Some(ref url) = body.model {
+            changes.insert(
+                "vision_backend".to_string(),
+                serde_json::Value::String("none".into()),
+            );
+            if let Some(url) = body
+                .model
+                .as_ref()
+                .map(|m| m.trim())
+                .filter(|m| !m.is_empty())
+            {
                 changes.insert(
                     "llama_url".to_string(),
-                    serde_json::Value::String(url.clone()),
+                    serde_json::Value::String(url.to_string()),
                 );
             }
-            state.config_manager.update(&changes);
+            let result = state.config_manager.update(&changes);
+            if result.persist_failed {
+                return Ok(Json(ConfigureLlmResponse {
+                    ok: false,
+                    message: "Failed to persist configuration to ~/.bobe/.env".into(),
+                }));
+            }
             Ok(Json(ConfigureLlmResponse {
                 ok: true,
                 message: "Configured local llama.cpp".into(),

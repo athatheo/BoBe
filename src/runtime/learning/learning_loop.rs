@@ -218,6 +218,8 @@ impl LearningLoop {
         let existing_memories = self.get_all_memories().await;
         let existing_goals = self.goals_service.get_active(100).await.unwrap_or_default();
 
+        const MAX_ACCUMULATED_ITEMS: usize = 500;
+
         let mut total_memories = 0usize;
         let mut total_goals = 0usize;
         let mut all_memories = existing_memories;
@@ -225,6 +227,15 @@ impl LearningLoop {
         let mut processed_closed_times: Vec<chrono::DateTime<chrono::Utc>> = Vec::new();
 
         for conv in &conversations {
+            if all_memories.len() >= MAX_ACCUMULATED_ITEMS {
+                warn!(
+                    cap = MAX_ACCUMULATED_ITEMS,
+                    accumulated = all_memories.len(),
+                    remaining = conversations.len() - processed_closed_times.len(),
+                    "learning_loop.memory_cap_reached — stopping conversation processing this cycle"
+                );
+                break;
+            }
             let turns = match self.conversation.get_conversation_turns(conv.id, 100).await {
                 Ok(t) => t,
                 Err(e) => {
@@ -253,6 +264,10 @@ impl LearningLoop {
                 .await;
             total_memories += memories.len();
             all_memories.extend(memories);
+            if all_memories.len() > MAX_ACCUMULATED_ITEMS {
+                warn!("memory_cap_exceeded, truncating");
+                all_memories.truncate(MAX_ACCUMULATED_ITEMS);
+            }
 
             // Extract goals
             let goals = self
@@ -353,17 +368,31 @@ impl LearningLoop {
 
         info!("learning_loop.starting_consolidation");
 
-        let short_term = self
+        let short_term = match self
             .memory_repo
             .find_by_type(MemoryType::ShortTerm, false, None)
             .await
-            .unwrap_or_default();
+        {
+            Ok(memories) => memories,
+            Err(e) => {
+                warn!(error = %e, "learning_loop.short_term_fetch_failed");
+                return (0, false);
+            }
+        };
 
-        // Exclude visual diary entries
-        let short_term: Vec<_> = short_term
+        let total_short_term = short_term.len();
+        let (short_term, deferred_visual_diary): (Vec<_>, Vec<_>) = short_term
             .into_iter()
-            .filter(|m| m.source != MemorySource::VisualDiary)
-            .collect();
+            .partition(Self::is_consolidation_candidate);
+
+        if !deferred_visual_diary.is_empty() {
+            debug!(
+                total_short_term = total_short_term,
+                consolidation_candidates = short_term.len(),
+                deferred_visual_diary = deferred_visual_diary.len(),
+                "learning_loop.visual_diary_deferred"
+            );
+        }
 
         if short_term.is_empty() {
             state.last_consolidation_at = Some(now);
@@ -380,6 +409,18 @@ impl LearningLoop {
         );
 
         (long_term.len(), true)
+    }
+
+    fn is_consolidation_candidate(memory: &crate::models::memory::Memory) -> bool {
+        if memory.source != MemorySource::VisualDiary {
+            return true;
+        }
+
+        !memory
+            .content
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("# visual memory")
     }
 
     async fn scheduled_pruning_if_needed(&self, state: &mut LearningState) -> (usize, bool) {
@@ -589,4 +630,35 @@ where
     }
 
     (re_embedded, deleted, skipped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LearningLoop;
+    use crate::models::memory::Memory;
+    use crate::models::types::{MemorySource, MemoryType};
+
+    #[test]
+    fn excludes_visual_diary_rollup_entries() {
+        let memory = Memory::new(
+            "# Visual Memory 2026-02-03 PM\n\n- 12:03 [abc123] User edited Rust code".into(),
+            MemoryType::ShortTerm,
+            MemorySource::VisualDiary,
+            "observation".into(),
+        );
+
+        assert!(!LearningLoop::is_consolidation_candidate(&memory));
+    }
+
+    #[test]
+    fn keeps_non_diary_visual_entries() {
+        let memory = Memory::new(
+            "User often reviews screenshots before morning standup.".into(),
+            MemoryType::ShortTerm,
+            MemorySource::VisualDiary,
+            "pattern".into(),
+        );
+
+        assert!(LearningLoop::is_consolidation_candidate(&memory));
+    }
 }

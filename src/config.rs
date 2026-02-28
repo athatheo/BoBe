@@ -366,7 +366,9 @@ impl Config {
 }
 
 fn dirs_path() -> String {
-    std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())
+    dirs::home_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()))
 }
 
 fn expand_sqlite_path(url: &str) -> String {

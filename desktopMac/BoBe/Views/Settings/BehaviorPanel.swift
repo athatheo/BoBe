@@ -1,3 +1,4 @@
+import CoreGraphics
 import SwiftUI
 
 /// Behavior settings panel — capture, check-ins, memory, conversation, tools.
@@ -17,14 +18,14 @@ struct BehaviorPanel: View {
                 if let error {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.primary)
                         Text(error)
                             .font(.system(size: 12))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.primary)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.08)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.colors.primary.opacity(0.08)))
                 }
 
                 if settings != nil {
@@ -35,7 +36,7 @@ struct BehaviorPanel: View {
                     toolsSection
                 } else if isLoading {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        BobeSpinner(size: 14)
                         Text("Loading behavior settings...")
                             .font(.system(size: 13))
                             .foregroundStyle(theme.colors.textMuted)
@@ -58,6 +59,23 @@ struct BehaviorPanel: View {
         ) {
             SettingsRow(label: "Capture interval", suffix: "seconds") {
                 DebouncedNumberInput(value: binding(\.captureIntervalSeconds), range: 1...600)
+            }
+
+            if !CGPreflightScreenCaptureAccess() {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(theme.colors.tertiary)
+                    Text("Screen Recording permission not granted.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(theme.colors.tertiary)
+                    Button("Open Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .bobeButton(.secondary, size: .mini)
+                }
             }
         }
     }
@@ -85,7 +103,7 @@ struct BehaviorPanel: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(theme.colors.textMuted)
                         }
-                        .buttonStyle(.plain)
+                        .bobeButton(.ghost, size: .mini)
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -94,13 +112,11 @@ struct BehaviorPanel: View {
             }
 
             HStack(spacing: 6) {
-                TextField("HH:MM", text: $newCheckinTime)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                    .onSubmit { addCheckinTime() }
+                BobeTextField(placeholder: "HH:MM", text: $newCheckinTime, width: 80) {
+                    addCheckinTime()
+                }
                 Button("Add") { addCheckinTime() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .bobeButton(.secondary, size: .small)
                     .disabled(newCheckinTime.isEmpty)
             }
 

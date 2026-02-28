@@ -73,8 +73,9 @@ pub fn persist(changes: &BTreeMap<String, String>) -> bool {
 }
 
 fn bobe_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home).join(".bobe")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())))
+        .join(".bobe")
 }
 
 fn read_env_file(path: &PathBuf) -> BTreeMap<String, String> {

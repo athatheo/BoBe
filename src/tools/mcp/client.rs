@@ -158,7 +158,16 @@ impl McpClient {
         let mut proc = self.process.lock().await;
         if let Some(mut p) = proc.take() {
             let _ = p.child.kill();
-            let _ = p.child.wait();
+            // Reap with timeout to avoid blocking indefinitely
+            let _ = tokio::task::spawn_blocking(move || {
+                for _ in 0..30 {
+                    if let Ok(Some(_)) = p.child.try_wait() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            })
+            .await;
         }
         self.connected.store(false, Ordering::Release);
         debug!(server = %self.config.name, "MCP server disconnected");
@@ -376,12 +385,20 @@ fn set_nonblocking_stdout(_stdout: &std::process::ChildStdout) -> Result<(), App
 
 impl Drop for McpClient {
     fn drop(&mut self) {
-        // Best-effort cleanup
+        // Best-effort cleanup — never block Drop
         if let Ok(mut proc) = self.process.try_lock()
             && let Some(mut p) = proc.take()
         {
             let _ = p.child.kill();
-            let _ = p.child.wait();
+            // Reap in a background thread with 3s timeout to avoid blocking
+            std::thread::spawn(move || {
+                for _ in 0..30 {
+                    if let Ok(Some(_)) = p.child.try_wait() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            });
         }
     }
 }

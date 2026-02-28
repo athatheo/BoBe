@@ -1,0 +1,77 @@
+name: BoBe
+options:
+  bundleIdPrefix: com.bobe
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: false
+  groupSortPosition: none
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ARCHS: arm64
+    ENABLE_PREVIEWS: YES
+    # Concurrency
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Warnings
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    # Signing (override per-machine via xcconfig or Xcode UI)
+    CODE_SIGN_STYLE: Automatic
+    # Dead code
+    DEAD_CODE_STRIPPING: YES
+  configs:
+    Debug:
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      SWIFT_COMPILATION_MODE: singlefile
+      GCC_OPTIMIZATION_LEVEL: "0"
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      DEBUG_INFORMATION_FORMAT: "dwarf"
+      ENABLE_TESTABILITY: YES
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      SWIFT_COMPILATION_MODE: wholemodule
+      GCC_OPTIMIZATION_LEVEL: s
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
+      DEBUG_INFORMATION_FORMAT: "dwarf-with-dsym"
+      ENABLE_TESTABILITY: NO
+
+targets:
+  BoBe:
+    type: application
+    platform: macOS
+    sources:
+      - path: BoBe
+        excludes:
+          - Resources/Info.plist
+          - Resources/BoBe.entitlements
+    resources:
+      - path: BoBe/Resources
+        excludes:
+          - Info.plist
+          - BoBe.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bobe.app
+        PRODUCT_NAME: BoBe
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: entitlements.plist
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Info.plist
+      properties: {}
+    entitlements:
+      path: entitlements.plist
+    preBuildScripts:
+      - name: SwiftLint
+        basedOnDependencyAnalysis: false
+        shell: /bin/bash
+        script: |
+          if command -v swiftlint >/dev/null 2>&1; then
+            swiftlint lint --quiet
+          else
+            echo "warning: SwiftLint not installed"
+          fi

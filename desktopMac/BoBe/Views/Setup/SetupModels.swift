@@ -1,11 +1,14 @@
 import Foundation
+import SwiftUI
 
 // MARK: - Step Flow
 
-/// Wizard steps matching Electron: welcome → choose-mode → downloading → capture → complete
+/// Wizard steps: welcome → aiChoice → cloud/local config → downloading → capture → complete
 enum SetupStep {
     case welcome
     case chooseMode
+    case cloudConfig
+    case localConfig
     case downloadingEngine
     case downloadingModel
     case initializing
@@ -102,6 +105,10 @@ let onlineProviders: [OnlineProvider] = [
         endpointPlaceholder: "https://your-resource.cognitiveservices.azure.com/openai/v1/"
     ),
 ]
+
+// MARK: - Setup Mode
+
+enum SetupMode { case local, online }
 
 // MARK: - Errors
 

@@ -19,42 +19,32 @@ struct GoalsEditor: View {
     private var selectedGoal: Goal? { goals.first { $0.id == selectedId } }
 
     var body: some View {
-        HSplitView {
+        ThemedSplitPane(leftWidth: 300) {
             // Left pane
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Goals")
-                        .font(.headline)
-                        .foregroundStyle(theme.colors.text)
-                    Spacer()
-                    Button { isCreating.toggle() } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                SettingsPaneHeader(title: "Goals") { isCreating.toggle() }
+                    .padding(.bottom, 12)
 
                 if isCreating {
                     VStack(spacing: 6) {
-                        TextField("What's the goal?", text: $newContent)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { if !newContent.isEmpty { createGoal() } }
+                        BobeTextField(placeholder: "What's the goal?", text: $newContent) {
+                            if !newContent.isEmpty { createGoal() }
+                        }
                         HStack(spacing: 6) {
                             Button("Create") { createGoal() }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .bobeButton(.primary, size: .small)
                                 .disabled(newContent.isEmpty)
                             Button("Cancel") { isCreating = false; newContent = "" }
-                                .buttonStyle(.plain)
-                                .controlSize(.small)
+                                .bobeButton(.secondary, size: .small)
                         }
                     }
                 }
 
                 if isLoading && goals.isEmpty {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        BobeSpinner(size: 14)
                         Text("Loading goals...")
-                            .font(.system(size: 12))
+                            .bobeTextStyle(.body)
                             .foregroundStyle(theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -65,56 +55,60 @@ struct GoalsEditor: View {
                             .font(.system(size: 28))
                             .foregroundStyle(theme.colors.textMuted)
                         Text("No goals yet")
-                            .font(.system(size: 13, weight: .medium))
+                            .bobeTextStyle(.rowTitle)
                             .foregroundStyle(theme.colors.textMuted)
                         Text("Create goals for BoBe to work towards")
-                            .font(.system(size: 11))
+                            .bobeTextStyle(.helper)
                             .foregroundStyle(theme.colors.textMuted.opacity(0.7))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    List(selection: $selectedId) {
-                        ForEach(goals) { goal in
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(priorityColor(goal.priority))
-                                    .frame(width: 8, height: 8)
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(goals) { goal in
+                                BobeSelectableRow(
+                                    isSelected: selectedId == goal.id,
+                                    action: { selectedId = goal.id },
+                                    content: {
+                                    HStack(spacing: 8) {
+                                        Circle()
+                                            .fill(priorityColor(goal.priority))
+                                            .frame(width: 8, height: 8)
 
-                                VStack(alignment: .leading) {
-                                    Text(String(goal.content.prefix(40)))
-                                        .font(.system(size: 12, weight: .medium))
-                                        .lineLimit(1)
-                                    HStack(spacing: 4) {
-                                        Text(goal.status.rawValue)
-                                        Text("•")
-                                        Text(goal.priority.rawValue)
-                                        Text("•")
-                                        Text(goal.source.rawValue)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(String(goal.content.prefix(40)))
+                                                .bobeTextStyle(.rowTitle)
+                                                .lineLimit(1)
+                                            HStack(spacing: 4) {
+                                                Text(goal.status.rawValue)
+                                                Text("•")
+                                                Text(goal.priority.rawValue)
+                                                Text("•")
+                                                Text(goal.source.rawValue)
+                                            }
+                                            .bobeTextStyle(.rowMeta)
+                                            .foregroundStyle(theme.colors.textMuted)
+                                        }
+                                        Spacer()
+
+                                        BobeToggle(isOn: Binding(
+                                            get: { goal.enabled },
+                                            set: { _ in toggleGoal(goal) }
+                                        ))
                                     }
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(theme.colors.textMuted)
-                                }
-
-                                Spacer()
-
-                                BobeToggle(isOn: Binding(
-                                    get: { goal.enabled },
-                                    set: { _ in toggleGoal(goal) }
-                                ))
+                                })
                             }
-                            .tag(goal.id)
-                            .listRowBackground(theme.colors.background)
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
                     .background(theme.colors.background)
                 }
             }
             .frame(minWidth: 220, idealWidth: 300)
-            .padding(12)
-
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
+            .padding(.top, BobeMetrics.paneTopPadding)
+        } right: {
             // Right pane
             if let goal = selectedGoal {
                 VStack(alignment: .leading, spacing: 8) {
@@ -129,10 +123,10 @@ struct GoalsEditor: View {
                         if isDirty {
                             Text("unsaved")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(theme.colors.tertiary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(.orange.opacity(0.15)))
+                                .background(Capsule().fill(theme.colors.tertiary.opacity(0.15)))
                         }
 
                         Text(goal.priority.rawValue)
@@ -154,13 +148,19 @@ struct GoalsEditor: View {
 
                     // Controls row
                     HStack(spacing: 8) {
-                        Picker("Priority", selection: $selectedPriority) {
-                            Text("High Priority").tag(GoalPriority.high)
-                            Text("Medium Priority").tag(GoalPriority.medium)
-                            Text("Low Priority").tag(GoalPriority.low)
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 180)
+                        BobeMenuPicker(
+                            selection: $selectedPriority,
+                            options: [GoalPriority.high, .medium, .low],
+                            label: { priority in
+                                switch priority {
+                                case .high: "High Priority"
+                                case .medium: "Medium Priority"
+                                case .low: "Low Priority"
+                                case .unknown: "Unknown"
+                                }
+                            },
+                            width: 180
+                        )
                         .onChange(of: selectedPriority) { _, _ in isDirty = true }
 
                         Spacer()
@@ -172,8 +172,7 @@ struct GoalsEditor: View {
                                     Text("Complete")
                                 }
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .bobeButton(.secondary, size: .small)
 
                             Button { archiveGoal(goal) } label: {
                                 HStack(spacing: 4) {
@@ -181,8 +180,7 @@ struct GoalsEditor: View {
                                     Text("Archive")
                                 }
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .bobeButton(.secondary, size: .small)
                         }
                     }
 
@@ -203,50 +201,44 @@ struct GoalsEditor: View {
                             HStack(spacing: 6) {
                                 Text("Delete?")
                                     .font(.system(size: 12))
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(theme.colors.primary)
                                 Button("Yes") { deleteGoal(goal); deleteConfirm = false }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .tint(.red)
+                                    .bobeButton(.destructive, size: .small)
                                 Button("No") { deleteConfirm = false }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
+                                    .bobeButton(.secondary, size: .small)
                             }
                         } else {
                             Button { deleteConfirm = true } label: {
                                 Image(systemName: "trash")
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .tint(.red)
+                            .bobeButton(.destructive, size: .small)
                         }
 
                         Spacer()
 
                         if isDirty {
                             Button("Discard") { discardChanges() }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .bobeButton(.secondary, size: .small)
                         }
                         Button(isSaving ? "Saving..." : "Save") { saveGoal() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(theme.colors.primary)
-                            .controlSize(.small)
+                            .bobeButton(.primary, size: .small)
                             .disabled(!isDirty || isSaving)
                     }
 
                     if let error {
-                        Text(error).font(.caption).foregroundStyle(.red)
+                        Text(error).font(.caption).foregroundStyle(theme.colors.primary)
                     }
                 }
-                .padding(12)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
+                .padding(.top, BobeMetrics.paneTopPadding)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "target")
                         .font(.system(size: 28))
                         .foregroundStyle(theme.colors.textMuted)
                     Text("Select a goal to edit")
-                        .font(.system(size: 13))
+                        .bobeTextStyle(.rowTitle)
                         .foregroundStyle(theme.colors.textMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -277,7 +269,7 @@ struct GoalsEditor: View {
     private func statusColor(_ status: GoalStatus) -> Color {
         switch status {
         case .active: theme.colors.secondary
-        case .completed: .green
+        case .completed: theme.colors.tertiary
         case .archived: theme.colors.textMuted
         case .unknown: theme.colors.textMuted
         }
