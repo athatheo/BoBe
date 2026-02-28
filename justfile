@@ -120,7 +120,7 @@ dev:
 
 # Clean all build artifacts
 clean:
-    cargo clean
+    cargo clean --workspace
     cd desktopMac && swift package clean
     rm -rf build/
 

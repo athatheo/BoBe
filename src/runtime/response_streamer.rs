@@ -28,9 +28,9 @@ pub struct StreamResult {
 
 /// Stream a mixed LLM + tool notification stream to SSE event queue.
 ///
-/// Handles both `StreamItem::Chunk` (text deltas) and `StreamItem::ToolNotification`
-/// (tool execution start/complete events). This is the primary streaming function
-/// used when tools are enabled.
+/// Handles both `StreamItem::Chunk` (text deltas) and
+/// `StreamItem::TypedToolNotification` (tool execution start/complete events).
+/// This is the primary streaming function used when tools are enabled.
 pub async fn stream_response(
     mut stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<StreamItem, AppError>> + Send + '_>,
@@ -64,37 +64,9 @@ pub async fn stream_response(
                     break;
                 }
             }
-            Ok(StreamItem::ToolNotification(notification)) => {
+            Ok(StreamItem::TypedToolNotification(notification)) => {
                 handle_tool_notification(&notification, &msg_id, event_queue);
             }
-            Ok(StreamItem::TypedToolNotification(notification)) => match notification {
-                crate::tools::ToolNotification::Started {
-                    tool_name,
-                    tool_call_id,
-                } => {
-                    debug!(
-                        tool = %tool_name,
-                        tool_call_id = %tool_call_id,
-                        "tool_call.typed_start"
-                    );
-                }
-                crate::tools::ToolNotification::Completed {
-                    tool_name,
-                    tool_call_id,
-                    success,
-                    error,
-                    duration_ms,
-                } => {
-                    debug!(
-                        tool = %tool_name,
-                        tool_call_id = %tool_call_id,
-                        success,
-                        error = ?error,
-                        duration_ms,
-                        "tool_call.typed_complete"
-                    );
-                }
-            },
             Err(e) => {
                 success = false;
                 error!(error = %e, chunks = sequence, "stream_response.error");
@@ -200,32 +172,44 @@ fn handle_stream_chunk(
 
 /// Handle a tool execution notification — push start or complete event.
 fn handle_tool_notification(
-    notification: &crate::tools::ToolExecutionNotification,
+    notification: &crate::tools::ToolNotification,
     msg_id: &str,
     event_queue: &EventQueue,
 ) {
-    if notification.notification_type == "start" {
-        info!(tool = %notification.tool_name, "tool_call.start");
-        event_queue.push(tool_call_start_event(
-            msg_id,
-            &notification.tool_name,
-            &notification.tool_call_id,
-        ));
-    } else {
-        info!(
-            tool = %notification.tool_name,
-            success = ?notification.success,
-            duration_ms = ?notification.duration_ms,
-            "tool_call.complete"
-        );
-        event_queue.push(tool_call_complete_event(
-            msg_id,
-            &notification.tool_name,
-            &notification.tool_call_id,
-            notification.success,
-            notification.error.as_deref(),
-            notification.duration_ms,
-        ));
+    match notification {
+        crate::tools::ToolNotification::Started {
+            tool_name,
+            tool_call_id,
+        } => {
+            info!(tool = %tool_name, "tool_call.start");
+            event_queue.push(tool_call_start_event(msg_id, tool_name, tool_call_id));
+            debug!(tool = %tool_name, tool_call_id = %tool_call_id, "tool_call.typed_start");
+        }
+        crate::tools::ToolNotification::Completed {
+            tool_name,
+            tool_call_id,
+            success,
+            error,
+            duration_ms,
+        } => {
+            info!(tool = %tool_name, success, duration_ms, "tool_call.complete");
+            event_queue.push(tool_call_complete_event(
+                msg_id,
+                tool_name,
+                tool_call_id,
+                Some(*success),
+                error.as_deref(),
+                Some(*duration_ms),
+            ));
+            debug!(
+                tool = %tool_name,
+                tool_call_id = %tool_call_id,
+                success,
+                error = ?error,
+                duration_ms,
+                "tool_call.typed_complete"
+            );
+        }
     }
 }
 

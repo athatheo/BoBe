@@ -129,7 +129,6 @@ pub struct StreamChunk {
 #[derive(Debug, Clone)]
 pub enum StreamItem {
     Chunk(StreamChunk),
-    ToolNotification(crate::tools::ToolExecutionNotification),
     /// Typed tool lifecycle notification (started/completed).
     TypedToolNotification(crate::tools::ToolNotification),
 }

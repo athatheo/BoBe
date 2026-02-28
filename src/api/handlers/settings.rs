@@ -178,7 +178,7 @@ pub async fn get_settings(
     }))
 }
 
-/// PUT /api/settings
+/// PATCH /api/settings
 ///
 /// Hot-swaps configuration at runtime through ConfigManager.
 /// Changes are persisted to ~/.bobe/config.toml and LLM provider is rebuilt

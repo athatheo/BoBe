@@ -200,17 +200,7 @@ pub async fn create_setup_job(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SetupRequest>,
 ) -> Result<(axum::http::StatusCode, Json<SetupJobState>), AppError> {
-    // If a job is already running, return it
-    {
-        let existing = job_state().read().await;
-        if let Some(ref job) = *existing
-            && (job.status == JobStatus::InProgress || job.status == JobStatus::Pending)
-        {
-            return Ok((axum::http::StatusCode::ACCEPTED, Json(job.clone())));
-        }
-    }
-
-    let job_id = format!("setup-{}", uuid::Uuid::new_v4().as_simple());
+    // Validate mode before taking the lock.
     let steps = match body.mode.as_str() {
         "local" => vec![
             step("validate"),
@@ -227,18 +217,24 @@ pub async fn create_setup_job(
         }
     };
 
-    let job = SetupJobState {
-        job_id: job_id.clone(),
-        status: JobStatus::Pending,
-        current_step: None,
-        steps,
-        error: None,
-    };
-
-    {
+    // Single write lock: check-then-set atomically to prevent TOCTOU races.
+    let job = {
         let mut lock = job_state().write().await;
-        *lock = Some(job.clone());
-    }
+        if let Some(ref existing) = *lock
+            && (existing.status == JobStatus::InProgress || existing.status == JobStatus::Pending)
+        {
+            return Ok((axum::http::StatusCode::ACCEPTED, Json(existing.clone())));
+        }
+        let new_job = SetupJobState {
+            job_id: format!("setup-{}", uuid::Uuid::new_v4().as_simple()),
+            status: JobStatus::Pending,
+            current_step: None,
+            steps,
+            error: None,
+        };
+        *lock = Some(new_job.clone());
+        new_job
+    };
 
     // Spawn the background job
     let state_clone = state.clone();
@@ -429,7 +425,7 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         Some(format!("Pulling {}", models.text)),
     )
     .await;
-    match pull_model_with_progress(&state, models.text, "text_model").await {
+    match pull_model(&state, models.text).await {
         Ok(()) => {
             update_step(
                 "text_model",
@@ -457,7 +453,7 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         Some(format!("Pulling {}", models.vision)),
     )
     .await;
-    match pull_model_with_progress(&state, models.vision, "vision_model").await {
+    match pull_model(&state, models.vision).await {
         Ok(()) => {
             update_step(
                 "vision_model",
@@ -491,7 +487,7 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         Some(format!("Pulling {embedding_model}")),
     )
     .await;
-    match pull_model_with_progress(&state, embedding_model, "embedding_model").await {
+    match pull_model(&state, embedding_model).await {
         Ok(()) => {
             update_step(
                 "embedding_model",
@@ -623,8 +619,8 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
             };
 
             // Test the API key by listing models
-            let client = reqwest::Client::new();
-            match client
+            match state
+                .http_client
                 .get("https://api.openai.com/v1/models")
                 .header("Authorization", format!("Bearer {api_key}"))
                 .send()
@@ -776,8 +772,8 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
                 endpoint.trim_end_matches('/'),
                 deployment
             );
-            let client = reqwest::Client::new();
-            match client
+            match state
+                .http_client
                 .post(&test_url)
                 .header("api-key", &api_key)
                 .json(&serde_json::json!({"messages": [{"role": "user", "content": "test"}], "max_tokens": 1}))
@@ -940,19 +936,13 @@ async fn test_azure_embedding(
     embedding.embed("warmup").await.map(|_| ())
 }
 
-async fn pull_model_with_progress(
-    state: &Arc<AppState>,
-    model: &str,
-    _step_id: &str,
-) -> Result<(), AppError> {
+async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> {
     // Check if model already exists (idempotent)
     if state.ollama_manager.has_model(model).await {
         info!(model, "setup.model_already_exists");
         return Ok(());
     }
 
-    // Pull with progress tracking
-    // The OllamaManager.pull_model already logs progress; we just need to bridge to our step state
     state.ollama_manager.pull_model(model).await?;
     Ok(())
 }

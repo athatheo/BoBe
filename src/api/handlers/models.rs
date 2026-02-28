@@ -30,13 +30,6 @@ pub struct PullModelRequest {
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-pub struct PullModelResponse {
-    pub ok: bool,
-    pub message: String,
-}
-
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 /// GET /api/models

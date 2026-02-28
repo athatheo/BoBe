@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var setupCloseObserver: Any?
     private var setupCompletedObserver: Any?
     private var isShowingSetupAlert = false
+    private var isTransitioningFromSetup = false
     private var setupCloseCount = 0
     /// Set by SetupWizard when onboarding completes successfully — prevents
     /// the willCloseNotification handler from showing "Setup isn't complete".
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowToHide?.animationBehavior = .none
         windowToHide?.orderOut(nil)
         setupWindow = nil
+        isTransitioningFromSetup = true
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -52,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.showOverlay()
             BobeStore.shared.connect()
             self.setupCompletedSuccessfully = false
+            self.isTransitioningFromSetup = false
             logger.info("setup.complete_handoff.end")
         }
     }
@@ -153,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         // Only recreate overlay if panel doesn't exist and we're not in setup or alert flow
-        if OverlayWindowManager.shared.panel == nil && setupWindow == nil && !isQuitting && !isShowingSetupAlert {
+        if OverlayWindowManager.shared.panel == nil && setupWindow == nil && !isQuitting && !isShowingSetupAlert && !isTransitioningFromSetup {
             Task { @MainActor in
                 showOverlay()
             }
@@ -199,32 +202,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        do {
-            let status = try await DaemonClient.shared.getOnboardingStatus()
-            if status.needsOnboarding {
-                showSetupWizard()
-                return
-            }
-            if !status.complete {
-                let shouldRetry = await showBackendErrorDialog(
-                    message: "Backend is reachable but not healthy enough to start BoBe."
-                )
-                if shouldRetry {
-                    await startApp()
-                } else {
-                    NSApp.terminate(nil)
+        while true {
+            do {
+                let status = try await DaemonClient.shared.getOnboardingStatus()
+                if status.needsOnboarding {
+                    showSetupWizard()
+                    return
                 }
-                return
+                if !status.complete {
+                    let shouldRetry = await showBackendErrorDialog(
+                        message: "Backend is reachable but not healthy enough to start BoBe."
+                    )
+                    if shouldRetry { continue } else {
+                        NSApp.terminate(nil)
+                        return
+                    }
+                }
+                break // status.complete — proceed to overlay
+            } catch {
+                logger.error("Could not check onboarding status: \(error.localizedDescription)")
+                let shouldRetry = await showBackendErrorDialog(message: error.localizedDescription)
+                if shouldRetry { continue } else {
+                    NSApp.terminate(nil)
+                    return
+                }
             }
-        } catch {
-            logger.error("Could not check onboarding status: \(error.localizedDescription)")
-            let shouldRetry = await showBackendErrorDialog(message: error.localizedDescription)
-            if shouldRetry {
-                await startApp()
-            } else {
-                NSApp.terminate(nil)
-            }
-            return
         }
 
         // Onboarding not needed — show overlay and connect SSE
@@ -271,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setContentSize(NSSize(width: 540, height: 700))
         window.contentView = NSHostingView(rootView: setupView)
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
 
         // Retain the window so ARC doesn't release it
         self.setupWindow = window
@@ -315,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     switch response {
                     case .alertFirstButtonReturn:
                         self.setupCloseCount = 0
-                        DispatchQueue.main.async { self.showSetupWizard() }
+                        self.showSetupWizard()
                     case .alertSecondButtonReturn:
                         self.showOverlay()
                         BobeStore.shared.connect()
@@ -327,9 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 logger.info("setup.wizard_closed_incomplete_reopening (\(self.setupCloseCount)/3)")
-                DispatchQueue.main.async { [weak self] in
-                    self?.showSetupWizard()
-                }
+                self.showSetupWizard()
             }
         }
     }

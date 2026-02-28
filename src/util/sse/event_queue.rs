@@ -31,8 +31,7 @@ impl EventQueue {
     /// Push an event into the queue. Drops oldest if full.
     pub fn push(&self, event: StreamBundle) {
         let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
-        if queue.len() >= self.max_size {
-            queue.pop_front();
+        if queue.len() >= self.max_size && queue.pop_front_if(|_| true).is_some() {
             tracing::warn!("SSE event queue overflow, dropping oldest event");
         }
         queue.push_back(event);

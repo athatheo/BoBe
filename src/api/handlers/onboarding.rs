@@ -55,11 +55,23 @@ pub async fn onboarding_status(
     );
 
     // Check LLM/backend connectivity and setup readiness.
+    // Snapshot config values before async calls so we don't hold the Arc guard across awaits.
     let cfg = state.config();
-    let (llm_ready, llm_detail, local_models_ready, local_models_detail) = match cfg.llm.backend {
+    let backend = cfg.llm.backend;
+    let ollama_url = cfg.ollama.url.clone();
+    let llama_url = cfg.llm.llama_url.clone();
+    let openai_api_key = cfg.llm.openai_api_key.clone();
+    let azure_endpoint = cfg.llm.azure_openai_endpoint.clone();
+    let azure_api_key = cfg.llm.azure_openai_api_key.clone();
+    let azure_deployment = cfg.llm.azure_openai_deployment.clone();
+    let setup_completed = cfg.setup_completed;
+    drop(cfg);
+
+    let client = &state.http_client;
+    let (llm_ready, llm_detail, local_models_ready, local_models_detail) = match backend {
         LlmBackend::Ollama => {
-            let model_url = format!("{}/api/tags", cfg.ollama.url.trim_end_matches('/'));
-            match reqwest::get(&model_url).await {
+            let url = format!("{}/api/tags", ollama_url.trim_end_matches('/'));
+            match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => (
                     true,
                     "Ollama backend reachable".to_string(),
@@ -81,8 +93,8 @@ pub async fn onboarding_status(
             }
         }
         LlmBackend::LlamaCpp => {
-            let model_url = format!("{}/v1/models", cfg.llm.llama_url.trim_end_matches('/'));
-            match reqwest::get(&model_url).await {
+            let url = format!("{}/v1/models", llama_url.trim_end_matches('/'));
+            match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => (
                     true,
                     "llama.cpp backend reachable".to_string(),
@@ -104,7 +116,7 @@ pub async fn onboarding_status(
             }
         }
         LlmBackend::Openai => {
-            if cfg.llm.openai_api_key.is_empty() {
+            if openai_api_key.is_empty() {
                 (
                     false,
                     "OpenAI API key missing".to_string(),
@@ -112,13 +124,9 @@ pub async fn onboarding_status(
                     "n/a".to_string(),
                 )
             } else {
-                let client = reqwest::Client::new();
                 match client
                     .get("https://api.openai.com/v1/models")
-                    .header(
-                        "Authorization",
-                        format!("Bearer {}", cfg.llm.openai_api_key),
-                    )
+                    .header("Authorization", format!("Bearer {openai_api_key}"))
                     .send()
                     .await
                 {
@@ -144,9 +152,7 @@ pub async fn onboarding_status(
             }
         }
         LlmBackend::AzureOpenai => {
-            if cfg.llm.azure_openai_endpoint.is_empty()
-                || cfg.llm.azure_openai_api_key.is_empty()
-                || cfg.llm.azure_openai_deployment.is_empty()
+            if azure_endpoint.is_empty() || azure_api_key.is_empty() || azure_deployment.is_empty()
             {
                 (
                     false,
@@ -157,13 +163,12 @@ pub async fn onboarding_status(
             } else {
                 let test_url = format!(
                     "{}/openai/deployments/{}/chat/completions?api-version=2024-02-15-preview",
-                    cfg.llm.azure_openai_endpoint.trim_end_matches('/'),
-                    cfg.llm.azure_openai_deployment
+                    azure_endpoint.trim_end_matches('/'),
+                    azure_deployment
                 );
-                let client = reqwest::Client::new();
                 match client
                     .post(&test_url)
-                    .header("api-key", &cfg.llm.azure_openai_api_key)
+                    .header("api-key", &azure_api_key)
                     .json(&serde_json::json!({"messages": [{"role": "user", "content": "test"}], "max_tokens": 1}))
                     .send()
                     .await
@@ -205,7 +210,7 @@ pub async fn onboarding_status(
         },
     );
 
-    if cfg.llm.backend == LlmBackend::Ollama {
+    if backend == LlmBackend::Ollama {
         steps.insert(
             "models".into(),
             OnboardingStepStatus {
@@ -242,7 +247,9 @@ pub async fn onboarding_status(
 
     let setup_ready = llm_ready && local_models_ready && embedding_ready;
     let complete = db_ok && setup_ready;
-    let needs_onboarding = !setup_ready;
+    // Once setup has been completed once, don't re-trigger the wizard just
+    // because the LLM backend is temporarily unreachable (e.g. no internet).
+    let needs_onboarding = !setup_ready && !setup_completed;
 
     Ok(Json(OnboardingStatusResponse {
         complete,
@@ -251,10 +258,16 @@ pub async fn onboarding_status(
     }))
 }
 
-/// POST /onboarding/complete
+/// POST /onboarding/mark-complete
+///
+/// Persists `setup_completed = true` so future launches don't re-trigger the
+/// onboarding wizard when the LLM backend is temporarily unreachable.
 pub async fn mark_complete(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<MarkCompleteResponse>, AppError> {
+    let mut changes = std::collections::HashMap::new();
+    changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
+    state.config_manager.update(&changes);
     tracing::info!("onboarding.marked_complete");
     Ok(Json(MarkCompleteResponse { ok: true }))
 }

@@ -23,14 +23,12 @@
 //!   > Noticed you debugging asyncio issues frequently (2026-02-01)
 //! ```
 
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use regex::Regex;
 
-fn checkbox_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^-\s*\[([ xX])\]\s*(.+)$").expect("valid checkbox regex"))
-}
+static CHECKBOX_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^-\s*\[([ xX])\]\s*(.+)$").expect("valid checkbox regex"));
 
 /// A goal parsed from GOALS.md.
 #[derive(Debug, Clone)]
@@ -48,8 +46,6 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
     let mut current_priority = "medium".to_owned();
     let mut in_inferred_section = false;
     let mut in_completed_section = false;
-
-    let checkbox_re = checkbox_regex();
 
     for line in content.lines() {
         let line = line.trim();
@@ -80,7 +76,7 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
         }
 
         // Skip non-checkbox lines
-        let Some(caps) = checkbox_re.captures(line) else {
+        let Some(caps) = CHECKBOX_REGEX.captures(line) else {
             continue;
         };
 
