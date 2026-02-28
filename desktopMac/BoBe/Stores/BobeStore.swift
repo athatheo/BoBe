@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 import OSLog
@@ -13,6 +14,10 @@ final class BobeStore {
     // MARK: - State
 
     private(set) var context = BobeContext()
+    private(set) var isReconnecting = false
+
+    /// Set after initial SSE connection is established
+    private var hasConnectedOnce = false
 
     var stateType: BobeStateType { context.stateType }
     var isConnected: Bool { context.daemonConnected }
@@ -28,6 +33,7 @@ final class BobeStore {
     var activeIndicator: IndicatorType? { context.activeIndicator }
     var toolExecutions: [ToolExecution] { context.toolExecutions }
     var runningTools: [ToolExecution] { context.toolExecutions.filter { $0.status == .running } }
+    var capturePermissionMissing: Bool { context.capturePermissionMissing }
 
     // MARK: - Private
 
@@ -35,6 +41,7 @@ final class BobeStore {
     private var streamingMessage = ""
     private var streamingMessageId: String?
     private var lastMessageTimer: Task<Void, Never>?
+    private var captureStartupTask: Task<Void, Never>?
 
     private init() {}
 
@@ -52,13 +59,11 @@ final class BobeStore {
                     Task { @MainActor in
                         self?.updateState { $0.daemonConnected = connected }
                         if connected {
-                            // Clear stale state on reconnect
-                            self?.updateState {
-                                $0.lastMessage = nil
-                                $0.currentMessage = ""
-                                $0.currentMessageId = nil
-                                $0.speaking = false
-                            }
+                            self?.isReconnecting = false
+                            self?.hasConnectedOnce = true
+                            self?.synchronizeCaptureStartup()
+                        } else if self?.hasConnectedOnce == true {
+                            self?.isReconnecting = true
                         }
                     }
                 }
@@ -67,9 +72,14 @@ final class BobeStore {
     }
 
     func disconnect() {
+        captureStartupTask?.cancel()
         Task {
             await client.disconnectSSE()
         }
+    }
+
+    func beginShutdown() {
+        updateState { $0.shuttingDown = true }
     }
 
     // MARK: - Actions
@@ -86,7 +96,12 @@ final class BobeStore {
             } else {
                 try await client.stopCapture()
             }
-            updateState { $0.capturing = newState }
+            updateState { ctx in
+                ctx.capturing = newState
+                if !newState {
+                    ctx.captureInProgress = false
+                }
+            }
             return newState
         } catch {
             logger.error("toggleCapture failed: \(error.localizedDescription)")
@@ -189,14 +204,22 @@ final class BobeStore {
         updateState { ctx in
             switch indicator {
             case .idle:
-                // Don't reset capturing — that's a persistent user toggle
-                ctx.thinking = false; ctx.speaking = false
+                ctx.captureInProgress = false
+                ctx.thinking = false
+                ctx.speaking = false
             case .screenCapture:
-                ctx.capturing = true; ctx.thinking = false; ctx.speaking = false
+                ctx.captureInProgress = true
+                ctx.thinking = false
+                ctx.speaking = false
             case .toolCalling, .thinking:
-                ctx.thinking = true; ctx.speaking = false
+                ctx.captureInProgress = false
+                ctx.thinking = true
+                ctx.speaking = false
             case .streaming:
-                ctx.thinking = false; ctx.speaking = true
+                ctx.captureInProgress = false
+                let hasVisibleText = self.hasVisibleGlyphs(self.streamingMessage) || self.hasVisibleGlyphs(ctx.currentMessage)
+                ctx.thinking = !hasVisibleText
+                ctx.speaking = hasVisibleText
             case .unknown:
                 break
             }
@@ -234,6 +257,9 @@ final class BobeStore {
 
             ctx.currentMessage = self.streamingMessage
             ctx.currentMessageId = messageId
+            let hasVisibleText = self.hasVisibleGlyphs(self.streamingMessage)
+            ctx.thinking = !hasVisibleText
+            ctx.speaking = hasVisibleText
         }
 
         if payload.done {
@@ -320,6 +346,60 @@ final class BobeStore {
             try? await Task.sleep(for: .seconds(3))
             clearMessages()
         }
+    }
+
+    private func synchronizeCaptureStartup() {
+        captureStartupTask?.cancel()
+        captureStartupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let settings = try await self.client.getSettings()
+                guard settings.captureEnabled else {
+                    self.updateState { ctx in
+                        ctx.capturing = false
+                        ctx.captureInProgress = false
+                    }
+                    return
+                }
+
+                var captureActive = false
+                for attempt in 0..<3 where !Task.isCancelled {
+                    do {
+                        try await self.client.startCapture()
+                        captureActive = true
+                        break
+                    } catch let DaemonError.httpError(statusCode, message)
+                        where statusCode == 409 || message.localizedCaseInsensitiveContains("already") {
+                        captureActive = true
+                        break
+                    } catch {
+                        logger.warning("Capture startup sync attempt \(attempt + 1) failed: \(error.localizedDescription)")
+                        if attempt < 2 {
+                            try? await Task.sleep(for: .milliseconds(350 * (attempt + 1)))
+                        }
+                    }
+                }
+
+                if !captureActive && !CGPreflightScreenCaptureAccess() {
+                    self.updateState { $0.capturePermissionMissing = true }
+                    logger.warning("Screen capture permission not granted")
+                } else {
+                    self.updateState { $0.capturePermissionMissing = false }
+                }
+                self.updateState { ctx in
+                    ctx.capturing = captureActive
+                    ctx.captureInProgress = false
+                }
+            } catch {
+                logger.warning("Capture startup sync skipped: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func hasVisibleGlyphs(_ text: String) -> Bool {
+        text.unicodeScalars.contains(where: {
+            !$0.properties.isWhitespace && !CharacterSet.controlCharacters.contains($0)
+        })
     }
 
     // MARK: - State Update Helper

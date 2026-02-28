@@ -20,6 +20,7 @@ final class SettingsWindowManager {
         // Temporarily show in dock so settings can activate properly
         NSApp.setActivationPolicy(.regular)
 
+        let theme = ThemeStore.shared.currentTheme
         let settingsView = SettingsWindow()
 
         let window = NSWindow(
@@ -31,6 +32,10 @@ final class SettingsWindowManager {
         window.title = "BoBe Settings"
         window.center()
         window.minSize = NSSize(width: 800, height: 550)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .visible
+        window.toolbar = nil
+        window.backgroundColor = NSColor(theme.colors.background)
         window.contentView = NSHostingView(rootView: settingsView)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -41,7 +46,7 @@ final class SettingsWindowManager {
             object: window,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 self?.window = nil
                 NSApp.setActivationPolicy(.accessory)
             }

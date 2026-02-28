@@ -55,7 +55,7 @@ impl CheckinTrigger {
                 .conversation
                 .get_conversation_turns(existing.id, 100)
                 .await
-                && !existing.is_stale(cfg.conversation_auto_close_minutes as i64, &turns)
+                && !existing.is_stale(cfg.conversation.auto_close_minutes as i64, &turns)
             {
                 debug!(reason = "active_conversation", "checkin_trigger.skipped");
                 self.scheduler.mark_checkin_done();
@@ -66,8 +66,8 @@ impl CheckinTrigger {
         // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
-                cfg.decision_cooldown_minutes,
-                cfg.decision_extended_cooldown_minutes,
+                cfg.decision.cooldown_minutes,
+                cfg.decision.extended_cooldown_minutes,
             )
         {
             debug!(
@@ -83,7 +83,7 @@ impl CheckinTrigger {
         info!("checkin_trigger.started");
         self.generator
             .generate_proactive_response(
-                cfg.conversation_auto_close_minutes as i64,
+                cfg.conversation.auto_close_minutes as i64,
                 Some("Scheduled check-in".into()),
             )
             .await;

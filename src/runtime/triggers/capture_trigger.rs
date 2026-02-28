@@ -82,8 +82,8 @@ impl CaptureTrigger {
         // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
-                cfg.decision_cooldown_minutes,
-                cfg.decision_extended_cooldown_minutes,
+                cfg.decision.cooldown_minutes,
+                cfg.decision.extended_cooldown_minutes,
             )
         {
             debug!(
@@ -112,7 +112,7 @@ impl CaptureTrigger {
 
         if decision == Decision::Engage {
             self.generator
-                .generate_proactive_response(cfg.conversation_auto_close_minutes as i64, None)
+                .generate_proactive_response(cfg.conversation.auto_close_minutes as i64, None)
                 .await;
         }
 

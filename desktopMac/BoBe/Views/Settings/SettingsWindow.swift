@@ -75,7 +75,7 @@ enum SettingsCategoryGroup: String, CaseIterable {
 
 /// Main settings window view with sidebar + content
 struct SettingsWindow: View {
-    @State private var selectedCategory: SettingsCategory? = nil
+    @State private var selectedCategory: SettingsCategory?
     @State private var themeStore = ThemeStore.shared
 
     private var theme: ThemeConfig { themeStore.currentTheme }
@@ -111,7 +111,7 @@ struct SettingsWindow: View {
             // Header (80px with traffic-light clearance)
             HStack {
                 Text("BOBE TUNING")
-                    .font(.system(size: 11, weight: .bold))
+                    .bobeTextStyle(.sectionLabel)
                     .tracking(1.2)
                     .foregroundStyle(theme.colors.primary)
                 Spacer()
@@ -134,7 +134,7 @@ struct SettingsWindow: View {
                         VStack(alignment: .leading, spacing: 4) {
                             // Section label
                             Text(group.rawValue)
-                                .font(.system(size: 10, weight: .semibold))
+                                .bobeTextStyle(.sectionLabel)
                                 .tracking(1)
                                 .foregroundStyle(theme.colors.textMuted)
                                 .padding(.horizontal, 20)
@@ -160,34 +160,20 @@ struct SettingsWindow: View {
 
     private func sidebarItem(_ category: SettingsCategory) -> some View {
         let isSelected = selectedCategory == category
-        return Button {
+        return BobeSidebarItem(
+            icon: category.icon,
+            title: category.label,
+            isSelected: isSelected
+        ) {
             selectedCategory = category
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: category.icon)
-                    .font(.system(size: 14))
-                    .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textMuted)
-                    .frame(width: 18)
-
-                Text(category.label)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.text)
-
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(
-                isSelected ? theme.colors.border.opacity(0.8) : .clear
-            )
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
     }
 
     private var settingsHeader: some View {
         HStack(alignment: .bottom) {
             Text(selectedCategory?.label ?? "")
-                .font(.system(size: 28, weight: .semibold))
+                .bobeTextStyle(.windowTitle)
                 .foregroundStyle(theme.colors.text)
             Spacer()
         }
@@ -209,18 +195,6 @@ struct SettingsWindow: View {
         switch selectedCategory {
         case nil:
             SettingsOverview(onNavigate: { selectedCategory = $0 })
-        case .appearance:
-            AppearancePanel()
-        case .aiModel:
-            AIModelPanel()
-        case .behavior:
-            BehaviorPanel()
-        case .advanced:
-            AdvancedPanel()
-        case .privacy:
-            PrivacyPanel()
-        case .goalWorker:
-            GoalWorkerPanel()
         case .souls:
             SoulsEditor()
         case .goals:
@@ -233,6 +207,18 @@ struct SettingsWindow: View {
             ToolsPanel()
         case .mcpServers:
             MCPServersPanel()
+        case .appearance:
+            AppearancePanel()
+        case .aiModel:
+            AIModelPanel()
+        case .behavior:
+            BehaviorPanel()
+        case .privacy:
+            PrivacyPanel()
+        case .goalWorker:
+            GoalWorkerPanel()
+        case .advanced:
+            AdvancedPanel()
         }
     }
 }
@@ -252,7 +238,8 @@ struct SettingsOverview: View {
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(theme.colors.text)
 
-                    Text("BoBe uses a personality (Soul), your goals, and memories to provide contextual, proactive assistance. Here's how to customize your experience.")
+                    Text("BoBe uses a personality (Soul), your goals, and memories to provide contextual, "
+                        + "proactive assistance. Here's how to customize your experience.")
                         .font(.system(size: 14))
                         .foregroundStyle(theme.colors.textMuted)
                         .multilineTextAlignment(.center)

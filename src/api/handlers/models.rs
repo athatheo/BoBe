@@ -47,11 +47,11 @@ pub async fn list_models(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ModelsListResponse>, AppError> {
     let cfg = state.config();
-    let backend = cfg.llm_backend;
+    let backend = cfg.llm.backend;
 
     let (models, supports_pull) = if backend == LlmBackend::Ollama {
         // Try to fetch from Ollama API
-        let ollama_url = cfg.ollama_url.clone();
+        let ollama_url = cfg.ollama.url.clone();
         match fetch_ollama_models(&ollama_url).await {
             Ok(m) => (m, true),
             Err(e) => {
@@ -88,7 +88,7 @@ pub async fn pull_model(
     use tokio_stream::StreamExt;
 
     let cfg = state.config();
-    if cfg.llm_backend != LlmBackend::Ollama {
+    if cfg.llm.backend != LlmBackend::Ollama {
         let stream = async_stream::stream! {
             yield Ok::<_, std::convert::Infallible>(
                 Event::default()
@@ -98,7 +98,7 @@ pub async fn pull_model(
         return axum::response::Sse::new(Box::pin(stream));
     }
 
-    let ollama_url = cfg.ollama_url.clone();
+    let ollama_url = cfg.ollama.url.clone();
     let model_name = body.name.clone();
     let client = state.http_client.clone();
 
@@ -160,13 +160,13 @@ pub async fn delete_model(
     Path(model_name): Path<String>,
 ) -> Result<StatusCode, AppError> {
     let cfg = state.config();
-    if cfg.llm_backend != LlmBackend::Ollama {
+    if cfg.llm.backend != LlmBackend::Ollama {
         return Err(AppError::Validation(
             "Model deletion only supported for Ollama backend".into(),
         ));
     }
 
-    let url = format!("{}/api/delete", cfg.ollama_url);
+    let url = format!("{}/api/delete", cfg.ollama.url);
     let resp = state
         .http_client
         .delete(&url)

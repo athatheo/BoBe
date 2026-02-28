@@ -3,6 +3,7 @@ import SwiftUI
 /// Stack of chat message bubbles. Based on ChatStack: collapsed shows last 2, expanded shows all.
 struct ChatStack: View {
     let messages: [ChatMessage]
+    var maxViewportHeight: CGFloat = WindowSizes.heightChatViewportMax
 
     @State private var isExpanded = false
     @Environment(\.theme) private var theme
@@ -26,34 +27,65 @@ struct ChatStack: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 8) {
+                        if !isExpanded && hiddenCount > 0 {
+                            HiddenMessagesAffordance(count: hiddenCount)
+                                .transition(.opacity)
+                        }
+
                         ForEach(visibleMessages) { message in
                             ChatBubble(message: message)
                                 .id(message.id)
                         }
                     }
-                    .padding(.top, isExpanded ? 4 : 0)
+                    .padding(.top, isExpanded ? 4 : 2)
                 }
-                .onChange(of: messages.count) { _, _ in
+                .overlay(alignment: .top) {
+                    if !isExpanded && hiddenCount > 0 {
+                        LinearGradient(
+                            colors: [theme.colors.background.opacity(0.95), theme.colors.background.opacity(0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 22)
+                        .allowsHitTesting(false)
+                    }
+                }
+                .onAppear {
                     if let last = messages.last {
-                        withAnimation {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+                .onChange(of: messages.last?.id) { _, _ in
+                    if let last = messages.last {
+                        withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }
-                .frame(maxHeight: isExpanded ? 520 : 420)
+                .onChange(of: messages.last?.content) { _, _ in
+                    if let last = messages.last {
+                        withAnimation(.linear(duration: 0.12)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+                .frame(
+                    minHeight: WindowSizes.heightChatViewportMin,
+                    maxHeight: maxViewportHeight
+                )
             }
 
             // Expand/collapse button (chat-expand-button)
             if shouldShowToggle {
                 Button {
-                    withAnimation(.spring(duration: 0.3, bounce: 0.1)) {
+                    withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
                         isExpanded.toggle()
                     }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
                             .font(.system(size: 8))
-                        Text(isExpanded ? "collapse" : "+\(hiddenCount) more")
+                        Text(isExpanded ? "collapse" : "+\(hiddenCount) hidden messages")
                             .font(.system(size: 10, weight: .medium))
                     }
                     .foregroundStyle(theme.colors.textMuted)
@@ -75,6 +107,29 @@ struct ChatStack: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 4)
+    }
+}
+
+private struct HiddenMessagesAffordance: View {
+    let count: Int
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 9, weight: .semibold))
+            Text("+\(count) hidden messages")
+                .font(.system(size: 10, weight: .medium))
+        }
+        .foregroundStyle(theme.colors.textMuted)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(theme.colors.background.opacity(0.86))
+                .overlay(Capsule().stroke(theme.colors.border, lineWidth: 1))
+        )
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -176,4 +231,40 @@ struct BlinkingCursor: View {
                 }
             }
     }
+}
+
+// MARK: - Previews
+
+#Preview("Chat Bubble - User") {
+    ChatBubble(message: ChatMessage(sender: .user, content: "Hello BoBe, how are you?"))
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .frame(width: 500)
+}
+
+#Preview("Chat Bubble - BoBe") {
+    ChatBubble(message: ChatMessage(sender: .bobe, content: "I'm doing great! I've been observing your workflow and noticed some interesting patterns."))
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .frame(width: 500)
+}
+
+#Preview("Chat Bubble - Streaming") {
+    ChatBubble(message: ChatMessage(sender: .bobe, content: "Thinking about this", isStreaming: true))
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .frame(width: 500)
+}
+
+#Preview("Chat Stack") {
+    ChatStack(messages: [
+        ChatMessage(sender: .bobe, content: "Hey! I noticed you've been working on the settings panel."),
+        ChatMessage(sender: .user, content: "Yeah, I'm trying to get the theme picker working."),
+        ChatMessage(sender: .bobe, content: "I can see that! The colors are looking great so far."),
+        ChatMessage(sender: .user, content: "Thanks! Any suggestions?"),
+        ChatMessage(sender: .bobe, content: "You might want to add a preview for the avatar in each theme card."),
+    ])
+    .environment(\.theme, allThemes[0])
+    .frame(width: 500, height: 400)
+    .background(allThemes[0].colors.background)
 }

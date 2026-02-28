@@ -24,15 +24,20 @@ struct MessageInput: View {
                 HStack(alignment: .bottom, spacing: 8) {
                     // Text field (13px, flexible height)
                     TextField(
-                        isThinking ? "BoBe is thinking…" : "Type a message...",
+                        "",
                         text: $text,
-                        axis: .vertical
+                        prompt: Text(isThinking ? "BoBe is thinking…" : "Type a message...")
+                            .foregroundStyle(placeholderColor),
+                        axis: .vertical,
+                            
                     )
+                    .padding(EdgeInsets(top: 0, leading: 2, bottom: 6, trailing: 0))
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .lineSpacing(2)
-                    .foregroundStyle(theme.colors.text)
-                    .lineLimit(1...3)
+                    .foregroundStyle(inputTextColor)
+                    .tint(theme.colors.primary)
+                    .lineLimit(1...4)
                     .focused($isFocused)
                     .onSubmit { handleSubmit() }
                     .onKeyPress(.escape) {
@@ -79,9 +84,9 @@ struct MessageInput: View {
                     .contentShape(Circle())
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 9)
             }
-            .background(theme.colors.background)
+            .background(theme.colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
@@ -95,8 +100,8 @@ struct MessageInput: View {
         .onAppear { isFocused = true }
         .transition(
             .asymmetric(
-                insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottom)),
-                removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.95, anchor: .bottom))
+                insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomTrailing)),
+                removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.95, anchor: .bottomTrailing))
             )
         )
     }
@@ -111,4 +116,30 @@ struct MessageInput: View {
         text = ""
         onSend(trimmed)
     }
+
+    private var placeholderColor: Color {
+        theme.isDark ? theme.colors.text.opacity(0.72) : theme.colors.textMuted.opacity(0.92)
+    }
+
+    private var inputTextColor: Color {
+        theme.isDark ? theme.colors.text.opacity(0.98) : theme.colors.text
+    }
+}
+
+// MARK: - Previews
+
+#Preview("Message Input") {
+    MessageInput(onSend: { _ in }, onClose: {})
+        .environment(\.theme, allThemes[0])
+        .frame(width: 500)
+        .padding()
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Message Input - Thinking") {
+    MessageInput(onSend: { _ in }, onClose: {}, isThinking: true)
+        .environment(\.theme, allThemes[0])
+        .frame(width: 500)
+        .padding()
+        .background(Color.gray.opacity(0.1))
 }

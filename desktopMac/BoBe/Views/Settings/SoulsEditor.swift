@@ -18,43 +18,32 @@ struct SoulsEditor: View {
     private var selectedSoul: Soul? { souls.first { $0.id == selectedId } }
 
     var body: some View {
-        HSplitView {
+        ThemedSplitPane(leftWidth: 300) {
             // Left pane — list
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Souls")
-                        .font(.headline)
-                        .foregroundStyle(theme.colors.text)
-                    Spacer()
-                    Button { isCreating.toggle() } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                SettingsPaneHeader(title: "Souls") { isCreating.toggle() }
+                    .padding(.bottom, 12)
 
                 if isCreating {
                     HStack(spacing: 6) {
-                        TextField("soul-name", text: $newName)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { if !newName.isEmpty { createSoul() } }
-                        Button { createSoul() } label: {
-                            Image(systemName: "checkmark")
+                        BobeTextField(placeholder: "soul-name", text: $newName) {
+                            if !newName.isEmpty { createSoul() }
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        Button("Create") { createSoul() }
+                        .bobeButton(.primary, size: .small)
                         .disabled(newName.isEmpty)
                         Button { isCreating = false; newName = "" } label: {
-                            Image(systemName: "xmark")
+                            Text("Cancel")
                         }
-                        .buttonStyle(.plain)
+                        .bobeButton(.secondary, size: .small)
                     }
                 }
 
                 if isLoading && souls.isEmpty {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        BobeSpinner(size: 14)
                         Text("Loading souls...")
-                            .font(.system(size: 12))
+                            .bobeTextStyle(.body)
                             .foregroundStyle(theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -65,71 +54,75 @@ struct SoulsEditor: View {
                             .font(.system(size: 28))
                             .foregroundStyle(theme.colors.textMuted)
                         Text("No souls yet")
-                            .font(.system(size: 13, weight: .medium))
+                            .bobeTextStyle(.rowTitle)
                             .foregroundStyle(theme.colors.textMuted)
                         Text("Create one to define BoBe's personality")
-                            .font(.system(size: 11))
+                            .bobeTextStyle(.helper)
                             .foregroundStyle(theme.colors.textMuted.opacity(0.7))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    List(selection: $selectedId) {
-                        ForEach(souls) { soul in
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    HStack(spacing: 4) {
-                                        Text(soul.name).font(.system(size: 13, weight: .medium))
-                                        if soul.isDefault {
-                                            Text("default")
-                                                .font(.system(size: 9))
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 1)
-                                                .background(Capsule().fill(theme.colors.primary.opacity(0.2)))
-                                                .foregroundStyle(theme.colors.primary)
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(souls) { soul in
+                                BobeSelectableRow(
+                                    isSelected: selectedId == soul.id,
+                                    action: { selectedId = soul.id },
+                                    content: {
+                                    VStack(alignment: .leading) {
+                                        HStack(spacing: 4) {
+                                            Text(soul.name)
+                                                .bobeTextStyle(.rowTitle)
+                                            if soul.isDefault {
+                                                Text("default")
+                                                    .bobeTextStyle(.badge)
+                                                    .padding(.horizontal, 4)
+                                                    .padding(.vertical, 1)
+                                                    .background(Capsule().fill(theme.colors.primary.opacity(0.2)))
+                                                    .foregroundStyle(theme.colors.primary)
+                                            }
                                         }
+                                        Text(String(soul.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
+                                            .bobeTextStyle(.rowMeta)
+                                            .foregroundStyle(theme.colors.textMuted)
+                                            .lineLimit(1)
                                     }
-                                    Text(String(soul.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(theme.colors.textMuted)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                BobeToggle(isOn: Binding(
-                                    get: { soul.enabled },
-                                    set: { _ in toggleSoul(soul) }
-                                ))
+                                    Spacer()
+                                    BobeToggle(isOn: Binding(
+                                        get: { soul.enabled },
+                                        set: { _ in toggleSoul(soul) }
+                                    ))
+                                })
                             }
-                            .tag(soul.id)
-                            .listRowBackground(theme.colors.background)
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
                     .background(theme.colors.background)
                 }
             }
-            .frame(minWidth: 200, idealWidth: 280)
-            .padding(12)
-
+            .frame(minWidth: 220, idealWidth: 300)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
+            .padding(.top, BobeMetrics.paneTopPadding)
+        } right: {
             // Right pane — editor
             if let soul = selectedSoul {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text(soul.name)
-                            .font(.headline)
+                            .bobeTextStyle(.rowTitle)
                             .foregroundStyle(theme.colors.text)
                         if isDirty {
                             Text("unsaved")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.orange)
+                                .bobeTextStyle(.badge)
+                                .foregroundStyle(theme.colors.tertiary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(.orange.opacity(0.15)))
+                                .background(Capsule().fill(theme.colors.tertiary.opacity(0.15)))
                         }
                         if soul.isDefault {
                             Text("default")
-                                .font(.system(size: 9, weight: .medium))
+                                .bobeTextStyle(.badge)
                                 .foregroundStyle(theme.colors.primary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -142,34 +135,26 @@ struct SoulsEditor: View {
                                 HStack(spacing: 6) {
                                     Text("Delete?")
                                         .font(.system(size: 12))
-                                        .foregroundStyle(.red)
+                                        .foregroundStyle(theme.colors.primary)
                                     Button("Yes") { deleteSoul(soul); deleteConfirm = false }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                        .tint(.red)
+                                        .bobeButton(.destructive, size: .small)
                                     Button("No") { deleteConfirm = false }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
+                                        .bobeButton(.secondary, size: .small)
                                 }
                             } else {
                                 Button { deleteConfirm = true } label: {
                                     Image(systemName: "trash")
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .tint(.red)
+                                .bobeButton(.destructive, size: .small)
                             }
                         }
 
                         if isDirty {
                             Button("Discard") { discardChanges() }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .bobeButton(.secondary, size: .small)
                         }
                         Button(isSaving ? "Saving..." : "Save") { saveSoul() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(theme.colors.primary)
-                            .controlSize(.small)
+                            .bobeButton(.primary, size: .small)
                             .disabled(!isDirty || isSaving)
                     }
 
@@ -184,17 +169,19 @@ struct SoulsEditor: View {
                         }
 
                     if let error {
-                        Text(error).font(.caption).foregroundStyle(.red)
+                        Text(error).font(.caption).foregroundStyle(theme.colors.primary)
                     }
                 }
-                .padding(12)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
+                .padding(.top, BobeMetrics.paneTopPadding)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 28))
                         .foregroundStyle(theme.colors.textMuted)
                     Text("Select a soul to edit")
-                        .font(.system(size: 13))
+                        .bobeTextStyle(.rowTitle)
                         .foregroundStyle(theme.colors.textMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

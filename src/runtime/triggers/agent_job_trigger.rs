@@ -251,7 +251,7 @@ impl AgentJobTrigger {
 
         self.generator
             .generate_proactive_response(
-                cfg.conversation_auto_close_minutes as i64,
+                cfg.conversation.auto_close_minutes as i64,
                 Some(context_summary),
             )
             .await;

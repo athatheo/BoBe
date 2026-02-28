@@ -1,5 +1,21 @@
 import AppKit
 
+/// Content view that passes clicks through transparent areas — game HUD behavior.
+/// Only accepts hits on actual child views; empty space falls through to apps beneath.
+final class PassthroughContentView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        guard bounds.contains(local) else { return nil }
+        for child in subviews.reversed() {
+            let childPoint = child.convert(local, from: self)
+            if let hit = child.hitTest(childPoint) {
+                return hit
+            }
+        }
+        return nil
+    }
+}
+
 /// Transparent, frameless, always-on-top floating panel for the BoBe overlay.
 /// Based on original BrowserWindow with transparent: true, frame: false, alwaysOnTop: true.
 final class OverlayPanel: NSPanel {
@@ -11,18 +27,24 @@ final class OverlayPanel: NSPanel {
             defer: false
         )
 
+        // Use passthrough content view so transparent areas don't block clicks
+        let passthrough = PassthroughContentView(frame: NSRect(origin: .zero, size: contentRect.size))
+        passthrough.autoresizingMask = [.width, .height]
+        contentView = passthrough
+
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
         level = .floating
+        isMovable = true
+        // Allow drag-to-move by background.
         isMovableByWindowBackground = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
 
         collectionBehavior = [
             .canJoinAllSpaces,
-            .fullScreenAuxiliary,
-            .stationary
+            .fullScreenAuxiliary
         ]
 
         // Ignore mouse events on transparent areas

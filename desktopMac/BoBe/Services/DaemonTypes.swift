@@ -96,7 +96,7 @@ extension DaemonClient {
     }
 
     func pullModel(_ name: String) async throws {
-        try await pullModelSSE(model: name) { _, _ in }
+        try await fetchVoid("/models/pull", method: "POST", body: ["model": name])
     }
 
     func deleteModel(_ name: String) async throws {
@@ -109,56 +109,24 @@ extension DaemonClient {
         try await fetch("/onboarding/status")
     }
 
-    func configureLLM(_ request: ConfigureLLMRequest) async throws {
-        try await fetchVoid("/onboarding/configure-llm", method: "POST", body: request)
+    func getOnboardingOptions() async throws -> OnboardingOptions {
+        try await fetch("/onboarding/options")
+    }
+
+    func startSetupJob(_ request: SetupRequest) async throws -> SetupJobState {
+        try await fetch("/onboarding/setup", method: "POST", body: request)
+    }
+
+    func getSetupJobStatus(jobId: String) async throws -> SetupJobState {
+        try await fetch("/onboarding/setup/\(jobId)")
+    }
+
+    func cancelSetupJob(jobId: String) async throws -> SetupJobState {
+        try await fetch("/onboarding/setup/\(jobId)", method: "DELETE")
     }
 
     func markOnboardingComplete() async throws {
         try await fetchVoid("/onboarding/mark-complete", method: "POST")
-    }
-
-    /// Stream model pull progress via SSE
-    func pullModelSSE(
-        model: String,
-        onProgress: @Sendable @escaping (String, Double) -> Void
-    ) async throws {
-        let url = baseURL.appendingPathComponent("models/pull")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 600
-        let body = ["name": model]
-        request.httpBody = try JSONEncoder().encode(body)
-
-        let bytes: URLSession.AsyncBytes
-        let response: URLResponse
-        do {
-            (bytes, response) = try await session.bytes(for: request)
-        } catch {
-            logger.error("POST /models/pull (\(model)): network error — \(error.localizedDescription)")
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            logger.error("POST /models/pull (\(model)) failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
-            throw DaemonError.invalidResponse
-        }
-
-        for try await line in bytes.lines where line.hasPrefix("data: ") {
-            let json = String(line.dropFirst(6))
-            if let data = json.data(using: .utf8),
-               let event = try? JSONDecoder().decode(PullProgressEvent.self, from: data) {
-                if event.status == "error" {
-                    throw DaemonError.httpError(statusCode: 500, message: "Model pull failed")
-                }
-                let total = event.total ?? 0
-                let completed = event.completed ?? 0
-                let percent = total > 0 ? Double(completed) / Double(total) * 100.0 : 0
-                onProgress(event.status, percent)
-                if event.status == "success" || event.status == "complete" { return }
-            }
-        }
     }
 
     /// Warmup the embedding model (2 minute timeout)

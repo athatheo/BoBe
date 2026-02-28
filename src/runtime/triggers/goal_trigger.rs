@@ -51,8 +51,8 @@ impl GoalTrigger {
         // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
-                cfg.decision_cooldown_minutes,
-                cfg.decision_extended_cooldown_minutes,
+                cfg.decision.cooldown_minutes,
+                cfg.decision.extended_cooldown_minutes,
             )
         {
             debug!(
@@ -97,7 +97,7 @@ impl GoalTrigger {
                 );
                 self.generator
                     .generate_proactive_response(
-                        cfg.conversation_auto_close_minutes as i64,
+                        cfg.conversation.auto_close_minutes as i64,
                         Some(format!("User's goal: {}", goal.content)),
                     )
                     .await;

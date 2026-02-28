@@ -4,6 +4,7 @@ import SwiftUI
 
 struct StatusLabel: View {
     let stateType: BobeStateType
+    var textOverride: String?
 
     @State private var displayedText = ""
     @State private var targetText = ""
@@ -48,9 +49,9 @@ struct StatusLabel: View {
                 .zIndex(20)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: displayedText)
+        .animation(OverlayMotionRuntime.animation(for: .statusLabelTransition), value: displayedText)
         .onChange(of: stateType) { _, newState in
-            let newText = labelText(for: newState)
+            let newText = effectiveText(for: newState)
             if newText != targetText {
                 delayTask?.cancel()
                 let elapsed = Date().timeIntervalSince(lastShownAt)
@@ -66,11 +67,17 @@ struct StatusLabel: View {
             }
         }
         .task {
-            startTypewriter(labelText(for: stateType))
+            startTypewriter(effectiveText(for: stateType))
             // Cursor blink loop — auto-cancelled when view disappears
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(0.3))
                 showCursor.toggle()
+            }
+        }
+        .onChange(of: textOverride) { _, _ in
+            let newText = effectiveText(for: stateType)
+            if newText != targetText {
+                startTypewriter(newText)
             }
         }
     }
@@ -92,6 +99,13 @@ struct StatusLabel: View {
         }
     }
 
+    private func effectiveText(for state: BobeStateType) -> String {
+        if let override = textOverride, !override.isEmpty {
+            return override
+        }
+        return labelText(for: state)
+    }
+
     private func labelText(for state: BobeStateType) -> String {
         switch state {
         case .loading: "Loading"
@@ -101,11 +115,13 @@ struct StatusLabel: View {
         case .speaking: "Speaking"
         case .wantsToSpeak: "Hey"
         case .error: "Offline"
+        case .shuttingDown: "Bye!"
         }
     }
 }
 
-// MARK: - Thinking Numbers Ring (terracotta chars in the ring gap)
+// MARK: - Thinking Numbers Ring (terracotta chars bubbling up in the ring gap)
+// Matches Electron: random x in [-45,45], y animates [30,-40], opacity fades [0,1,1,0]
 
 struct ThinkingNumbersRing: View {
     private let chars: [String] = ["1", "+", "0", "=", "π", "7", "%", "∑", "×", "2", "/", "9"]
@@ -117,12 +133,12 @@ struct ThinkingNumbersRing: View {
                 BubblingChar(
                     char: char,
                     color: theme.colors.primary,
-                    index: index,
-                    total: chars.count
+                    index: index
                 )
             }
         }
         .frame(width: 116, height: 116)
+        .clipped()
     }
 }
 
@@ -130,15 +146,13 @@ private struct BubblingChar: View {
     let char: String
     let color: Color
     let index: Int
-    let total: Int
 
     @State private var yOffset: CGFloat = 30
-    @State private var opacity: Double = 0
+    @State private var charOpacity: Double = 0
+    @State private var xPos: CGFloat = 0
 
-    // Distribute chars around the ring gap area
-    private var xPosition: CGFloat {
-        let angle = (Double(index) / Double(total)) * 2 * .pi - .pi / 2
-        return cos(angle) * 45
+    private static func randomX() -> CGFloat {
+        CGFloat.random(in: -45...45)
     }
 
     var body: some View {
@@ -146,22 +160,28 @@ private struct BubblingChar: View {
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(color)
             .frame(width: 16, height: 16)
-            .offset(x: xPosition, y: yOffset)
-            .opacity(opacity)
+            .offset(x: xPos, y: yOffset)
+            .opacity(charOpacity)
             .task {
+                xPos = Self.randomX()
                 let delay = Double(index) * 0.4
                 try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled else { return }
                 let duration = 2.5 + Double(index % 3) * 0.3
                 while !Task.isCancelled {
+                    xPos = Self.randomX()
                     yOffset = 30
-                    opacity = 0
+                    charOpacity = 0
+                    // Fade in quickly
+                    withAnimation(.easeIn(duration: duration * 0.2)) { charOpacity = 1 }
+                    // Rise over full duration
                     withAnimation(.easeOut(duration: duration)) { yOffset = -40 }
-                    withAnimation(.easeIn(duration: 0.3)) { opacity = 1 }
-                    try? await Task.sleep(for: .seconds(duration * 0.7))
+                    // Hold visible until 80% through
+                    try? await Task.sleep(for: .seconds(duration * 0.8))
                     guard !Task.isCancelled else { return }
-                    withAnimation(.easeOut(duration: duration * 0.3)) { opacity = 0 }
-                    try? await Task.sleep(for: .seconds(duration * 0.3))
+                    // Fade out in last 20%
+                    withAnimation(.easeOut(duration: duration * 0.2)) { charOpacity = 0 }
+                    try? await Task.sleep(for: .seconds(duration * 0.2))
                 }
             }
     }
@@ -178,7 +198,7 @@ struct SpeakingWaveRing: View {
             ForEach(0..<barCount, id: \.self) { index in
                 SpeakingBar(
                     angle: Double(index) * (360.0 / Double(barCount)),
-                    delay: Double(index) * 0.05,
+                    delay: Double(index) * 0.08,
                     color: theme.colors.secondary
                 )
             }
@@ -201,13 +221,16 @@ private struct SpeakingBar: View {
             .scaleEffect(y: scaleY)
             .offset(y: -52) // Position in the ring gap
             .rotationEffect(.degrees(angle))
-            .onAppear {
-                withAnimation(
-                    .easeInOut(duration: 0.6)
-                    .repeatForever(autoreverses: true)
-                    .delay(delay)
-                ) {
-                    scaleY = 1.0
+            .task {
+                try? await Task.sleep(for: .seconds(delay))
+                let frames: [CGFloat] = [0.3, 1.0, 0.5, 0.8, 0.3]
+                var i = 0
+                while !Task.isCancelled {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        scaleY = frames[i % frames.count]
+                    }
+                    i += 1
+                    try? await Task.sleep(for: .seconds(0.12))
                 }
             }
     }
@@ -233,4 +256,40 @@ struct AttentionPulse: View {
                 }
             }
     }
+}
+
+// MARK: - Previews
+
+#Preview("Status Labels") {
+    VStack(spacing: 12) {
+        StatusLabel(stateType: .thinking)
+        StatusLabel(stateType: .capturing)
+        StatusLabel(stateType: .error)
+        StatusLabel(stateType: .wantsToSpeak)
+        StatusLabel(stateType: .idle, textOverride: "Custom text")
+    }
+    .environment(\.theme, allThemes[0])
+    .padding()
+    .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Thinking Numbers Ring") {
+    ThinkingNumbersRing()
+        .environment(\.theme, allThemes[0])
+        .frame(width: 140, height: 140)
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Speaking Wave Ring") {
+    SpeakingWaveRing()
+        .environment(\.theme, allThemes[0])
+        .frame(width: 140, height: 140)
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Attention Pulse") {
+    AttentionPulse()
+        .environment(\.theme, allThemes[0])
+        .frame(width: 160, height: 160)
+        .background(Color.gray.opacity(0.1))
 }

@@ -21,14 +21,15 @@ struct MCPServersPanel: View {
     private var selectedServer: MCPServer? { servers.first { $0.id == selectedId } }
 
     var body: some View {
-        HSplitView {
+        ThemedSplitPane(leftWidth: 300) {
             // Left pane
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
                 SettingsPaneHeader(title: "MCP Servers") { isAdding = true }
+                    .padding(.bottom, 12)
 
                 if isLoading && servers.isEmpty {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        BobeSpinner(size: 14)
                         Text("Loading MCP servers...")
                             .font(.system(size: 12))
                             .foregroundStyle(theme.colors.textMuted)
@@ -50,41 +51,47 @@ struct MCPServersPanel: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    List(selection: $selectedId) {
-                        ForEach(servers) { server in
-                            SettingsListRow {
-                                HStack(spacing: 8) {
-                                    Image(systemName: server.connected ? "wifi" : "wifi.slash")
-                                        .foregroundStyle(server.connected ? theme.colors.secondary : theme.colors.primary)
-                                        .font(.system(size: 12))
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(servers) { server in
+                                BobeSelectableRow(
+                                    isSelected: selectedId == server.id,
+                                    action: {
+                                        selectedId = server.id
+                                        isAdding = false
+                                    },
+                                    content: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: server.connected ? "wifi" : "wifi.slash")
+                                            .foregroundStyle(server.connected ? theme.colors.secondary : theme.colors.primary)
+                                            .font(.system(size: 12))
 
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(server.name)
-                                            .font(.system(size: 13, weight: .semibold))
-                                        Text("\(server.command) • \(server.toolCount) tools")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(theme.colors.textMuted)
-                                    }
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(server.name)
+                                                .font(.system(size: 13, weight: .semibold))
+                                            Text("\(server.command) • \(server.toolCount) tools")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(theme.colors.textMuted)
+                                        }
 
-                                    if server.error != nil {
-                                        Image(systemName: "exclamationmark.triangle.fill")
-                                            .foregroundStyle(.orange)
-                                            .font(.system(size: 10))
+                                        if server.error != nil {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundStyle(theme.colors.tertiary)
+                                                .font(.system(size: 10))
+                                        }
                                     }
-                                }
+                                })
                             }
-                            .tag(server.id)
-                            .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
                     .background(theme.colors.background)
                 }
             }
-            .frame(minWidth: 220, idealWidth: 280)
-            .padding(12)
-
+            .frame(minWidth: 220, idealWidth: 300)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+        } right: {
             // Right pane
             if isAdding {
                 addServerForm
@@ -126,24 +133,21 @@ struct MCPServersPanel: View {
                     Text("Server Name")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    TextField("e.g. filesystem", text: $newName)
-                        .textFieldStyle(.roundedBorder)
+                    BobeTextField(placeholder: "e.g. filesystem", text: $newName)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Command")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    TextField("e.g. npx or /usr/local/bin/...", text: $newCommand)
-                        .textFieldStyle(.roundedBorder)
+                    BobeTextField(placeholder: "e.g. npx or /usr/local/bin/...", text: $newCommand)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Arguments")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    TextField("e.g. -y @modelcontextprotocol/...", text: $newArgs)
-                        .textFieldStyle(.roundedBorder)
+                    BobeTextField(placeholder: "e.g. -y @modelcontextprotocol/...", text: $newArgs)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -163,8 +167,7 @@ struct MCPServersPanel: View {
                     Text("Excluded Tools")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    TextField("e.g. update_event, delete_event", text: $newExcluded)
-                        .textFieldStyle(.roundedBorder)
+                    BobeTextField(placeholder: "e.g. update_event, delete_event", text: $newExcluded)
                     Text("Tool names to hide from BoBe (server still exposes them)")
                         .font(.system(size: 10))
                         .foregroundStyle(theme.colors.textMuted)
@@ -175,21 +178,21 @@ struct MCPServersPanel: View {
                         isAdding = false
                         clearForm()
                     }
-                    .buttonStyle(.bordered)
+                    .bobeButton(.secondary, size: .small)
 
                     Spacer()
 
                     Button("Add & Connect") { addServer() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(theme.colors.primary)
+                        .bobeButton(.primary, size: .small)
                         .disabled(newName.isEmpty || newCommand.isEmpty)
                 }
 
                 if let error {
-                    Text(error).font(.caption).foregroundStyle(.red)
+                    Text(error).font(.caption).foregroundStyle(theme.colors.primary)
                 }
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
         }
     }
 

@@ -238,15 +238,3 @@ struct OnboardingStatusResponse: Codable, Sendable {
     }
 }
 
-struct ConfigureLLMRequest: Codable, Sendable {
-    let mode: String
-    let model: String
-    let apiKey: String?
-    let endpoint: String?
-
-    enum CodingKeys: String, CodingKey {
-        case mode, model
-        case apiKey = "api_key"
-        case endpoint
-    }
-}

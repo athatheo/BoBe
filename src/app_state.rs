@@ -3,6 +3,7 @@ use reqwest::Client;
 use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
 
+use crate::binary_manager::BinaryManager;
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
 use crate::db::AgentJobRepository;
@@ -64,6 +65,7 @@ pub struct AppState {
     // Infrastructure
     pub screen_capture: Arc<ScreenCapture>,
     pub ollama_manager: Arc<OllamaManager>,
+    pub binary_manager: Arc<BinaryManager>,
     pub config_manager: Arc<ConfigManager>,
     pub mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
     pub mdns_announcer: Arc<MdnsAnnouncer>,

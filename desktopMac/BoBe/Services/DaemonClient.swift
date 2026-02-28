@@ -24,6 +24,7 @@ actor DaemonClient {
     private var connectionHandler: ((Bool) -> Void)?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 10
+    private var isReconnecting = false
 
     func endpointURL(_ path: String) -> URL {
         let normalized = path.hasPrefix("/") ? String(path.dropFirst()) : path
@@ -109,6 +110,10 @@ actor DaemonClient {
     }
 
     private func handleSSEDisconnect() async {
+        guard !isReconnecting else { return }
+        isReconnecting = true
+        defer { isReconnecting = false }
+
         connectionHandler?(false)
         reconnectAttempts += 1
         guard reconnectAttempts <= maxReconnectAttempts else {

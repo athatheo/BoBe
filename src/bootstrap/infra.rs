@@ -10,6 +10,7 @@ use arc_swap::ArcSwap;
 use reqwest::Client;
 use tracing::{error, info, warn};
 
+use crate::binary_manager::BinaryManager;
 use crate::config::{Config, LlmBackend};
 use crate::error::AppError;
 use crate::llm::factory::LlmProviderFactory;
@@ -33,6 +34,7 @@ pub struct Infrastructure {
     pub event_queue: Arc<EventQueue>,
     pub connection_manager: Arc<SseConnectionManager>,
     pub ollama_manager: Arc<OllamaManager>,
+    pub binary_manager: Arc<BinaryManager>,
     pub mdns_announcer: Arc<MdnsAnnouncer>,
 }
 
@@ -52,10 +54,10 @@ impl Infrastructure {
             config_arc.clone(),
         ));
         let (swappable, llm_swap_handle) =
-            SwappableLlmProvider::new(llm_factory.create(config.llm_backend)?);
+            SwappableLlmProvider::new(llm_factory.create(config.llm.backend)?);
         let llm_provider: Arc<dyn LlmProvider> = Arc::new(swappable);
 
-        let vision_llm_provider = match config.vision_backend {
+        let vision_llm_provider = match config.vision.backend {
             LlmBackend::None => None,
             backend => Some(llm_factory.create_vision(backend)?),
         };
@@ -73,17 +75,23 @@ impl Infrastructure {
         // Ollama
         let ollama_manager = Arc::new(OllamaManager::new(
             http_client.clone(),
-            &config.ollama_url,
-            &config.ollama_model,
-            config.ollama_auto_start,
-            config.ollama_auto_pull,
-            config.ollama_binary_path.clone(),
+            &config.ollama.url,
+            &config.ollama.model,
+            config.ollama.auto_start,
+            config.ollama.auto_pull,
+            config.ollama.binary_path.clone(),
+        ));
+
+        // Binary manager
+        let binary_manager = Arc::new(BinaryManager::new(
+            &config.resolved_data_dir(),
+            Arc::new(http_client.clone()),
         ));
 
         // mDNS
         let mdns_announcer = Arc::new(MdnsAnnouncer::new(
-            config.port,
-            config.mdns_enabled && config.host == "0.0.0.0",
+            config.server.port,
+            config.server.mdns_enabled && config.server.host == "0.0.0.0",
         ));
 
         Ok(Self {
@@ -98,6 +106,7 @@ impl Infrastructure {
             event_queue,
             connection_manager,
             ollama_manager,
+            binary_manager,
             mdns_announcer,
         })
     }
@@ -106,25 +115,25 @@ impl Infrastructure {
 /// Best-effort Ollama startup — never fails the bootstrap.
 pub async fn ensure_ollama_ready(config: &Config, manager: &OllamaManager) {
     let needs_ollama =
-        config.llm_backend == LlmBackend::Ollama || config.vision_backend == LlmBackend::Ollama;
+        config.llm.backend == LlmBackend::Ollama || config.vision.backend == LlmBackend::Ollama;
 
     if !needs_ollama {
         return;
     }
 
     match manager.ensure_running().await {
-        Ok(()) => info!(model = %config.ollama_model, "ollama.ready"),
+        Ok(()) => info!(model = %config.ollama.model, "ollama.ready"),
         Err(e) => {
             error!(error = %e, "ollama.startup_failed");
             warn!("Continuing without Ollama — LLM calls will fail until it's available");
         }
     }
 
-    if config.vision_backend == LlmBackend::Ollama {
-        match manager.ensure_model(&config.vision_ollama_model).await {
-            Ok(true) => info!(model = %config.vision_ollama_model, "ollama.vision_ready"),
+    if config.vision.backend == LlmBackend::Ollama {
+        match manager.ensure_model(&config.vision.ollama_model).await {
+            Ok(true) => info!(model = %config.vision.ollama_model, "ollama.vision_ready"),
             Ok(false) => {
-                warn!(model = %config.vision_ollama_model, "ollama.vision_model_unavailable")
+                warn!(model = %config.vision.ollama_model, "ollama.vision_model_unavailable")
             }
             Err(e) => warn!(error = %e, "ollama.vision_model_check_failed"),
         }

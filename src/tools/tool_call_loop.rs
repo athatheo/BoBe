@@ -53,7 +53,7 @@ impl ToolCallLoop {
         let llm = self.llm.clone();
         let executor = self.executor.clone();
         let cfg = self.config.load();
-        let max_iterations = cfg.tools_max_iterations as usize;
+        let max_iterations = cfg.tools.max_iterations as usize;
 
         tokio::spawn(async move {
             if let Err(e) = run_streaming_loop(

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.bobe.app</string>
+	<key>CFBundleName</key>
+	<string>BoBe</string>
+	<key>CFBundleDisplayName</key>
+	<string>BoBe</string>
+	<key>CFBundleExecutable</key>
+	<string>BoBe</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>BoBe captures your screen to understand your context and provide proactive assistance.</string>
+	<key>CFBundleIconFile</key>
+	<string>bobe_app</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2024-2026 BoBe. All rights reserved.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>BoBe uses AppleScript to detect which app you're using, so it can provide context-aware assistance.</string>
+	<key>LSArchitecturePriority</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

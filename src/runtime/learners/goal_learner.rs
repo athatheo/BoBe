@@ -138,7 +138,7 @@ impl GoalLearner {
     ) -> Vec<Goal> {
         let cfg = self.config.load();
         let mut created: Vec<Goal> = Vec::new();
-        let max_goals = cfg.learning_max_goals_per_cycle as usize;
+        let max_goals = cfg.learning.max_goals_per_cycle as usize;
         let max_dedup_calls = max_goals * 2;
         let mut dedup_calls = 0usize;
 

@@ -44,6 +44,7 @@ final class TrayManager: NSObject, NSMenuDelegate {
         case .speaking: statusText = "Speaking"
         case .wantsToSpeak: statusText = "Has something to say"
         case .error: statusText = "Error"
+        case .shuttingDown: statusText = "Shutting down..."
         }
         let statusItem = NSMenuItem(title: "Status: \(statusText)", action: nil, keyEquivalent: "")
         statusItem.isEnabled = false
@@ -71,6 +72,15 @@ final class TrayManager: NSObject, NSMenuDelegate {
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
+
+        // About
+        let aboutItem = NSMenuItem(
+            title: "About BoBe",
+            action: #selector(showAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        menu.addItem(aboutItem)
 
         // Quit
         let quitItem = NSMenuItem(title: "Quit BoBe", action: #selector(quitApp), keyEquivalent: "q")
@@ -109,15 +119,28 @@ final class TrayManager: NSObject, NSMenuDelegate {
         SettingsWindowManager.shared.show()
     }
 
+    @objc private func showAbout() {
+        // Temporarily become regular app so the panel can activate
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(nil)
+
+        // Revert to accessory once the about panel closes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if NSApp.windows.first(where: { $0.title == "About BoBe" || $0.className.contains("About") }) == nil {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
     @objc private func quitApp() {
         store.disconnect()
         NSApplication.shared.terminate(nil)
     }
 
     private func loadTrayIcon() -> NSImage? {
-        // SPM resources are in Bundle.module
         for name in ["trayIconTemplate@2x", "trayIconTemplate"] {
-            if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+            if let url = Bundle.appResources.url(forResource: name, withExtension: "png"),
                let image = NSImage(contentsOf: url) {
                 return image
             }

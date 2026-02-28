@@ -8,42 +8,72 @@ struct AvatarView: View {
     let isConnected: Bool
     let hasMessage: Bool
     var showInput: Bool = false
+    var statusOverride: String?
     var onClick: (() -> Void)?
     var onToggleCapture: (() -> Void)?
     var onToggleInput: (() -> Void)?
 
     @Environment(\.theme) private var theme
+    @State private var isHovered = false
+    @State private var breathingExpanded = false
 
     var body: some View {
-        ZStack {
-            avatarCard
-                .overlay(alignment: .top) {
-                    if stateType != .speaking {
-                        StatusLabel(stateType: stateType)
-                            .offset(y: -14)
+        VStack(spacing: 0) {
+            ZStack {
+                avatarCard
+                    .overlay(alignment: .top) {
+                        if stateType != .speaking {
+                            StatusLabel(stateType: stateType, textOverride: statusOverride)
+                                .offset(y: -14)
+                        }
                     }
+
+                // Chat toggle — top-left of avatar card
+                ChatToggleButton(isActive: showInput, action: onToggleInput ?? {})
+                    .offset(x: -52, y: -52)
+
+                // Connection dot — bottom-right of inner circle
+                ConnectionDot(isConnected: isConnected)
+                    .offset(x: 30, y: 30)
+
+                // Message badge — top-right of inner circle
+                if hasMessage && !showInput {
+                    MessageBadge()
+                        .offset(x: 34, y: -34)
                 }
+            }
+            .padding(.top, 16)
+            .frame(width: 116, height: 132)
 
-            // Chat toggle — top-left of avatar card
-            ChatToggleButton(isActive: showInput, action: onToggleInput ?? {})
-                .offset(x: -52, y: -52)
-
-            // Connection dot — bottom-right of inner circle
-            ConnectionDot(isConnected: isConnected)
-                .offset(x: 30, y: 30)
-
-            // Message badge — top-right of inner circle
-            if hasMessage && !showInput {
-                MessageBadge()
-                    .offset(x: 34, y: -34)
+            BobeLabel()
+                .padding(.top, -2)
+        }
+        .frame(width: 132, height: 146)
+        .task(id: shouldBreathe) {
+            breathingExpanded = false
+            guard shouldBreathe else { return }
+            while !Task.isCancelled {
+                withAnimation(OverlayMotionRuntime.animation(for: .breathing)) {
+                    breathingExpanded.toggle()
+                }
+                try? await Task.sleep(for: .seconds(3.2))
             }
         }
-        .frame(width: 116, height: 116)
-        // BoBe label below, overlapping the card edge
-        .overlay(alignment: .bottom) {
-            BobeLabel()
-                .offset(y: 11)
+    }
+
+    private var shouldBreathe: Bool {
+        switch stateType {
+        case .idle, .capturing, .wantsToSpeak:
+            true
+        default:
+            false
         }
+    }
+
+    private var motionScale: CGFloat {
+        let hoverScale = OverlayMotionRuntime.hoverScale(isHovered: isHovered)
+        let breathingScale = shouldBreathe ? OverlayMotionRuntime.breathingScale(isExpanded: breathingExpanded) : 1.0
+        return hoverScale * breathingScale
     }
 
     private var avatarCard: some View {
@@ -114,6 +144,13 @@ struct AvatarView: View {
             // Eyes
             EyesIndicator(state: stateType, chatOpen: showInput)
         }
+        .scaleEffect(motionScale)
+        .offset(y: OverlayMotionRuntime.hoverYOffset(isHovered: isHovered))
+        .onHover { hovering in
+            withAnimation(OverlayMotionRuntime.animation(for: .hover)) {
+                isHovered = hovering
+            }
+        }
         .zIndex(10)
     }
 }
@@ -152,7 +189,7 @@ struct MessageBadge: View {
             .frame(width: 20, height: 20)
             .scaleEffect(scale)
             .onAppear {
-                withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                withAnimation(OverlayMotionRuntime.animation(for: .badgePulse).repeatForever(autoreverses: true)) {
                     scale = 1.1
                 }
             }
@@ -207,4 +244,41 @@ struct BobeLabel: View {
             )
             .zIndex(1)
     }
+}
+
+// MARK: - Previews
+
+#Preview("Idle") {
+    AvatarView(stateType: .idle, isCapturing: false, isConnected: true, hasMessage: false)
+        .environment(\.theme, allThemes[0])
+        .frame(width: 200, height: 200)
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Thinking") {
+    AvatarView(stateType: .thinking, isCapturing: false, isConnected: true, hasMessage: false)
+        .environment(\.theme, allThemes[0])
+        .frame(width: 200, height: 200)
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Speaking") {
+    AvatarView(stateType: .speaking, isCapturing: false, isConnected: true, hasMessage: true)
+        .environment(\.theme, allThemes[0])
+        .frame(width: 200, height: 200)
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Error + Message") {
+    AvatarView(stateType: .error, isCapturing: false, isConnected: false, hasMessage: true)
+        .environment(\.theme, allThemes[0])
+        .frame(width: 200, height: 200)
+        .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Wants to Speak") {
+    AvatarView(stateType: .wantsToSpeak, isCapturing: false, isConnected: true, hasMessage: false)
+        .environment(\.theme, allThemes[0])
+        .frame(width: 200, height: 200)
+        .background(Color.gray.opacity(0.1))
 }

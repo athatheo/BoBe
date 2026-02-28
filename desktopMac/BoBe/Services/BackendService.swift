@@ -20,6 +20,8 @@ actor BackendService {
     private let maxRestartAttempts = 3
     private let dataDir: URL
     private let pidFilePath: URL
+    /// Last stderr output captured from a failed backend launch.
+    private(set) var lastError: String?
 
     var isReady: Bool { state == .ready }
     var isFatal: Bool { state == .fatal }
@@ -45,6 +47,12 @@ actor BackendService {
     /// Gracefully stop the backend
     func stop() async {
         stopping = true
+        if process == nil {
+            // Try PID file as fallback
+            await cleanStalePID()
+            cleanup()
+            return
+        }
         guard let proc = process, proc.isRunning else {
             cleanup()
             return
@@ -53,7 +61,8 @@ actor BackendService {
         logger.info("Stopping bobe backend (PID: \(proc.processIdentifier))")
         proc.terminate()
 
-        let deadline = Date().addingTimeInterval(5)
+        // Backend needs up to ~12s for graceful shutdown (MCP + Ollama unload + DB close)
+        let deadline = Date().addingTimeInterval(12)
         while proc.isRunning && Date() < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }
@@ -78,22 +87,17 @@ actor BackendService {
         }
 
         logger.info("Starting bobe backend: \(binaryPath)")
+        lastError = nil
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: binaryPath)
         proc.arguments = ["serve"]
+        proc.currentDirectoryURL = dataDir
 
+        // Only pass BOBE_DATA_DIR — backend derives all paths internally
         var env = ProcessInfo.processInfo.environment
-        env["BOBE_HOST"] = DaemonConfig.host
-        env["BOBE_PORT"] = "\(DaemonConfig.port)"
-        let dbPath = dataDir.appendingPathComponent("bobe.db").path
-        env["BOBE_DATABASE_URL"] = "sqlite:\(dbPath)"
-        let ollamaBinDir = dataDir.appendingPathComponent("ollama/bin").path
-        env["PATH"] = [ollamaBinDir, env["PATH"] ?? ""].joined(separator: ":")
-        env["BOBE_OLLAMA_BINARY_PATH"] = ollamaBinDir + "/ollama"
-        env["OLLAMA_HOST"] = "127.0.0.1:11434"
-        env["OLLAMA_ORIGINS"] = "http://127.0.0.1:*"
-        env["OLLAMA_MODELS"] = dataDir.appendingPathComponent("models").path
+        env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
+        env["BOBE_DATA_DIR"] = dataDir.path
         proc.environment = env
 
         // Capture stdout/stderr for logging
@@ -101,14 +105,31 @@ actor BackendService {
         let errPipe = Pipe()
         proc.standardOutput = outPipe
         proc.standardError = errPipe
+
+        // Accumulate stderr so we can surface it on failure
+        let stderrBuf = StderrBuffer()
         outPipe.fileHandleForReading.readabilityHandler = { handle in
             if let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty {
                 logger.info("[bobe-service] \(line.trimmingCharacters(in: .newlines))")
             }
         }
         errPipe.fileHandleForReading.readabilityHandler = { handle in
-            if let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty {
-                logger.error("[bobe-service] \(line.trimmingCharacters(in: .newlines))")
+            let data = handle.availableData
+            if let line = String(data: data, encoding: .utf8), !line.isEmpty {
+                let trimmed = line.trimmingCharacters(in: .newlines)
+                logger.error("[bobe-service] \(trimmed)")
+                stderrBuf.append(trimmed)
+            }
+        }
+
+        // Check for port conflict before launching
+        if isPortInUse(DaemonConfig.port) {
+            await cleanStalePID()
+
+            if isPortInUse(DaemonConfig.port) {
+                lastError = "Port \(DaemonConfig.port) is already in use by another application. "
+                    + "Close the conflicting app or set BOBE_PORT to a different port."
+                throw BackendServiceError.healthCheckFailed
             }
         }
 
@@ -130,7 +151,16 @@ actor BackendService {
         }
 
         // Wait for health
-        try await waitForHealth()
+        do {
+            try await waitForHealth()
+        } catch {
+            let captured = stderrBuf.text
+            if !captured.isEmpty {
+                lastError = captured
+                logger.error("Backend stderr on failure: \(captured)")
+            }
+            throw error
+        }
         state = .ready
         restartCount = 0
         logger.info("bobe backend healthy (PID: \(proc.processIdentifier))")
@@ -146,7 +176,7 @@ actor BackendService {
             if process?.isRunning != true { throw BackendServiceError.processExitedDuringHealthCheck }
 
             do {
-                let _ = try await DaemonClient.shared.health()
+                _ = try await DaemonClient.shared.health()
                 return
             } catch {
                 logger.debug("Health check attempt \(attempt)/\(maxAttempts) failed, retrying in \(delay)s")
@@ -195,7 +225,13 @@ actor BackendService {
 
     private func cleanStalePID() async {
         guard let pidStr = try? String(contentsOf: pidFilePath, encoding: .utf8),
-              let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
+              let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            // No PID file — check if something else holds the port
+            if isPortInUse(DaemonConfig.port) {
+                logger.warning("Port \(DaemonConfig.port) is in use but no PID file exists — another process may be bound")
+            }
+            return
+        }
 
         if kill(pid, 0) == 0 {
             logger.info("Cleaning stale process (PID: \(pid))")
@@ -204,8 +240,29 @@ actor BackendService {
             if kill(pid, 0) == 0 {
                 kill(pid, SIGKILL)
             }
+        } else if isPortInUse(DaemonConfig.port) {
+            logger.warning("Port \(DaemonConfig.port) in use but PID \(pid) from PID file is not running — stale PID file")
         }
         try? FileManager.default.removeItem(at: pidFilePath)
+    }
+
+    /// Check whether a TCP port is already bound on localhost.
+    private func isPortInUse(_ port: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = UInt16(port).bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return result == 0
     }
 
     private func cleanup() {
@@ -221,12 +278,26 @@ actor BackendService {
     // MARK: - Binary Discovery
 
     private func findBinaryPath() -> String? {
-        if let bundlePath = Bundle.main.path(forResource: "bobe", ofType: nil) {
+        // 1. Side-by-side in Contents/MacOS/ (production bundled location)
+        //    Named "bobe-daemon" to avoid case-insensitive collision with "BoBe" on APFS.
+        if let execURL = Bundle.main.executableURL {
+            let siblingPath = execURL.deletingLastPathComponent()
+                .appendingPathComponent("bobe-daemon").path
+            if FileManager.default.isExecutableFile(atPath: siblingPath) {
+                return siblingPath
+            }
+        }
+
+        // 2. Bundle resource fallback
+        if let bundlePath = Bundle.main.path(forResource: "bobe-daemon", ofType: nil) {
             return bundlePath
         }
+
+        // 3. Dev fallbacks (original binary name)
         let devPaths = [
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cargo/bin/bobe").path,
-            "/usr/local/bin/bobe"
+            FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".cargo/bin/bobe").path,
+            "/usr/local/bin/bobe",
         ]
         for path in devPaths where FileManager.default.isExecutableFile(atPath: path) {
             return path
@@ -250,5 +321,25 @@ enum BackendServiceError: Error, LocalizedError {
         case .stoppedDuringHealthCheck: "Service was stopped during health check"
         case .processExitedDuringHealthCheck: "Backend process exited during health check"
         }
+    }
+}
+
+/// Thread-safe buffer for accumulating stderr output from the backend process.
+private final class StderrBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [String] = []
+
+    func append(_ line: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        lines.append(line)
+        // Keep only last 50 lines to avoid unbounded growth
+        if lines.count > 50 { lines.removeFirst(lines.count - 50) }
+    }
+
+    var text: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return lines.joined(separator: "\n")
     }
 }

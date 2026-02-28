@@ -55,10 +55,10 @@ pub async fn list_tools(
             .map(|s| s.name().to_owned())
             .unwrap_or_else(|| "unknown".to_owned());
 
-        if provider == "bobe" && !cfg.tools_enabled {
+        if provider == "bobe" && !cfg.tools.enabled {
             continue;
         }
-        if provider == "mcp" && !cfg.mcp_enabled {
+        if provider == "mcp" && !cfg.mcp.enabled {
             continue;
         }
 

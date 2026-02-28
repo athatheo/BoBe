@@ -8,6 +8,7 @@ pub mod memories;
 pub mod models;
 pub mod onboarding;
 pub mod settings;
+pub mod setup;
 pub mod souls;
 pub mod tools;
 pub mod tools_mcp;

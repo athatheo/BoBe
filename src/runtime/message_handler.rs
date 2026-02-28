@@ -206,7 +206,7 @@ impl MessageHandler {
         let prompt_config = UserResponsePrompt::config();
 
         // Get tools if enabled
-        let tools = if cfg.tools_enabled {
+        let tools = if cfg.tools.enabled {
             self.get_tools(&messages).await
         } else {
             Vec::new()

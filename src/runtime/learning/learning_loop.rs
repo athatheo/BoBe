@@ -85,8 +85,8 @@ impl LearningLoop {
             .store(true, std::sync::atomic::Ordering::Release);
         let cfg = self.config.load();
         info!(
-            interval_minutes = cfg.learning_interval_minutes,
-            daily_consolidation_hour = cfg.daily_consolidation_hour,
+            interval_minutes = cfg.learning.interval_minutes,
+            daily_consolidation_hour = cfg.learning.daily_consolidation_hour,
             "learning_loop.starting"
         );
 
@@ -106,7 +106,7 @@ impl LearningLoop {
 
             // Interruptible sleep — re-read interval each cycle
             let cfg = self.config.load();
-            let sleep_duration = std::time::Duration::from_secs(cfg.learning_interval_minutes * 60);
+            let sleep_duration = std::time::Duration::from_secs(cfg.learning.interval_minutes * 60);
             tokio::select! {
                 _ = tokio::time::sleep(sleep_duration) => {},
                 _ = self.stop_notify.notified() => {
@@ -284,7 +284,7 @@ impl LearningLoop {
             .observation_repo
             .find_since(
                 state.last_context_processed_at,
-                Some(cfg.learning_max_context_per_cycle as i64 * 2),
+                Some(cfg.learning.max_context_per_cycle as i64 * 2),
             )
             .await
         {
@@ -304,13 +304,13 @@ impl LearningLoop {
             })
             .collect();
 
-        if (observations.len() as u32) < cfg.learning_min_context_items {
+        if (observations.len() as u32) < cfg.learning.min_context_items {
             return (0, 0, false);
         }
 
         let to_process = &observations[..observations
             .len()
-            .min(cfg.learning_max_context_per_cycle as usize)];
+            .min(cfg.learning.max_context_per_cycle as usize)];
         let existing_memories = self.get_all_memories().await;
         let goals = self.goals_service.get_active(100).await.unwrap_or_default();
 
@@ -338,12 +338,12 @@ impl LearningLoop {
         let should_run = match state.last_consolidation_at {
             None => {
                 now.format("%H").to_string().parse::<u32>().unwrap_or(0)
-                    == cfg.daily_consolidation_hour
+                    == cfg.learning.daily_consolidation_hour
             }
             Some(last) => {
                 last.date_naive() < now.date_naive()
                     && now.format("%H").to_string().parse::<u32>().unwrap_or(0)
-                        >= cfg.daily_consolidation_hour
+                        >= cfg.learning.daily_consolidation_hour
             }
         };
 
@@ -385,7 +385,7 @@ impl LearningLoop {
     async fn scheduled_pruning_if_needed(&self, state: &mut LearningState) -> (usize, bool) {
         let cfg = self.config.load();
 
-        if !cfg.memory_pruning_enabled {
+        if !cfg.memory.pruning_enabled {
             return (0, false);
         }
 
@@ -401,18 +401,18 @@ impl LearningLoop {
 
         let obs_deleted = self
             .observation_repo
-            .delete_older_than(cfg.memory_raw_context_retention_days as i64)
+            .delete_older_than(cfg.memory.raw_context_retention_days as i64)
             .await
             .unwrap_or(0);
 
-        let st_cutoff = now - Duration::days(cfg.memory_short_term_retention_days as i64);
+        let st_cutoff = now - Duration::days(cfg.memory.short_term_retention_days as i64);
         let st_deleted = self
             .memory_repo
             .delete_by_criteria(MemoryType::ShortTerm, st_cutoff)
             .await
             .unwrap_or(0);
 
-        let lt_cutoff = now - Duration::days(cfg.memory_long_term_retention_days as i64);
+        let lt_cutoff = now - Duration::days(cfg.memory.long_term_retention_days as i64);
         let lt_deleted = self
             .memory_repo
             .delete_by_criteria(MemoryType::LongTerm, lt_cutoff)
@@ -420,7 +420,7 @@ impl LearningLoop {
             .unwrap_or(0);
 
         // Delete stale archived/completed goals
-        let goal_cutoff = now - Duration::days(cfg.goal_retention_days as i64);
+        let goal_cutoff = now - Duration::days(cfg.memory.goal_retention_days as i64);
         let goals_deleted = self
             .goal_repo
             .delete_stale_goals(

@@ -2,8 +2,9 @@ import Observation
 import SwiftUI
 
 /// Manages the active theme with UserDefaults persistence
+@MainActor
 @Observable
-final class ThemeStore: @unchecked Sendable {
+final class ThemeStore {
     static let shared = ThemeStore()
 
     private(set) var currentTheme: ThemeConfig

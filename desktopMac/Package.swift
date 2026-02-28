@@ -6,10 +6,15 @@ let package = Package(
     platforms: [
         .macOS(.v14)
     ],
+    dependencies: [],
     targets: [
         .executableTarget(
             name: "BoBe",
+            dependencies: [],
             path: "BoBe",
+            exclude: [
+                "Resources/Info.plist"
+            ],
             resources: [
                 .process("Resources")
             ]
