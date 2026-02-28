@@ -29,7 +29,7 @@ bobe-daemon (Rust/Axum, :8766)  ←── SSE + HTTP ──→  BoBe.app (Swift/
 
 ### Rust Backend (`src/`)
 
-`main.rs` — clap CLI (`serve`, `setup`, `version`). `serve` boots Axum on `127.0.0.1:8766`, spawns background tasks (SSE heartbeat, RuntimeSession triggers, LearningLoop, GoalWorkerManager), graceful shutdown via `ctrl_c()`.
+`main.rs` — clap CLI (`serve`, `version`). `serve` boots Axum on `127.0.0.1:8766`, spawns background tasks (SSE heartbeat, RuntimeSession triggers, LearningLoop, GoalWorkerManager), graceful shutdown via `ctrl_c()`.
 
 | Module | Purpose |
 |--------|---------|
@@ -60,7 +60,7 @@ Swift 6.0, macOS 14+ (Sonoma), SPM.
 |-----------|---------|
 | `App/` | `@main` + AppDelegate, OverlayPanel (NSPanel), SettingsWindow, TrayManager |
 | `Models/` | API DTOs, app types, entity types, settings types |
-| `Services/` | BackendService (daemon lifecycle), DaemonClient (HTTP + SSE), OllamaService |
+| `Services/` | BackendService (daemon lifecycle), DaemonClient (HTTP + SSE) |
 | `Stores/` | BobeStore (`@Observable` main state), ThemeStore |
 | `Views/Overlay/` | Transparent overlay: avatar, chat bubbles, message input, indicators |
 | `Views/Settings/` | Settings sidebar: AI model, appearance, behavior, tools, MCP, memories, goals, souls, profiles, advanced |

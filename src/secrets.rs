@@ -151,10 +151,10 @@ pub fn load_secrets() -> std::collections::HashMap<String, String> {
 
     for &field in SECRET_FIELDS {
         let account = keychain_account(field);
-        if let Some(value) = read_secret(&account) {
-            if !value.is_empty() {
-                secrets.insert(field.to_string(), value);
-            }
+        if let Some(value) = read_secret(&account)
+            && !value.is_empty()
+        {
+            secrets.insert(field.to_string(), value);
         }
     }
 
@@ -179,35 +179,4 @@ fn keychain_account(dotted_key: &str) -> String {
         .next_back()
         .unwrap_or(dotted_key)
         .to_string()
-}
-
-/// Migrate secrets from config values to Keychain.
-///
-/// Stores any non-empty API keys found in the config into the Keychain,
-/// then returns the keys that were migrated (so they can be removed from config.toml).
-pub fn migrate_secrets_to_keychain(config: &crate::config::Config) -> Vec<String> {
-    let mut migrated = Vec::new();
-
-    let key_map: &[(&str, &str)] = &[
-        ("llm.openai_api_key", &config.llm.openai_api_key),
-        ("llm.azure_openai_api_key", &config.llm.azure_openai_api_key),
-        ("llm.anthropic_api_key", &config.llm.anthropic_api_key),
-    ];
-
-    for (field, value) in key_map {
-        if !value.is_empty() {
-            let account = keychain_account(field);
-            match store_secret(&account, value) {
-                Ok(()) => {
-                    info!(field, "secrets.migrated_to_keychain");
-                    migrated.push(field.to_string());
-                }
-                Err(e) => {
-                    warn!(field, error = %e, "secrets.migration_failed");
-                }
-            }
-        }
-    }
-
-    migrated
 }

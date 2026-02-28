@@ -61,16 +61,6 @@ impl SseConnectionManager {
         *self.on_disconnect.write().await = Some(on_disconnect);
     }
 
-    #[allow(dead_code)]
-    pub async fn is_connected(&self) -> bool {
-        self.state.lock().await.connected
-    }
-
-    #[allow(dead_code)]
-    pub async fn current_indicator(&self) -> IndicatorType {
-        self.state.lock().await.current_indicator
-    }
-
     /// Track indicator state from events being pushed.
     pub async fn track_indicator(&self, event: &StreamBundle) {
         if event.event_type == super::types::EventType::Indicator
@@ -174,6 +164,11 @@ impl SseConnectionManager {
     pub async fn is_active_connection(&self, connection_id: &str) -> bool {
         let st = self.state.lock().await;
         st.connected && st.connection_id.as_deref() == Some(connection_id)
+    }
+
+    #[cfg(test)]
+    pub async fn current_indicator(&self) -> IndicatorType {
+        self.state.lock().await.current_indicator
     }
 
     /// Remove events older than stale threshold from queue.

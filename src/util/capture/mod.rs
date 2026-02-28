@@ -1,6 +1,5 @@
 pub mod capture_result;
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::Utc;
 use tracing::{debug, info};
 
@@ -50,12 +49,6 @@ impl ScreenCapture {
             timestamp,
             source: "screen".into(),
         })
-    }
-
-    /// Encode a CaptureResult's image as base64 PNG.
-    #[allow(dead_code)]
-    pub fn encode_base64(result: &CaptureResult) -> String {
-        BASE64.encode(&result.image)
     }
 }
 

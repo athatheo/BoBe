@@ -175,41 +175,6 @@ impl CircuitBreaker {
             CircuitState::Open => {}
         }
     }
-
-    /// How long until the next retry is allowed (None if closed).
-    #[allow(dead_code)]
-    pub async fn time_until_retry(&self) -> Option<std::time::Duration> {
-        let inner = self.inner.lock().await;
-        match inner.state {
-            CircuitState::Open => inner.last_failure_time.map(|t| {
-                let elapsed = t.elapsed();
-                if elapsed < inner.current_recovery_timeout {
-                    inner.current_recovery_timeout - elapsed
-                } else {
-                    std::time::Duration::ZERO
-                }
-            }),
-            _ => None,
-        }
-    }
-
-    /// Get the current circuit state.
-    #[allow(dead_code)]
-    pub async fn get_status(&self) -> CircuitState {
-        self.inner.lock().await.state.clone()
-    }
-
-    /// Manually reset the circuit breaker to closed state.
-    #[allow(dead_code)]
-    pub async fn reset(&self) {
-        let mut inner = self.inner.lock().await;
-        inner.state = CircuitState::Closed;
-        inner.failure_count = 0;
-        inner.half_open_calls = 0;
-        inner.last_failure_time = None;
-        inner.current_recovery_timeout = inner.config.recovery_timeout;
-        info!(circuit = %self.name, "Circuit breaker manually reset");
-    }
 }
 
 /// Wrapper that adds circuit breaker protection to any `LlmProvider`.
@@ -221,11 +186,6 @@ pub struct CircuitBreakerLlmWrapper {
 impl CircuitBreakerLlmWrapper {
     pub fn new(provider: Arc<dyn LlmProvider>, breaker: Arc<CircuitBreaker>) -> Self {
         Self { provider, breaker }
-    }
-
-    #[allow(dead_code)]
-    pub fn circuit_breaker(&self) -> &Arc<CircuitBreaker> {
-        &self.breaker
     }
 }
 

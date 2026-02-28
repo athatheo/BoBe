@@ -24,11 +24,7 @@ const MAX_GOALS_FILE_SIZE: u64 = 1024 * 1024;
 
 /// Result of syncing GOALS.md to database.
 #[derive(Debug, Clone)]
-pub struct SyncResult {
-    pub created: u32,
-    pub updated: u32,
-    pub archived: u32,
-}
+pub struct SyncResult;
 
 pub struct GoalsService {
     repo: Arc<dyn GoalRepository>,
@@ -266,16 +262,11 @@ impl GoalsService {
             }
         }
 
-        let result = SyncResult {
-            created,
-            updated,
-            archived,
-        };
         info!(
             created,
             updated, archived, "goals_service.sync_from_file.complete"
         );
-        Ok(result)
+        Ok(SyncResult)
     }
 }
 

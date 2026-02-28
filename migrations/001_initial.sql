@@ -1,5 +1,4 @@
 -- Initial database schema for BoBe
--- Mirrors the Python SQLAlchemy models
 
 CREATE TABLE IF NOT EXISTS conversations (
     id BLOB PRIMARY KEY NOT NULL,

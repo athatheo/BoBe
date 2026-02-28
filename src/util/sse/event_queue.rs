@@ -66,17 +66,6 @@ impl EventQueue {
         self.push(indicator_event(indicator, None));
     }
 
-    /// Number of events currently in the queue.
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        lock_or_recover(&self.inner, "event_queue.inner").len()
-    }
-
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        lock_or_recover(&self.inner, "event_queue.inner").is_empty()
-    }
-
     /// Drain all events from the queue.
     pub fn clear(&self) -> Vec<StreamBundle> {
         let mut queue = lock_or_recover(&self.inner, "event_queue.inner");

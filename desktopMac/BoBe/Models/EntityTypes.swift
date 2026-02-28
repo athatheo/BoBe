@@ -365,11 +365,3 @@ struct MCPServerUpdateResponse: Codable, Sendable {
         case excludedTools = "excluded_tools"
     }
 }
-
-// MARK: - Pull Progress (SSE)
-
-struct PullProgressEvent: Codable, Sendable {
-    let status: String
-    let total: Int64?
-    let completed: Int64?
-}

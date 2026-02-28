@@ -201,10 +201,10 @@ pub async fn create_setup_job(
     // If a job is already running, return it
     {
         let existing = job_state().read().await;
-        if let Some(ref job) = *existing {
-            if job.status == JobStatus::InProgress || job.status == JobStatus::Pending {
-                return Ok((axum::http::StatusCode::ACCEPTED, Json(job.clone())));
-            }
+        if let Some(ref job) = *existing
+            && (job.status == JobStatus::InProgress || job.status == JobStatus::Pending)
+        {
+            return Ok((axum::http::StatusCode::ACCEPTED, Json(job.clone())));
         }
     }
 
@@ -306,10 +306,10 @@ async fn update_step(step_id: &str, status: StepStatus, message: Option<String>)
 
 async fn update_step_progress(step_id: &str, progress: StepProgress) {
     let mut lock = job_state().write().await;
-    if let Some(ref mut job) = *lock {
-        if let Some(s) = job.steps.iter_mut().find(|s| s.id == step_id) {
-            s.progress = Some(progress);
-        }
+    if let Some(ref mut job) = *lock
+        && let Some(s) = job.steps.iter_mut().find(|s| s.id == step_id)
+    {
+        s.progress = Some(progress);
     }
 }
 
@@ -372,7 +372,6 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             current_bytes: 0,
             total_bytes: None,
             percent: None,
-            message: "Checking Ollama...".into(),
         });
 
     // Spawn a task to relay progress updates

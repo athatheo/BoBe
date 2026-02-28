@@ -33,7 +33,9 @@ static STATIC_FIELDS: &[&str] = &[
     "embedding.dimension",
     "llm.llama_url",
     "ollama.url",
+    "ollama.binary_path",
     "server.mdns_enabled",
+    "logging.file",
 ];
 
 static LLM_FIELDS: &[&str] = &[
@@ -122,6 +124,10 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "goal_worker.max_failure_retries",
     "goal_worker.claude_model",
     "goal_worker.projects_dir",
+    "checkin.interval_minutes",
+    "goals.file",
+    "soul_file",
+    "seed_default_documents",
 ];
 
 // ── Public types ───────────────────────────────────────────────────────────
@@ -206,12 +212,12 @@ impl ConfigManager {
         // Store secret fields in macOS Keychain
         for (key, value) in changes {
             let dotted = fields::normalize_key_pub(key);
-            if crate::secrets::is_secret_field(&dotted) {
-                if let Some(s) = value.as_str() {
-                    let account = dotted.split('.').next_back().unwrap_or(&dotted);
-                    if let Err(e) = crate::secrets::store_secret(account, s) {
-                        warn!(field = %dotted, error = %e, "config_manager.keychain_store_failed");
-                    }
+            if crate::secrets::is_secret_field(&dotted)
+                && let Some(s) = value.as_str()
+            {
+                let account = dotted.split('.').next_back().unwrap_or(&dotted);
+                if let Err(e) = crate::secrets::store_secret(account, s) {
+                    warn!(field = %dotted, error = %e, "config_manager.keychain_store_failed");
                 }
             }
         }

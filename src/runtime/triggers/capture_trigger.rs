@@ -161,10 +161,6 @@ impl CaptureTrigger {
                             }
                         }
                     }
-                    crate::runtime::learners::types::LearnerResult::Skipped { reason } => {
-                        debug!(reason = %reason, "capture_trigger.observation_skipped");
-                        None
-                    }
                 }
             }
             Err(e) => {

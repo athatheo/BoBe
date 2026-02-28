@@ -23,10 +23,6 @@ pub enum AppError {
     #[error("Tool error: {0}")]
     Tool(String),
 
-    #[error("Tool call loop error: {0}")]
-    #[allow(dead_code)]
-    ToolCallLoop(String),
-
     #[error("Validation error: {0}")]
     Validation(String),
 

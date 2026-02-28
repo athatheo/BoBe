@@ -23,10 +23,6 @@ actor BackendService {
     /// Last stderr output captured from a failed backend launch.
     private(set) var lastError: String?
 
-    var isReady: Bool { state == .ready }
-    var isFatal: Bool { state == .fatal }
-    var currentState: ServiceState { state }
-
     private init() {
         dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bobe")
         pidFilePath = dataDir.appendingPathComponent("bobe-service.pid")
@@ -308,7 +304,6 @@ actor BackendService {
 
 enum BackendServiceError: Error, LocalizedError {
     case healthCheckFailed
-    case binaryNotFound
     case spawnFailed(String)
     case stoppedDuringHealthCheck
     case processExitedDuringHealthCheck
@@ -316,7 +311,6 @@ enum BackendServiceError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .healthCheckFailed: "Backend health check failed after maximum attempts"
-        case .binaryNotFound: "Could not find bobe binary"
         case .spawnFailed(let msg): "Failed to start backend: \(msg)"
         case .stoppedDuringHealthCheck: "Service was stopped during health check"
         case .processExitedDuringHealthCheck: "Backend process exited during health check"
