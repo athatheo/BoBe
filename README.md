@@ -175,8 +175,9 @@ BOBE_AZURE_OPENAI_DEPLOYMENT=gpt-5-mini
 | `/models/pull` | POST | Download model (SSE progress) |
 | `/models/{name}` | DELETE | Delete model |
 | `/onboarding/status` | GET | Setup status |
-| `/onboarding/configure-llm` | POST | Configure LLM |
-| `/onboarding/pull-model` | POST | Pull model (SSE) |
+| `/onboarding/options` | GET | Setup options (tiers/providers/models) |
+| `/onboarding/setup` | POST | Start idempotent setup job |
+| `/onboarding/setup/{job_id}` | GET/DELETE | Poll or cancel setup job |
 | `/onboarding/mark-complete` | POST | Mark setup done |
 | `/user-profile` | GET/PUT | User profile |
 

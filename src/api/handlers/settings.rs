@@ -181,7 +181,7 @@ pub async fn get_settings(
 /// PUT /api/settings
 ///
 /// Hot-swaps configuration at runtime through ConfigManager.
-/// Changes are persisted to ~/.bobe/.env and LLM provider is rebuilt
+/// Changes are persisted to ~/.bobe/config.toml and LLM provider is rebuilt
 /// when backend/model/key fields change.
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
@@ -195,6 +195,18 @@ pub async fn update_settings(
                     "Invalid llm_backend '{v}'. Valid: ollama, openai, azure_openai, llamacpp"
                 ))
             })?;
+    }
+
+    let llm_change_requested = body.llm_backend.is_some()
+        || body.ollama_model.is_some()
+        || body.openai_model.is_some()
+        || body.openai_api_key.is_some()
+        || body.azure_openai_endpoint.is_some()
+        || body.azure_openai_deployment.is_some()
+        || body.azure_openai_api_key.is_some();
+
+    if llm_change_requested {
+        validate_llm_settings_update(&state, &body).await?;
     }
 
     // Collect all provided fields into a HashMap for ConfigManager.
@@ -242,18 +254,18 @@ pub async fn update_settings(
     collect_opt!(memory_short_term_retention_days);
     collect_opt!(memory_long_term_retention_days);
 
-    // checkin_times needs special handling (Vec<String> -> comma-separated)
+    // checkin_times uses nested key to avoid flat legacy conversion.
     if let Some(ref v) = body.checkin_times {
         changes.insert(
-            "checkin_times".to_owned(),
-            serde_json::Value::String(v.join(",")),
+            "checkin.times".to_owned(),
+            serde_json::to_value(v).unwrap_or_default(),
         );
     }
 
-    // Keep frontend compatibility while writing canonical config key.
+    // Keep frontend field name while writing canonical config key.
     if let Some(ref v) = body.projects_directory {
         changes.insert(
-            "projects_dir".to_owned(),
+            "goal_worker.projects_dir".to_owned(),
             serde_json::Value::String(v.clone()),
         );
     }
@@ -267,7 +279,7 @@ pub async fn update_settings(
         }));
     }
 
-    // Route through ConfigManager: persists to .env, swaps config, rebuilds LLM.
+    // Route through ConfigManager: persists to config.toml, swaps config, rebuilds LLM.
     let result = state.config_manager.update(&changes);
 
     tracing::info!(
@@ -284,4 +296,122 @@ pub async fn update_settings(
         restart_required_fields: result.restart_required_fields,
         persist_failed: result.persist_failed,
     }))
+}
+
+async fn validate_llm_settings_update(
+    state: &Arc<AppState>,
+    body: &SettingsUpdateRequest,
+) -> Result<(), AppError> {
+    let cfg = state.config();
+    let backend = if let Some(ref v) = body.llm_backend {
+        serde_json::from_value(serde_json::Value::String(v.clone()))
+            .map_err(|_| AppError::Validation(format!("Invalid llm_backend '{v}'")))?
+    } else {
+        cfg.llm.backend
+    };
+
+    let ollama_url = cfg.ollama.url.clone();
+    let llama_url = cfg.llm.llama_url.clone();
+    let openai_key = body
+        .openai_api_key
+        .clone()
+        .unwrap_or_else(|| cfg.llm.openai_api_key.clone());
+    let azure_endpoint = body
+        .azure_openai_endpoint
+        .clone()
+        .unwrap_or_else(|| cfg.llm.azure_openai_endpoint.clone());
+    let azure_key = body
+        .azure_openai_api_key
+        .clone()
+        .unwrap_or_else(|| cfg.llm.azure_openai_api_key.clone());
+    let azure_deployment = body
+        .azure_openai_deployment
+        .clone()
+        .unwrap_or_else(|| cfg.llm.azure_openai_deployment.clone());
+    drop(cfg);
+
+    let client = &state.http_client;
+    match backend {
+        LlmBackend::Ollama => {
+            let url = format!("{}/api/tags", ollama_url.trim_end_matches('/'));
+            let resp = client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| AppError::Validation(format!("Cannot reach Ollama: {e}")))?;
+            if !resp.status().is_success() {
+                return Err(AppError::Validation(format!(
+                    "Ollama validation failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+        }
+        LlmBackend::Openai => {
+            if openai_key.trim().is_empty() {
+                return Err(AppError::Validation(
+                    "OpenAI API key is required for openai backend".into(),
+                ));
+            }
+            let resp = client
+                .get("https://api.openai.com/v1/models")
+                .header("Authorization", format!("Bearer {openai_key}"))
+                .send()
+                .await
+                .map_err(|e| AppError::Validation(format!("Cannot reach OpenAI: {e}")))?;
+            if !resp.status().is_success() {
+                return Err(AppError::Validation(format!(
+                    "OpenAI validation failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+        }
+        LlmBackend::AzureOpenai => {
+            if azure_endpoint.trim().is_empty()
+                || azure_key.trim().is_empty()
+                || azure_deployment.trim().is_empty()
+            {
+                return Err(AppError::Validation(
+                    "Azure OpenAI endpoint, API key, and deployment are required".into(),
+                ));
+            }
+            let test_url = format!(
+                "{}/openai/deployments/{}/chat/completions?api-version=2024-02-15-preview",
+                azure_endpoint.trim_end_matches('/'),
+                azure_deployment
+            );
+            let resp = client
+                .post(&test_url)
+                .header("api-key", &azure_key)
+                .json(&serde_json::json!({"messages": [{"role": "user", "content": "test"}], "max_tokens": 1}))
+                .send()
+                .await
+                .map_err(|e| AppError::Validation(format!("Cannot reach Azure endpoint: {e}")))?;
+            if !resp.status().is_success() && resp.status().as_u16() != 400 {
+                return Err(AppError::Validation(format!(
+                    "Azure validation failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+        }
+        LlmBackend::LlamaCpp => {
+            let url = format!("{}/v1/models", llama_url.trim_end_matches('/'));
+            let resp =
+                client.get(&url).send().await.map_err(|e| {
+                    AppError::Validation(format!("Cannot reach llama.cpp server: {e}"))
+                })?;
+            if !resp.status().is_success() {
+                return Err(AppError::Validation(format!(
+                    "llama.cpp validation failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+        }
+        LlmBackend::None => {
+            return Err(AppError::Validation(
+                "llm backend cannot be 'none' for runtime settings".into(),
+            ));
+        }
+    }
+
+    Ok(())
 }

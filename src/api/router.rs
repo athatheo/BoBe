@@ -166,10 +166,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::setup::get_setup_status)
                 .delete(handlers::setup::cancel_setup_job),
         )
-        .route(
-            "/onboarding/warmup-embedding",
-            post(handlers::onboarding::warmup_embedding),
-        )
         // Tools (MCP sub-routes before wildcard)
         .route(
             "/tools/mcp",

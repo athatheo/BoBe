@@ -205,8 +205,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 showSetupWizard()
                 return
             }
+            if !status.complete {
+                let shouldRetry = await showBackendErrorDialog(
+                    message: "Backend is reachable but not healthy enough to start BoBe."
+                )
+                if shouldRetry {
+                    await startApp()
+                } else {
+                    NSApp.terminate(nil)
+                }
+                return
+            }
         } catch {
-            logger.warning("Could not check onboarding status: \(error.localizedDescription)")
+            logger.error("Could not check onboarding status: \(error.localizedDescription)")
+            let shouldRetry = await showBackendErrorDialog(message: error.localizedDescription)
+            if shouldRetry {
+                await startApp()
+            } else {
+                NSApp.terminate(nil)
+            }
+            return
         }
 
         // Onboarding not needed — show overlay and connect SSE
@@ -328,6 +346,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.messageText = "BoBe couldn't start"
         alert.informativeText = detail
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Retry")
+        alert.addButton(withTitle: "Quit")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    @MainActor
+    private func showBackendErrorDialog(message: String) async -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "BoBe backend error"
+        alert.informativeText =
+            "BoBe could not verify backend readiness.\n\n\(message)\n\nRetry or quit."
         alert.alertStyle = .critical
         alert.addButton(withTitle: "Retry")
         alert.addButton(withTitle: "Quit")

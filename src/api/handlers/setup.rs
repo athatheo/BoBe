@@ -1,11 +1,11 @@
 //! Setup job runner — single POST creates a background job that provisions everything.
 //!
-//! Replaces the old `configure_llm` + `pull_model` + `warmup_embedding` endpoints
-//! with a single idempotent job pipeline.
+//! Consolidates onboarding into a single idempotent setup job pipeline.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use axum::Json;
 use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,9 @@ use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 use crate::app_state::AppState;
+use crate::config::LlmBackend;
 use crate::error::AppError;
+use crate::llm::factory::LlmProviderFactory;
 
 // ── Onboarding options ─────────────────────────────────────────────────────
 
@@ -561,7 +563,21 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         serde_json::Value::String(models.vision.into()),
     );
 
-    state.config_manager.update(&changes);
+    let update = state.config_manager.update(&changes);
+    if update.persist_failed {
+        update_step(
+            "persist",
+            StepStatus::Failed,
+            Some("Failed to persist configuration".into()),
+        )
+        .await;
+        finish_job(
+            JobStatus::Failed,
+            Some("Failed to persist configuration".into()),
+        )
+        .await;
+        return;
+    }
     update_step(
         "persist",
         StepStatus::Succeeded,
@@ -637,11 +653,6 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
                 }
             }
 
-            // Store API key in Keychain
-            if let Err(e) = crate::secrets::store_secret("openai_api_key", &api_key) {
-                warn!(error = %e, "setup.keychain_store_failed");
-            }
-
             // Step 2: Test embedding
             update_step(
                 "embedding_warmup",
@@ -650,28 +661,12 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
             )
             .await;
 
-            // Apply key to config first so embedding provider can use it
             let model = body
                 .model
                 .clone()
                 .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
-            let mut changes = HashMap::new();
-            changes.insert(
-                "llm.backend".to_string(),
-                serde_json::Value::String("openai".into()),
-            );
-            changes.insert(
-                "llm.openai_api_key".to_string(),
-                serde_json::Value::String(api_key),
-            );
-            changes.insert(
-                "llm.openai_model".to_string(),
-                serde_json::Value::String(model),
-            );
-            state.config_manager.update(&changes);
-
-            match state.embedding_provider.embed("warmup").await {
+            match test_openai_embedding(&state, &api_key, &model).await {
                 Ok(_) => {
                     update_step(
                         "embedding_warmup",
@@ -688,10 +683,45 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
                         Some(format!("Embedding test failed: {e}")),
                     )
                     .await;
+                    finish_job(
+                        JobStatus::Failed,
+                        Some(format!("Embedding test failed: {e}")),
+                    )
+                    .await;
+                    return;
                 }
             }
 
-            // Step 3: Persist (already done via config_manager)
+            // Step 3: Persist
+            update_step("persist", StepStatus::InProgress, None).await;
+            let mut changes = HashMap::new();
+            changes.insert(
+                "llm.backend".to_string(),
+                serde_json::Value::String("openai".into()),
+            );
+            changes.insert(
+                "llm.openai_api_key".to_string(),
+                serde_json::Value::String(api_key),
+            );
+            changes.insert(
+                "llm.openai_model".to_string(),
+                serde_json::Value::String(model),
+            );
+            let update = state.config_manager.update(&changes);
+            if update.persist_failed {
+                update_step(
+                    "persist",
+                    StepStatus::Failed,
+                    Some("Failed to persist configuration".into()),
+                )
+                .await;
+                finish_job(
+                    JobStatus::Failed,
+                    Some("Failed to persist configuration".into()),
+                )
+                .await;
+                return;
+            }
             update_step(
                 "persist",
                 StepStatus::Succeeded,
@@ -778,12 +808,35 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
                 }
             }
 
-            // Store key in Keychain
-            if let Err(e) = crate::secrets::store_secret("azure_openai_api_key", &api_key) {
-                warn!(error = %e, "setup.keychain_store_failed");
+            // Test embedding
+            update_step(
+                "embedding_warmup",
+                StepStatus::InProgress,
+                Some("Testing embedding...".into()),
+            )
+            .await;
+            match test_azure_embedding(&state, &endpoint, &api_key, &deployment).await {
+                Ok(_) => {
+                    update_step(
+                        "embedding_warmup",
+                        StepStatus::Succeeded,
+                        Some("Embedding working".into()),
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    update_step(
+                        "embedding_warmup",
+                        StepStatus::Failed,
+                        Some(format!("Embedding failed: {e}")),
+                    )
+                    .await;
+                    finish_job(JobStatus::Failed, Some(format!("Embedding failed: {e}"))).await;
+                    return;
+                }
             }
 
-            // Persist config
+            update_step("persist", StepStatus::InProgress, None).await;
             let mut changes = HashMap::new();
             changes.insert(
                 "llm.backend".to_string(),
@@ -801,34 +854,21 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
                 "llm.azure_openai_deployment".to_string(),
                 serde_json::Value::String(deployment),
             );
-            state.config_manager.update(&changes);
-
-            // Test embedding
-            update_step(
-                "embedding_warmup",
-                StepStatus::InProgress,
-                Some("Testing embedding...".into()),
-            )
-            .await;
-            match state.embedding_provider.embed("warmup").await {
-                Ok(_) => {
-                    update_step(
-                        "embedding_warmup",
-                        StepStatus::Succeeded,
-                        Some("Embedding working".into()),
-                    )
-                    .await;
-                }
-                Err(e) => {
-                    update_step(
-                        "embedding_warmup",
-                        StepStatus::Failed,
-                        Some(format!("Embedding failed: {e}")),
-                    )
-                    .await;
-                }
+            let update = state.config_manager.update(&changes);
+            if update.persist_failed {
+                update_step(
+                    "persist",
+                    StepStatus::Failed,
+                    Some("Failed to persist configuration".into()),
+                )
+                .await;
+                finish_job(
+                    JobStatus::Failed,
+                    Some("Failed to persist configuration".into()),
+                )
+                .await;
+                return;
             }
-
             update_step(
                 "persist",
                 StepStatus::Succeeded,
@@ -854,6 +894,50 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
 
     info!(provider, "setup.cloud_complete");
     finish_job(JobStatus::Succeeded, None).await;
+}
+
+async fn test_openai_embedding(
+    state: &Arc<AppState>,
+    api_key: &str,
+    model: &str,
+) -> Result<(), AppError> {
+    let current = state.config();
+    let mut candidate = (**current).clone();
+    drop(current);
+
+    candidate.llm.backend = LlmBackend::Openai;
+    candidate.llm.openai_api_key = api_key.to_string();
+    candidate.llm.openai_model = model.to_string();
+
+    let factory = LlmProviderFactory::new(
+        state.http_client.clone(),
+        Arc::new(ArcSwap::from_pointee(candidate)),
+    );
+    let embedding = factory.create_embedding()?;
+    embedding.embed("warmup").await.map(|_| ())
+}
+
+async fn test_azure_embedding(
+    state: &Arc<AppState>,
+    endpoint: &str,
+    api_key: &str,
+    deployment: &str,
+) -> Result<(), AppError> {
+    let current = state.config();
+    let mut candidate = (**current).clone();
+    drop(current);
+
+    candidate.llm.backend = LlmBackend::AzureOpenai;
+    candidate.llm.azure_openai_endpoint = endpoint.to_string();
+    candidate.llm.azure_openai_api_key = api_key.to_string();
+    candidate.llm.azure_openai_deployment = deployment.to_string();
+
+    let factory = LlmProviderFactory::new(
+        state.http_client.clone(),
+        Arc::new(ArcSwap::from_pointee(candidate)),
+    );
+    let embedding = factory.create_embedding()?;
+    embedding.embed("warmup").await.map(|_| ())
 }
 
 async fn pull_model_with_progress(

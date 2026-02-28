@@ -11,6 +11,7 @@ struct AIModelPanel: View {
     @State private var azureEndpoint = ""
     @State private var azureDeployment = ""
     @State private var azureApiKey = ""
+    @State private var onboardingOptions: OnboardingOptions?
     @State private var models: [ModelInfo] = []
     @State private var pullModelName = ""
     @State private var isPulling = false
@@ -19,15 +20,16 @@ struct AIModelPanel: View {
     @State private var isDirty = false
     @State private var error: String?
     @Environment(\.theme) private var theme
-    private let openAIModelOptions = ["gpt-5-mini", "gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1", "o4-mini"]
-    private let popularOllamaModels = ["qwen3-vl:2b", "qwen3-vl:4b", "qwen3:14b", "llama3.2", "gemma3:4b", "phi4-mini"]
 
     private var openAIModelChoices: [String] {
-        var models = openAIModelOptions
-        if !openaiModel.isEmpty && !models.contains(openaiModel) {
-            models.insert(openaiModel, at: 0)
+        var choices = onboardingOptions?
+            .cloudProviders
+            .first(where: { $0.id == "openai" })?
+            .models ?? []
+        if !openaiModel.isEmpty && !choices.contains(openaiModel) {
+            choices.insert(openaiModel, at: 0)
         }
-        return models
+        return choices
     }
 
     var body: some View {
@@ -210,35 +212,6 @@ struct AIModelPanel: View {
                         .bobeButton(.secondary, size: .small)
                         .disabled(pullModelName.isEmpty)
                     }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Popular Ollama models")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(theme.colors.textMuted)
-                        FlowLayout(spacing: 6) {
-                            ForEach(popularOllamaModels, id: \.self) { model in
-                                Button(model) {
-                                    pullModelName = model
-                                }
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(theme.colors.text)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(
-                                    Capsule()
-                                        .fill(theme.colors.surface)
-                                        .overlay(
-                                            Capsule()
-                                                .stroke(theme.colors.border, lineWidth: 1)
-                                        )
-                                )
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        Text("Click a model to fill the field, then pull.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(theme.colors.textMuted)
-                    }
                 }
             }
         }
@@ -309,6 +282,7 @@ struct AIModelPanel: View {
             azureEndpoint = s.azureOpenaiEndpoint
             azureDeployment = s.azureOpenaiDeployment
 
+            onboardingOptions = try? await DaemonClient.shared.getOnboardingOptions()
             let modelsResp = try await DaemonClient.shared.listModels()
             models = modelsResp.models
             isDirty = false

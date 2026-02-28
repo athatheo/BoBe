@@ -1,7 +1,4 @@
 import Foundation
-import OSLog
-
-private let logger = Logger(subsystem: "com.bobe.app", category: "DaemonClient")
 
 // MARK: - Errors
 
@@ -127,30 +124,5 @@ extension DaemonClient {
 
     func markOnboardingComplete() async throws {
         try await fetchVoid("/onboarding/mark-complete", method: "POST")
-    }
-
-    /// Warmup the embedding model (2 minute timeout)
-    func warmupEmbedding() async throws {
-        let url = baseURL.appendingPathComponent("onboarding/warmup-embedding")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 120
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            logger.error("POST /onboarding/warmup-embedding: network error — \(error.localizedDescription)")
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            logger.error("POST /onboarding/warmup-embedding failed: HTTP \(code) — \(message)")
-            throw DaemonError.httpError(
-                statusCode: code,
-                message: message)
-        }
     }
 }
