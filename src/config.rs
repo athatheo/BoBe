@@ -500,6 +500,11 @@ pub struct Config {
 
     pub soul_file: Option<String>,
     pub seed_default_documents: bool,
+
+    /// Set to true after successful setup completion. Prevents re-triggering
+    /// the onboarding wizard when the LLM backend is temporarily unreachable.
+    #[serde(default)]
+    pub setup_completed: bool,
 }
 
 impl Config {

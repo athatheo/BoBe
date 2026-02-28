@@ -67,11 +67,13 @@ extension SetupWizard {
     func startPolling(jobId: String) {
         pollTask?.cancel()
         pollTask = Task {
+            var consecutiveFailures = 0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(1500))
                 guard !Task.isCancelled else { return }
                 do {
                     let job = try await DaemonClient.shared.getSetupJobStatus(jobId: jobId)
+                    consecutiveFailures = 0
                     await MainActor.run {
                         setupJob = job
                         progressPercent = job.overallPercent
@@ -84,7 +86,16 @@ extension SetupWizard {
                         return
                     }
                 } catch {
-                    logger.warning("setup.poll_failed: \(error.localizedDescription)")
+                    consecutiveFailures += 1
+                    logger.warning("setup.poll_failed (\(consecutiveFailures)): \(error.localizedDescription)")
+                    if consecutiveFailures >= 5 {
+                        await MainActor.run {
+                            busy = false
+                            errorMessage = "Lost connection to the backend during setup. Please try again."
+                            step = .error
+                        }
+                        return
+                    }
                 }
             }
         }

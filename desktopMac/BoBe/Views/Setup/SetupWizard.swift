@@ -169,13 +169,21 @@ struct SetupWizard: View {
     }
 
     func loadOptions() async {
-        do {
-            options = try await DaemonClient.shared.getOnboardingOptions()
-            if let rec = options?.cloudProviders.first?.recommended {
-                selectedModel = rec
+        for attempt in 1...5 {
+            do {
+                options = try await DaemonClient.shared.getOnboardingOptions()
+                if let rec = options?.cloudProviders.first?.recommended {
+                    selectedModel = rec
+                }
+                return
+            } catch {
+                if attempt < 5 {
+                    try? await Task.sleep(for: .seconds(Double(attempt)))
+                }
             }
-        } catch {
-            // Non-fatal — will retry or show loading state
         }
+        // After all retries failed, show error so user isn't stuck on a spinner
+        errorMessage = "Could not connect to the backend. Please restart BoBe."
+        step = .error
     }
 }

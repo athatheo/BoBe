@@ -217,7 +217,10 @@ impl OllamaManager {
             }
         }
 
-        Ok(())
+        Err(AppError::LlmUnavailable(
+            "Model pull ended without success confirmation (possible network interruption)"
+                .to_string(),
+        ))
     }
 
     /// Start Ollama serve process.
