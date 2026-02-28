@@ -67,10 +67,10 @@ impl FetchUrlTool {
             if attempt.previous().len() >= 10 {
                 return attempt.error("too many redirects");
             }
-            if let Some(host) = attempt.url().host_str() {
-                if is_private_host(host) {
-                    return attempt.error("redirect to private/internal address blocked");
-                }
+            if let Some(host) = attempt.url().host_str()
+                && is_private_host(host)
+            {
+                return attempt.error("redirect to private/internal address blocked");
             }
             attempt.follow()
         });
@@ -134,12 +134,12 @@ impl NativeTool for FetchUrlTool {
             .parse()
             .map_err(|e| AppError::Validation(format!("Invalid URL: {e}")))?;
 
-        if let Some(host) = parsed.host_str() {
-            if is_private_host(host) {
-                return Err(AppError::Tool(
-                    "Access to private/internal addresses is blocked".into(),
-                ));
-            }
+        if let Some(host) = parsed.host_str()
+            && is_private_host(host)
+        {
+            return Err(AppError::Tool(
+                "Access to private/internal addresses is blocked".into(),
+            ));
         }
 
         let response = self

@@ -70,10 +70,6 @@ pub enum LearnerError {
     #[error("LLM error: {0}")]
     Llm(String),
 
-    #[error("Parse error: {0}")]
-    #[allow(dead_code)]
-    Parse(String),
-
     #[error("Storage error: {0}")]
     Storage(String),
 }
@@ -94,7 +90,4 @@ impl From<crate::error::AppError> for LearnerError {
 pub enum LearnerResult {
     /// Observation was stored successfully.
     Stored { observation_id: uuid::Uuid },
-    /// Learning was skipped (e.g., no useful content).
-    #[allow(dead_code)]
-    Skipped { reason: String },
 }

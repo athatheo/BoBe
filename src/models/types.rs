@@ -1,7 +1,3 @@
-/// Embedding dimension — must match the embedding model (bge-small-en-v1.5 = 384).
-#[allow(dead_code)]
-pub const EMBEDDING_DIMENSION: usize = 384;
-
 // ─── Conversation ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]

@@ -165,12 +165,12 @@ impl GoalWorkerManager {
                     Ok(false) => {
                         // The worker returned false — check if this is a real failure
                         // (goal reset to ACTIVE) or just waiting for approval.
-                        if let Ok(Some(goal)) = self.goal_repo.get_by_id(goal_id).await {
-                            if goal.status == GoalStatus::Active {
-                                self.record_failure(goal_id);
-                                if self.is_exhausted(goal_id) {
-                                    self.pause_exhausted_goal(goal_id).await;
-                                }
+                        if let Ok(Some(goal)) = self.goal_repo.get_by_id(goal_id).await
+                            && goal.status == GoalStatus::Active
+                        {
+                            self.record_failure(goal_id);
+                            if self.is_exhausted(goal_id) {
+                                self.pause_exhausted_goal(goal_id).await;
                             }
                         }
                     }
@@ -239,18 +239,18 @@ impl GoalWorkerManager {
             }
 
             let active_plan = self.plan_repo.get_active_plan_for_goal(goal.id).await?;
-            if let Some(plan) = active_plan {
-                if matches!(
+            if let Some(plan) = active_plan
+                && matches!(
                     plan.status,
                     GoalPlanStatus::Approved | GoalPlanStatus::AutoApproved
-                ) {
-                    info!(
-                        goal_id = %goal.id,
-                        plan_id = %plan.id,
-                        "goal_worker_manager.executing_approved_plan"
-                    );
-                    self.spawn_execution_task(goal.id, plan.id);
-                }
+                )
+            {
+                info!(
+                    goal_id = %goal.id,
+                    plan_id = %plan.id,
+                    "goal_worker_manager.executing_approved_plan"
+                );
+                self.spawn_execution_task(goal.id, plan.id);
             }
         }
 

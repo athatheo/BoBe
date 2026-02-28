@@ -23,14 +23,9 @@ final class BobeStore {
     var isConnected: Bool { context.daemonConnected }
     var isCapturing: Bool { context.capturing }
     var isThinking: Bool { context.thinking }
-    var isSpeaking: Bool { context.speaking }
     var hasMessage: Bool { context.lastMessage != nil }
-    var lastMessage: String? { context.lastMessage }
-    var currentMessage: String { context.currentMessage }
-    var currentMessageId: String? { context.currentMessageId }
     var messages: [ChatMessage] { context.messages }
     var errorMessage: String? { context.errorMessage }
-    var activeIndicator: IndicatorType? { context.activeIndicator }
     var toolExecutions: [ToolExecution] { context.toolExecutions }
     var runningTools: [ToolExecution] { context.toolExecutions.filter { $0.status == .running } }
     var capturePermissionMissing: Bool { context.capturePermissionMissing }
@@ -133,15 +128,6 @@ final class BobeStore {
             }
             return nil
         }
-    }
-
-    func dismissMessage() async {
-        updateState {
-            $0.lastMessage = nil
-            $0.currentMessage = ""
-            $0.speaking = false
-        }
-        try? await client.dismissMessage()
     }
 
     func clearMessages() {

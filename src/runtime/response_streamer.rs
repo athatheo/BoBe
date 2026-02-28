@@ -18,13 +18,11 @@ use crate::util::sse::factories::{
 
 /// Result of streaming an LLM response.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct StreamResult {
     pub full_response: String,
     pub token_count: usize,
     pub duration_ms: f64,
     pub success: bool,
-    pub error: Option<String>,
     pub first_token_ms: Option<f64>,
 }
 
@@ -47,7 +45,6 @@ pub async fn stream_response(
     let start_time = Instant::now();
     let mut sequence = 0usize;
     let mut full_response = String::new();
-    let mut error_msg: Option<String> = None;
     let mut success = true;
     let mut first_token_time: Option<Instant> = None;
 
@@ -100,7 +97,6 @@ pub async fn stream_response(
             },
             Err(e) => {
                 success = false;
-                error_msg = Some(e.to_string());
                 error!(error = %e, chunks = sequence, "stream_response.error");
                 // Classify error: tool system errors are non-recoverable
                 let (code, recoverable) = classify_error(&e);
@@ -120,7 +116,6 @@ pub async fn stream_response(
         token_count: sequence,
         duration_ms,
         success,
-        error: error_msg,
         first_token_ms,
     }
 }
@@ -142,7 +137,6 @@ pub async fn stream_llm_response(
     let start_time = Instant::now();
     let mut sequence = 0usize;
     let mut full_response = String::new();
-    let mut error_msg: Option<String> = None;
     let mut success = true;
     let mut first_token_time: Option<Instant> = None;
 
@@ -164,7 +158,6 @@ pub async fn stream_llm_response(
             }
             Err(e) => {
                 success = false;
-                error_msg = Some(e.to_string());
                 error!(error = %e, chunks = sequence, "stream_response.error");
                 push_error_event(&msg_id, &e, event_queue);
                 break;
@@ -182,7 +175,6 @@ pub async fn stream_llm_response(
         token_count: sequence,
         duration_ms,
         success,
-        error: error_msg,
         first_token_ms,
     }
 }
@@ -256,7 +248,7 @@ fn push_error_event_classified(
 /// Tool system errors are non-recoverable; LLM errors are recoverable.
 fn classify_error(error: &AppError) -> (&'static str, bool) {
     match error {
-        AppError::Tool(_) | AppError::ToolCallLoop(_) => ("TOOL_SYSTEM_ERROR", false),
+        AppError::Tool(_) => ("TOOL_SYSTEM_ERROR", false),
         AppError::LlmTimeout(_) => ("LLM_TIMEOUT", true),
         _ => ("RESPONSE_ERROR", true),
     }
@@ -267,7 +259,6 @@ fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {
 }
 
 /// Stream a simple text message (no LLM call needed).
-#[allow(dead_code)]
 pub fn stream_simple_message(message: &str, event_queue: &EventQueue, msg_id: Option<&str>) {
     let msg_id = msg_id
         .map(|s| s.to_owned())

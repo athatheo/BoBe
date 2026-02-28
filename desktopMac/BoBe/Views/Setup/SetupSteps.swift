@@ -78,34 +78,6 @@ struct AIChoiceCard: View {
     }
 }
 
-// MARK: - Step Indicator (downloading progress steps)
-
-struct StepIndicator: View {
-    let label: String
-    let active: Bool
-    let done: Bool
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(done ? "✓" : active ? "●" : "○")
-                .font(.system(size: 12))
-                .foregroundStyle(
-                    done ? theme.colors.primary
-                        : active ? theme.colors.text : theme.colors.textMuted
-                )
-            Text(label)
-                .font(.system(size: 14, weight: active ? .semibold : .regular))
-                .foregroundStyle(
-                    active ? theme.colors.text
-                        : done ? theme.colors.primary
-                        : theme.colors.textMuted
-                )
-        }
-        .padding(.vertical, 4)
-    }
-}
-
 // MARK: - Permission Badge
 
 struct PermissionBadge: View {
@@ -143,37 +115,6 @@ struct PermissionBadge: View {
     }
 }
 
-// MARK: - Summary Row
-
-struct SummaryRow: View {
-    let label: String
-    let value: String
-    let ok: Bool
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(ok ? "✓" : "⚠")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(ok ? theme.colors.secondary : theme.colors.tertiary)
-            Text("\(label):")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(theme.colors.text)
-            Text(value)
-                .font(.system(size: 13))
-                .foregroundStyle(theme.colors.textMuted)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(ok ? theme.colors.secondary.opacity(0.1) : theme.colors.tertiary.opacity(0.1))
-                .stroke(ok ? theme.colors.secondary.opacity(0.3) : theme.colors.tertiary.opacity(0.3), lineWidth: 1)
-        )
-    }
-}
-
 // MARK: - Permission Card (capture setup)
 
 struct PermissionCard<Content: View>: View {
@@ -202,53 +143,6 @@ struct PermissionCard<Content: View>: View {
     }
 }
 
-// MARK: - Collapsible Section
-
-struct SetupCollapsibleSection<Content: View>: View {
-    let title: String
-    let collapsedTitle: String
-    @Binding var isExpanded: Bool
-    @ViewBuilder let content: () -> Content
-    @Environment(\.theme) private var theme
-    @State private var isHovered = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Text(isExpanded ? "▼" : "▶").font(.system(size: 8))
-                    Text(isExpanded ? collapsedTitle : title)
-                        .font(.system(size: 13))
-                }
-                .foregroundStyle(theme.colors.primary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isHovered ? theme.colors.surface : .clear)
-                )
-            }
-            .buttonStyle(.plain)
-            .onHover { isHovered = $0 }
-
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 10) {
-                    content()
-                }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(theme.colors.surface)
-                        .stroke(theme.colors.border, lineWidth: 1)
-                )
-                .padding(.top, 8)
-            }
-        }
-    }
-}
-
 // MARK: - Previews
 
 #Preview("Concept Card") {
@@ -271,16 +165,6 @@ struct SetupCollapsibleSection<Content: View>: View {
     .padding()
 }
 
-#Preview("Step Indicators") {
-    VStack(alignment: .leading, spacing: 0) {
-        StepIndicator(label: "Downloading AI engine", active: false, done: true)
-        StepIndicator(label: "Downloading language model", active: true, done: false)
-        StepIndicator(label: "Initializing BoBe", active: false, done: false)
-    }
-    .environment(\.theme, allThemes[0])
-    .padding()
-}
-
 #Preview("Permission Badges") {
     HStack(spacing: 8) {
         PermissionBadge(status: "granted")
@@ -289,16 +173,6 @@ struct SetupCollapsibleSection<Content: View>: View {
         PermissionBadge(status: "not-determined")
     }
     .environment(\.theme, allThemes[0])
-    .padding()
-}
-
-#Preview("Summary Rows") {
-    VStack(spacing: 6) {
-        SummaryRow(label: "AI Model", value: "Cloud LLM", ok: true)
-        SummaryRow(label: "Screen Capture", value: "Disabled (skipped)", ok: false)
-    }
-    .environment(\.theme, allThemes[0])
-    .frame(width: 440)
     .padding()
 }
 

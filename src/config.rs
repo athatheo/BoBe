@@ -510,10 +510,11 @@ impl Config {
 
         // Try one-time migration from .env if config.toml doesn't exist
         let env_path = PathBuf::from(&data_dir).join(".env");
-        if !config_path.exists() && env_path.exists() {
-            if let Err(e) = migrate_env_to_toml(&env_path, &config_path) {
-                tracing::warn!(error = %e, "config.migration_failed, using defaults + env vars");
-            }
+        if !config_path.exists()
+            && env_path.exists()
+            && let Err(e) = migrate_env_to_toml(&env_path, &config_path)
+        {
+            tracing::warn!(error = %e, "config.migration_failed, using defaults + env vars");
         }
 
         let defaults = Self {

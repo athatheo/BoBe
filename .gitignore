@@ -1,6 +1,6 @@
 /target
 .worktrees/
-.DS_Store
+**/.DS_Store
 build/
 
 # Snyk Security Extension - AI Rules (auto-generated)

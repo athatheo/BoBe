@@ -52,41 +52,8 @@ impl Conversation {
         self.state == ConversationState::Pending
     }
 
-    #[allow(dead_code)]
-    pub fn is_active(&self) -> bool {
-        self.state == ConversationState::Active
-    }
-
     pub fn is_closed(&self) -> bool {
         self.state == ConversationState::Closed
-    }
-
-    /// Transition from PENDING to ACTIVE.
-    #[allow(dead_code)]
-    pub fn activate(&mut self) -> Result<(), String> {
-        if self.state != ConversationState::Pending {
-            return Err(format!(
-                "Cannot activate conversation in state '{}'. Must be 'pending'.",
-                self.state
-            ));
-        }
-        self.state = ConversationState::Active;
-        self.updated_at = Utc::now();
-        Ok(())
-    }
-
-    /// Close the conversation. Idempotent.
-    #[allow(dead_code)]
-    pub fn close(&mut self, summary: Option<String>) {
-        if self.is_closed() {
-            return;
-        }
-        self.state = ConversationState::Closed;
-        self.closed_at = Some(Utc::now());
-        self.updated_at = Utc::now();
-        if let Some(s) = summary {
-            self.summary = Some(s);
-        }
     }
 
     /// Check if conversation is stale (no user activity within timeout).
@@ -102,11 +69,6 @@ impl Conversation {
             .rev()
             .find(|t| t.role == TurnRole::User)
             .map(|t| t.created_at)
-    }
-
-    #[allow(dead_code)]
-    pub fn user_message_count(&self, turns: &[ConversationTurn]) -> usize {
-        turns.iter().filter(|t| t.role == TurnRole::User).count()
     }
 }
 
@@ -132,15 +94,5 @@ impl ConversationTurn {
             created_at: now,
             updated_at: now,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn is_user(&self) -> bool {
-        self.role == TurnRole::User
-    }
-
-    #[allow(dead_code)]
-    pub fn is_assistant(&self) -> bool {
-        self.role == TurnRole::Assistant
     }
 }

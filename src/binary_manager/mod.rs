@@ -19,7 +19,6 @@ pub struct DownloadProgress {
     pub current_bytes: u64,
     pub total_bytes: Option<u64>,
     pub percent: Option<u8>,
-    pub message: String,
 }
 
 /// Manages Ollama binary discovery, download, and extraction.
@@ -85,7 +84,6 @@ impl BinaryManager {
                     current_bytes: 0,
                     total_bytes: None,
                     percent: Some(100),
-                    message: format!("Ollama binary found at {}", path.display()),
                 })
                 .ok();
             return Ok(path);
@@ -106,7 +104,6 @@ impl BinaryManager {
                 current_bytes: 0,
                 total_bytes: None,
                 percent: Some(0),
-                message: "Downloading Ollama...".into(),
             })
             .ok();
 
@@ -124,7 +121,6 @@ impl BinaryManager {
                     current_bytes: current,
                     total_bytes: total,
                     percent,
-                    message: "Downloading Ollama...".into(),
                 })
                 .ok();
         })
@@ -135,7 +131,6 @@ impl BinaryManager {
                 current_bytes: 0,
                 total_bytes: None,
                 percent: Some(92),
-                message: "Extracting Ollama...".into(),
             })
             .ok();
 
@@ -150,7 +145,6 @@ impl BinaryManager {
                 current_bytes: 0,
                 total_bytes: None,
                 percent: Some(100),
-                message: format!("Ollama installed at {}", target_path.display()),
             })
             .ok();
 

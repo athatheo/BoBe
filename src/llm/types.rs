@@ -76,17 +76,6 @@ impl AiMessage {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn assistant(content: impl Into<String>) -> Self {
-        Self {
-            role: "assistant".into(),
-            content: MessageContent::Text(content.into()),
-            name: None,
-            tool_calls: vec![],
-            tool_call_id: None,
-        }
-    }
-
     pub fn assistant_with_tool_calls(tool_calls: Vec<AiToolCall>) -> Self {
         Self {
             role: "assistant".into(),
@@ -178,14 +167,6 @@ pub struct ResponseFormat {
 }
 
 impl ResponseFormat {
-    #[allow(dead_code)]
-    pub fn text() -> Self {
-        Self {
-            format_type: "text".into(),
-            json_schema: None,
-        }
-    }
-
     pub fn json() -> Self {
         Self {
             format_type: "json_object".into(),

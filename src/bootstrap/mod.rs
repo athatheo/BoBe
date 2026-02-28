@@ -49,10 +49,10 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         }
     }
 
-    if config.goals.sync_on_startup {
-        if let Err(e) = wired.goals_service.sync_from_file().await {
-            tracing::warn!(error = %e, "bootstrap.goals_sync_failed");
-        }
+    if config.goals.sync_on_startup
+        && let Err(e) = wired.goals_service.sync_from_file().await
+    {
+        tracing::warn!(error = %e, "bootstrap.goals_sync_failed");
     }
 
     wired.register_tools(&config, &infra.event_queue).await;

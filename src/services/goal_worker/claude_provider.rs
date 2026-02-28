@@ -371,33 +371,33 @@ fn parse_plan(plan_text: &str, max_steps: u32) -> Vec<PlanStep> {
     let json_text = strip_code_fences(text);
 
     // Try JSON parsing first
-    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_text) {
-        if let Some(raw_steps) = data.get("steps").and_then(|v| v.as_array()) {
-            let mut steps = Vec::new();
-            for (i, step) in raw_steps.iter().enumerate() {
-                if i >= max_steps as usize {
-                    break;
-                }
-                let content = if let Some(obj) = step.as_object() {
-                    obj.get("content")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                } else if let Some(s) = step.as_str() {
-                    s.to_string()
-                } else {
-                    continue;
-                };
-                let trimmed = content.trim();
-                if !trimmed.is_empty() {
-                    steps.push(PlanStep {
-                        content: trimmed.to_string(),
-                        order: i as i32,
-                    });
-                }
+    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_text)
+        && let Some(raw_steps) = data.get("steps").and_then(|v| v.as_array())
+    {
+        let mut steps = Vec::new();
+        for (i, step) in raw_steps.iter().enumerate() {
+            if i >= max_steps as usize {
+                break;
             }
-            return steps;
+            let content = if let Some(obj) = step.as_object() {
+                obj.get("content")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            } else if let Some(s) = step.as_str() {
+                s.to_string()
+            } else {
+                continue;
+            };
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                steps.push(PlanStep {
+                    content: trimmed.to_string(),
+                    order: i as i32,
+                });
+            }
         }
+        return steps;
     }
 
     // Fallback: parse as numbered list
