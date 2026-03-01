@@ -28,24 +28,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isShowingSetupAlert = false
     private var isTransitioningFromSetup = false
     private var setupCloseCount = 0
-    /// Set by SetupWizard when onboarding completes successfully — prevents
-    /// the willCloseNotification handler from showing "Setup isn't complete".
     var setupCompletedSuccessfully = false
 
     @MainActor
     func completeSetupAndCloseWizard() {
         logger.info("setup.complete_handoff.begin")
-        setupCompletedSuccessfully = true
+        self.setupCompletedSuccessfully = true
         if let observer = setupCloseObserver {
             NotificationCenter.default.removeObserver(observer)
-            setupCloseObserver = nil
+            self.setupCloseObserver = nil
         }
 
-        let windowToHide = setupWindow ?? NSApplication.shared.keyWindow
+        let windowToHide = self.setupWindow ?? NSApplication.shared.keyWindow
         windowToHide?.animationBehavior = .none
         windowToHide?.orderOut(nil)
-        setupWindow = nil
-        isTransitioningFromSetup = true
+        self.setupWindow = nil
+        self.isTransitioningFromSetup = true
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -62,8 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("BoBe starting up")
 
-        if setupCompletedObserver == nil {
-            setupCompletedObserver = NotificationCenter.default.addObserver(
+        if self.setupCompletedObserver == nil {
+            self.setupCompletedObserver = NotificationCenter.default.addObserver(
                 forName: .bobeSetupCompleted,
                 object: nil,
                 queue: .main
@@ -76,8 +74,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.setActivationPolicy(.accessory)
 
-        // Single instance guard — activate existing instance and bail.
-        // In dev, bundle ID can be missing; add executable/name fallback.
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let bundleMatches = NSRunningApplication.runningApplications(
             withBundleIdentifier: "com.bobe.app"
@@ -86,9 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         var candidates = bundleMatches
         for app in NSWorkspace.shared.runningApplications
-        where app.processIdentifier != currentPID
+            where app.processIdentifier != currentPID
             && (app.executableURL?.lastPathComponent == "BoBe" || app.localizedName == "BoBe")
-            && !candidates.contains(where: { $0.processIdentifier == app.processIdentifier }) {
+            && !candidates.contains(where: { $0.processIdentifier == app.processIdentifier })
+        {
             candidates.append(app)
         }
 
@@ -99,36 +96,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Prompt to move to /Applications if launched from DMG / Downloads / tmp
         moveToApplicationsIfNeeded()
 
-        // Set dock icon based on theme
         Task { @MainActor in
             self.setDockIcon()
         }
 
         TrayManager.shared.setup()
+        UpdaterManager.shared.setup()
 
         Task { @MainActor in
-            await startApp()
+            await self.startApp()
         }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !isQuitting else { return .terminateNow }
-        isQuitting = true
+        guard !self.isQuitting else { return .terminateNow }
+        self.isQuitting = true
 
-        // 20-second hard timeout guarantees exit (12s grace + 600ms UI + margin)
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
             logger.warning("Hard shutdown timeout — forcing exit")
             exit(0)
         }
 
         Task {
-            // Show shutting-down state in overlay before teardown
             BobeStore.shared.beginShutdown()
 
-            // Brief pause so the user sees the goodbye state
             try? await Task.sleep(for: .milliseconds(600))
 
             BobeStore.shared.disconnect()
@@ -155,10 +148,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        // Only recreate overlay if panel doesn't exist and we're not in setup or alert flow
-        if OverlayWindowManager.shared.panel == nil && setupWindow == nil && !isQuitting && !isShowingSetupAlert && !isTransitioningFromSetup {
+        if OverlayWindowManager.shared.panel == nil, self.setupWindow == nil, !self.isQuitting, !self.isShowingSetupAlert,
+           !self.isTransitioningFromSetup
+        {
             Task { @MainActor in
-                showOverlay()
+                self.showOverlay()
             }
         }
     }
@@ -168,7 +162,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isDev = ProcessInfo.processInfo.environment["BOBE_DEV"] != nil
         let forceOnboarding = ProcessInfo.processInfo.environment["BOBE_FORCE_ONBOARDING"] == "1"
 
-        // Production: start backend with retry dialog
         if !isDev {
             var serviceStarted = false
             var attempt = 0
@@ -181,13 +174,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     logger.error("Backend start attempt \(attempt) failed: \(error.localizedDescription)")
                     if attempt >= 3 {
                         let shouldRetry = await showServiceErrorDialog(error: error)
-                        if shouldRetry {
-                            attempt = 0
-                            continue
-                        } else {
+                        guard shouldRetry else {
                             NSApp.terminate(nil)
                             return
                         }
+                        attempt = 0
+                        continue
                     }
                 }
             }
@@ -195,42 +187,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("Dev mode: skipping service management (run `bobe serve` manually)")
         }
 
-        // Check onboarding status — works in both dev and production mode
         if forceOnboarding {
             logger.info("BOBE_FORCE_ONBOARDING=1 — forcing wizard")
-            showSetupWizard()
+            self.showSetupWizard()
             return
         }
 
-        while true {
-            do {
-                let status = try await DaemonClient.shared.getOnboardingStatus()
-                if status.needsOnboarding {
-                    showSetupWizard()
-                    return
-                }
-                if !status.complete {
-                    let shouldRetry = await showBackendErrorDialog(
-                        message: "Backend is reachable but not healthy enough to start BoBe."
-                    )
-                    if shouldRetry { continue } else {
-                        NSApp.terminate(nil)
-                        return
-                    }
-                }
-                break // status.complete — proceed to overlay
-            } catch {
-                logger.error("Could not check onboarding status: \(error.localizedDescription)")
-                let shouldRetry = await showBackendErrorDialog(message: error.localizedDescription)
-                if shouldRetry { continue } else {
-                    NSApp.terminate(nil)
-                    return
-                }
+        do {
+            let status = try await DaemonClient.shared.getOnboardingStatus()
+            if status.needsOnboarding {
+                self.showSetupWizard()
+                return
+            }
+        } catch {
+            logger.error("Could not check onboarding status: \(error.localizedDescription)")
+            let shouldRetry = await showBackendErrorDialog(message: error.localizedDescription)
+            if !shouldRetry {
+                NSApp.terminate(nil)
+                return
             }
         }
 
-        // Onboarding not needed — show overlay and connect SSE
-        showOverlay()
+        self.showOverlay()
         BobeStore.shared.connect()
     }
 
@@ -245,14 +223,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func showSetupWizard() {
-        // Clean up any previous observer
         if let observer = setupCloseObserver {
             NotificationCenter.default.removeObserver(observer)
-            setupCloseObserver = nil
+            self.setupCloseObserver = nil
         }
-        setupCompletedSuccessfully = false
+        self.setupCompletedSuccessfully = false
 
-        // Temporarily show in dock so wizard can activate properly
         NSApp.setActivationPolicy(.regular)
 
         let theme = ThemeStore.shared.currentTheme
@@ -275,10 +251,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
 
-        // Retain the window so ARC doesn't release it
         self.setupWindow = window
 
-        setupCloseObserver = NotificationCenter.default.addObserver(
+        self.setupCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
@@ -286,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor [weak self] in
                 guard let self, !self.isQuitting else { return }
 
-                if let observer = self.setupCloseObserver {
+                if let observer = setupCloseObserver {
                     NotificationCenter.default.removeObserver(observer)
                     self.setupCloseObserver = nil
                 }
@@ -336,8 +311,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func showServiceErrorDialog(error: Error) async -> Bool {
-        var detail = "The backend service failed to start after multiple attempts.\n\n"
-            + "\(error.localizedDescription)\n\n"
+        var detail =
+            "The backend service failed to start after multiple attempts.\n\n"
+                + "\(error.localizedDescription)\n\n"
         if let stderr = await BackendService.shared.lastError {
             detail += "Backend output:\n\(stderr)\n\n"
         }
@@ -369,7 +345,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let iconName = isDark ? "bobe_app_dock_dark" : "bobe_app_dock_light"
         if let iconURL = Bundle.appResources.url(forResource: iconName, withExtension: "png"),
-           let icon = NSImage(contentsOf: iconURL) {
+           let icon = NSImage(contentsOf: iconURL)
+        {
             NSApp.applicationIconImage = icon
         }
     }

@@ -11,18 +11,19 @@ final class ThemeStore {
     private let userDefaultsKey = "bobe_theme_id"
 
     var themeId: ThemeId {
-        get { currentTheme.themeId }
-        set { setTheme(newValue) }
+        get { self.currentTheme.themeId }
+        set { self.setTheme(newValue) }
     }
 
     private init() {
-        let savedId = UserDefaults.standard.string(forKey: "bobe_theme_id")
-            .flatMap { ThemeId(rawValue: $0) } ?? .bauhaus
+        let savedId =
+            UserDefaults.standard.string(forKey: "bobe_theme_id")
+                .flatMap { ThemeId(rawValue: $0) } ?? .bauhaus
         self.currentTheme = themeById(savedId)
     }
 
     func setTheme(_ id: ThemeId) {
-        currentTheme = themeById(id)
-        UserDefaults.standard.set(id.rawValue, forKey: userDefaultsKey)
+        self.currentTheme = themeById(id)
+        UserDefaults.standard.set(id.rawValue, forKey: self.userDefaultsKey)
     }
 }

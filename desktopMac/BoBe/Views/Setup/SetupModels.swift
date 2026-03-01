@@ -32,7 +32,7 @@ struct LocalTier: Codable, Identifiable, Equatable {
     }
 
     var diskLabel: String {
-        String(format: "~%.0f GB", Double(diskEstimateBytes) / 1_000_000_000)
+        String(format: "~%.0f GB", Double(self.diskEstimateBytes) / 1_000_000_000)
     }
 }
 
@@ -43,8 +43,13 @@ struct CloudProvider: Codable, Identifiable, Equatable {
     let models: [String]
     let recommended: String?
 
-    var needsEndpoint: Bool { requires.contains("endpoint") }
-    var needsDeployment: Bool { requires.contains("deployment") }
+    var needsEndpoint: Bool {
+        self.requires.contains("endpoint")
+    }
+
+    var needsDeployment: Bool {
+        self.requires.contains("deployment")
+    }
 }
 
 struct OnboardingOptions: Codable {
@@ -93,13 +98,13 @@ struct SetupJobState: Codable {
     }
 
     var isTerminal: Bool {
-        ["succeeded", "failed", "canceled"].contains(status)
+        ["succeeded", "failed", "canceled"].contains(self.status)
     }
 
     var overallPercent: Double {
-        let total = steps.count
+        let total = self.steps.count
         guard total > 0 else { return 0 }
-        let completed = steps.filter { $0.status == "succeeded" || $0.status == "skipped" }.count
+        let completed = self.steps.count(where: { $0.status == "succeeded" || $0.status == "skipped" })
         let currentPct = Double(steps.first { $0.status == "in_progress" }?.progress?.percent ?? 0) / 100.0
         return (Double(completed) + currentPct) / Double(total) * 100
     }
@@ -127,8 +132,8 @@ enum SetupError: Error, LocalizedError {
     case general(String)
     var errorDescription: String? {
         switch self {
-        case .diskSpace(let msg): msg
-        case .general(let msg): msg
+        case let .diskSpace(msg): msg
+        case let .general(msg): msg
         }
     }
 }

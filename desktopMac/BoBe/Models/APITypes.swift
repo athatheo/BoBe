@@ -54,7 +54,7 @@ struct TextDeltaPayload: Codable, Sendable {
 
 /// Tool call start payload
 struct ToolCallStartPayload: Codable, Sendable {
-    let status: String // "start"
+    let status: String
     let toolName: String
     let toolCallId: String
 
@@ -67,7 +67,7 @@ struct ToolCallStartPayload: Codable, Sendable {
 
 /// Tool call complete payload
 struct ToolCallCompletePayload: Codable, Sendable {
-    let status: String // "complete"
+    let status: String
     let toolName: String
     let toolCallId: String
     let success: Bool
@@ -113,7 +113,6 @@ struct AnyCodablePayload: Codable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        // Capture the raw JSON for the payload
         if let dict = try? container.decode([String: AnyCodableValue].self) {
             self.data = try JSONEncoder().encode(dict)
         } else {
@@ -123,11 +122,11 @@ struct AnyCodablePayload: Codable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        try container.encode(data)
+        try container.encode(self.data)
     }
 
     func decode<T: Decodable>(as type: T.Type) throws -> T {
-        try JSONDecoder().decode(type, from: data)
+        try JSONDecoder().decode(type, from: self.data)
     }
 }
 
@@ -159,21 +158,24 @@ enum AnyCodableValue: Codable, Sendable {
             self = .null
         } else {
             throw DecodingError.dataCorrupted(
-                .init(codingPath: decoder.codingPath,
-                      debugDescription: "Unsupported JSON value"))
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Unsupported JSON value"
+                )
+            )
         }
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
-        case .string(let v): try container.encode(v)
-        case .int(let v): try container.encode(v)
-        case .double(let v): try container.encode(v)
-        case .bool(let v): try container.encode(v)
+        case let .string(v): try container.encode(v)
+        case let .int(v): try container.encode(v)
+        case let .double(v): try container.encode(v)
+        case let .bool(v): try container.encode(v)
         case .null: try container.encodeNil()
-        case .array(let v): try container.encode(v)
-        case .dictionary(let v): try container.encode(v)
+        case let .array(v): try container.encode(v)
+        case let .dictionary(v): try container.encode(v)
         }
     }
 }

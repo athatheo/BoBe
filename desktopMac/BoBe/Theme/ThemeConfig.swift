@@ -29,7 +29,10 @@ struct ThemeColors: Sendable {
 }
 
 struct ThemeConfig: Identifiable, Sendable {
-    var id: ThemeId { themeId }
+    var id: ThemeId {
+        self.themeId
+    }
+
     let themeId: ThemeId
     let name: String
     let description: String
@@ -178,17 +181,8 @@ func themeById(_ id: ThemeId) -> ThemeConfig {
     allThemes.first { $0.themeId == id } ?? allThemes[0]
 }
 
-// MARK: - SwiftUI Environment
-
-private struct ThemeEnvironmentKey: EnvironmentKey {
-    static let defaultValue: ThemeConfig = allThemes[0]
-}
-
 extension EnvironmentValues {
-    var theme: ThemeConfig {
-        get { self[ThemeEnvironmentKey.self] }
-        set { self[ThemeEnvironmentKey.self] = newValue }
-    }
+    @Entry var theme: ThemeConfig = allThemes[0]
 }
 
 // MARK: - Color Hex Extension
@@ -198,14 +192,18 @@ extension Color {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
-        let r, g, b: Double
+        let r: Double
+        let g: Double
+        let b: Double
         switch hex.count {
         case 6:
             r = Double((int >> 16) & 0xFF) / 255.0
             g = Double((int >> 8) & 0xFF) / 255.0
             b = Double(int & 0xFF) / 255.0
         default:
-            r = 1; g = 1; b = 1
+            r = 1
+            g = 1
+            b = 1
         }
         self.init(red: r, green: g, blue: b)
     }

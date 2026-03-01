@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// System tray (menu bar) manager. Based on TrayManager.
+/// System tray (menu bar) manager.
 @MainActor
 final class TrayManager: NSObject, NSMenuDelegate {
     static let shared = TrayManager()
@@ -10,13 +10,12 @@ final class TrayManager: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var store = BobeStore.shared
 
-    private override init() {}
+    override private init() {}
 
     func setup() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem?.button {
-            // Use template icon from resources (macOS auto-handles dark/light)
             if let trayIcon = loadTrayIcon() {
                 trayIcon.isTemplate = true
                 trayIcon.size = NSSize(width: 18, height: 18)
@@ -28,23 +27,21 @@ final class TrayManager: NSObject, NSMenuDelegate {
             }
         }
 
-        updateMenu()
+        self.updateMenu()
     }
 
     func updateMenu() {
         let menu = NSMenu()
 
-        // Status text
-        let statusText: String
-        switch store.stateType {
-        case .loading: statusText = "Connecting..."
-        case .idle: statusText = "Idle"
-        case .capturing: statusText = "Looking..."
-        case .thinking: statusText = "Thinking..."
-        case .speaking: statusText = "Speaking"
-        case .wantsToSpeak: statusText = "Has something to say"
-        case .error: statusText = "Error"
-        case .shuttingDown: statusText = "Shutting down..."
+        let statusText = switch self.store.stateType {
+        case .loading: "Connecting..."
+        case .idle: "Idle"
+        case .capturing: "Looking..."
+        case .thinking: "Thinking..."
+        case .speaking: "Speaking"
+        case .wantsToSpeak: "Has something to say"
+        case .error: "Error"
+        case .shuttingDown: "Shutting down..."
         }
         let statusItem = NSMenuItem(title: "Status: \(statusText)", action: nil, keyEquivalent: "")
         statusItem.isEnabled = false
@@ -52,28 +49,33 @@ final class TrayManager: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        // Show/Hide
         let overlayVisible = OverlayWindowManager.shared.isVisible
         let showHideTitle = overlayVisible ? "Hide BoBe" : "Show BoBe"
         let showHideItem = NSMenuItem(title: showHideTitle, action: #selector(toggleOverlay), keyEquivalent: "b")
         showHideItem.target = self
         menu.addItem(showHideItem)
 
-        // Capture toggle
-        let captureTitle = store.isCapturing ? "Stop Capture" : "Start Capture"
+        let captureTitle = self.store.isCapturing ? "Stop Capture" : "Start Capture"
         let captureItem = NSMenuItem(title: captureTitle, action: #selector(toggleCapture), keyEquivalent: "")
         captureItem.target = self
-        captureItem.state = store.isCapturing ? .on : .off
+        captureItem.state = self.store.isCapturing ? .on : .off
         menu.addItem(captureItem)
 
-        // Settings
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let checkUpdatesItem = NSMenuItem(
+            title: "Check for Updates...",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        checkUpdatesItem.target = self
+        checkUpdatesItem.isEnabled = UpdaterManager.shared.canCheckForUpdates
+        menu.addItem(checkUpdatesItem)
+
         menu.addItem(.separator())
 
-        // About
         let aboutItem = NSMenuItem(
             title: "About BoBe",
             action: #selector(showAbout),
@@ -82,7 +84,6 @@ final class TrayManager: NSObject, NSMenuDelegate {
         aboutItem.target = self
         menu.addItem(aboutItem)
 
-        // Quit
         let quitItem = NSMenuItem(title: "Quit BoBe", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -91,41 +92,48 @@ final class TrayManager: NSObject, NSMenuDelegate {
         menu.delegate = self
     }
 
-    // Rebuild menu every time it opens — always shows fresh state
+    /// Rebuild menu every time it opens — always shows fresh state
     nonisolated func menuWillOpen(_ menu: NSMenu) {
         Task { @MainActor in
-            updateMenu()
+            self.updateMenu()
         }
     }
 
-    @objc private func toggleOverlay() {
+    @objc
+    private func toggleOverlay() {
         let manager = OverlayWindowManager.shared
         if manager.isVisible {
             manager.hide()
         } else {
             manager.show()
         }
-        updateMenu()
+        self.updateMenu()
     }
 
-    @objc private func toggleCapture() {
+    @objc
+    private func toggleCapture() {
         Task {
-            _ = await store.toggleCapture()
-            updateMenu()
+            _ = await self.store.toggleCapture()
+            self.updateMenu()
         }
     }
 
-    @objc private func openSettings() {
+    @objc
+    private func openSettings() {
         SettingsWindowManager.shared.show()
     }
 
-    @objc private func showAbout() {
-        // Temporarily become regular app so the panel can activate
+    @objc
+    private func checkForUpdates() {
+        UpdaterManager.shared.checkForUpdates()
+    }
+
+    @objc
+    private func showAbout() {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
 
-        // Revert to accessory once the about panel closes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if NSApp.windows.first(where: { $0.title == "About BoBe" || $0.className.contains("About") }) == nil {
                 NSApp.setActivationPolicy(.accessory)
@@ -133,19 +141,20 @@ final class TrayManager: NSObject, NSMenuDelegate {
         }
     }
 
-    @objc private func quitApp() {
-        store.disconnect()
+    @objc
+    private func quitApp() {
+        self.store.disconnect()
         NSApplication.shared.terminate(nil)
     }
 
     private func loadTrayIcon() -> NSImage? {
         for name in ["trayIconTemplate@2x", "trayIconTemplate"] {
             if let url = Bundle.appResources.url(forResource: name, withExtension: "png"),
-               let image = NSImage(contentsOf: url) {
+               let image = NSImage(contentsOf: url)
+            {
                 return image
             }
         }
-        // Dev mode: try loading from source tree
         let srcPath = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Resources/trayIconTemplate@2x.png")

@@ -3,13 +3,11 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "BackendService")
 
-/// Service states matching original python-service.ts
 enum ServiceState: Sendable {
     case stopped, starting, ready, crashed, fatal
 }
 
 /// Manages the bobe backend binary lifecycle with crash recovery.
-/// Based on original python-service.ts — 3-attempt restart, PID file, health checks.
 actor BackendService {
     static let shared = BackendService()
 
@@ -28,49 +26,47 @@ actor BackendService {
 
     private init() {
         var cont: AsyncStream<ServiceState>.Continuation?
-        stateStream = AsyncStream { cont = $0 }
-        stateContinuation = cont
-        dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bobe")
-        pidFilePath = dataDir.appendingPathComponent("bobe-service.pid")
+        self.stateStream = AsyncStream { cont = $0 }
+        self.stateContinuation = cont
+        self.dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bobe")
+        self.pidFilePath = self.dataDir.appendingPathComponent("bobe-service.pid")
     }
 
     private func transition(to newState: ServiceState) {
-        state = newState
-        stateContinuation?.yield(newState)
+        self.state = newState
+        self.stateContinuation?.yield(newState)
     }
 
     /// Start the backend with up to 3 retry attempts on failure.
     func start() async throws {
-        guard state != .starting && state != .ready else { return }
-        stopping = false
+        guard self.state != .starting, self.state != .ready else { return }
+        self.stopping = false
 
-        await cleanStalePID()
-        try createDataDirIfNeeded()
+        await self.cleanStalePID()
+        try self.createDataDirIfNeeded()
 
-        transition(to: .starting)
-        try await spawnAndWaitHealthy()
+        self.transition(to: .starting)
+        try await self.spawnAndWaitHealthy()
     }
 
     /// Gracefully stop the backend
     func stop() async {
-        stopping = true
-        if process == nil {
-            // Try PID file as fallback
-            await cleanStalePID()
-            cleanup()
+        self.stopping = true
+        if self.process == nil {
+            await self.cleanStalePID()
+            self.cleanup()
             return
         }
         guard let proc = process, proc.isRunning else {
-            cleanup()
+            self.cleanup()
             return
         }
 
         logger.info("Stopping bobe backend (PID: \(proc.processIdentifier))")
         proc.terminate()
 
-        // Backend needs up to ~12s for graceful shutdown (MCP + Ollama unload + DB close)
         let deadline = Date().addingTimeInterval(12)
-        while proc.isRunning && Date() < deadline {
+        while proc.isRunning, Date() < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }
 
@@ -79,48 +75,43 @@ actor BackendService {
             kill(proc.processIdentifier, SIGKILL)
         }
 
-        cleanup()
+        self.cleanup()
         logger.info("bobe backend stopped")
     }
 
     // MARK: - Spawn & Health
 
     private func spawnAndWaitHealthy() async throws {
-        let binaryPath = findBinaryPath()
+        let binaryPath = self.findBinaryPath()
         guard let binaryPath else {
-            // In dev mode (BOBE_DEV set), the user starts the backend manually.
-            // In production, a missing binary is fatal — the app bundle is likely corrupted.
             if ProcessInfo.processInfo.environment["BOBE_DEV"] != nil {
                 logger.info("bobe binary not found — dev mode, expecting manual backend")
-                transition(to: .ready)
+                self.transition(to: .ready)
                 return
             }
-            transition(to: .fatal)
-            lastError = "Backend binary not found in app bundle. Try reinstalling BoBe."
+            self.transition(to: .fatal)
+            self.lastError = "Backend binary not found in app bundle. Try reinstalling BoBe."
             throw BackendServiceError.spawnFailed("bobe-daemon binary not found")
         }
 
         logger.info("Starting bobe backend: \(binaryPath)")
-        lastError = nil
+        self.lastError = nil
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: binaryPath)
         proc.arguments = ["serve"]
-        proc.currentDirectoryURL = dataDir
+        proc.currentDirectoryURL = self.dataDir
 
-        // Only pass BOBE_DATA_DIR — backend derives all paths internally
         var env = ProcessInfo.processInfo.environment
         env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
-        env["BOBE_DATA_DIR"] = dataDir.path
+        env["BOBE_DATA_DIR"] = self.dataDir.path
         proc.environment = env
 
-        // Capture stdout/stderr for logging
         let outPipe = Pipe()
         let errPipe = Pipe()
         proc.standardOutput = outPipe
         proc.standardError = errPipe
 
-        // Accumulate stderr so we can surface it on failure
         let stderrBuf = StderrBuffer()
         outPipe.fileHandleForReading.readabilityHandler = { handle in
             if let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty {
@@ -136,13 +127,13 @@ actor BackendService {
             }
         }
 
-        // Check for port conflict before launching
-        if isPortInUse(DaemonConfig.port) {
-            await cleanStalePID()
+        if self.isPortInUse(DaemonConfig.port) {
+            await self.cleanStalePID()
 
-            if isPortInUse(DaemonConfig.port) {
-                lastError = "Port \(DaemonConfig.port) is already in use by another application. "
-                    + "Close the conflicting app or set BOBE_PORT to a different port."
+            if self.isPortInUse(DaemonConfig.port) {
+                self.lastError =
+                    "Port \(DaemonConfig.port) is already in use by another application. "
+                        + "Close the conflicting app or set BOBE_PORT to a different port."
                 throw BackendServiceError.healthCheckFailed
             }
         }
@@ -150,33 +141,31 @@ actor BackendService {
         do {
             try proc.run()
         } catch {
-            transition(to: .fatal)
+            self.transition(to: .fatal)
             throw BackendServiceError.spawnFailed(error.localizedDescription)
         }
 
         self.process = proc
-        writePID(proc.processIdentifier)
+        self.writePID(proc.processIdentifier)
 
-        // Monitor for unexpected exit
         proc.terminationHandler = { [weak self] terminatedProc in
             Task { [weak self] in
                 await self?.handleExit(exitCode: Int(terminatedProc.terminationStatus))
             }
         }
 
-        // Wait for health
         do {
-            try await waitForHealth()
+            try await self.waitForHealth()
         } catch {
             let captured = stderrBuf.text
             if !captured.isEmpty {
-                lastError = captured
+                self.lastError = captured
                 logger.error("Backend stderr on failure: \(captured)")
             }
             throw error
         }
-        transition(to: .ready)
-        restartCount = 0
+        self.transition(to: .ready)
+        self.restartCount = 0
         logger.info("bobe backend healthy (PID: \(proc.processIdentifier))")
     }
 
@@ -185,9 +174,9 @@ actor BackendService {
         var delay: TimeInterval = 0.2
         let maxAttempts = 30
 
-        for attempt in 1...maxAttempts {
-            if stopping { throw BackendServiceError.stoppedDuringHealthCheck }
-            if process?.isRunning != true { throw BackendServiceError.processExitedDuringHealthCheck }
+        for attempt in 1 ... maxAttempts {
+            if self.stopping { throw BackendServiceError.stoppedDuringHealthCheck }
+            if self.process?.isRunning != true { throw BackendServiceError.processExitedDuringHealthCheck }
 
             do {
                 _ = try await DaemonClient.shared.health()
@@ -204,29 +193,29 @@ actor BackendService {
     // MARK: - Crash Recovery
 
     private func handleExit(exitCode: Int) {
-        guard !stopping else { return }
+        guard !self.stopping else { return }
 
         logger.warning("bobe backend exited unexpectedly (code: \(exitCode))")
-        transition(to: .crashed)
+        self.transition(to: .crashed)
 
-        restartCount += 1
-        if restartCount > maxRestartAttempts {
+        self.restartCount += 1
+        if self.restartCount > self.maxRestartAttempts {
             logger.error("bobe backend failed \(self.maxRestartAttempts) times, giving up")
-            transition(to: .fatal)
+            self.transition(to: .fatal)
             return
         }
 
-        let backoffSeconds = restartCount
+        let backoffSeconds = self.restartCount
         logger.info("Restarting bobe backend in \(backoffSeconds)s (attempt \(self.restartCount)/\(self.maxRestartAttempts))")
 
         Task {
             try? await Task.sleep(for: .seconds(backoffSeconds))
-            guard !stopping else { return }
+            guard !self.stopping else { return }
             do {
-                try await spawnAndWaitHealthy()
+                try await self.spawnAndWaitHealthy()
             } catch {
                 logger.error("Restart failed: \(error.localizedDescription)")
-                transition(to: .fatal)
+                self.transition(to: .fatal)
             }
         }
     }
@@ -234,14 +223,14 @@ actor BackendService {
     // MARK: - PID File Management
 
     private func writePID(_ pid: Int32) {
-        try? "\(pid)".write(to: pidFilePath, atomically: true, encoding: .utf8)
+        try? "\(pid)".write(to: self.pidFilePath, atomically: true, encoding: .utf8)
     }
 
     private func cleanStalePID() async {
         guard let pidStr = try? String(contentsOf: pidFilePath, encoding: .utf8),
-              let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            // No PID file — check if something else holds the port
-            if isPortInUse(DaemonConfig.port) {
+              let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines))
+        else {
+            if self.isPortInUse(DaemonConfig.port) {
                 logger.warning("Port \(DaemonConfig.port) is in use but no PID file exists — another process may be bound")
             }
             return
@@ -254,10 +243,10 @@ actor BackendService {
             if kill(pid, 0) == 0 {
                 kill(pid, SIGKILL)
             }
-        } else if isPortInUse(DaemonConfig.port) {
+        } else if self.isPortInUse(DaemonConfig.port) {
             logger.warning("Port \(DaemonConfig.port) in use but PID \(pid) from PID file is not running — stale PID file")
         }
-        try? FileManager.default.removeItem(at: pidFilePath)
+        try? FileManager.default.removeItem(at: self.pidFilePath)
     }
 
     /// Check whether a TCP port is already bound on localhost.
@@ -280,20 +269,18 @@ actor BackendService {
     }
 
     private func cleanup() {
-        process = nil
-        transition(to: .stopped)
-        try? FileManager.default.removeItem(at: pidFilePath)
+        self.process = nil
+        self.transition(to: .stopped)
+        try? FileManager.default.removeItem(at: self.pidFilePath)
     }
 
     private func createDataDirIfNeeded() throws {
-        try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: self.dataDir, withIntermediateDirectories: true)
     }
 
     // MARK: - Binary Discovery
 
     private func findBinaryPath() -> String? {
-        // 1. Side-by-side in Contents/MacOS/ (production bundled location)
-        //    Named "bobe-daemon" to avoid case-insensitive collision with "BoBe" on APFS.
         if let execURL = Bundle.main.executableURL {
             let siblingPath = execURL.deletingLastPathComponent()
                 .appendingPathComponent("bobe-daemon").path
@@ -302,12 +289,10 @@ actor BackendService {
             }
         }
 
-        // 2. Bundle resource fallback
         if let bundlePath = Bundle.main.path(forResource: "bobe-daemon", ofType: nil) {
             return bundlePath
         }
 
-        // 3. Dev fallbacks (original binary name)
         let devPaths = [
             FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".cargo/bin/bobe").path,
@@ -329,7 +314,7 @@ enum BackendServiceError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .healthCheckFailed: "Backend health check failed after maximum attempts"
-        case .spawnFailed(let msg): "Failed to start backend: \(msg)"
+        case let .spawnFailed(msg): "Failed to start backend: \(msg)"
         case .stoppedDuringHealthCheck: "Service was stopped during health check"
         case .processExitedDuringHealthCheck: "Backend process exited during health check"
         }
@@ -342,16 +327,15 @@ private final class StderrBuffer: @unchecked Sendable {
     private var lines: [String] = []
 
     func append(_ line: String) {
-        lock.lock()
+        self.lock.lock()
         defer { lock.unlock() }
-        lines.append(line)
-        // Keep only last 50 lines to avoid unbounded growth
-        if lines.count > 50 { lines.removeFirst(lines.count - 50) }
+        self.lines.append(line)
+        if self.lines.count > 50 { self.lines.removeFirst(self.lines.count - 50) }
     }
 
     var text: String {
-        lock.lock()
+        self.lock.lock()
         defer { lock.unlock() }
-        return lines.joined(separator: "\n")
+        return self.lines.joined(separator: "\n")
     }
 }

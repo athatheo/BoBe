@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Advanced settings panel ("For Nerds") — similarity thresholds, intervals, MCP toggle.
-/// Based on AdvancedSettings.tsx with DebouncedDecimalInput and description text.
+/// Advanced settings panel — similarity thresholds, intervals, MCP toggle.
 struct AdvancedPanel: View {
     @State private var settings: DaemonSettings?
     @State private var isLoading = false
@@ -14,34 +13,34 @@ struct AdvancedPanel: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("For Nerds")
                     .font(.title2.bold())
-                    .foregroundStyle(theme.colors.text)
+                    .foregroundStyle(self.theme.colors.text)
 
                 if let error {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.primary)
+                            .foregroundStyle(self.theme.colors.primary)
                         Text(error)
                             .font(.system(size: 12))
-                            .foregroundStyle(theme.colors.primary)
+                            .foregroundStyle(self.theme.colors.primary)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.colors.primary.opacity(0.08)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.primary.opacity(0.08)))
                 }
 
-                if settings != nil {
-                    similaritySection
-                    goalsSection
-                    learningSection
-                    conversationSection
-                    projectsSection
-                    mcpSection
-                } else if isLoading {
+                if self.settings != nil {
+                    self.similaritySection
+                    self.goalsSection
+                    self.learningSection
+                    self.conversationSection
+                    self.projectsSection
+                    self.mcpSection
+                } else if self.isLoading {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text("Loading daemon settings...")
                             .font(.system(size: 13))
-                            .foregroundStyle(theme.colors.textMuted)
+                            .foregroundStyle(self.theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 40)
@@ -49,7 +48,7 @@ struct AdvancedPanel: View {
             }
             .padding(24)
         }
-        .task { await loadSettings() }
+        .task { await self.loadSettings() }
     }
 
     private var similaritySection: some View {
@@ -59,13 +58,13 @@ struct AdvancedPanel: View {
             description: "Vector similarity thresholds for memory operations"
         ) {
             SettingsRow(label: "Deduplication") {
-                DebouncedDecimalInput(value: binding(\.similarityDeduplicationThreshold), range: 0...1, step: 0.01)
+                DebouncedDecimalInput(value: self.binding(\.similarityDeduplicationThreshold), range: 0 ... 1, step: 0.01)
             }
             SettingsRow(label: "Search recall") {
-                DebouncedDecimalInput(value: binding(\.similaritySearchRecallThreshold), range: 0...1, step: 0.01)
+                DebouncedDecimalInput(value: self.binding(\.similaritySearchRecallThreshold), range: 0 ... 1, step: 0.01)
             }
             SettingsRow(label: "Clustering") {
-                DebouncedDecimalInput(value: binding(\.similarityClusteringThreshold), range: 0...1, step: 0.01)
+                DebouncedDecimalInput(value: self.binding(\.similarityClusteringThreshold), range: 0 ... 1, step: 0.01)
             }
         }
     }
@@ -77,10 +76,12 @@ struct AdvancedPanel: View {
             description: "Goal tracking intervals"
         ) {
             SettingsRow(label: "Check interval", description: "Seconds between goal relevance checks", suffix: "seconds") {
-                DebouncedNumberInput(value: Binding(
-                    get: { Int(settings?.goalCheckIntervalSeconds ?? 300) },
-                    set: { newVal in settings?.goalCheckIntervalSeconds = Double(newVal) }
-                ), range: 60...7200)
+                DebouncedNumberInput(
+                    value: Binding(
+                        get: { Int(self.settings?.goalCheckIntervalSeconds ?? 300) },
+                        set: { newVal in self.settings?.goalCheckIntervalSeconds = Double(newVal) }
+                    ), range: 60 ... 7200
+                )
             }
         }
     }
@@ -93,8 +94,8 @@ struct AdvancedPanel: View {
         ) {
             SettingsRow(label: "Learning interval", description: "Minutes between learning cycles", suffix: "minutes") {
                 DebouncedNumberInput(
-                    value: binding(\.learningIntervalMinutes),
-                    range: 1...1440
+                    value: self.binding(\.learningIntervalMinutes),
+                    range: 1 ... 1440
                 )
             }
         }
@@ -107,7 +108,7 @@ struct AdvancedPanel: View {
             description: "Advanced conversation timing"
         ) {
             SettingsRow(label: "Inactivity timeout", description: "Seconds before allowing new proactive reachout", suffix: "seconds") {
-                DebouncedNumberInput(value: binding(\.conversationInactivityTimeoutSeconds), range: 5...600)
+                DebouncedNumberInput(value: self.binding(\.conversationInactivityTimeoutSeconds), range: 5 ... 600)
             }
         }
     }
@@ -119,8 +120,8 @@ struct AdvancedPanel: View {
             description: "Default directory where BoBe creates project folders from goals"
         ) {
             HStack(spacing: 8) {
-                BobeTextField(placeholder: "/path/to/projects", text: binding(\.projectsDirectory))
-                Button("Browse...") { browseDirectory() }
+                BobeTextField(placeholder: "/path/to/projects", text: self.binding(\.projectsDirectory))
+                Button("Browse...") { self.browseDirectory() }
                     .bobeButton(.secondary, size: .small)
             }
         }
@@ -133,7 +134,7 @@ struct AdvancedPanel: View {
             description: "Model Context Protocol server connections"
         ) {
             SettingsRow(label: "Enable MCP", description: "Connect to MCP servers for extended capabilities") {
-                BobeToggle(isOn: binding(\.mcpEnabled))
+                BobeToggle(isOn: self.binding(\.mcpEnabled))
             }
         }
     }
@@ -149,15 +150,15 @@ struct AdvancedPanel: View {
             set: { newValue in
                 guard var current = settings else { return }
                 current[keyPath: keyPath] = newValue
-                settings = current
-                debounceSave()
+                self.settings = current
+                self.debounceSave()
             }
         )
     }
 
     private func debounceSave() {
-        saveTask?.cancel()
-        saveTask = Task {
+        self.saveTask?.cancel()
+        self.saveTask = Task {
             try? await Task.sleep(for: .seconds(0.6))
             guard !Task.isCancelled, let settings else { return }
             do {
@@ -184,16 +185,16 @@ struct AdvancedPanel: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
-            settings?.projectsDirectory = url.path
-            debounceSave()
+            self.settings?.projectsDirectory = url.path
+            self.debounceSave()
         }
     }
 
     private func loadSettings() async {
-        isLoading = true
+        self.isLoading = true
         defer { isLoading = false }
         do {
-            settings = try await DaemonClient.shared.getSettings()
+            self.settings = try await DaemonClient.shared.getSettings()
         } catch {
             self.error = error.localizedDescription
         }

@@ -15,16 +15,16 @@ struct MCPServerDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            headerSection
-            errorSection
-            excludedToolsSection
+            self.headerSection
+            self.errorSection
+            self.excludedToolsSection
             Divider()
-            configSection
+            self.configSection
             Spacer()
-            actionsSection
+            self.actionsSection
 
             if let error {
-                Text(error).font(.caption).foregroundStyle(theme.colors.primary)
+                Text(error).font(.caption).foregroundStyle(self.theme.colors.primary)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -34,24 +34,24 @@ struct MCPServerDetail: View {
 
     private var headerSection: some View {
         HStack(spacing: 8) {
-            Text(server.name)
+            Text(self.server.name)
                 .font(.headline)
-                .foregroundStyle(theme.colors.text)
+                .foregroundStyle(self.theme.colors.text)
 
-            Text(server.connected ? "connected" : "disconnected")
+            Text(self.server.connected ? "connected" : "disconnected")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(server.connected ? theme.colors.secondary : theme.colors.primary)
+                .foregroundStyle(self.server.connected ? self.theme.colors.secondary : self.theme.colors.primary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(
                     Capsule().fill(
-                        (server.connected ? theme.colors.secondary : theme.colors.primary).opacity(0.15)
+                        (self.server.connected ? self.theme.colors.secondary : self.theme.colors.primary).opacity(0.15)
                     )
                 )
 
-            Text("\(server.toolCount) tools")
+            Text("\(self.server.toolCount) tools")
                 .font(.system(size: 10))
-                .foregroundStyle(theme.colors.textMuted)
+                .foregroundStyle(self.theme.colors.textMuted)
 
             Spacer()
         }
@@ -63,10 +63,10 @@ struct MCPServerDetail: View {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.circle.fill")
                     .font(.system(size: 12))
-                    .foregroundStyle(theme.colors.primary)
+                    .foregroundStyle(self.theme.colors.primary)
                 Text(serverError)
                     .font(.system(size: 12))
-                    .foregroundStyle(theme.colors.primary)
+                    .foregroundStyle(self.theme.colors.primary)
             }
         }
     }
@@ -80,21 +80,21 @@ struct MCPServerDetail: View {
                     .font(.system(size: 13, weight: .semibold))
                 Text("(hidden from BoBe)")
                     .font(.system(size: 10))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
 
-            if server.excludedTools.isEmpty {
+            if self.server.excludedTools.isEmpty {
                 Text("No tools excluded")
                     .font(.system(size: 11))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
             } else {
                 FlowLayout(spacing: 4) {
-                    ForEach(server.excludedTools, id: \.self) { tool in
+                    ForEach(self.server.excludedTools, id: \.self) { tool in
                         HStack(spacing: 3) {
                             Text(tool)
                                 .font(.system(size: 10, design: .monospaced))
                             Button {
-                                onRemoveExcluded(server, tool)
+                                self.onRemoveExcluded(self.server, tool)
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 8))
@@ -103,18 +103,18 @@ struct MCPServerDetail: View {
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(Capsule().fill(theme.colors.surface))
+                        .background(Capsule().fill(self.theme.colors.surface))
                     }
                 }
             }
 
             HStack(spacing: 6) {
-                BobeTextField(placeholder: "tool name", text: $addExcludedText, width: 150) {
-                    onAddExcluded(server)
+                BobeTextField(placeholder: "tool name", text: self.$addExcludedText, width: 150) {
+                    self.onAddExcluded(self.server)
                 }
-                Button("Add") { onAddExcluded(server) }
+                Button("Add") { self.onAddExcluded(self.server) }
                     .bobeButton(.secondary, size: .small)
-                    .disabled(addExcludedText.isEmpty)
+                    .disabled(self.addExcludedText.isEmpty)
             }
         }
     }
@@ -123,29 +123,34 @@ struct MCPServerDetail: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Configuration")
                 .font(.system(size: 13, weight: .semibold))
-            Text("Command: \(server.command) \(server.args.joined(separator: " "))")
+            Text("Command: \(self.server.command) \(self.server.args.joined(separator: " "))")
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(theme.colors.textMuted)
+                .foregroundStyle(self.theme.colors.textMuted)
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 6).fill(theme.colors.surface))
+                .background(RoundedRectangle(cornerRadius: 6).fill(self.theme.colors.surface))
         }
     }
 
     private var actionsSection: some View {
         HStack(spacing: 8) {
-            if deleteConfirm {
+            if self.deleteConfirm {
                 HStack(spacing: 6) {
                     Text("Remove server?")
                         .font(.system(size: 12))
-                        .foregroundStyle(theme.colors.primary)
-                    Button("Yes") { onRemove(server); deleteConfirm = false }
-                        .bobeButton(.destructive, size: .small)
-                    Button("No") { deleteConfirm = false }
+                        .foregroundStyle(self.theme.colors.primary)
+                    Button("Yes") {
+                        self.onRemove(self.server)
+                        self.deleteConfirm = false
+                    }
+                    .bobeButton(.destructive, size: .small)
+                    Button("No") { self.deleteConfirm = false }
                         .bobeButton(.secondary, size: .small)
                 }
             } else {
-                Button { deleteConfirm = true } label: {
+                Button {
+                    self.deleteConfirm = true
+                } label: {
                     Image(systemName: "trash")
                 }
                 .bobeButton(.destructive, size: .small)
@@ -154,17 +159,17 @@ struct MCPServerDetail: View {
             Spacer()
 
             Button {
-                onReconnect(server)
+                self.onReconnect(self.server)
             } label: {
                 HStack(spacing: 4) {
-                    if isReconnecting {
+                    if self.isReconnecting {
                         BobeSpinner(size: 12)
                     }
-                    Text(isReconnecting ? "Reconnecting..." : "Reconnect")
+                    Text(self.isReconnecting ? "Reconnecting..." : "Reconnect")
                 }
             }
             .bobeButton(.secondary, size: .small)
-            .disabled(isReconnecting)
+            .disabled(self.isReconnecting)
         }
     }
 }

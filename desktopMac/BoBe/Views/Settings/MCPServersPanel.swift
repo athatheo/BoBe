@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// MCP Servers management panel.
-/// Based on MCPServersSettings.tsx with connection status, excluded tools tags, delete confirmation.
 struct MCPServersPanel: View {
     @State private var servers: [MCPServer] = []
     @State private var selectedId: String?
@@ -18,73 +17,75 @@ struct MCPServersPanel: View {
     @State private var error: String?
     @Environment(\.theme) private var theme
 
-    private var selectedServer: MCPServer? { servers.first { $0.id == selectedId } }
+    private var selectedServer: MCPServer? {
+        self.servers.first { $0.id == self.selectedId }
+    }
 
     var body: some View {
         ThemedSplitPane(leftWidth: 300) {
-            // Left pane
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "MCP Servers") { isAdding = true }
+                SettingsPaneHeader(title: "MCP Servers") { self.isAdding = true }
                     .padding(.bottom, 12)
 
-                if isLoading && servers.isEmpty {
+                if self.isLoading, self.servers.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text("Loading MCP servers...")
                             .font(.system(size: 12))
-                            .foregroundStyle(theme.colors.textMuted)
+                            .foregroundStyle(self.theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 20)
-                } else if servers.isEmpty && !isLoading && !isAdding {
+                } else if self.servers.isEmpty, !self.isLoading, !self.isAdding {
                     VStack(spacing: 8) {
                         Image(systemName: "server.rack")
                             .font(.system(size: 28))
-                            .foregroundStyle(theme.colors.textMuted)
+                            .foregroundStyle(self.theme.colors.textMuted)
                         Text("No MCP servers")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(theme.colors.textMuted)
+                            .foregroundStyle(self.theme.colors.textMuted)
                         Text("Add servers to extend BoBe's capabilities")
                             .font(.system(size: 11))
-                            .foregroundStyle(theme.colors.textMuted.opacity(0.7))
+                            .foregroundStyle(self.theme.colors.textMuted.opacity(0.7))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 4) {
-                            ForEach(servers) { server in
+                            ForEach(self.servers) { server in
                                 BobeSelectableRow(
-                                    isSelected: selectedId == server.id,
+                                    isSelected: self.selectedId == server.id,
                                     action: {
-                                        selectedId = server.id
-                                        isAdding = false
+                                        self.selectedId = server.id
+                                        self.isAdding = false
                                     },
                                     content: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: server.connected ? "wifi" : "wifi.slash")
-                                            .foregroundStyle(server.connected ? theme.colors.secondary : theme.colors.primary)
-                                            .font(.system(size: 12))
+                                        HStack(spacing: 8) {
+                                            Image(systemName: server.connected ? "wifi" : "wifi.slash")
+                                                .foregroundStyle(server.connected ? self.theme.colors.secondary : self.theme.colors.primary)
+                                                .font(.system(size: 12))
 
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            Text(server.name)
-                                                .font(.system(size: 13, weight: .semibold))
-                                            Text("\(server.command) • \(server.toolCount) tools")
-                                                .font(.system(size: 11))
-                                                .foregroundStyle(theme.colors.textMuted)
-                                        }
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(server.name)
+                                                    .font(.system(size: 13, weight: .semibold))
+                                                Text("\(server.command) • \(server.toolCount) tools")
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(self.theme.colors.textMuted)
+                                            }
 
-                                        if server.error != nil {
-                                            Image(systemName: "exclamationmark.triangle.fill")
-                                                .foregroundStyle(theme.colors.tertiary)
-                                                .font(.system(size: 10))
+                                            if server.error != nil {
+                                                Image(systemName: "exclamationmark.triangle.fill")
+                                                    .foregroundStyle(self.theme.colors.tertiary)
+                                                    .font(.system(size: 10))
+                                            }
                                         }
                                     }
-                                })
+                                )
                             }
                         }
                     }
-                    .background(theme.colors.background)
+                    .background(self.theme.colors.background)
                 }
             }
             .frame(minWidth: 220, idealWidth: 300)
@@ -92,34 +93,33 @@ struct MCPServersPanel: View {
             .padding(.horizontal, 12)
             .padding(.top, 12)
         } right: {
-            // Right pane
-            if isAdding {
-                addServerForm
+            if self.isAdding {
+                self.addServerForm
             } else if let server = selectedServer {
                 MCPServerDetail(
                     server: server,
-                    deleteConfirm: $deleteConfirm,
-                    isReconnecting: $isReconnecting,
-                    addExcludedText: $addExcludedText,
-                    error: $error,
-                    onReconnect: reconnectServer,
-                    onRemove: removeServer,
-                    onAddExcluded: addExcludedTool,
-                    onRemoveExcluded: removeExcludedTool
+                    deleteConfirm: self.$deleteConfirm,
+                    isReconnecting: self.$isReconnecting,
+                    addExcludedText: self.$addExcludedText,
+                    error: self.$error,
+                    onReconnect: self.reconnectServer,
+                    onRemove: self.removeServer,
+                    onAddExcluded: self.addExcludedTool,
+                    onRemoveExcluded: self.removeExcludedTool
                 )
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
                         .font(.system(size: 28))
-                        .foregroundStyle(theme.colors.textMuted)
+                        .foregroundStyle(self.theme.colors.textMuted)
                     Text("Select a server or add a new one")
                         .font(.system(size: 13))
-                        .foregroundStyle(theme.colors.textMuted)
+                        .foregroundStyle(self.theme.colors.textMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task { await loadServers() }
+        .task { await self.loadServers() }
     }
 
     private var addServerForm: some View {
@@ -127,68 +127,68 @@ struct MCPServersPanel: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("New MCP Server")
                     .font(.headline)
-                    .foregroundStyle(theme.colors.text)
+                    .foregroundStyle(self.theme.colors.text)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Server Name")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(theme.colors.text)
-                    BobeTextField(placeholder: "e.g. filesystem", text: $newName)
+                        .foregroundStyle(self.theme.colors.text)
+                    BobeTextField(placeholder: "e.g. filesystem", text: self.$newName)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Command")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(theme.colors.text)
-                    BobeTextField(placeholder: "e.g. npx or /usr/local/bin/...", text: $newCommand)
+                        .foregroundStyle(self.theme.colors.text)
+                    BobeTextField(placeholder: "e.g. npx or /usr/local/bin/...", text: self.$newCommand)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Arguments")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(theme.colors.text)
-                    BobeTextField(placeholder: "e.g. -y @modelcontextprotocol/...", text: $newArgs)
+                        .foregroundStyle(self.theme.colors.text)
+                    BobeTextField(placeholder: "e.g. -y @modelcontextprotocol/...", text: self.$newArgs)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Environment Variables (JSON)")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(theme.colors.text)
-                    CodeEditor(text: $newEnv, theme: theme, fontSize: 12)
+                        .foregroundStyle(self.theme.colors.text)
+                    CodeEditor(text: self.$newEnv, theme: self.theme, fontSize: 12)
                         .frame(height: 80)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(theme.colors.surface)
-                                .stroke(theme.colors.border, lineWidth: 1)
+                                .fill(self.theme.colors.surface)
+                                .stroke(self.theme.colors.border, lineWidth: 1)
                         )
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Excluded Tools")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(theme.colors.text)
-                    BobeTextField(placeholder: "e.g. update_event, delete_event", text: $newExcluded)
+                        .foregroundStyle(self.theme.colors.text)
+                    BobeTextField(placeholder: "e.g. update_event, delete_event", text: self.$newExcluded)
                     Text("Tool names to hide from BoBe (server still exposes them)")
                         .font(.system(size: 10))
-                        .foregroundStyle(theme.colors.textMuted)
+                        .foregroundStyle(self.theme.colors.textMuted)
                 }
 
                 HStack {
                     Button("Cancel") {
-                        isAdding = false
-                        clearForm()
+                        self.isAdding = false
+                        self.clearForm()
                     }
                     .bobeButton(.secondary, size: .small)
 
                     Spacer()
 
-                    Button("Add & Connect") { addServer() }
+                    Button("Add & Connect") { self.addServer() }
                         .bobeButton(.primary, size: .small)
-                        .disabled(newName.isEmpty || newCommand.isEmpty)
+                        .disabled(self.newName.isEmpty || self.newCommand.isEmpty)
                 }
 
                 if let error {
-                    Text(error).font(.caption).foregroundStyle(theme.colors.primary)
+                    Text(error).font(.caption).foregroundStyle(self.theme.colors.primary)
                 }
             }
             .padding(.horizontal, 16)
@@ -199,41 +199,41 @@ struct MCPServersPanel: View {
     // MARK: - Actions
 
     private func loadServers() async {
-        isLoading = true
+        self.isLoading = true
         defer { isLoading = false }
         do {
             let resp = try await DaemonClient.shared.listMCPServers()
-            servers = resp.servers
+            self.servers = resp.servers
         } catch { self.error = error.localizedDescription }
     }
 
     private func addServer() {
-        let args = newArgs.isEmpty ? nil : newArgs.split(separator: " ").map(String.init)
+        let args = self.newArgs.isEmpty ? nil : self.newArgs.split(separator: " ").map(String.init)
         let env: [String: String]? = {
-            guard !newEnv.isEmpty, let data = newEnv.data(using: .utf8) else { return nil }
+            guard !self.newEnv.isEmpty, let data = newEnv.data(using: .utf8) else { return nil }
             return try? JSONDecoder().decode([String: String].self, from: data)
         }()
-        let excluded = newExcluded.isEmpty ? nil : newExcluded.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let excluded = self.newExcluded.isEmpty ? nil : self.newExcluded.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
 
         Task {
             do {
                 _ = try await DaemonClient.shared.createMCPServer(
-                    MCPServerCreateRequest(name: newName, command: newCommand, args: args, env: env, excludedTools: excluded)
+                    MCPServerCreateRequest(name: self.newName, command: self.newCommand, args: args, env: env, excludedTools: excluded)
                 )
-                clearForm()
-                isAdding = false
-                await loadServers()
+                self.clearForm()
+                self.isAdding = false
+                await self.loadServers()
             } catch { self.error = error.localizedDescription }
         }
     }
 
     private func reconnectServer(_ server: MCPServer) {
-        isReconnecting = true
+        self.isReconnecting = true
         Task {
             defer { isReconnecting = false }
             do {
                 _ = try await DaemonClient.shared.reconnectMCPServer(server.name)
-                await loadServers()
+                await self.loadServers()
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -242,24 +242,24 @@ struct MCPServersPanel: View {
         Task {
             do {
                 try await DaemonClient.shared.deleteMCPServer(server.name)
-                servers.removeAll { $0.id == server.id }
-                if selectedId == server.id { selectedId = nil }
+                self.servers.removeAll { $0.id == server.id }
+                if self.selectedId == server.id { self.selectedId = nil }
             } catch { self.error = error.localizedDescription }
         }
     }
 
     private func addExcludedTool(server: MCPServer) {
-        guard !addExcludedText.isEmpty else { return }
+        guard !self.addExcludedText.isEmpty else { return }
         var updated = server.excludedTools
-        updated.append(addExcludedText.trimmingCharacters(in: .whitespaces))
-        addExcludedText = ""
+        updated.append(self.addExcludedText.trimmingCharacters(in: .whitespaces))
+        self.addExcludedText = ""
         Task {
             do {
                 _ = try await DaemonClient.shared.updateMCPServer(
                     server.name,
                     MCPServerUpdateRequest(excludedTools: updated)
                 )
-                await loadServers()
+                await self.loadServers()
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -273,16 +273,16 @@ struct MCPServersPanel: View {
                     server.name,
                     MCPServerUpdateRequest(excludedTools: updated)
                 )
-                await loadServers()
+                await self.loadServers()
             } catch { self.error = error.localizedDescription }
         }
     }
 
     private func clearForm() {
-        newName = ""
-        newCommand = ""
-        newArgs = ""
-        newEnv = ""
-        newExcluded = ""
+        self.newName = ""
+        self.newCommand = ""
+        self.newArgs = ""
+        self.newEnv = ""
+        self.newExcluded = ""
     }
 }

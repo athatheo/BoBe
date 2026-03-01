@@ -18,7 +18,7 @@ struct CodeEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = NSColor(theme.colors.surface)
+        scrollView.backgroundColor = NSColor(self.theme.colors.surface)
         scrollView.wantsLayer = true
         scrollView.layer?.cornerRadius = 8
         scrollView.layer?.masksToBounds = true
@@ -26,7 +26,7 @@ struct CodeEditor: NSViewRepresentable {
 
         let textView = FocusAwareTextView()
         textView.delegate = context.coordinator
-        textView.string = text
+        textView.string = self.text
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = false
@@ -46,14 +46,14 @@ struct CodeEditor: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.lineFragmentPadding = 4
         textView.focusRingType = .none
-        applyTheme(to: textView)
-        applyTypography(to: textView)
-        textView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        self.applyTheme(to: textView)
+        self.applyTypography(to: textView)
+        textView.font = .monospacedSystemFont(ofSize: self.fontSize, weight: .regular)
         textView.onFocusChange = { isFocused in
             context.coordinator.isFocused = isFocused
-            context.coordinator.updateFocusBorder(theme: theme)
+            context.coordinator.updateFocusBorder(theme: self.theme)
         }
-        context.coordinator.updateFocusBorder(theme: theme)
+        context.coordinator.updateFocusBorder(theme: self.theme)
 
         scrollView.documentView = textView
         return scrollView
@@ -62,9 +62,9 @@ struct CodeEditor: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        if textView.string != text {
+        if textView.string != self.text {
             let ranges = textView.selectedRanges
-            textView.string = text
+            textView.string = self.text
             let maxLen = (textView.string as NSString).length
             let clamped = ranges.compactMap { rangeValue -> NSValue? in
                 let range = rangeValue.rangeValue
@@ -74,10 +74,10 @@ struct CodeEditor: NSViewRepresentable {
             }
             textView.selectedRanges = clamped.isEmpty ? [NSValue(range: NSRange(location: maxLen, length: 0))] : clamped
         }
-        textView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        applyTypography(to: textView)
-        applyTheme(to: textView)
-        context.coordinator.updateFocusBorder(theme: theme)
+        textView.font = .monospacedSystemFont(ofSize: self.fontSize, weight: .regular)
+        self.applyTypography(to: textView)
+        self.applyTheme(to: textView)
+        context.coordinator.updateFocusBorder(theme: self.theme)
     }
 
     private func applyTypography(to textView: NSTextView) {
@@ -89,18 +89,18 @@ struct CodeEditor: NSViewRepresentable {
 
         var attrs = textView.typingAttributes
         attrs[.paragraphStyle] = paragraph
-        attrs[.font] = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        attrs[.foregroundColor] = NSColor(theme.colors.text)
+        attrs[.font] = NSFont.monospacedSystemFont(ofSize: self.fontSize, weight: .regular)
+        attrs[.foregroundColor] = NSColor(self.theme.colors.text)
         textView.typingAttributes = attrs
     }
 
     private func applyTheme(to textView: NSTextView) {
-        textView.backgroundColor = NSColor(theme.colors.surface)
-        textView.textColor = NSColor(theme.colors.text)
-        textView.insertionPointColor = NSColor(theme.colors.primary)
+        textView.backgroundColor = NSColor(self.theme.colors.surface)
+        textView.textColor = NSColor(self.theme.colors.text)
+        textView.insertionPointColor = NSColor(self.theme.colors.primary)
         textView.selectedTextAttributes = [
-            .backgroundColor: NSColor(theme.colors.primary).withAlphaComponent(0.3),
-            .foregroundColor: NSColor(theme.colors.text)
+            .backgroundColor: NSColor(self.theme.colors.primary).withAlphaComponent(0.3),
+            .foregroundColor: NSColor(self.theme.colors.text),
         ]
     }
 
@@ -117,15 +117,15 @@ struct CodeEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             let value = textView.string
-            if parent.text != value {
-                parent.text = value
+            if self.parent.text != value {
+                self.parent.text = value
             }
         }
 
         func updateFocusBorder(theme: ThemeConfig) {
             guard let layer = scrollView?.layer else { return }
-            layer.borderWidth = isFocused ? 1.5 : 1
-            layer.borderColor = (isFocused ? NSColor(theme.colors.primary) : NSColor(theme.colors.border)).cgColor
+            layer.borderWidth = self.isFocused ? 1.5 : 1
+            layer.borderColor = (self.isFocused ? NSColor(theme.colors.primary) : NSColor(theme.colors.border)).cgColor
         }
     }
 }
@@ -135,13 +135,13 @@ final class FocusAwareTextView: NSTextView {
 
     override func becomeFirstResponder() -> Bool {
         let didFocus = super.becomeFirstResponder()
-        if didFocus { onFocusChange?(true) }
+        if didFocus { self.onFocusChange?(true) }
         return didFocus
     }
 
     override func resignFirstResponder() -> Bool {
         let didBlur = super.resignFirstResponder()
-        if didBlur { onFocusChange?(false) }
+        if didBlur { self.onFocusChange?(false) }
         return didBlur
     }
 }

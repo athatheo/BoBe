@@ -2,7 +2,6 @@ import CoreGraphics
 import SwiftUI
 
 /// Behavior settings panel — capture, check-ins, memory, conversation, tools.
-/// Based on BehaviorSettings.tsx with collapsible sections and custom controls.
 struct BehaviorPanel: View {
     @State private var settings: DaemonSettings?
     @State private var isLoading = false
@@ -18,28 +17,28 @@ struct BehaviorPanel: View {
                 if let error {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.primary)
+                            .foregroundStyle(self.theme.colors.primary)
                         Text(error)
                             .font(.system(size: 12))
-                            .foregroundStyle(theme.colors.primary)
+                            .foregroundStyle(self.theme.colors.primary)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.colors.primary.opacity(0.08)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.primary.opacity(0.08)))
                 }
 
-                if settings != nil {
-                    captureSection
-                    checkinSection
-                    memorySection
-                    conversationSection
-                    toolsSection
-                } else if isLoading {
+                if self.settings != nil {
+                    self.captureSection
+                    self.checkinSection
+                    self.memorySection
+                    self.conversationSection
+                    self.toolsSection
+                } else if self.isLoading {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text("Loading behavior settings...")
                             .font(.system(size: 13))
-                            .foregroundStyle(theme.colors.textMuted)
+                            .foregroundStyle(self.theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 40)
@@ -47,7 +46,7 @@ struct BehaviorPanel: View {
             }
             .padding(24)
         }
-        .task { await loadSettings() }
+        .task { await self.loadSettings() }
     }
 
     private var captureSection: some View {
@@ -55,19 +54,19 @@ struct BehaviorPanel: View {
             title: "Screen Capture",
             icon: "camera.fill",
             description: "BoBe periodically captures your screen for context",
-            toggleBinding: binding(\.captureEnabled)
+            toggleBinding: self.binding(\.captureEnabled)
         ) {
             SettingsRow(label: "Capture interval", suffix: "seconds") {
-                DebouncedNumberInput(value: binding(\.captureIntervalSeconds), range: 1...600)
+                DebouncedNumberInput(value: self.binding(\.captureIntervalSeconds), range: 1 ... 600)
             }
 
             if !CGPreflightScreenCaptureAccess() {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(theme.colors.tertiary)
+                        .foregroundStyle(self.theme.colors.tertiary)
                     Text("Screen Recording permission not granted.")
                         .font(.system(size: 12))
-                        .foregroundStyle(theme.colors.tertiary)
+                        .foregroundStyle(self.theme.colors.tertiary)
                     Button("Open Settings") {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                             NSWorkspace.shared.open(url)
@@ -85,43 +84,42 @@ struct BehaviorPanel: View {
             title: "Check-ins",
             icon: "clock.fill",
             description: "Scheduled proactive check-ins throughout the day",
-            toggleBinding: binding(\.checkinEnabled)
+            toggleBinding: self.binding(\.checkinEnabled)
         ) {
-            // Schedule times
             SettingsRow(label: "Schedule") {
                 EmptyView()
             }
             FlowLayout(spacing: 6) {
-                ForEach(settings?.checkinTimes ?? [], id: \.self) { time in
+                ForEach(self.settings?.checkinTimes ?? [], id: \.self) { time in
                     HStack(spacing: 4) {
                         Text(time)
                             .font(.system(size: 11, design: .monospaced))
                         Button {
-                            removeCheckinTime(time)
+                            self.removeCheckinTime(time)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 10))
-                                .foregroundStyle(theme.colors.textMuted)
+                                .foregroundStyle(self.theme.colors.textMuted)
                         }
                         .bobeButton(.ghost, size: .mini)
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(theme.colors.border.opacity(0.5)))
+                    .background(Capsule().fill(self.theme.colors.border.opacity(0.5)))
                 }
             }
 
             HStack(spacing: 6) {
-                BobeTextField(placeholder: "HH:MM", text: $newCheckinTime, width: 80) {
-                    addCheckinTime()
+                BobeTextField(placeholder: "HH:MM", text: self.$newCheckinTime, width: 80) {
+                    self.addCheckinTime()
                 }
-                Button("Add") { addCheckinTime() }
+                Button("Add") { self.addCheckinTime() }
                     .bobeButton(.secondary, size: .small)
-                    .disabled(newCheckinTime.isEmpty)
+                    .disabled(self.newCheckinTime.isEmpty)
             }
 
             SettingsRow(label: "Jitter", suffix: "minutes") {
-                DebouncedNumberInput(value: binding(\.checkinJitterMinutes), range: 0...30)
+                DebouncedNumberInput(value: self.binding(\.checkinJitterMinutes), range: 0 ... 30)
             }
         }
     }
@@ -131,13 +129,13 @@ struct BehaviorPanel: View {
             title: "Memory",
             icon: "brain.head.profile",
             description: "How long BoBe retains memories",
-            toggleBinding: binding(\.learningEnabled)
+            toggleBinding: self.binding(\.learningEnabled)
         ) {
             SettingsRow(label: "Short-term retention", suffix: "days") {
-                DebouncedNumberInput(value: binding(\.memoryShortTermRetentionDays), range: 1...365)
+                DebouncedNumberInput(value: self.binding(\.memoryShortTermRetentionDays), range: 1 ... 365)
             }
             SettingsRow(label: "Long-term retention", suffix: "days") {
-                DebouncedNumberInput(value: binding(\.memoryLongTermRetentionDays), range: 1...3650)
+                DebouncedNumberInput(value: self.binding(\.memoryLongTermRetentionDays), range: 1 ... 3650)
             }
         }
     }
@@ -149,10 +147,10 @@ struct BehaviorPanel: View {
             description: "How conversations are managed"
         ) {
             SettingsRow(label: "Auto-close after", suffix: "minutes") {
-                DebouncedNumberInput(value: binding(\.conversationAutoCloseMinutes), range: 1...60)
+                DebouncedNumberInput(value: self.binding(\.conversationAutoCloseMinutes), range: 1 ... 60)
             }
             SettingsRow(label: "Generate summaries") {
-                BobeToggle(isOn: binding(\.conversationSummaryEnabled))
+                BobeToggle(isOn: self.binding(\.conversationSummaryEnabled))
             }
         }
     }
@@ -162,10 +160,10 @@ struct BehaviorPanel: View {
             title: "Tools",
             icon: "wrench.fill",
             description: "Allow BoBe to execute actions on your behalf",
-            toggleBinding: binding(\.toolsEnabled)
+            toggleBinding: self.binding(\.toolsEnabled)
         ) {
             SettingsRow(label: "Max iterations", suffix: "rounds") {
-                DebouncedNumberInput(value: binding(\.toolsMaxIterations), range: 1...20)
+                DebouncedNumberInput(value: self.binding(\.toolsMaxIterations), range: 1 ... 20)
             }
         }
     }
@@ -181,20 +179,20 @@ struct BehaviorPanel: View {
             set: { newValue in
                 guard var current = settings else { return }
                 current[keyPath: keyPath] = newValue
-                settings = current
-                debounceSave()
+                self.settings = current
+                self.debounceSave()
             }
         )
     }
 
     private func debounceSave() {
-        saveTask?.cancel()
-        isSaving = true
-        let currentSettings = settings
-        saveTask = Task {
+        self.saveTask?.cancel()
+        self.isSaving = true
+        let currentSettings = self.settings
+        self.saveTask = Task {
             try? await Task.sleep(for: .seconds(0.6))
             guard !Task.isCancelled, let currentSettings else {
-                isSaving = false
+                self.isSaving = false
                 return
             }
             do {
@@ -216,29 +214,29 @@ struct BehaviorPanel: View {
             } catch {
                 self.error = error.localizedDescription
             }
-            isSaving = false
+            self.isSaving = false
         }
     }
 
     private func addCheckinTime() {
-        guard !newCheckinTime.isEmpty else { return }
-        let trimmed = newCheckinTime.trimmingCharacters(in: .whitespaces)
-        guard !(settings?.checkinTimes.contains(trimmed) ?? false) else { return }
-        settings?.checkinTimes.append(trimmed)
-        newCheckinTime = ""
-        debounceSave()
+        guard !self.newCheckinTime.isEmpty else { return }
+        let trimmed = self.newCheckinTime.trimmingCharacters(in: .whitespaces)
+        guard !(self.settings?.checkinTimes.contains(trimmed) ?? false) else { return }
+        self.settings?.checkinTimes.append(trimmed)
+        self.newCheckinTime = ""
+        self.debounceSave()
     }
 
     private func removeCheckinTime(_ time: String) {
-        settings?.checkinTimes.removeAll { $0 == time }
-        debounceSave()
+        self.settings?.checkinTimes.removeAll { $0 == time }
+        self.debounceSave()
     }
 
     private func loadSettings() async {
-        isLoading = true
+        self.isLoading = true
         defer { isLoading = false }
         do {
-            settings = try await DaemonClient.shared.getSettings()
+            self.settings = try await DaemonClient.shared.getSettings()
         } catch {
             self.error = error.localizedDescription
         }
@@ -252,12 +250,12 @@ struct FlowLayout: Layout {
     let spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = arrange(proposal: proposal, subviews: subviews)
+        let result = self.arrange(proposal: proposal, subviews: subviews)
         return result.size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrange(proposal: proposal, subviews: subviews)
+        let result = self.arrange(proposal: proposal, subviews: subviews)
         for (index, subview) in subviews.enumerated() {
             subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x, y: bounds.minY + result.positions[index].y), proposal: .unspecified)
         }
@@ -273,14 +271,14 @@ struct FlowLayout: Layout {
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth && x > 0 {
+            if x + size.width > maxWidth, x > 0 {
                 x = 0
-                y += rowHeight + spacing
+                y += rowHeight + self.spacing
                 rowHeight = 0
             }
             positions.append(CGPoint(x: x, y: y))
             rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
+            x += size.width + self.spacing
             totalHeight = y + rowHeight
         }
 

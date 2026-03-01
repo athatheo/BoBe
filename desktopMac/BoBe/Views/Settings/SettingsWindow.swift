@@ -2,12 +2,19 @@ import SwiftUI
 
 /// Settings category for sidebar navigation
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case souls, goals, memories, userProfiles = "user-profiles"
-    case tools, mcpServers = "mcp-servers"
-    case appearance, aiModel = "ai-model", behavior, privacy, goalWorker = "goal-worker"
+    case souls, goals, memories
+    case userProfiles = "user-profiles"
+    case tools
+    case mcpServers = "mcp-servers"
+    case appearance
+    case aiModel = "ai-model"
+    case behavior, privacy
+    case goalWorker = "goal-worker"
     case advanced
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var label: String {
         switch self {
@@ -78,10 +85,13 @@ struct SettingsWindow: View {
     @State private var selectedCategory: SettingsCategory?
     @State private var themeStore = ThemeStore.shared
 
-    private var theme: ThemeConfig { themeStore.currentTheme }
+    private var theme: ThemeConfig {
+        self.themeStore.currentTheme
+    }
+
     private var headerGradient: LinearGradient {
         LinearGradient(
-            colors: [theme.colors.tertiary.opacity(0.25), theme.colors.border.opacity(0.2)],
+            colors: [self.theme.colors.tertiary.opacity(0.25), self.theme.colors.border.opacity(0.2)],
             startPoint: .top,
             endPoint: .bottom
         )
@@ -89,60 +99,56 @@ struct SettingsWindow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            settingsSidebar
+            self.settingsSidebar
                 .frame(width: 220)
 
             VStack(spacing: 0) {
-                settingsHeader
-                settingsContent
+                self.settingsHeader
+                self.settingsContent
             }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(theme.colors.background)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(self.theme.colors.background)
         }
-        .environment(\.theme, theme)
-        .preferredColorScheme(theme.isDark ? .dark : .light)
-        .background(theme.colors.background)
+        .environment(\.theme, self.theme)
+        .preferredColorScheme(self.theme.isDark ? .dark : .light)
+        .background(self.theme.colors.background)
     }
 
-    // MARK: - Sidebar (matches settings-sidebar CSS)
+    // MARK: - Sidebar
 
     private var settingsSidebar: some View {
         VStack(spacing: 0) {
-            // Header (80px with traffic-light clearance)
             HStack {
                 Text("BOBE TUNING")
                     .bobeTextStyle(.sectionLabel)
                     .tracking(1.2)
-                    .foregroundStyle(theme.colors.primary)
+                    .foregroundStyle(self.theme.colors.primary)
                 Spacer()
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity)
             .frame(height: 80)
-            .background(headerGradient)
+            .background(self.headerGradient)
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(theme.colors.border)
+                    .fill(self.theme.colors.border)
                     .frame(height: 1)
             }
 
-            // Navigation list
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
                         VStack(alignment: .leading, spacing: 4) {
-                            // Section label
                             Text(group.rawValue)
                                 .bobeTextStyle(.sectionLabel)
                                 .tracking(1)
-                                .foregroundStyle(theme.colors.textMuted)
+                                .foregroundStyle(self.theme.colors.textMuted)
                                 .padding(.horizontal, 20)
                                 .padding(.top, 4)
 
-                            // Nav items
                             ForEach(group.categories) { category in
-                                sidebarItem(category)
+                                self.sidebarItem(category)
                             }
                         }
                     }
@@ -150,40 +156,45 @@ struct SettingsWindow: View {
                 .padding(.vertical, 8)
             }
         }
-        .background(theme.colors.background)
+        .background(self.theme.colors.background)
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(theme.colors.border)
+                .fill(self.theme.colors.border)
                 .frame(width: 1)
         }
     }
 
     private func sidebarItem(_ category: SettingsCategory) -> some View {
-        let isSelected = selectedCategory == category
+        let isSelected = self.selectedCategory == category
         return BobeSidebarItem(
             icon: category.icon,
             title: category.label,
             isSelected: isSelected
         ) {
-            selectedCategory = category
+            self.selectedCategory = category
         }
         .padding(.horizontal, 8)
     }
 
     private var settingsHeader: some View {
         HStack(alignment: .bottom) {
-            Text(selectedCategory?.label ?? "")
+            Text(self.selectedCategory?.label ?? "")
                 .bobeTextStyle(.windowTitle)
-                .foregroundStyle(theme.colors.text)
+                .foregroundStyle(self.theme.colors.text)
             Spacer()
+            Button("Check for Updates...") {
+                UpdaterManager.shared.checkForUpdates()
+            }
+            .buttonStyle(.bordered)
+            .disabled(!UpdaterManager.shared.canCheckForUpdates)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
         .frame(height: 80)
-        .background(headerGradient)
+        .background(self.headerGradient)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(theme.colors.border)
+                .fill(self.theme.colors.border)
                 .frame(height: 1)
         }
     }
@@ -192,9 +203,9 @@ struct SettingsWindow: View {
 
     @ViewBuilder
     private var settingsContent: some View {
-        switch selectedCategory {
+        switch self.selectedCategory {
         case nil:
-            SettingsOverview(onNavigate: { selectedCategory = $0 })
+            SettingsOverview(onNavigate: { self.selectedCategory = $0 })
         case .souls:
             SoulsEditor()
         case .goals:
@@ -232,57 +243,59 @@ struct SettingsOverview: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Hero section
                 VStack(spacing: 8) {
                     Text("How to change BoBe")
                         .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(theme.colors.text)
+                        .foregroundStyle(self.theme.colors.text)
 
-                    Text("BoBe uses a personality (Soul), your goals, and memories to provide contextual, "
-                        + "proactive assistance. Here's how to customize your experience.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(theme.colors.textMuted)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 480)
+                    Text(
+                        "BoBe uses a personality (Soul), your goals, and memories to provide contextual, "
+                            + "proactive assistance. Here's how to customize your experience."
+                    )
+                    .font(.system(size: 14))
+                    .foregroundStyle(self.theme.colors.textMuted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 480)
                 }
                 .padding(.top, 32)
 
-                // Cards grid
-                LazyVGrid(columns: [
-                    GridItem(.flexible(), spacing: 16),
-                    GridItem(.flexible(), spacing: 16),
-                ], spacing: 16) {
-                    overviewCard(
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 16),
+                        GridItem(.flexible(), spacing: 16),
+                    ], spacing: 16
+                ) {
+                    self.overviewCard(
                         icon: "eye.fill",
-                        color: theme.colors.primary,
+                        color: self.theme.colors.primary,
                         heading: "What BoBe sees",
                         body: "Control screen capture, context window, and what information BoBe has access to.",
                         target: .behavior
                     )
-                    overviewCard(
+                    self.overviewCard(
                         icon: "brain.head.profile",
-                        color: theme.colors.secondary,
+                        color: self.theme.colors.secondary,
                         heading: "What BoBe remembers",
                         body: "Manage memories, conversation history, and how BoBe learns from interactions.",
                         target: .memories
                     )
-                    overviewCard(
+                    self.overviewCard(
                         icon: "message.fill",
-                        color: theme.colors.tertiary,
+                        color: self.theme.colors.tertiary,
                         heading: "When BoBe speaks up",
                         body: "Configure check-in frequency, proactive messages, and notification preferences.",
                         target: .behavior
                     )
-                    overviewCard(
+                    self.overviewCard(
                         icon: "paintbrush.fill",
-                        color: theme.colors.primary.opacity(0.7),
+                        color: self.theme.colors.primary.opacity(0.7),
                         heading: "How BoBe sounds",
                         body: "Choose and customize personality templates that shape BoBe's communication style.",
                         target: .souls
                     )
-                    overviewCard(
+                    self.overviewCard(
                         icon: "bolt.fill",
-                        color: theme.colors.secondary,
+                        color: self.theme.colors.secondary,
                         heading: "What BoBe can do",
                         body: "Enable tools, connect MCP servers, and extend BoBe's capabilities.",
                         target: .tools
@@ -290,10 +303,9 @@ struct SettingsOverview: View {
                 }
                 .padding(.horizontal, 24)
 
-                // Footer
                 Text("Use the sidebar to explore all settings. Everything runs locally on your Mac.")
                     .font(.system(size: 12))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
                     .padding(.bottom, 24)
             }
         }
@@ -307,7 +319,7 @@ struct SettingsOverview: View {
         target: SettingsCategory
     ) -> some View {
         Button {
-            onNavigate(target)
+            self.onNavigate(target)
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: icon)
@@ -318,11 +330,11 @@ struct SettingsOverview: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(heading)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(theme.colors.text)
+                        .foregroundStyle(self.theme.colors.text)
 
                     Text(body)
                         .font(.system(size: 12))
-                        .foregroundStyle(theme.colors.textMuted)
+                        .foregroundStyle(self.theme.colors.textMuted)
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
                 }
@@ -331,15 +343,15 @@ struct SettingsOverview: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(theme.colors.background)
+                    .fill(self.theme.colors.background)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(theme.colors.border, lineWidth: 1)
+                            .stroke(self.theme.colors.border, lineWidth: 1)
                     )
                     .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
             )

@@ -1,9 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Main overlay window content. Based on OverlayWindow orchestrator.
-/// Layout: bottom-right anchor, flex column items-end justify-end.
-/// Indicator bubble sits to the LEFT of the avatar, vertically centered.
+/// Main overlay window content.
+/// Indicator bubble sits to the left of the avatar, vertically centered.
 struct OverlayView: View {
     @State private var store = BobeStore.shared
     @State private var themeStore = ThemeStore.shared
@@ -18,30 +17,28 @@ struct OverlayView: View {
             Spacer()
 
             VStack(spacing: 0) {
-                // Chat stack (above avatar area)
-                if showChat && !store.messages.isEmpty {
+                if self.showChat, !self.store.messages.isEmpty {
                     ChatStack(
-                        messages: store.messages,
-                        maxViewportHeight: chatViewportMaxHeight
+                        messages: self.store.messages,
+                        maxViewportHeight: self.chatViewportMaxHeight
                     )
-                        .padding(.horizontal, 12)
-                        .transition(
-                            .move(edge: .bottom)
-                                .combined(with: .opacity)
-                                .combined(with: .scale(scale: 0.96, anchor: .bottomTrailing))
-                        )
+                    .padding(.horizontal, 12)
+                    .transition(
+                        .move(edge: .bottom)
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 0.96, anchor: .bottomTrailing))
+                    )
                 }
 
-                // Message input (between chat and avatar)
-                if showChat {
+                if self.showChat {
                     MessageInput(
-                        onSend: handleSendMessage,
+                        onSend: self.handleSendMessage,
                         onClose: {
                             withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-                                showChat = false
+                                self.showChat = false
                             }
                         },
-                        isThinking: store.isThinking
+                        isThinking: self.store.isThinking
                     )
                     .padding(.horizontal, 12)
                     .zIndex(2)
@@ -52,7 +49,6 @@ struct OverlayView: View {
                     )
                 }
 
-                // Error banner (dismissible)
                 if let error = store.errorMessage {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -62,7 +58,6 @@ struct OverlayView: View {
                             .lineLimit(2)
                         Spacer()
                         Button {
-                            // Dismiss error
                             BobeStore.shared.dismissError()
                         } label: {
                             Image(systemName: "xmark")
@@ -78,41 +73,40 @@ struct OverlayView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                // Avatar (right-aligned, no indicator bubble)
                 HStack(spacing: 12) {
                     Spacer()
 
                     VStack(spacing: 4) {
                         AvatarView(
-                            stateType: store.stateType,
-                            isCapturing: store.isCapturing,
-                            isConnected: store.isConnected,
-                            hasMessage: hasUnreadMessages,
-                            showInput: showChat,
-                            statusOverride: statusTextOverride,
-                            onClick: handleAvatarClick,
-                            onToggleCapture: { Task { _ = await store.toggleCapture() } },
+                            stateType: self.store.stateType,
+                            isCapturing: self.store.isCapturing,
+                            isConnected: self.store.isConnected,
+                            hasMessage: self.hasUnreadMessages,
+                            showInput: self.showChat,
+                            statusOverride: self.statusTextOverride,
+                            onClick: self.handleAvatarClick,
+                            onToggleCapture: { Task { _ = await self.store.toggleCapture() } },
                             onToggleInput: {
                                 withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-                                    showChat.toggle()
+                                    self.showChat.toggle()
                                 }
                             }
                         )
-                        .opacity(store.stateType == .loading ? 0.7 : 1.0)
-                        .scaleEffect(store.stateType == .loading ? loadingPulseScale : 1.0)
-                        .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: loadingPulseScale)
+                        .opacity(self.store.stateType == .loading ? 0.7 : 1.0)
+                        .scaleEffect(self.store.stateType == .loading ? self.loadingPulseScale : 1.0)
+                        .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: self.loadingPulseScale)
 
-                        if store.isReconnecting {
+                        if self.store.isReconnecting {
                             Text("Reconnecting...")
                                 .font(.system(size: 10))
-                                .foregroundStyle(themeStore.currentTheme.colors.textMuted)
+                                .foregroundStyle(self.themeStore.currentTheme.colors.textMuted)
                                 .transition(.opacity)
                         }
                     }
                 }
                 .padding(.trailing, 12)
                 .padding(.bottom, 8)
-                .padding(.top, showChat ? 6 : 0)
+                .padding(.top, self.showChat ? 6 : 0)
                 .zIndex(1)
             }
             .background(
@@ -126,52 +120,52 @@ struct OverlayView: View {
             )
             .onPreferenceChange(OverlayContentSizePreferenceKey.self) { newSize in
                 if newSize.width > 0, newSize.height > 0,
-                   abs(newSize.width - measuredContentSize.width) > 0.5 ||
-                    abs(newSize.height - measuredContentSize.height) > 0.5 {
-                    measuredContentSize = newSize
-                    resizeWindow()
+                   abs(newSize.width - self.measuredContentSize.width) > 0.5 || abs(newSize.height - self.measuredContentSize.height) > 0.5
+                {
+                    self.measuredContentSize = newSize
+                    self.resizeWindow()
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .environment(\.theme, themeStore.currentTheme)
-        .onChange(of: store.messages.count) { oldCount, newCount in
-            handleMessagesChange(oldCount: oldCount, newCount: newCount)
-            resizeWindow()
+        .environment(\.theme, self.themeStore.currentTheme)
+        .onChange(of: self.store.messages.count) { oldCount, newCount in
+            self.handleMessagesChange(oldCount: oldCount, newCount: newCount)
+            self.resizeWindow()
         }
-        .onChange(of: showChat) { _, _ in
-            resizeWindow()
+        .onChange(of: self.showChat) { _, _ in
+            self.resizeWindow()
         }
-        .onChange(of: store.toolExecutions.count) { _, _ in
-            resizeWindow()
+        .onChange(of: self.store.toolExecutions.count) { _, _ in
+            self.resizeWindow()
         }
         .onAppear {
-            resizeWindow()
-            startInactivityTimer()
-            if store.stateType == .loading {
-                loadingPulseScale = 1.04
+            self.resizeWindow()
+            self.startInactivityTimer()
+            if self.store.stateType == .loading {
+                self.loadingPulseScale = 1.04
             }
         }
         .onDisappear {
-            inactivityTimer?.cancel()
+            self.inactivityTimer?.cancel()
         }
     }
 
     // MARK: - Derived State
 
     private var hasUnreadMessages: Bool {
-        !store.messages.isEmpty && !showChat
+        !self.store.messages.isEmpty && !self.showChat
     }
 
     /// Text override for StatusLabel based on state priority
     private var statusTextOverride: String? {
-        if store.stateType == .loading {
+        if self.store.stateType == .loading {
             return "Starting..."
         }
-        if store.isReconnecting {
+        if self.store.isReconnecting {
             return "Reconnecting..."
         }
-        if store.capturePermissionMissing && store.stateType == .idle {
+        if self.store.capturePermissionMissing, self.store.stateType == .idle {
             return "Capture needs permission"
         }
         if let tool = store.runningTools.first {
@@ -184,37 +178,37 @@ struct OverlayView: View {
 
     private func handleAvatarClick() {
         withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-            showChat.toggle()
+            self.showChat.toggle()
         }
     }
 
     private func handleSendMessage(_ content: String) {
-        lastMessageActivity = .now
-        Task { _ = await store.sendMessage(content) }
+        self.lastMessageActivity = .now
+        Task { _ = await self.store.sendMessage(content) }
     }
 
     private func handleMessagesChange(oldCount: Int, newCount: Int) {
-        if newCount > oldCount && !showChat {
+        if newCount > oldCount, !self.showChat {
             if let last = store.messages.last, last.sender == .bobe {
-                withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) { showChat = true }
+                withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) { self.showChat = true }
             }
         }
-        lastMessageActivity = .now
+        self.lastMessageActivity = .now
     }
 
     // MARK: - Window Sizing
 
     private func resizeWindow() {
-        let size = calculateWindowSize()
+        let size = self.calculateWindowSize()
         OverlayWindowManager.shared.resize(width: size.width, height: size.height)
     }
 
     private func calculateWindowSize() -> CGSize {
-        let maxAllowedHeight = min(WindowSizes.heightMax, maxAllowedWindowHeight)
-        let measuredWidth = max(WindowSizes.widthCollapsed, measuredContentSize.width)
-        let measuredHeight = max(WindowSizes.heightCollapsed, measuredContentSize.height)
+        let maxAllowedHeight = min(WindowSizes.heightMax, self.maxAllowedWindowHeight)
+        let measuredWidth = max(WindowSizes.widthCollapsed, self.measuredContentSize.width)
+        let measuredHeight = max(WindowSizes.heightCollapsed, self.measuredContentSize.height)
 
-        if !showChat {
+        if !self.showChat {
             return CGSize(
                 width: WindowSizes.widthCollapsed,
                 height: min(measuredHeight, maxAllowedHeight)
@@ -223,9 +217,9 @@ struct OverlayView: View {
 
         let minExpandedHeight =
             WindowSizes.heightAvatar
-            + WindowSizes.heightInput
-            + WindowSizes.heightExpandedChrome
-            + (store.messages.isEmpty ? 0 : WindowSizes.heightChatViewportMin)
+                + WindowSizes.heightInput
+                + WindowSizes.heightExpandedChrome
+                + (self.store.messages.isEmpty ? 0 : WindowSizes.heightChatViewportMin)
         let measured = max(measuredContentSize.height, minExpandedHeight)
         let clampedHeight = min(measured, maxAllowedHeight)
         return CGSize(width: max(WindowSizes.widthExpanded, measuredWidth), height: clampedHeight)
@@ -244,9 +238,9 @@ struct OverlayView: View {
     private var chatViewportMaxHeight: CGFloat {
         let reserved =
             WindowSizes.heightAvatar
-            + WindowSizes.heightInput
-            + WindowSizes.heightExpandedChrome
-        let available = maxAllowedWindowHeight - reserved
+                + WindowSizes.heightInput
+                + WindowSizes.heightExpandedChrome
+        let available = self.maxAllowedWindowHeight - reserved
         return max(
             WindowSizes.heightChatViewportMin,
             min(WindowSizes.heightChatViewportMax, available)
@@ -256,15 +250,15 @@ struct OverlayView: View {
     // MARK: - Inactivity Timer
 
     private func startInactivityTimer() {
-        inactivityTimer?.cancel()
-        inactivityTimer = Task {
+        self.inactivityTimer?.cancel()
+        self.inactivityTimer = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(inactivityCheckIntervalSeconds))
                 guard !Task.isCancelled else { return }
-                let elapsed = Date().timeIntervalSince(lastMessageActivity)
-                if elapsed > inactivityTimeoutSeconds && showChat && store.stateType == .idle {
+                let elapsed = Date().timeIntervalSince(self.lastMessageActivity)
+                if elapsed > inactivityTimeoutSeconds, self.showChat, self.store.stateType == .idle {
                     await MainActor.run {
-                        withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) { showChat = false }
+                        withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) { self.showChat = false }
                     }
                 }
             }

@@ -1,0 +1,86 @@
+# SwiftFormat configuration for BoBe macOS SwiftUI app
+# Nick Lockwood's SwiftFormat 0.59+
+
+# Paths
+--exclude .build,Package.swift
+
+# Formatting
+--indent 4
+--tabwidth 4
+--maxwidth 150
+--wrapcollections before-first
+--wraparguments before-first
+--wrapparameters before-first
+--wrapconditions after-first
+--wrapreturntype preserve
+--wrapeffects preserve
+--wraptypealiases before-first
+--closingparen balanced
+--funcattributes prev-line
+--typeattributes prev-line
+--varattributes preserve
+--storedvarattrs same-line
+--computedvarattrs preserve
+
+# Whitespace
+--trimwhitespace always
+--linebreaks lf
+--commas always
+--semicolons inline
+--indentcase false
+--ifdef indent
+--xcodeindentation disabled
+
+# Braces & control flow
+--allman false
+--elseposition same-line
+--guardelse next-line
+
+# Self — keep 'insert' to satisfy Swift 6 strict concurrency closure capture rules
+--self insert
+--selfrequired
+
+# Types & imports
+--importgrouping alpha
+--typeorder
+--modifierorder
+
+# Stripping
+--stripunusedargs closure-only
+--redundanttype inferred
+
+# Header
+--header strip
+
+# SwiftUI-friendly settings
+--swiftversion 6.0
+
+# Enabled opt-in rules
+--enable blankLineAfterImports
+--enable blockComments
+--enable docCommentsBeforeModifiers
+
+# Disabled rules (match SwiftLint config / avoid noise)
+--disable acronyms
+--disable markTypes
+--disable organizeDeclarations
+--disable sortSwitchCases
+--disable wrapSwitchCases
+--disable wrapEnumCases
+--disable wrapConditionalBodies
+--disable isEmpty
+--disable preferFinalClasses
+--disable noExplicitOwnership
+--disable blankLineAfterSwitchCase
+--disable blankLinesAfterGuardStatements
+--disable noGuardInTests
+--disable singlePropertyPerLine
+--disable wrapMultilineConditionalAssignment
+--disable wrapMultilineFunctionChains
+--disable preferSwiftTesting
+--disable privateStateVariables
+--disable propertyTypes
+--disable testSuiteAccessControl
+--disable unusedPrivateDeclarations
+--disable urlMacro
+--disable validateTestCases

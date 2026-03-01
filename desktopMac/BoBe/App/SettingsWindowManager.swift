@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Manages the settings window (separate from overlay). Based on SettingsWindow.
+/// Manages the settings window (separate from overlay).
 @MainActor
 final class SettingsWindowManager {
     static let shared = SettingsWindowManager()
@@ -17,7 +17,6 @@ final class SettingsWindowManager {
             return
         }
 
-        // Temporarily show in dock so settings can activate properly
         NSApp.setActivationPolicy(.regular)
 
         let theme = ThemeStore.shared.currentTheme
@@ -54,7 +53,7 @@ final class SettingsWindowManager {
     }
 
     func close() {
-        window?.close()
-        window = nil
+        self.window?.close()
+        self.window = nil
     }
 }

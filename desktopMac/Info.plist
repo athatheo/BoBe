@@ -18,5 +18,13 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://bobebot.com/updates/macos/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>rQS3dCsQx+IdGVnMSrkCJoP1WHuMoz3ft1jT0Z/UXXs=</string>
 </dict>
 </plist>

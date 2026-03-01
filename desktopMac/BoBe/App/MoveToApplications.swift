@@ -9,18 +9,17 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "MoveToApplicat
 func moveToApplicationsIfNeeded() {
     let bundlePath = Bundle.main.bundlePath
 
-    // Already in /Applications or ~/Applications — nothing to do
     let homeApps = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Applications").path
     if bundlePath.hasPrefix("/Applications/") || bundlePath.hasPrefix(homeApps + "/") {
         return
     }
 
-    // Only prompt when running from locations that indicate a non-installed state
-    let shouldPrompt = isReadOnlyVolume(bundlePath)
-        || bundlePath.contains("/Downloads/")
-        || bundlePath.hasPrefix("/tmp/")
-        || bundlePath.hasPrefix("/private/tmp/")
+    let shouldPrompt =
+        isReadOnlyVolume(bundlePath)
+            || bundlePath.contains("/Downloads/")
+            || bundlePath.hasPrefix("/tmp/")
+            || bundlePath.hasPrefix("/private/tmp/")
     guard shouldPrompt else { return }
 
     logger.info("App running from \(bundlePath) — prompting to move to Applications")
@@ -39,7 +38,6 @@ func moveToApplicationsIfNeeded() {
     let fm = FileManager.default
 
     do {
-        // Remove existing copy if present
         if fm.fileExists(atPath: destPath) {
             try fm.removeItem(atPath: destPath)
         }
@@ -56,7 +54,6 @@ func moveToApplicationsIfNeeded() {
         return
     }
 
-    // Relaunch from new location
     let destURL = URL(fileURLWithPath: destPath)
     let config = NSWorkspace.OpenConfiguration()
     config.createsNewApplicationInstance = true

@@ -10,18 +10,18 @@ struct ConceptCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
+            Image(systemName: self.icon)
                 .font(.system(size: 20))
-                .foregroundStyle(theme.colors.primary)
+                .foregroundStyle(self.theme.colors.primary)
                 .frame(width: 28)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(self.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.colors.text)
-                Text(description)
+                    .foregroundStyle(self.theme.colors.text)
+                Text(self.description)
                     .font(.system(size: 13))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
                     .lineSpacing(2)
             }
         }
@@ -29,8 +29,8 @@ struct ConceptCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(theme.colors.surface)
-                .stroke(theme.colors.border, lineWidth: 1)
+                .fill(self.theme.colors.surface)
+                .stroke(self.theme.colors.border, lineWidth: 1)
         )
     }
 }
@@ -46,17 +46,17 @@ struct AIChoiceCard: View {
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
+        Button(action: self.action) {
             VStack(spacing: 10) {
-                Image(systemName: icon)
+                Image(systemName: self.icon)
                     .font(.system(size: 32))
-                    .foregroundStyle(theme.colors.primary)
-                Text(title)
+                    .foregroundStyle(self.theme.colors.primary)
+                Text(self.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.colors.text)
-                Text(subtitle)
+                    .foregroundStyle(self.theme.colors.text)
+                Text(self.subtitle)
                     .font(.system(size: 12))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -64,17 +64,17 @@ struct AIChoiceCard: View {
             .padding(.horizontal, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(theme.colors.surface)
+                    .fill(self.theme.colors.surface)
                     .stroke(
-                        isHovered ? theme.colors.primary.opacity(0.55) : theme.colors.border,
+                        self.isHovered ? self.theme.colors.primary.opacity(0.55) : self.theme.colors.border,
                         lineWidth: 1
                     )
             )
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .scaleEffect(isHovered ? 1.01 : 1.0)
-        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .onHover { self.isHovered = $0 }
+        .scaleEffect(self.isHovered ? 1.01 : 1.0)
+        .animation(.easeOut(duration: 0.12), value: self.isHovered)
     }
 }
 
@@ -85,19 +85,19 @@ struct PermissionBadge: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Text(text)
+        Text(self.text)
             .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(textColor)
+            .foregroundStyle(self.textColor)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(textColor.opacity(0.1))
+                    .fill(self.textColor.opacity(0.1))
             )
     }
 
     private var text: String {
-        switch status {
+        switch self.status {
         case "granted": "✓ Granted"
         case "denied": "Not Granted"
         case "restricted": "Restricted"
@@ -106,11 +106,11 @@ struct PermissionBadge: View {
     }
 
     private var textColor: Color {
-        switch status {
-        case "granted": theme.colors.secondary
-        case "denied": theme.colors.primary
-        case "restricted": theme.colors.tertiary
-        default: theme.colors.textMuted
+        switch self.status {
+        case "granted": self.theme.colors.secondary
+        case "denied": self.theme.colors.primary
+        case "restricted": self.theme.colors.tertiary
+        default: self.theme.colors.textMuted
         }
     }
 }
@@ -126,19 +126,19 @@ struct PermissionCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(title)
+                Text(self.title)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.colors.text)
+                    .foregroundStyle(self.theme.colors.text)
                 Spacer()
-                PermissionBadge(status: badge)
+                PermissionBadge(status: self.badge)
             }
-            content()
+            self.content()
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(theme.colors.surface)
-                .stroke(theme.colors.border, lineWidth: 1)
+                .fill(self.theme.colors.surface)
+                .stroke(self.theme.colors.border, lineWidth: 1)
         )
     }
 }
@@ -195,7 +195,9 @@ struct PermissionCard<Content: View>: View {
             onSelect: {}
         )
         TierCard(
-            tier: LocalTier(id: "medium", label: "Balanced (8B)", description: "Best balance of speed and quality", diskEstimateBytes: 11_000_000_000),
+            tier: LocalTier(
+                id: "medium", label: "Balanced (8B)", description: "Best balance of speed and quality", diskEstimateBytes: 11_000_000_000
+            ),
             isSelected: false,
             onSelect: {}
         )

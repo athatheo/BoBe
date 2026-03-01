@@ -256,7 +256,10 @@ struct MemoryActionResponse: Codable, Sendable {
 // MARK: - Tools
 
 struct ToolInfo: Identifiable, Codable, Sendable {
-    var id: String { name }
+    var id: String {
+        self.name
+    }
+
     let name: String
     let description: String
     let provider: String

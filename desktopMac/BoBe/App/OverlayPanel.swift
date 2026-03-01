@@ -17,7 +17,6 @@ final class PassthroughContentView: NSView {
 }
 
 /// Transparent, frameless, always-on-top floating panel for the BoBe overlay.
-/// Based on original BrowserWindow with transparent: true, frame: false, alwaysOnTop: true.
 final class OverlayPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
@@ -27,7 +26,6 @@ final class OverlayPanel: NSPanel {
             defer: false
         )
 
-        // Use passthrough content view so transparent areas don't block clicks
         let passthrough = PassthroughContentView(frame: NSRect(origin: .zero, size: contentRect.size))
         passthrough.autoresizingMask = [.width, .height]
         contentView = passthrough
@@ -37,21 +35,24 @@ final class OverlayPanel: NSPanel {
         hasShadow = false
         level = .floating
         isMovable = true
-        // Allow drag-to-move by background.
         isMovableByWindowBackground = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
 
         collectionBehavior = [
             .canJoinAllSpaces,
-            .fullScreenAuxiliary
+            .fullScreenAuxiliary,
         ]
 
-        // Ignore mouse events on transparent areas
         ignoresMouseEvents = false
     }
 
-    // Allow the panel to become key for text input
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
+    /// Allow the panel to become key for text input
+    override var canBecomeKey: Bool {
+        true
+    }
+
+    override var canBecomeMain: Bool {
+        false
+    }
 }

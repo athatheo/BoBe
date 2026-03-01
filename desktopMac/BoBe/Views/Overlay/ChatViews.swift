@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Stack of chat message bubbles. Based on ChatStack: collapsed shows last 2, expanded shows all.
+/// Stack of chat message bubbles. Collapsed shows last 2, expanded shows all.
 struct ChatStack: View {
     let messages: [ChatMessage]
     var maxViewportHeight: CGFloat = WindowSizes.heightChatViewportMax
@@ -9,40 +9,39 @@ struct ChatStack: View {
     @Environment(\.theme) private var theme
 
     private var visibleMessages: [ChatMessage] {
-        if isExpanded { return messages }
-        return Array(messages.suffix(4))
+        if self.isExpanded { return self.messages }
+        return Array(self.messages.suffix(4))
     }
 
     private var hiddenCount: Int {
-        max(0, messages.count - 4)
+        max(0, self.messages.count - 4)
     }
 
     private var shouldShowToggle: Bool {
-        isExpanded || hiddenCount > 0
+        self.isExpanded || self.hiddenCount > 0
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Messages
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 8) {
-                        if !isExpanded && hiddenCount > 0 {
-                            HiddenMessagesAffordance(count: hiddenCount)
+                        if !self.isExpanded, self.hiddenCount > 0 {
+                            HiddenMessagesAffordance(count: self.hiddenCount)
                                 .transition(.opacity)
                         }
 
-                        ForEach(visibleMessages) { message in
+                        ForEach(self.visibleMessages) { message in
                             ChatBubble(message: message)
                                 .id(message.id)
                         }
                     }
-                    .padding(.top, isExpanded ? 4 : 2)
+                    .padding(.top, self.isExpanded ? 4 : 2)
                 }
                 .overlay(alignment: .top) {
-                    if !isExpanded && hiddenCount > 0 {
+                    if !self.isExpanded, self.hiddenCount > 0 {
                         LinearGradient(
-                            colors: [theme.colors.background.opacity(0.95), theme.colors.background.opacity(0)],
+                            colors: [self.theme.colors.background.opacity(0.95), self.theme.colors.background.opacity(0)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -55,14 +54,14 @@ struct ChatStack: View {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
-                .onChange(of: messages.last?.id) { _, _ in
+                .onChange(of: self.messages.last?.id) { _, _ in
                     if let last = messages.last {
                         withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }
-                .onChange(of: messages.last?.content) { _, _ in
+                .onChange(of: self.messages.last?.content) { _, _ in
                     if let last = messages.last {
                         withAnimation(.linear(duration: 0.12)) {
                             proxy.scrollTo(last.id, anchor: .bottom)
@@ -71,32 +70,31 @@ struct ChatStack: View {
                 }
                 .frame(
                     minHeight: WindowSizes.heightChatViewportMin,
-                    maxHeight: maxViewportHeight
+                    maxHeight: self.maxViewportHeight
                 )
             }
 
-            // Expand/collapse button (chat-expand-button)
-            if shouldShowToggle {
+            if self.shouldShowToggle {
                 Button {
                     withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-                        isExpanded.toggle()
+                        self.isExpanded.toggle()
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
+                        Image(systemName: self.isExpanded ? "chevron.down" : "chevron.up")
                             .font(.system(size: 8))
-                        Text(isExpanded ? "collapse" : "+\(hiddenCount) hidden messages")
+                        Text(self.isExpanded ? "collapse" : "+\(self.hiddenCount) hidden messages")
                             .font(.system(size: 10, weight: .medium))
                     }
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(theme.colors.background)
+                            .fill(self.theme.colors.background)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(theme.colors.border, lineWidth: 1)
+                                    .stroke(self.theme.colors.border, lineWidth: 1)
                             )
                     )
                 }
@@ -118,16 +116,16 @@ private struct HiddenMessagesAffordance: View {
         HStack(spacing: 4) {
             Image(systemName: "ellipsis")
                 .font(.system(size: 9, weight: .semibold))
-            Text("+\(count) hidden messages")
+            Text("+\(self.count) hidden messages")
                 .font(.system(size: 10, weight: .medium))
         }
-        .foregroundStyle(theme.colors.textMuted)
+        .foregroundStyle(self.theme.colors.textMuted)
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
         .background(
             Capsule()
-                .fill(theme.colors.background.opacity(0.86))
-                .overlay(Capsule().stroke(theme.colors.border, lineWidth: 1))
+                .fill(self.theme.colors.background.opacity(0.86))
+                .overlay(Capsule().stroke(self.theme.colors.border, lineWidth: 1))
         )
         .frame(maxWidth: .infinity, alignment: .center)
     }
@@ -139,51 +137,52 @@ struct ChatBubble: View {
 
     @Environment(\.theme) private var theme
 
-    private var isUser: Bool { message.sender == .user }
-    private var isPending: Bool { message.isPending }
+    private var isUser: Bool {
+        self.message.sender == .user
+    }
+
+    private var isPending: Bool {
+        self.message.isPending
+    }
+
     private var accentColor: Color {
-        isUser ? theme.colors.secondary : theme.colors.primary
+        self.isUser ? self.theme.colors.secondary : self.theme.colors.primary
     }
 
     var body: some View {
         HStack {
-            if isUser { Spacer(minLength: 0) }
+            if self.isUser { Spacer(minLength: 0) }
 
-            // Bubble container
             VStack(spacing: 0) {
-                // 3px accent bar at top
                 Rectangle()
-                    .fill(accentColor)
+                    .fill(self.accentColor)
                     .frame(height: 3)
 
-                // Content area (padding: 8px 12px 10px)
                 VStack(alignment: .leading, spacing: 0) {
-                    // Sender label (9px semibold uppercase)
                     HStack(spacing: 0) {
-                        Text(isUser ? "you" : "bobe")
+                        Text(self.isUser ? "you" : "bobe")
                             .font(.system(size: 9, weight: .semibold))
                             .tracking(0.8)
                             .textCase(.uppercase)
-                            .foregroundStyle(accentColor)
-                        if isPending {
+                            .foregroundStyle(self.accentColor)
+                        if self.isPending {
                             Text(" - sending...")
                                 .font(.system(size: 8))
                                 .italic()
-                                .foregroundStyle(theme.colors.textMuted)
+                                .foregroundStyle(self.theme.colors.textMuted)
                         }
                     }
                     .padding(.bottom, 2)
 
-                    // Message text (12px)
                     HStack(spacing: 0) {
-                        Text(message.content)
+                        Text(self.message.content)
                             .font(.system(size: 12))
                             .lineSpacing(2)
-                            .foregroundStyle(theme.colors.text)
+                            .foregroundStyle(self.theme.colors.text)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        if message.isStreaming {
-                            BlinkingCursor(color: theme.colors.primary)
+                        if self.message.isStreaming {
+                            BlinkingCursor(color: self.theme.colors.primary)
                         }
                     }
                 }
@@ -193,22 +192,24 @@ struct ChatBubble: View {
                 .padding(.bottom, 10)
             }
             .background(
-                isPending ? theme.colors.border : theme.colors.background
+                self.isPending ? self.theme.colors.border : self.theme.colors.background
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(theme.colors.border, lineWidth: 1.5)
+                    .stroke(self.theme.colors.border, lineWidth: 1.5)
             )
             .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-            .opacity(isPending ? 0.5 : 1)
-            .frame(maxWidth: isUser ? 410 : 460, alignment: isUser ? .trailing : .leading)
-            .transition(.asymmetric(
-                insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.95)),
-                removal: .opacity
-            ))
+            .opacity(self.isPending ? 0.5 : 1)
+            .frame(maxWidth: self.isUser ? 410 : 460, alignment: self.isUser ? .trailing : .leading)
+            .transition(
+                .asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.95)),
+                    removal: .opacity
+                )
+            )
 
-            if !isUser { Spacer(minLength: 0) }
+            if !self.isUser { Spacer(minLength: 0) }
         }
     }
 }
@@ -222,12 +223,12 @@ struct BlinkingCursor: View {
     var body: some View {
         Text("|")
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(color)
-            .opacity(visible ? 1 : 0)
+            .foregroundStyle(self.color)
+            .opacity(self.visible ? 1 : 0)
             .task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(0.3))
-                    visible.toggle()
+                    self.visible.toggle()
                 }
             }
     }
@@ -243,10 +244,12 @@ struct BlinkingCursor: View {
 }
 
 #Preview("Chat Bubble - BoBe") {
-    ChatBubble(message: ChatMessage(sender: .bobe, content: "I'm doing great! I've been observing your workflow and noticed some interesting patterns."))
-        .environment(\.theme, allThemes[0])
-        .padding()
-        .frame(width: 500)
+    ChatBubble(
+        message: ChatMessage(sender: .bobe, content: "I'm doing great! I've been observing your workflow and noticed some interesting patterns.")
+    )
+    .environment(\.theme, allThemes[0])
+    .padding()
+    .frame(width: 500)
 }
 
 #Preview("Chat Bubble - Streaming") {

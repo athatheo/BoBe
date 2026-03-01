@@ -4,7 +4,6 @@ import SwiftUI
 // MARK: - Cloud & Local Config Views
 
 extension SetupWizard {
-
     // MARK: - Cloud Config
 
     var cloudConfigView: some View {
@@ -41,7 +40,8 @@ extension SetupWizard {
                 BobeSecureField(placeholder: "Your API key", text: $apiKey)
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
-                   provider.needsEndpoint {
+                   provider.needsEndpoint
+                {
                     Text("Endpoint URL")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
@@ -49,7 +49,8 @@ extension SetupWizard {
                 }
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
-                   provider.needsDeployment {
+                   provider.needsDeployment
+                {
                     Text("Deployment Name")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
@@ -57,7 +58,8 @@ extension SetupWizard {
                 }
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
-                   !provider.models.isEmpty {
+                   !provider.models.isEmpty
+                {
                     Text("Model")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
@@ -76,10 +78,11 @@ extension SetupWizard {
                 let provider = options?.cloudProviders.first { $0.id == selectedProvider }
                 let needsEndpoint = provider?.needsEndpoint ?? false
                 let needsDeployment = provider?.needsDeployment ?? false
-                let canSubmit = !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
-                    && (!needsEndpoint || !endpoint.trimmingCharacters(in: .whitespaces).isEmpty)
-                    && (!needsDeployment || !deployment.trimmingCharacters(in: .whitespaces).isEmpty)
-                    && !busy
+                let canSubmit =
+                    !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
+                        && (!needsEndpoint || !endpoint.trimmingCharacters(in: .whitespaces).isEmpty)
+                        && (!needsDeployment || !deployment.trimmingCharacters(in: .whitespaces).isEmpty)
+                        && !busy
 
                 Button(busy ? "Setting up..." : "Continue") {
                     handleCloudSetup()
@@ -88,7 +91,7 @@ extension SetupWizard {
                 .disabled(!canSubmit)
                 .frame(maxWidth: .infinity)
 
-                backToChooseModeButton {
+                self.backToChooseModeButton {
                     apiKey = ""
                     endpoint = ""
                     deployment = ""
@@ -128,7 +131,7 @@ extension SetupWizard {
             .disabled(busy)
             .frame(maxWidth: .infinity)
 
-            backToChooseModeButton()
+            self.backToChooseModeButton()
         }
         .frame(maxWidth: 440)
     }
@@ -162,32 +165,32 @@ struct TierCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.border)
+            Image(systemName: self.isSelected ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(self.isSelected ? self.theme.colors.primary : self.theme.colors.border)
                 .font(.system(size: 14))
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(tier.label)
+                    Text(self.tier.label)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(theme.colors.text)
-                    Text(tier.diskLabel)
+                        .foregroundStyle(self.theme.colors.text)
+                    Text(self.tier.diskLabel)
                         .font(.system(size: 12))
-                        .foregroundStyle(theme.colors.textMuted)
+                        .foregroundStyle(self.theme.colors.textMuted)
                 }
-                Text(tier.description)
+                Text(self.tier.description)
                     .font(.system(size: 12))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
             Spacer()
         }
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? theme.colors.primary.opacity(0.12) : theme.colors.surface)
-                .stroke(isSelected ? theme.colors.primary : theme.colors.border, lineWidth: 1)
+                .fill(self.isSelected ? self.theme.colors.primary.opacity(0.12) : self.theme.colors.surface)
+                .stroke(self.isSelected ? self.theme.colors.primary : self.theme.colors.border, lineWidth: 1)
         )
         .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
+        .onTapGesture { self.onSelect() }
     }
 }

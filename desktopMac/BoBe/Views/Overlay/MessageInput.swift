@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Text input panel for sending messages. Based on compact MessageInput exactly.
-/// CSS: .message-input-container-compact with .message-input-accent (3px olive bar)
+/// Text input panel for sending messages.
 struct MessageInput: View {
     let onSend: (String) -> Void
     let onClose: () -> Void
-    var isThinking: Bool = false
+    var isThinking = false
 
     @State private var text = ""
     @FocusState private var isFocused: Bool
@@ -13,67 +12,59 @@ struct MessageInput: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Compact container with accent bar
             VStack(spacing: 0) {
-                // 3px olive accent bar at top
                 Rectangle()
-                    .fill(theme.colors.secondary)
+                    .fill(self.theme.colors.secondary)
                     .frame(height: 3)
 
-                // Content area: textarea + buttons (padding: 8px 12px)
                 HStack(alignment: .bottom, spacing: 8) {
-                    // Text field (13px, flexible height)
                     TextField(
                         "",
-                        text: $text,
-                        prompt: Text(isThinking ? "BoBe is thinking…" : "Type a message...")
-                            .foregroundStyle(placeholderColor),
-                        axis: .vertical,
-                            
+                        text: self.$text,
+                        prompt: Text(self.isThinking ? "BoBe is thinking…" : "Type a message...")
+                            .foregroundStyle(self.placeholderColor),
+                        axis: .vertical
                     )
                     .padding(EdgeInsets(top: 0, leading: 2, bottom: 6, trailing: 0))
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .lineSpacing(2)
-                    .foregroundStyle(inputTextColor)
-                    .tint(theme.colors.primary)
-                    .lineLimit(1...4)
-                    .focused($isFocused)
-                    .onSubmit { handleSubmit() }
+                    .foregroundStyle(self.inputTextColor)
+                    .tint(self.theme.colors.primary)
+                    .lineLimit(1 ... 4)
+                    .focused(self.$isFocused)
+                    .onSubmit { self.handleSubmit() }
                     .onKeyPress(.escape) {
-                        onClose()
+                        self.onClose()
                         return .handled
                     }
 
-                    // Thinking hint (shown while drafting during thinking)
-                    if isThinking && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if self.isThinking, !self.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("waiting...")
                             .font(.system(size: 11))
-                            .foregroundStyle(theme.colors.textMuted)
+                            .foregroundStyle(self.theme.colors.textMuted)
                             .lineLimit(1)
                     }
 
-                    // Send button (32px circle)
-                    Button(action: handleSubmit) {
+                    Button(action: self.handleSubmit) {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(
-                                canSend ? theme.colors.background : theme.colors.textMuted
+                                self.canSend ? self.theme.colors.background : self.theme.colors.textMuted
                             )
                     }
                     .buttonStyle(.plain)
                     .frame(width: 32, height: 32)
                     .background(
                         Circle()
-                            .fill(canSend ? theme.colors.secondary : theme.colors.border)
+                            .fill(self.canSend ? self.theme.colors.secondary : self.theme.colors.border)
                     )
-                    .disabled(!canSend)
+                    .disabled(!self.canSend)
 
-                    // Close button (inline, right side)
-                    Button(action: onClose) {
+                    Button(action: self.onClose) {
                         Image(systemName: "xmark")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(theme.colors.textMuted)
+                            .foregroundStyle(self.theme.colors.textMuted)
                     }
                     .buttonStyle(.plain)
                     .frame(width: 24, height: 24)
@@ -86,18 +77,18 @@ struct MessageInput: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
             }
-            .background(theme.colors.surface)
+            .background(self.theme.colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(theme.colors.border, lineWidth: 1.5)
+                    .stroke(self.theme.colors.border, lineWidth: 1.5)
             )
             .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
         }
         .frame(maxWidth: .infinity)
         .padding(.leading, 16)
         .padding(.bottom, 4)
-        .onAppear { isFocused = true }
+        .onAppear { self.isFocused = true }
         .transition(
             .asymmetric(
                 insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomTrailing)),
@@ -107,22 +98,22 @@ struct MessageInput: View {
     }
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isThinking
+        !self.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !self.isThinking
     }
 
     private func handleSubmit() {
-        guard canSend else { return }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        text = ""
-        onSend(trimmed)
+        guard self.canSend else { return }
+        let trimmed = self.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.text = ""
+        self.onSend(trimmed)
     }
 
     private var placeholderColor: Color {
-        theme.isDark ? theme.colors.text.opacity(0.72) : theme.colors.textMuted.opacity(0.92)
+        self.theme.isDark ? self.theme.colors.text.opacity(0.72) : self.theme.colors.textMuted.opacity(0.92)
     }
 
     private var inputTextColor: Color {
-        theme.isDark ? theme.colors.text.opacity(0.98) : theme.colors.text
+        self.theme.isDark ? self.theme.colors.text.opacity(0.98) : self.theme.colors.text
     }
 }
 

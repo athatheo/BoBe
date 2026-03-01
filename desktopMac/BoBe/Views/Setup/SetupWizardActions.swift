@@ -14,7 +14,7 @@ extension SetupWizard {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard !Task.isCancelled else { return }
-                await MainActor.run { checkScreenPermission() }
+                await MainActor.run { self.checkScreenPermission() }
             }
         }
     }
@@ -22,8 +22,8 @@ extension SetupWizard {
     func handleCloudSetup() {
         guard !busy, !apiKey.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         let provider = options?.cloudProviders.first { $0.id == selectedProvider }
-        if provider?.needsEndpoint == true && endpoint.trimmingCharacters(in: .whitespaces).isEmpty { return }
-        if provider?.needsDeployment == true && deployment.trimmingCharacters(in: .whitespaces).isEmpty { return }
+        if provider?.needsEndpoint == true, endpoint.trimmingCharacters(in: .whitespaces).isEmpty { return }
+        if provider?.needsDeployment == true, deployment.trimmingCharacters(in: .whitespaces).isEmpty { return }
 
         busy = true
         setupMode = .online
@@ -33,7 +33,7 @@ extension SetupWizard {
         request.model = selectedModel.isEmpty ? nil : selectedModel
         if provider?.needsEndpoint == true { request.endpoint = endpoint }
         if provider?.needsDeployment == true { request.deployment = deployment }
-        startSetupJob(request)
+        self.startSetupJob(request)
     }
 
     func handleLocalSetup() {
@@ -42,7 +42,7 @@ extension SetupWizard {
         setupMode = .local
         var request = SetupRequest(mode: "local")
         request.tier = selectedTier
-        startSetupJob(request)
+        self.startSetupJob(request)
     }
 
     func startSetupJob(_ request: SetupRequest) {
@@ -53,7 +53,7 @@ extension SetupWizard {
             do {
                 let job = try await DaemonClient.shared.startSetupJob(request)
                 await MainActor.run { setupJob = job }
-                startPolling(jobId: job.jobId)
+                self.startPolling(jobId: job.jobId)
             } catch {
                 await MainActor.run {
                     busy = false
@@ -82,7 +82,7 @@ extension SetupWizard {
                         }
                     }
                     if job.isTerminal {
-                        await MainActor.run { handleJobComplete(job) }
+                        await MainActor.run { self.handleJobComplete(job) }
                         return
                     }
                 } catch {
@@ -118,8 +118,13 @@ extension SetupWizard {
         }
     }
 
-    func skipCapture() { step = .complete }
-    func continueFromCapture() { step = .complete }
+    func skipCapture() {
+        step = .complete
+    }
+
+    func continueFromCapture() {
+        step = .complete
+    }
 
     func completeSetup() {
         guard !isFinishingSetup else { return }
@@ -127,10 +132,6 @@ extension SetupWizard {
         Task {
             do {
                 try await DaemonClient.shared.markOnboardingComplete()
-                let status = try await DaemonClient.shared.getOnboardingStatus()
-                guard !status.needsOnboarding else {
-                    throw SetupError.general("Setup could not be saved. Please verify your settings and try again.")
-                }
                 await MainActor.run {
                     isFinishingSetup = false
                     NotificationCenter.default.post(name: .bobeSetupCompleted, object: nil)

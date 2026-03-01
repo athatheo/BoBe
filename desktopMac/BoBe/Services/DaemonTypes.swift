@@ -10,7 +10,7 @@ enum DaemonError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse: "Invalid response from daemon"
-        case .httpError(let code, let msg): "HTTP \(code): \(msg)"
+        case let .httpError(code, msg): "HTTP \(code): \(msg)"
         case .connectionFailed: "Failed to connect to daemon"
         }
     }
@@ -26,14 +26,13 @@ struct AnyEncodable: Encodable {
     }
 
     func encode(to encoder: Encoder) throws {
-        try encode(encoder)
+        try self.encode(encoder)
     }
 }
 
 // MARK: - DaemonClient Tools, MCP, Settings, Models & Onboarding
 
 extension DaemonClient {
-
     // MARK: Tools
 
     func listTools() async throws -> ToolListResponse {

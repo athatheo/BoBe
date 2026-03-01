@@ -98,70 +98,70 @@ struct BobeButtonStyle: ButtonStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
-        let disabledOpacity = isEnabled ? 1.0 : 0.5
+        let disabledOpacity = self.isEnabled ? 1.0 : 0.5
         let isPressed = configuration.isPressed
 
         configuration.label
-            .font(.system(size: size.fontSize, weight: .semibold))
-            .foregroundStyle(foregroundColor.opacity(disabledOpacity))
-            .padding(.horizontal, size.horizontalPadding)
-            .padding(.vertical, size.verticalPadding)
+            .font(.system(size: self.size.fontSize, weight: .semibold))
+            .foregroundStyle(self.foregroundColor.opacity(disabledOpacity))
+            .padding(.horizontal, self.size.horizontalPadding)
+            .padding(.vertical, self.size.verticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(backgroundColor(isPressed: isPressed).opacity(disabledOpacity))
+                    .fill(self.backgroundColor(isPressed: isPressed).opacity(disabledOpacity))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(borderColor(isPressed: isPressed).opacity(disabledOpacity), lineWidth: 1)
+                    .stroke(self.borderColor(isPressed: isPressed).opacity(disabledOpacity), lineWidth: 1)
             )
             .opacity(isPressed ? 0.9 : 1)
             .animation(.easeOut(duration: 0.12), value: isPressed)
     }
 
     private var foregroundColor: Color {
-        switch variant {
+        switch self.variant {
         case .primary:
-            return theme.colors.background
+            self.theme.colors.background
         case .secondary:
-            return theme.colors.text
+            self.theme.colors.text
         case .ghost:
-            return theme.colors.textMuted
+            self.theme.colors.textMuted
         case .destructive:
-            return theme.colors.background
+            self.theme.colors.background
         }
     }
 
     private func backgroundColor(isPressed: Bool) -> Color {
-        switch variant {
+        switch self.variant {
         case .primary:
-            return isPressed
-                ? theme.colors.primary.opacity(0.85)
-                : hovered ? theme.colors.primary.opacity(0.94) : theme.colors.primary
+            isPressed
+                ? self.theme.colors.primary.opacity(0.85)
+                : self.hovered ? self.theme.colors.primary.opacity(0.94) : self.theme.colors.primary
         case .secondary:
-            return isPressed
-                ? theme.colors.border.opacity(0.8)
-                : hovered ? theme.colors.border.opacity(0.5) : theme.colors.surface
+            isPressed
+                ? self.theme.colors.border.opacity(0.8)
+                : self.hovered ? self.theme.colors.border.opacity(0.5) : self.theme.colors.surface
         case .ghost:
-            return isPressed
-                ? theme.colors.border.opacity(0.5)
-                : hovered ? theme.colors.surface : .clear
+            isPressed
+                ? self.theme.colors.border.opacity(0.5)
+                : self.hovered ? self.theme.colors.surface : .clear
         case .destructive:
-            return isPressed
-                ? theme.colors.primary.opacity(0.9)
-                : hovered ? theme.colors.primary.opacity(0.94) : theme.colors.primary
+            isPressed
+                ? self.theme.colors.primary.opacity(0.9)
+                : self.hovered ? self.theme.colors.primary.opacity(0.94) : self.theme.colors.primary
         }
     }
 
     private func borderColor(isPressed: Bool) -> Color {
-        switch variant {
+        switch self.variant {
         case .primary:
-            return theme.colors.primary.opacity(isPressed ? 0.95 : 1)
+            self.theme.colors.primary.opacity(isPressed ? 0.95 : 1)
         case .secondary:
-            return isPressed || hovered ? theme.colors.primary.opacity(0.65) : theme.colors.border
+            isPressed || self.hovered ? self.theme.colors.primary.opacity(0.65) : self.theme.colors.border
         case .ghost:
-            return hovered ? theme.colors.border.opacity(0.7) : .clear
+            self.hovered ? self.theme.colors.border.opacity(0.7) : .clear
         case .destructive:
-            return theme.colors.primary.opacity(isPressed ? 0.95 : 1)
+            self.theme.colors.primary.opacity(isPressed ? 0.95 : 1)
         }
     }
 }
@@ -173,8 +173,8 @@ private struct BobeButtonModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .buttonStyle(BobeButtonStyle(variant: variant, size: size, hovered: isHovered))
-            .onHover { isHovered = $0 }
+            .buttonStyle(BobeButtonStyle(variant: self.variant, size: self.size, hovered: self.isHovered))
+            .onHover { self.isHovered = $0 }
     }
 }
 
@@ -204,20 +204,20 @@ private struct BobeInputChromeModifier: ViewModifier {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(theme.colors.surface)
+                    .fill(self.theme.colors.surface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(
-                        focused
-                            ? theme.colors.primary
-                            : hovered ? theme.colors.primary.opacity(0.45) : theme.colors.border,
-                        lineWidth: focused ? 1.5 : 1
+                        self.focused
+                            ? self.theme.colors.primary
+                            : self.hovered ? self.theme.colors.primary.opacity(0.45) : self.theme.colors.border,
+                        lineWidth: self.focused ? 1.5 : 1
                     )
             )
             .shadow(
-                color: focused ? theme.colors.primary.opacity(theme.isDark ? 0.2 : 0.12) : .clear,
-                radius: focused ? 3 : 0
+                color: self.focused ? self.theme.colors.primary.opacity(self.theme.isDark ? 0.2 : 0.12) : .clear,
+                radius: self.focused ? 3 : 0
             )
     }
 }
@@ -243,7 +243,7 @@ struct BobeTextField: View {
         onSubmit: (() -> Void)? = nil
     ) {
         self.placeholder = placeholder
-        self._text = text
+        _text = text
         self.width = width
         self.alignment = alignment
         self.onSubmit = onSubmit
@@ -256,20 +256,20 @@ struct BobeTextField: View {
     var body: some View {
         TextField(
             "",
-            text: $text,
-            prompt: Text(placeholder)
-                .foregroundStyle(theme.colors.textMuted)
+            text: self.$text,
+            prompt: Text(self.placeholder)
+                .foregroundStyle(self.theme.colors.textMuted)
         )
         .textFieldStyle(.plain)
         .font(.system(size: 13))
-        .foregroundStyle(theme.colors.text)
-        .multilineTextAlignment(alignment)
-        .tint(theme.colors.primary)
-        .focused($isFocused)
-        .bobeInputChrome(focused: isFocused, hovered: isHovered)
-        .onHover { isHovered = $0 }
-        .onSubmit { onSubmit?() }
-        .frame(width: width)
+        .foregroundStyle(self.theme.colors.text)
+        .multilineTextAlignment(self.alignment)
+        .tint(self.theme.colors.primary)
+        .focused(self.$isFocused)
+        .bobeInputChrome(focused: self.isFocused, hovered: self.isHovered)
+        .onHover { self.isHovered = $0 }
+        .onSubmit { self.onSubmit?() }
+        .frame(width: self.width)
     }
 }
 
@@ -286,7 +286,7 @@ struct BobeSecureField: View {
         onSubmit: (() -> Void)? = nil
     ) {
         self.placeholder = placeholder
-        self._text = text
+        _text = text
         self.width = width
         self.onSubmit = onSubmit
     }
@@ -298,19 +298,19 @@ struct BobeSecureField: View {
     var body: some View {
         SecureField(
             "",
-            text: $text,
-            prompt: Text(placeholder)
-                .foregroundStyle(theme.colors.textMuted)
+            text: self.$text,
+            prompt: Text(self.placeholder)
+                .foregroundStyle(self.theme.colors.textMuted)
         )
         .textFieldStyle(.plain)
         .font(.system(size: 13))
-        .foregroundStyle(theme.colors.text)
-        .tint(theme.colors.primary)
-        .focused($isFocused)
-        .bobeInputChrome(focused: isFocused, hovered: isHovered)
-        .onHover { isHovered = $0 }
-        .onSubmit { onSubmit?() }
-        .frame(width: width)
+        .foregroundStyle(self.theme.colors.text)
+        .tint(self.theme.colors.primary)
+        .focused(self.$isFocused)
+        .bobeInputChrome(focused: self.isFocused, hovered: self.isHovered)
+        .onHover { self.isHovered = $0 }
+        .onSubmit { self.onSubmit?() }
+        .frame(width: self.width)
     }
 }
 
@@ -328,7 +328,7 @@ struct BobeMenuPicker<Option: Hashable>: View {
         width: CGFloat? = nil,
         size: BobeControlSize = .regular
     ) {
-        self._selection = selection
+        _selection = selection
         self.options = options
         self.label = label
         self.width = width
@@ -342,76 +342,76 @@ struct BobeMenuPicker<Option: Hashable>: View {
     var body: some View {
         Button {
             withAnimation(.easeOut(duration: 0.12)) {
-                isOpen.toggle()
+                self.isOpen.toggle()
             }
         } label: {
             HStack(spacing: 8) {
-                Text(label(selection))
-                    .font(.system(size: size.fontSize, weight: .medium))
-                    .foregroundStyle(theme.colors.text)
+                Text(self.label(self.selection))
+                    .font(.system(size: self.size.fontSize, weight: .medium))
+                    .foregroundStyle(self.theme.colors.text)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Image(systemName: isOpen ? "chevron.up" : "chevron.down")
-                    .font(.system(size: max(9, size.fontSize - 2), weight: .semibold))
-                    .foregroundStyle(theme.colors.textMuted)
+                Image(systemName: self.isOpen ? "chevron.up" : "chevron.down")
+                    .font(.system(size: max(9, self.size.fontSize - 2), weight: .semibold))
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
-            .padding(.horizontal, max(8, size.horizontalPadding - 1))
-            .padding(.vertical, max(5, size.verticalPadding))
+            .padding(.horizontal, max(8, self.size.horizontalPadding - 1))
+            .padding(.vertical, max(5, self.size.verticalPadding))
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(theme.colors.surface)
+                    .fill(self.theme.colors.surface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(
-                        isOpen ? theme.colors.primary : isHovered ? theme.colors.primary.opacity(0.55) : theme.colors.border,
+                        self.isOpen ? self.theme.colors.primary : self.isHovered ? self.theme.colors.primary.opacity(0.55) : self.theme.colors.border,
                         lineWidth: 1
                     )
             )
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .frame(width: width)
+        .onHover { self.isHovered = $0 }
+        .frame(width: self.width)
         .overlay(alignment: .topLeading) {
-            if isOpen {
-                dropdownPanel
-                    .offset(y: controlHeight + 6)
+            if self.isOpen {
+                self.dropdownPanel
+                    .offset(y: self.controlHeight + 6)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
         }
-        .onChange(of: selection) { _, _ in
-            isOpen = false
+        .onChange(of: self.selection) { _, _ in
+            self.isOpen = false
         }
-        .zIndex(isOpen ? 50 : 0)
+        .zIndex(self.isOpen ? 50 : 0)
     }
 
     private var controlHeight: CGFloat {
-        max(30, size.fontSize + (size.verticalPadding * 2) + 8)
+        max(30, self.size.fontSize + (self.size.verticalPadding * 2) + 8)
     }
 
     private var dropdownPanel: some View {
         ScrollView {
             LazyVStack(spacing: 2) {
-                ForEach(options, id: \.self) { option in
+                ForEach(self.options, id: \.self) { option in
                     BobeDropdownOptionRow(
-                        text: label(option),
-                        isSelected: option == selection
+                        text: self.label(option),
+                        isSelected: option == self.selection
                     ) {
-                        selection = option
+                        self.selection = option
                     }
                 }
             }
             .padding(4)
         }
-        .frame(maxHeight: min(CGFloat(options.count) * 30 + 8, 220))
-        .frame(width: width ?? 220, alignment: .leading)
+        .frame(maxHeight: min(CGFloat(self.options.count) * 30 + 8, 220))
+        .frame(width: self.width ?? 220, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(theme.colors.surface)
+                .fill(self.theme.colors.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(theme.colors.border, lineWidth: 1)
+                .stroke(self.theme.colors.border, lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
     }
@@ -426,17 +426,17 @@ private struct BobeDropdownOptionRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
+        Button(action: self.action) {
             HStack(spacing: 8) {
-                Text(text)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(theme.colors.text)
+                Text(self.text)
+                    .font(.system(size: 12, weight: self.isSelected ? .semibold : .regular))
+                    .foregroundStyle(self.theme.colors.text)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                if isSelected {
+                if self.isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(theme.colors.primary)
+                        .foregroundStyle(self.theme.colors.primary)
                 }
             }
             .padding(.horizontal, 8)
@@ -444,14 +444,14 @@ private struct BobeDropdownOptionRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 7)
                     .fill(
-                        isSelected
-                            ? theme.colors.primary.opacity(theme.isDark ? 0.26 : 0.16)
-                            : isHovered ? theme.colors.background : .clear
+                        self.isSelected
+                            ? self.theme.colors.primary.opacity(self.theme.isDark ? 0.26 : 0.16)
+                            : self.isHovered ? self.theme.colors.background : .clear
                     )
             )
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .onHover { self.isHovered = $0 }
     }
 }
 
@@ -474,19 +474,19 @@ struct BobeSpinner: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(theme.colors.border.opacity(0.6), lineWidth: lineWidth)
+                .stroke(self.theme.colors.border.opacity(0.6), lineWidth: self.lineWidth)
             Circle()
                 .trim(from: 0.12, to: 0.82)
                 .stroke(
-                    color ?? theme.colors.primary,
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                    self.color ?? self.theme.colors.primary,
+                    style: StrokeStyle(lineWidth: self.lineWidth, lineCap: .round)
                 )
-                .rotationEffect(.degrees(spinning ? 360 : 0))
-                .animation(.linear(duration: 0.85).repeatForever(autoreverses: false), value: spinning)
+                .rotationEffect(.degrees(self.spinning ? 360 : 0))
+                .animation(.linear(duration: 0.85).repeatForever(autoreverses: false), value: self.spinning)
         }
-        .frame(width: size, height: size)
-        .onAppear { spinning = true }
-        .onDisappear { spinning = false }
+        .frame(width: self.size, height: self.size)
+        .onAppear { self.spinning = true }
+        .onDisappear { self.spinning = false }
     }
 }
 
@@ -497,26 +497,26 @@ struct BobeLinearProgressBar: View {
     @Environment(\.theme) private var theme
 
     private var clampedProgress: Double {
-        min(max(progress, 0), 1)
+        min(max(self.progress, 0), 1)
     }
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(theme.colors.border.opacity(0.55))
+                    .fill(self.theme.colors.border.opacity(0.55))
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [theme.colors.primary, theme.colors.secondary],
+                            colors: [self.theme.colors.primary, self.theme.colors.secondary],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: max(4, geo.size.width * clampedProgress))
+                    .frame(width: max(4, geo.size.width * self.clampedProgress))
             }
         }
-        .frame(height: height)
+        .frame(height: self.height)
     }
 }
 
@@ -541,63 +541,63 @@ struct BobeSelectableRow<Content: View>: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button(action: self.action) {
             HStack(spacing: 10) {
-                content
+                self.content
             }
-            .foregroundStyle(theme.colors.text)
+            .foregroundStyle(self.theme.colors.text)
             .frame(maxWidth: .infinity, minHeight: BobeMetrics.listRowMinHeight, alignment: .leading)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: BobeMetrics.listRowCornerRadius)
-                    .fill(backgroundColor)
+                    .fill(self.backgroundColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: BobeMetrics.listRowCornerRadius)
-                    .stroke(borderColor, lineWidth: borderLineWidth)
+                    .stroke(self.borderColor, lineWidth: self.borderLineWidth)
             )
         }
         .buttonStyle(BobePressFeedbackStyle())
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
+        .onHover { self.isHovered = $0 }
     }
 
     private var backgroundColor: Color {
-        if isSelected {
-            return theme.colors.primary.opacity(theme.isDark ? 0.26 : 0.15)
+        if self.isSelected {
+            return self.theme.colors.primary.opacity(self.theme.isDark ? 0.26 : 0.15)
         }
-        if isHovered {
-            return theme.colors.surface
+        if self.isHovered {
+            return self.theme.colors.surface
         }
         return .clear
     }
 
     private var borderColor: Color {
-        if isSelected {
-            return theme.colors.primary.opacity(0.55)
+        if self.isSelected {
+            return self.theme.colors.primary.opacity(0.55)
         }
-        if isHovered {
-            return theme.colors.border
+        if self.isHovered {
+            return self.theme.colors.border
         }
         return .clear
     }
 
     private var borderLineWidth: CGFloat {
-        isSelected || isHovered ? 1 : 0
+        self.isSelected || self.isHovered ? 1 : 0
     }
 }
 
 // MARK: - Shared interactive rows
 
 struct BobePressFeedbackStyle: ButtonStyle {
-    var pressedOpacity: Double = 0.92
+    var pressedOpacity = 0.92
     var pressedScale: CGFloat = 0.995
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .opacity(configuration.isPressed ? pressedOpacity : 1)
-            .scaleEffect(configuration.isPressed ? pressedScale : 1)
+            .opacity(configuration.isPressed ? self.pressedOpacity : 1)
+            .scaleEffect(configuration.isPressed ? self.pressedScale : 1)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
@@ -612,17 +612,17 @@ struct BobeSidebarItem: View {
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
+        Button(action: self.action) {
             HStack(spacing: 10) {
-                Image(systemName: icon)
+                Image(systemName: self.icon)
                     .font(.system(size: 14))
-                    .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textMuted)
+                    .foregroundStyle(self.isSelected ? self.theme.colors.primary : self.theme.colors.textMuted)
                     .frame(width: 18)
 
-                Text(title)
+                Text(self.title)
                     .bobeTextStyle(.rowTitle)
-                    .fontWeight(isSelected ? .semibold : .regular)
-                    .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.text)
+                    .fontWeight(self.isSelected ? .semibold : .regular)
+                    .foregroundStyle(self.isSelected ? self.theme.colors.primary : self.theme.colors.text)
 
                 Spacer()
             }
@@ -631,16 +631,16 @@ struct BobeSidebarItem: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(backgroundColor)
+                    .fill(self.backgroundColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(borderColor, lineWidth: borderLineWidth)
+                    .stroke(self.borderColor, lineWidth: self.borderLineWidth)
             )
             .overlay(alignment: .leading) {
-                if isSelected {
+                if self.isSelected {
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(theme.colors.primary)
+                        .fill(self.theme.colors.primary)
                         .frame(width: 3)
                         .padding(.vertical, 7)
                 }
@@ -648,31 +648,31 @@ struct BobeSidebarItem: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(BobePressFeedbackStyle())
-        .onHover { isHovered = $0 }
+        .onHover { self.isHovered = $0 }
     }
 
     private var backgroundColor: Color {
-        if isSelected {
-            return theme.colors.primary.opacity(theme.isDark ? 0.24 : 0.14)
+        if self.isSelected {
+            return self.theme.colors.primary.opacity(self.theme.isDark ? 0.24 : 0.14)
         }
-        if isHovered {
-            return theme.colors.surface
+        if self.isHovered {
+            return self.theme.colors.surface
         }
         return .clear
     }
 
     private var borderColor: Color {
-        if isSelected {
-            return theme.colors.primary.opacity(0.45)
+        if self.isSelected {
+            return self.theme.colors.primary.opacity(0.45)
         }
-        if isHovered {
-            return theme.colors.border
+        if self.isHovered {
+            return self.theme.colors.border
         }
         return .clear
     }
 
     private var borderLineWidth: CGFloat {
-        isSelected || isHovered ? 1 : 0
+        self.isSelected || self.isHovered ? 1 : 0
     }
 }
 

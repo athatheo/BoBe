@@ -3,7 +3,6 @@ import Foundation
 // MARK: - Daemon Settings
 
 struct DaemonSettings: Codable, Sendable {
-    // LLM
     var llmBackend: String
     var ollamaModel: String
     var openaiModel: String
@@ -11,37 +10,29 @@ struct DaemonSettings: Codable, Sendable {
     var azureOpenaiEndpoint: String
     var azureOpenaiDeployment: String
     var azureOpenaiApiKeySet: Bool
-    // Capture
     var captureEnabled: Bool
     var captureIntervalSeconds: Int
-    // Check-in
     var checkinEnabled: Bool
     var checkinTimes: [String]
     var checkinJitterMinutes: Int
-    // Learning
     var learningEnabled: Bool
     var learningIntervalMinutes: Int
-    // Conversation
     var conversationInactivityTimeoutSeconds: Int
     var conversationAutoCloseMinutes: Int
     var conversationSummaryEnabled: Bool
-    // Goals
+    /// Goals
     var goalCheckIntervalSeconds: Double
-    // Projects
+    /// Projects
     var projectsDirectory: String
-    // Tools
     var toolsEnabled: Bool
     var toolsMaxIterations: Int
-    // MCP
+    /// MCP
     var mcpEnabled: Bool
-    // Similarity thresholds
     var similarityDeduplicationThreshold: Double
     var similaritySearchRecallThreshold: Double
     var similarityClusteringThreshold: Double
-    // Memory retention
     var memoryShortTermRetentionDays: Int
     var memoryLongTermRetentionDays: Int
-    // Goal Worker
     var goalWorkerEnabled: Bool
     var goalWorkerAutonomous: Bool
     var goalWorkerMaxConcurrent: Int
@@ -185,7 +176,10 @@ struct GoalWorkerStatusResponse: Codable, Sendable {
 // MARK: - Models (LLM Model Management)
 
 struct ModelInfo: Identifiable, Codable, Sendable {
-    var id: String { name }
+    var id: String {
+        self.name
+    }
+
     let name: String
     let sizeBytes: Int
     let modifiedAt: String
@@ -237,4 +231,3 @@ struct OnboardingStatusResponse: Codable, Sendable {
         case complete
     }
 }
-

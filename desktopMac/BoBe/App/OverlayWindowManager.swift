@@ -2,11 +2,12 @@ import AppKit
 import SwiftUI
 
 private final class OverlayHostingView<Content: View>: NSHostingView<Content> {
-    override var mouseDownCanMoveWindow: Bool { true }
+    override var mouseDownCanMoveWindow: Bool {
+        true
+    }
 }
 
 /// Manages the overlay panel's position and sizing.
-/// Anchors the panel to the bottom-right of the screen, matching the original behavior.
 @MainActor
 final class OverlayWindowManager {
     static let shared = OverlayWindowManager()
@@ -16,8 +17,7 @@ final class OverlayWindowManager {
     private init() {}
 
     func createPanel(with rootView: some View) {
-        // Close existing panel to prevent orphans
-        if panel != nil { close() }
+        if panel != nil { self.close() }
 
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let screenFrame = screen.visibleFrame
@@ -57,7 +57,6 @@ final class OverlayWindowManager {
         let clampedWidth = min(max(width, WindowSizes.widthCollapsed), maxWidth)
         let clampedHeight = min(max(height, WindowSizes.heightCollapsed), maxHeight)
 
-        // Preserve the panel's current right and bottom edges so manual dragging sticks.
         let currentFrame = panel.frame
         var newX = currentFrame.maxX - clampedWidth
         var newY = currentFrame.minY
@@ -78,19 +77,19 @@ final class OverlayWindowManager {
     }
 
     func show() {
-        panel?.orderFrontRegardless()
+        self.panel?.orderFrontRegardless()
     }
 
     func hide() {
-        panel?.orderOut(nil)
+        self.panel?.orderOut(nil)
     }
 
     var isVisible: Bool {
-        panel?.isVisible ?? false
+        self.panel?.isVisible ?? false
     }
 
     func close() {
-        panel?.close()
-        panel = nil
+        self.panel?.close()
+        self.panel = nil
     }
 }

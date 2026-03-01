@@ -64,7 +64,10 @@ struct ChatMessage: Identifiable, Sendable {
 
 /// Tool execution tracking for indicator display
 struct ToolExecution: Identifiable, Sendable {
-    var id: String { toolCallId }
+    var id: String {
+        self.toolCallId
+    }
+
     let toolName: String
     let toolCallId: String
     var status: ToolExecutionStatus
@@ -82,20 +85,20 @@ enum ToolExecutionStatus: String, Sendable {
 
 /// Full application state context
 struct BobeContext: Sendable {
-    var daemonConnected: Bool = false
-    var daemonError: Bool = false
-    var capturing: Bool = false
-    var captureInProgress: Bool = false
-    var thinking: Bool = false
-    var speaking: Bool = false
-    var shuttingDown: Bool = false
+    var daemonConnected = false
+    var daemonError = false
+    var capturing = false
+    var captureInProgress = false
+    var thinking = false
+    var speaking = false
+    var shuttingDown = false
     var lastMessage: String?
     var errorMessage: String?
-    var currentMessage: String = ""
+    var currentMessage = ""
     var currentMessageId: String?
     var messages: [ChatMessage] = []
     var activeIndicator: IndicatorType?
-    var capturePermissionMissing: Bool = false
+    var capturePermissionMissing = false
     var toolExecutions: [ToolExecution] = []
     var stateType: BobeStateType = .loading
 }
@@ -107,7 +110,7 @@ func deriveStateType(from context: BobeContext) -> BobeStateType {
     if !context.daemonConnected { return .loading }
     if context.speaking { return .speaking }
     if context.thinking { return .thinking }
-    if context.lastMessage != nil && !context.speaking { return .wantsToSpeak }
+    if context.lastMessage != nil, !context.speaking { return .wantsToSpeak }
     if context.captureInProgress { return .capturing }
     return .idle
 }

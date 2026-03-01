@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Custom Toggle Switch (36×20px with animated thumb, matching original shared-controls)
+// MARK: - Custom Toggle Switch
 
 struct BobeToggle: View {
     @Binding var isOn: Bool
@@ -9,12 +9,12 @@ struct BobeToggle: View {
     var body: some View {
         Button {
             withAnimation(.spring(duration: 0.2, bounce: 0.1)) {
-                isOn.toggle()
+                self.isOn.toggle()
             }
         } label: {
-            ZStack(alignment: isOn ? .trailing : .leading) {
+            ZStack(alignment: self.isOn ? .trailing : .leading) {
                 Capsule()
-                    .fill(isOn ? theme.colors.secondary : theme.colors.border)
+                    .fill(self.isOn ? self.theme.colors.secondary : self.theme.colors.border)
                     .frame(width: 36, height: 20)
 
                 Circle()
@@ -35,7 +35,7 @@ struct AccentAddButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(title, action: action)
+        Button(self.title, action: self.action)
             .bobeButton(.primary, size: .small)
     }
 }
@@ -48,11 +48,11 @@ struct SettingsPaneHeader: View {
 
     var body: some View {
         HStack {
-            Text(title)
+            Text(self.title)
                 .font(.headline)
-                .foregroundStyle(theme.colors.text)
+                .foregroundStyle(self.theme.colors.text)
             Spacer()
-            AccentAddButton(title: actionTitle, action: action)
+            AccentAddButton(title: self.actionTitle, action: self.action)
         }
     }
 }
@@ -69,21 +69,21 @@ struct SettingsRow<Content: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(label)
+                Text(self.label)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.colors.text)
+                    .foregroundStyle(self.theme.colors.text)
                 if let description {
                     Text(description)
                         .font(.system(size: 11))
-                        .foregroundStyle(theme.colors.textMuted)
+                        .foregroundStyle(self.theme.colors.textMuted)
                 }
             }
             Spacer()
-            content
+            self.content
             if let suffix {
                 Text(suffix)
                     .font(.system(size: 11))
-                    .foregroundStyle(theme.colors.textMuted)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
         }
     }
@@ -92,13 +92,9 @@ struct SettingsRow<Content: View>: View {
 struct SettingsListRow<Content: View>: View {
     @ViewBuilder let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
     var body: some View {
         HStack(spacing: 10) {
-            content
+            self.content
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
         .padding(.horizontal, 8)
@@ -115,62 +111,62 @@ struct ThemedSplitPane<Left: View, Right: View>: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            left
-                .frame(width: leftWidth)
+            self.left
+                .frame(width: self.leftWidth)
             Rectangle()
-                .fill(theme.colors.border)
+                .fill(self.theme.colors.border)
                 .frame(width: 1)
-            right
+            self.right
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
 
-// MARK: - Debounced Number Input (600ms debounce like original NumInput)
+// MARK: - Debounced Number Input
 
 struct DebouncedNumberInput: View {
     @Binding var value: Int
-    var range: ClosedRange<Int> = 0...9999
+    var range: ClosedRange<Int> = 0 ... 9999
     var width: CGFloat = 80
 
-    @State private var text: String = ""
+    @State private var text = ""
     @State private var debounceTask: Task<Void, Never>?
     @FocusState private var isFocused: Bool
     @State private var isHovered = false
     @Environment(\.theme) private var theme
 
     var body: some View {
-        TextField("", text: $text)
+        TextField("", text: self.$text)
             .textFieldStyle(.plain)
             .font(.system(size: 13, weight: .medium, design: .monospaced))
             .multilineTextAlignment(.trailing)
-            .foregroundStyle(theme.colors.text)
-            .tint(theme.colors.primary)
-            .focused($isFocused)
-            .bobeInputChrome(focused: isFocused, hovered: isHovered)
-            .onHover { isHovered = $0 }
-            .frame(width: width)
-            .onChange(of: text) { _, newText in
-                guard isFocused else { return }
-                debounceTask?.cancel()
-                debounceTask = Task { @MainActor in
+            .foregroundStyle(self.theme.colors.text)
+            .tint(self.theme.colors.primary)
+            .focused(self.$isFocused)
+            .bobeInputChrome(focused: self.isFocused, hovered: self.isHovered)
+            .onHover { self.isHovered = $0 }
+            .frame(width: self.width)
+            .onChange(of: self.text) { _, newText in
+                guard self.isFocused else { return }
+                self.debounceTask?.cancel()
+                self.debounceTask = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(0.6))
                     if let parsed = Int(newText), range.contains(parsed) {
-                        value = parsed
+                        self.value = parsed
                     }
                 }
             }
             .onSubmit {
-                debounceTask?.cancel()
+                self.debounceTask?.cancel()
                 if let parsed = Int(text), range.contains(parsed) {
-                    value = parsed
+                    self.value = parsed
                 }
             }
-            .onAppear { text = String(value) }
-            .onChange(of: value) { _, newVal in
-                guard !isFocused else { return }
+            .onAppear { self.text = String(self.value) }
+            .onChange(of: self.value) { _, newVal in
+                guard !self.isFocused else { return }
                 let str = String(newVal)
-                if text != str { text = str }
+                if self.text != str { self.text = str }
             }
     }
 }
@@ -179,47 +175,47 @@ struct DebouncedNumberInput: View {
 
 struct DebouncedDecimalInput: View {
     @Binding var value: Double
-    var range: ClosedRange<Double> = 0...1
-    var step: Double = 0.05
+    var range: ClosedRange<Double> = 0 ... 1
+    var step = 0.05
     var width: CGFloat = 80
 
-    @State private var text: String = ""
+    @State private var text = ""
     @State private var debounceTask: Task<Void, Never>?
     @FocusState private var isFocused: Bool
     @State private var isHovered = false
     @Environment(\.theme) private var theme
 
     var body: some View {
-        TextField("", text: $text)
+        TextField("", text: self.$text)
             .textFieldStyle(.plain)
             .font(.system(size: 13, weight: .medium, design: .monospaced))
             .multilineTextAlignment(.trailing)
-            .foregroundStyle(theme.colors.text)
-            .tint(theme.colors.primary)
-            .focused($isFocused)
-            .bobeInputChrome(focused: isFocused, hovered: isHovered)
-            .onHover { isHovered = $0 }
-            .frame(width: width)
-            .onChange(of: text) { _, newText in
-                guard isFocused else { return }
-                debounceTask?.cancel()
-                debounceTask = Task { @MainActor in
+            .foregroundStyle(self.theme.colors.text)
+            .tint(self.theme.colors.primary)
+            .focused(self.$isFocused)
+            .bobeInputChrome(focused: self.isFocused, hovered: self.isHovered)
+            .onHover { self.isHovered = $0 }
+            .frame(width: self.width)
+            .onChange(of: self.text) { _, newText in
+                guard self.isFocused else { return }
+                self.debounceTask?.cancel()
+                self.debounceTask = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(0.6))
                     if let parsed = Double(newText), range.contains(parsed) {
-                        value = parsed
+                        self.value = parsed
                     }
                 }
             }
-            .onAppear { text = String(format: "%.2f", value) }
-            .onChange(of: value) { _, newVal in
-                guard !isFocused else { return }
+            .onAppear { self.text = String(format: "%.2f", self.value) }
+            .onChange(of: self.value) { _, newVal in
+                guard !self.isFocused else { return }
                 let str = String(format: "%.2f", newVal)
-                if text != str { text = str }
+                if self.text != str { self.text = str }
             }
     }
 }
 
-// MARK: - Collapsible Settings Section (matching original Section with toggle)
+// MARK: - Collapsible Settings Section
 
 struct CollapsibleSection<Content: View>: View {
     let title: String
@@ -234,26 +230,25 @@ struct CollapsibleSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
+                    self.isExpanded.toggle()
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: icon)
+                    Image(systemName: self.icon)
                         .font(.system(size: 14))
-                        .foregroundStyle(theme.colors.primary)
+                        .foregroundStyle(self.theme.colors.primary)
                         .frame(width: 20)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
+                        Text(self.title)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(theme.colors.text)
+                            .foregroundStyle(self.theme.colors.text)
                         if let description {
                             Text(description)
                                 .font(.system(size: 11))
-                                .foregroundStyle(theme.colors.textMuted)
+                                .foregroundStyle(self.theme.colors.textMuted)
                         }
                     }
 
@@ -263,25 +258,24 @@ struct CollapsibleSection<Content: View>: View {
                         BobeToggle(isOn: binding)
                     }
 
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: self.isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10))
-                        .foregroundStyle(theme.colors.textMuted)
+                        .foregroundStyle(self.theme.colors.textMuted)
                 }
                 .padding(.vertical, 8)
                 .padding(.horizontal, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isHeaderHovered ? theme.colors.surface : .clear)
+                        .fill(self.isHeaderHovered ? self.theme.colors.surface : .clear)
                 )
             }
             .buttonStyle(.plain)
-            .onHover { isHeaderHovered = $0 }
+            .onHover { self.isHeaderHovered = $0 }
 
-            // Content
-            if isExpanded {
-                let isDisabled = toggleBinding.map { !$0.wrappedValue } ?? false
+            if self.isExpanded {
+                let isDisabled = self.toggleBinding.map { !$0.wrappedValue } ?? false
                 VStack(alignment: .leading, spacing: 12) {
-                    content
+                    self.content
                 }
                 .padding(.leading, 30)
                 .padding(.top, 4)
@@ -346,7 +340,7 @@ func formatBytes(_ bytes: Int) -> String {
 #Preview("DebouncedNumberInput") {
     @Previewable @State var value = 4096
     SettingsRow(label: "Max Tokens") {
-        DebouncedNumberInput(value: $value, range: 1...8192)
+        DebouncedNumberInput(value: $value, range: 1 ... 8192)
     }
     .environment(\.theme, allThemes[0])
     .padding()
