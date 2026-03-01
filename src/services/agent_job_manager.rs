@@ -6,7 +6,7 @@
 //! Concurrency: singleton, protected by async lock, max_concurrent limit.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::io::AsyncBufReadExt;
@@ -187,7 +187,7 @@ impl AgentJobManager {
             .id()
             .ok_or_else(|| AppError::Internal("Subprocess started but has no PID".into()))?;
 
-        job.mark_running(pid as i64);
+        job.mark_running(i64::from(pid));
         let job = self.repo.save(&job).await?;
 
         // Spawn watcher
@@ -306,8 +306,18 @@ impl AgentJobManager {
             running.remove(&job_id);
         }
 
-        // Parse output and update job
-        let parsed = parse_output(&output_path, output_format);
+        self.finalize_job(job_id, exit_code, &output_path, output_format)
+            .await;
+    }
+
+    async fn finalize_job(
+        &self,
+        job_id: Uuid,
+        exit_code: i32,
+        output_path: &Path,
+        output_format: &str,
+    ) {
+        let parsed = parse_output(output_path, output_format);
 
         if let Ok(Some(mut job)) = self.repo.get_by_id(job_id).await {
             if job.is_terminal() {
@@ -404,12 +414,12 @@ async fn kill_process(pid: u32) {
         // SAFETY: libc::kill with a valid PID is safe; we obtained this PID from a
         // child process we spawned and tracked in the job registry.
         unsafe {
-            libc::kill(pid as i32, libc::SIGTERM);
+            libc::kill(i32::try_from(pid).unwrap_or(-1), libc::SIGTERM);
         }
         sleep(Duration::from_secs(KILL_GRACE_SECONDS)).await;
         // SAFETY: Same as above — SIGKILL as a fallback if the process did not exit.
         unsafe {
-            libc::kill(pid as i32, libc::SIGKILL);
+            libc::kill(i32::try_from(pid).unwrap_or(-1), libc::SIGKILL);
         }
     }
 

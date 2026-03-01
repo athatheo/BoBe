@@ -248,32 +248,26 @@ impl LlmProvider for OllamaProvider {
 }
 
 /// Filter `<think>...</think>` tags from streaming text, tracking state across chunks.
-fn filter_think_tags_streaming(delta: &str, inside_think: &mut bool) -> String {
-    let mut result = String::with_capacity(delta.len());
-    let bytes = delta.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
-
-    while i < len {
+/// Operates on `&str` to correctly handle multi-byte UTF-8 characters.
+fn filter_think_tags_streaming(input: &str, inside_think: &mut bool) -> String {
+    let mut result = String::new();
+    let mut remaining = input;
+    while !remaining.is_empty() {
         if *inside_think {
-            // Look for </think> closing tag (8 bytes)
-            if i + 8 <= len && &bytes[i..i + 8] == b"</think>" {
-                i += 8;
+            if let Some(pos) = remaining.find("</think>") {
                 *inside_think = false;
+                remaining = &remaining[pos + 8..];
             } else {
-                i += 1;
+                break; // entire remainder is inside <think>
             }
+        } else if let Some(pos) = remaining.find("<think>") {
+            result.push_str(&remaining[..pos]);
+            *inside_think = true;
+            remaining = &remaining[pos + 7..];
         } else {
-            // Look for <think> opening tag (7 bytes)
-            if i + 7 <= len && &bytes[i..i + 7] == b"<think>" {
-                i += 7;
-                *inside_think = true;
-            } else {
-                result.push(bytes[i] as char);
-                i += 1;
-            }
+            result.push_str(remaining);
+            break;
         }
     }
-
     result
 }

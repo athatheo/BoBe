@@ -256,8 +256,8 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
     }
 }
 
-/// Normalize flat legacy keys to dotted notation (public for use by ConfigManager).
-pub fn normalize_key_pub(key: &str) -> String {
+/// Normalize flat legacy keys to dotted notation.
+pub(crate) fn normalize_key_pub(key: &str) -> String {
     normalize_key(key)
 }
 

@@ -65,7 +65,6 @@ pub async fn list_tools(
         let enabled = state
             .tool_registry
             .is_tool_enabled(&def.name)
-            .await
             .unwrap_or(true);
 
         if !providers.contains(&provider) {
@@ -96,7 +95,7 @@ pub async fn enable_tool(
     Path(tool_name): Path<String>,
 ) -> Result<Json<ToolUpdateResponse>, AppError> {
     let _ = state.tool_registry.refresh_index().await;
-    let success = state.tool_registry.enable_tool(&tool_name).await;
+    let success = state.tool_registry.enable_tool(&tool_name);
 
     if !success {
         return Err(AppError::NotFound(format!(
@@ -120,7 +119,7 @@ pub async fn disable_tool(
     Path(tool_name): Path<String>,
 ) -> Result<Json<ToolUpdateResponse>, AppError> {
     let _ = state.tool_registry.refresh_index().await;
-    let success = state.tool_registry.disable_tool(&tool_name).await;
+    let success = state.tool_registry.disable_tool(&tool_name);
 
     if !success {
         return Err(AppError::NotFound(format!(
@@ -147,9 +146,9 @@ pub async fn update_tool(
     let _ = state.tool_registry.refresh_index().await;
 
     let success = if body.enabled {
-        state.tool_registry.enable_tool(&tool_name).await
+        state.tool_registry.enable_tool(&tool_name)
     } else {
-        state.tool_registry.disable_tool(&tool_name).await
+        state.tool_registry.disable_tool(&tool_name)
     };
 
     if !success {

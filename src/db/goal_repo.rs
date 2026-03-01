@@ -125,7 +125,7 @@ impl GoalRepository for SqliteGoalRepo {
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(limit as usize);
+        scored.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
 
         debug!(
             results_count = scored.len(),

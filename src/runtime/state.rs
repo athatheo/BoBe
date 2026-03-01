@@ -24,12 +24,12 @@ pub enum TriggerType {
 
 /// Context for a triggered proactive action.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct TriggerContext {
     pub trigger_type: TriggerType,
     pub context_text: String,
     /// Full observation (with embedding) for capture triggers.
     pub observation: Option<Observation>,
-    /// Goal model for goal triggers.
+    /// Goal model for goal triggers (set by GoalTrigger, reserved for future use by DecisionEngine).
+    #[allow(dead_code)]
     pub goal: Option<crate::models::goal::Goal>,
 }

@@ -227,7 +227,7 @@ impl OllamaManager {
                     if let (Some(completed), Some(total)) = (progress.completed, progress.total)
                         && total > 0
                     {
-                        let pct = (completed as f64 / total as f64 * 100.0) as i64;
+                        let pct = (completed as f64 / total as f64 * 100.0).min(100.0) as i64;
                         if pct >= last_logged_pct + 10 {
                             last_logged_pct = (pct / 10) * 10;
                             info!(
@@ -299,7 +299,7 @@ impl OllamaManager {
             // SAFETY: libc::kill with a valid PID is safe; we obtained this PID
             // from a child process we spawned and hold under a lock.
             unsafe {
-                libc::kill(pid as i32, libc::SIGTERM);
+                libc::kill(i32::try_from(pid).unwrap_or(-1), libc::SIGTERM);
             }
             *lock_or_recover(&self.started_by_us, "ollama_manager.started_by_us") = false;
             info!("ollama.stopped");

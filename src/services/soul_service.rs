@@ -37,7 +37,7 @@ impl SoulService {
             return Ok(content);
         }
         // Fall back to file-based loading
-        Ok(self.load_soul_from_file())
+        Ok(self.load_soul_from_file().await)
     }
 
     async fn load_soul_from_db(&self, repo: &Arc<dyn SoulRepository>) -> Option<String> {
@@ -67,7 +67,7 @@ impl SoulService {
         }
     }
 
-    fn load_soul_from_file(&self) -> String {
+    async fn load_soul_from_file(&self) -> String {
         if let Some(ref path) = self.soul_file {
             let expanded = if path.starts_with("~") {
                 if let Some(home) = dirs::home_dir() {
@@ -80,7 +80,7 @@ impl SoulService {
             };
 
             if expanded.exists() {
-                match std::fs::read_to_string(&expanded) {
+                match tokio::fs::read_to_string(&expanded).await {
                     Ok(content) => {
                         info!(path = %expanded.display(), "soul_service.loaded_custom");
                         return content;
@@ -98,10 +98,10 @@ impl SoulService {
             }
         }
 
-        self.load_default_soul()
+        self.load_default_soul().await
     }
 
-    fn load_default_soul(&self) -> String {
+    async fn load_default_soul(&self) -> String {
         // Try loading from assets directory
         let asset_paths = [
             PathBuf::from("assets/defaults/SOUL.md"),
@@ -112,7 +112,7 @@ impl SoulService {
 
         for path in &asset_paths {
             if path.exists()
-                && let Ok(content) = std::fs::read_to_string(path)
+                && let Ok(content) = tokio::fs::read_to_string(path).await
             {
                 info!(path = %path.display(), "soul_service.loaded_default");
                 return content;

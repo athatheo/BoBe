@@ -89,7 +89,7 @@ impl ToolRegistry {
     }
 
     /// Check whether a tool is enabled (`None` if tool is unknown).
-    pub async fn is_tool_enabled(&self, tool_name: &str) -> Option<bool> {
+    pub fn is_tool_enabled(&self, tool_name: &str) -> Option<bool> {
         if !self.tool_to_source.contains_key(tool_name) {
             return None;
         }
@@ -102,7 +102,7 @@ impl ToolRegistry {
     }
 
     /// Set the enabled state of a tool. Returns `true` if the tool exists.
-    pub async fn set_tool_enabled(&self, tool_name: &str, enabled: bool) -> bool {
+    pub fn set_tool_enabled(&self, tool_name: &str, enabled: bool) -> bool {
         if !self.tool_to_source.contains_key(tool_name) {
             return false;
         }
@@ -112,12 +112,12 @@ impl ToolRegistry {
     }
 
     /// Enable a tool. Returns `true` if the tool exists.
-    pub async fn enable_tool(&self, tool_name: &str) -> bool {
-        self.set_tool_enabled(tool_name, true).await
+    pub fn enable_tool(&self, tool_name: &str) -> bool {
+        self.set_tool_enabled(tool_name, true)
     }
 
     /// Disable a tool. Returns `true` if the tool exists.
-    pub async fn disable_tool(&self, tool_name: &str) -> bool {
-        self.set_tool_enabled(tool_name, false).await
+    pub fn disable_tool(&self, tool_name: &str) -> bool {
+        self.set_tool_enabled(tool_name, false)
     }
 }

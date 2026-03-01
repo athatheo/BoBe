@@ -146,13 +146,22 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
 
     // ── Agent job manager (optional) ───────────────────────────────────
     let agent_job_manager = config.coding_agent.enabled.then(|| {
-        let profiles: HashMap<String, _> =
-            serde_json::from_str(&config.coding_agent.profiles).unwrap_or_default();
+        let profiles: HashMap<String, _> = match serde_json::from_str(&config.coding_agent.profiles)
+        {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "wiring.agent_profiles_parse_failed"
+                );
+                HashMap::new()
+            }
+        };
         Arc::new(AgentJobManager::new(
             repos.agent_job_repo.clone(),
             profiles,
             PathBuf::from(&config.coding_agent.output_dir),
-            config.coding_agent.max_concurrent as usize,
+            config.coding_agent.max_concurrent as usize, // safe: u32→usize on 64-bit
             config.coding_agent.max_runtime_seconds,
         ))
     });

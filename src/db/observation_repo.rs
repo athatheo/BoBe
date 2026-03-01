@@ -141,7 +141,7 @@ impl ObservationRepository for SqliteObservationRepo {
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(limit as usize);
+        scored.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
 
         debug!(
             results_count = scored.len(),
@@ -159,7 +159,7 @@ impl ObservationRepository for SqliteObservationRepo {
             .await
             .map_err(AppError::Database)?;
 
-        let count = result.rows_affected() as i64;
+        let count = i64::try_from(result.rows_affected()).unwrap_or(0);
         info!(
             days,
             deleted_count = count,

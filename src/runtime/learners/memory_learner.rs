@@ -114,44 +114,9 @@ impl MemoryLearner {
             MemoryDistillationPrompt::messages(&context_strings, &memory_strings, &goal_strings);
         let prompt_config = MemoryDistillationPrompt::config();
 
-        let response = match tokio::time::timeout(
-            std::time::Duration::from_secs(240),
-            self.llm.complete(
-                &messages,
-                None,
-                prompt_config.response_format.as_ref(),
-                prompt_config.temperature,
-                prompt_config.max_tokens,
-            ),
-        )
-        .await
-        {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => {
-                warn!(error = %e, "memory_learner.llm_error");
-                return Vec::new();
-            }
-            Err(_) => {
-                warn!("memory_learner.llm_timeout");
-                return Vec::new();
-            }
-        };
-
-        let content = response.message.content.text_or_empty().to_string();
-        if content.trim().is_empty() {
-            return Vec::new();
-        }
-
-        let raw_memories = match serde_json::from_str::<Value>(&content) {
-            Ok(data) => data
-                .get("memories")
-                .and_then(|m| m.as_array())
-                .cloned()
-                .unwrap_or_default(),
-            Err(e) => {
-                warn!(error = %e, "memory_learner.json_parse_error");
-                return Vec::new();
-            }
+        let raw_memories = match self.call_llm_for_memories(messages, prompt_config).await {
+            Some(m) => m,
+            None => return Vec::new(),
         };
 
         self.deduplicate_and_store(&raw_memories, existing_memories)
@@ -180,6 +145,21 @@ impl MemoryLearner {
         let messages = ConversationMemoryPrompt::messages(&turn_strings, &memory_strings);
         let prompt_config = ConversationMemoryPrompt::config();
 
+        let raw_memories = match self.call_llm_for_memories(messages, prompt_config).await {
+            Some(m) => m,
+            None => return Vec::new(),
+        };
+
+        self.deduplicate_and_store(&raw_memories, existing_memories)
+            .await
+    }
+
+    /// Shared LLM call + JSON parse for memory extraction prompts.
+    async fn call_llm_for_memories(
+        &self,
+        messages: Vec<crate::llm::types::AiMessage>,
+        prompt_config: crate::runtime::prompts::base::PromptConfig,
+    ) -> Option<Vec<Value>> {
         let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
@@ -195,33 +175,31 @@ impl MemoryLearner {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
                 warn!(error = %e, "memory_learner.llm_error");
-                return Vec::new();
+                return None;
             }
             Err(_) => {
                 warn!("memory_learner.llm_timeout");
-                return Vec::new();
+                return None;
             }
         };
 
         let content = response.message.content.text_or_empty().to_string();
         if content.trim().is_empty() {
-            return Vec::new();
+            return None;
         }
 
-        let raw_memories = match serde_json::from_str::<Value>(&content) {
-            Ok(data) => data
-                .get("memories")
-                .and_then(|m| m.as_array())
-                .cloned()
-                .unwrap_or_default(),
+        match serde_json::from_str::<Value>(&content) {
+            Ok(data) => Some(
+                data.get("memories")
+                    .and_then(|m| m.as_array())
+                    .cloned()
+                    .unwrap_or_default(),
+            ),
             Err(e) => {
                 warn!(error = %e, "memory_learner.json_parse_error");
-                return Vec::new();
+                None
             }
-        };
-
-        self.deduplicate_and_store(&raw_memories, existing_memories)
-            .await
+        }
     }
 
     async fn deduplicate_and_store(

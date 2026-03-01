@@ -184,13 +184,18 @@ pub fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
         .and_then(|f| f.as_str())
         .map_or_else(|| "stop".to_owned(), |r| map_finish_reason(r).to_owned());
 
-    let usage = data.get("usage").map(|u| TokenUsage {
-        prompt_tokens: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-        completion_tokens: u
-            .get("completion_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32,
-        total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+    let usage = data.get("usage").map(|u| {
+        let to_u32 = |key: &str| -> u32 {
+            u.get(key)
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok())
+                .unwrap_or(0)
+        };
+        TokenUsage {
+            prompt_tokens: to_u32("prompt_tokens"),
+            completion_tokens: to_u32("completion_tokens"),
+            total_tokens: to_u32("total_tokens"),
+        }
     });
 
     Ok(AiResponse {
@@ -252,7 +257,7 @@ pub fn extract_tool_call_deltas(data: &Value) -> Vec<ToolCallDelta> {
     tool_calls
         .iter()
         .filter_map(|tc| {
-            let index = tc.get("index")?.as_u64()? as usize;
+            let index = usize::try_from(tc.get("index")?.as_u64()?).ok()?;
             let id = tc.get("id").and_then(|v| v.as_str()).map(|s| s.to_owned());
             let func = tc.get("function");
             let name = func

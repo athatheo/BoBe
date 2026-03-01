@@ -277,7 +277,13 @@ impl MemoryConsolidator {
                 category.to_owned(),
             );
             long_term.source = MemorySource::Consolidated;
-            long_term.embedding = Some(serde_json::to_string(&new_embedding).unwrap_or_default());
+            long_term.embedding = match serde_json::to_string(&new_embedding) {
+                Ok(json) => Some(json),
+                Err(e) => {
+                    tracing::warn!(error = %e, "memory_consolidator.serialize_embedding_failed");
+                    None
+                }
+            };
 
             match self.memory_repo.save(&long_term).await {
                 Ok(stored) => {

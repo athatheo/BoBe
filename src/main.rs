@@ -72,63 +72,7 @@ async fn main() -> anyhow::Result<()> {
 
             // ── Background tasks ────────────────────────────────────────
             let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);
-
-            // SSE heartbeat (every 15s)
-            let heartbeat_handle = {
-                let eq = state.event_queue.clone();
-                let mut shutdown_rx = shutdown_tx.subscribe();
-                tokio::spawn(async move {
-                    loop {
-                        tokio::select! {
-                            _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
-                                eq.push_heartbeat();
-                            }
-                            _ = shutdown_rx.recv() => break,
-                        }
-                    }
-                    tracing::info!("heartbeat_task.stopped");
-                })
-            };
-
-            // Runtime session (trigger loop)
-            let runtime_handle = {
-                let session = state.runtime_session.clone();
-                let mut shutdown_rx = shutdown_tx.subscribe();
-                tokio::spawn(async move {
-                    tokio::select! {
-                        _ = session.run() => {}
-                        _ = shutdown_rx.recv() => {
-                            session.stop().await;
-                        }
-                    }
-                    tracing::info!("runtime_session_task.stopped");
-                })
-            };
-
-            // Learning loop (if enabled)
-            let learning_handle = state.learning_loop.as_ref().map(|ll| {
-                let ll = ll.clone();
-                let mut shutdown_rx = shutdown_tx.subscribe();
-                tokio::spawn(async move {
-                    tokio::select! {
-                        _ = ll.run() => {}
-                        _ = shutdown_rx.recv() => {
-                            ll.stop();
-                        }
-                    }
-                    tracing::info!("learning_loop_task.stopped");
-                })
-            });
-
-            // Goal worker manager
-            let goal_worker_handle = {
-                let shutdown_rx = shutdown_tx.subscribe();
-                let mut manager = goal_worker_manager;
-                tokio::spawn(async move {
-                    manager.run(shutdown_rx).await;
-                    tracing::info!("goal_worker_manager_task.stopped");
-                })
-            };
+            let handles = spawn_background_tasks(&state, goal_worker_manager, &shutdown_tx);
 
             // ── Serve with graceful shutdown ────────────────────────────
             let listener = tokio::net::TcpListener::bind(format!(
@@ -150,68 +94,8 @@ async fn main() -> anyhow::Result<()> {
                 })
                 .await?;
 
-            // Wait for background tasks to finish, log panics
-            if let Err(e) = heartbeat_handle.await {
-                tracing::error!(error = %e, "heartbeat task panicked");
-            }
-            if let Err(e) = runtime_handle.await {
-                tracing::error!(error = %e, "runtime session task panicked");
-            }
-            if let Some(h) = learning_handle
-                && let Err(e) = h.await
-            {
-                tracing::error!(error = %e, "learning loop task panicked");
-            }
-            if let Err(e) = goal_worker_handle.await {
-                tracing::error!(error = %e, "goal worker manager task panicked");
-            }
-
-            // Graceful shutdown: stop services in order (mDNS → MCP → Ollama → DB)
-            tracing::info!("Stopping mDNS...");
-            state.mdns_announcer.stop().await;
-
-            if let Some(ref mcp) = state.mcp_tool_adapter {
-                tracing::info!("Stopping MCP servers...");
-                tokio::time::timeout(std::time::Duration::from_secs(2), mcp.shutdown())
-                    .await
-                    .ok();
-            }
-
-            if config.llm.backend == crate::config::LlmBackend::Ollama
-                || config.vision.backend == crate::config::LlmBackend::Ollama
-            {
-                // Unload Ollama models to free VRAM immediately
-                tracing::info!("Unloading Ollama models...");
-                let unload_client = reqwest::Client::new();
-                for model_name in [
-                    &config.ollama.model,
-                    &config.vision.ollama_model,
-                    &config.embedding.model,
-                ] {
-                    let _ = tokio::time::timeout(
-                        std::time::Duration::from_secs(2),
-                        unload_client
-                            .post(format!("{}/api/generate", config.ollama.url))
-                            .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
-                            .send(),
-                    )
-                    .await;
-                }
-                tracing::debug!("ollama.models_unloaded");
-
-                tracing::info!("Stopping Ollama (if managed)...");
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(2),
-                    state.ollama_manager.stop(),
-                )
-                .await
-                .ok();
-            }
-
-            tracing::info!("Closing database pool...");
-            state.db.close().await;
-
-            tracing::info!("BoBe shutdown complete");
+            drain_background_tasks(handles).await;
+            run_graceful_shutdown(&state, &config).await;
         }
         Commands::Version => {
             println!("BoBe v{}", env!("CARGO_PKG_VERSION"));
@@ -219,4 +103,144 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+struct BackgroundHandles {
+    heartbeat: tokio::task::JoinHandle<()>,
+    runtime: tokio::task::JoinHandle<()>,
+    learning: Option<tokio::task::JoinHandle<()>>,
+    goal_worker: tokio::task::JoinHandle<()>,
+}
+
+fn spawn_background_tasks(
+    state: &std::sync::Arc<app_state::AppState>,
+    goal_worker_manager: services::goal_worker::manager::GoalWorkerManager,
+    shutdown_tx: &tokio::sync::broadcast::Sender<()>,
+) -> BackgroundHandles {
+    let heartbeat = {
+        let eq = state.event_queue.clone();
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+                        eq.push_heartbeat();
+                    }
+                    _ = shutdown_rx.recv() => break,
+                }
+            }
+            tracing::info!("heartbeat_task.stopped");
+        })
+    };
+
+    let runtime = {
+        let session = state.runtime_session.clone();
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = session.run() => {}
+                _ = shutdown_rx.recv() => {
+                    session.stop().await;
+                }
+            }
+            tracing::info!("runtime_session_task.stopped");
+        })
+    };
+
+    let learning = state.learning_loop.as_ref().map(|ll| {
+        let ll = ll.clone();
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = ll.run() => {}
+                _ = shutdown_rx.recv() => {
+                    ll.stop();
+                }
+            }
+            tracing::info!("learning_loop_task.stopped");
+        })
+    });
+
+    let goal_worker = {
+        let shutdown_rx = shutdown_tx.subscribe();
+        let mut manager = goal_worker_manager;
+        tokio::spawn(async move {
+            manager.run(shutdown_rx).await;
+            tracing::info!("goal_worker_manager_task.stopped");
+        })
+    };
+
+    BackgroundHandles {
+        heartbeat,
+        runtime,
+        learning,
+        goal_worker,
+    }
+}
+
+async fn drain_background_tasks(handles: BackgroundHandles) {
+    if let Err(e) = handles.heartbeat.await {
+        tracing::error!(error = %e, "heartbeat task panicked");
+    }
+    if let Err(e) = handles.runtime.await {
+        tracing::error!(error = %e, "runtime session task panicked");
+    }
+    if let Some(h) = handles.learning
+        && let Err(e) = h.await
+    {
+        tracing::error!(error = %e, "learning loop task panicked");
+    }
+    if let Err(e) = handles.goal_worker.await {
+        tracing::error!(error = %e, "goal worker manager task panicked");
+    }
+}
+
+async fn run_graceful_shutdown(
+    state: &std::sync::Arc<app_state::AppState>,
+    config: &config::Config,
+) {
+    tracing::info!("Stopping mDNS...");
+    state.mdns_announcer.stop().await;
+
+    if let Some(ref mcp) = state.mcp_tool_adapter {
+        tracing::info!("Stopping MCP servers...");
+        tokio::time::timeout(std::time::Duration::from_secs(2), mcp.shutdown())
+            .await
+            .ok();
+    }
+
+    if config.llm.backend == crate::config::LlmBackend::Ollama
+        || config.vision.backend == crate::config::LlmBackend::Ollama
+    {
+        tracing::info!("Unloading Ollama models...");
+        let unload_client = reqwest::Client::new();
+        for model_name in [
+            &config.ollama.model,
+            &config.vision.ollama_model,
+            &config.embedding.model,
+        ] {
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                unload_client
+                    .post(format!("{}/api/generate", config.ollama.url))
+                    .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
+                    .send(),
+            )
+            .await;
+        }
+        tracing::debug!("ollama.models_unloaded");
+
+        tracing::info!("Stopping Ollama (if managed)...");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            state.ollama_manager.stop(),
+        )
+        .await
+        .ok();
+    }
+
+    tracing::info!("Closing database pool...");
+    state.db.close().await;
+
+    tracing::info!("BoBe shutdown complete");
 }

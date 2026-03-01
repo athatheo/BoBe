@@ -51,7 +51,13 @@ pub async fn stream_events(
                     // Track indicator state
                     cm.track_indicator(&bundle).await;
 
-                    let sse_data = serde_json::to_string(&bundle).unwrap_or_default();
+                    let sse_data = match serde_json::to_string(&bundle) {
+                        Ok(json) => json,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "sse.serialize_event_failed");
+                            String::new()
+                        }
+                    };
                     let sse_event = Event::default().event("message").data(sse_data);
                     if tx.send(Ok(sse_event)).await.is_err() {
                         tracing::info!(

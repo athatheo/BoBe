@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::base::NativeTool;
 use crate::error::AppError;
@@ -21,33 +21,6 @@ impl Default for SearchFilesTool {
 impl SearchFilesTool {
     pub fn new() -> Self {
         Self
-    }
-
-    fn validate_path(path: &Path) -> Result<PathBuf, AppError> {
-        let canonical = path
-            .canonicalize()
-            .map_err(|e| AppError::Tool(format!("Cannot resolve path: {e}")))?;
-
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-        let tmp = PathBuf::from("/tmp");
-
-        if !canonical.starts_with(&home) && !canonical.starts_with(&tmp) {
-            return Err(AppError::Tool(
-                "Access denied: path must be under home directory or /tmp".into(),
-            ));
-        }
-
-        // Re-validate after canonicalize to prevent symlink-swap TOCTOU attacks
-        let re_canon = canonical
-            .canonicalize()
-            .map_err(|e| AppError::Tool(format!("Path changed during validation: {e}")))?;
-        if !re_canon.starts_with(&home) && !re_canon.starts_with(&tmp) {
-            return Err(AppError::Tool(
-                "Access denied: path escaped allowed directories after re-validation".into(),
-            ));
-        }
-
-        Ok(re_canon)
     }
 
     fn validate_regex(pattern: &str) -> Result<(), AppError> {
@@ -147,7 +120,7 @@ impl NativeTool for SearchFilesTool {
             .and_then(|v| v.as_str())
             .map(|s| s.to_owned());
 
-        let canonical = Self::validate_path(Path::new(path_str))?;
+        let canonical = super::path_validation::validate_path(Path::new(path_str))?;
 
         if !canonical.is_dir() {
             return Err(AppError::Tool(format!(

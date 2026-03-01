@@ -26,6 +26,7 @@ pub mod reject_plan;
 // File system tools
 pub mod file_reader;
 pub mod list_directory;
+pub(crate) mod path_validation;
 pub mod search_files;
 
 // Research tools

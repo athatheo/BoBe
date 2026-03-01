@@ -140,6 +140,23 @@ impl NativeTool for BrowserHistoryTool {
     }
 }
 
+/// Escape a string for safe use in a SQL LIKE pattern passed to sqlite3 CLI.
+/// Handles single quotes (SQL string delimiter), and LIKE wildcards (%, _).
+/// The resulting SQL must include `ESCAPE '\'` for the wildcard escaping to work.
+fn escape_sql_like(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '\'' => out.push_str("''"),
+            '%' => out.push_str("\\%"),
+            '_' => out.push_str("\\_"),
+            '\\' => out.push_str("\\\\"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Run a SQL query against an SQLite DB using the sqlite3 CLI.
 /// Copies the DB to a temp file to avoid locking the browser's DB.
 async fn query_sqlite(db_path: &PathBuf, temp_name: &str, sql: &str) -> Result<String, AppError> {
@@ -198,12 +215,12 @@ async fn search_chrome(
     let cutoff_us = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000
         + chrome_epoch_offset;
 
-    let escaped = query.replace('\'', "''");
+    let escaped = escape_sql_like(query);
     let sql = format!(
         "SELECT COALESCE(u.title, ''), u.url, \
          datetime((v.visit_time - {chrome_epoch_offset}) / 1000000, 'unixepoch') \
          FROM visits v JOIN urls u ON v.url = u.id \
-         WHERE (u.url LIKE '%{escaped}%' OR u.title LIKE '%{escaped}%') \
+         WHERE (u.url LIKE '%{escaped}%' ESCAPE '\\' OR u.title LIKE '%{escaped}%' ESCAPE '\\') \
          AND v.visit_time > {cutoff_us} \
          ORDER BY v.visit_time DESC LIMIT {max_results};"
     );
@@ -223,12 +240,12 @@ async fn search_safari(
     let cutoff =
         (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() as f64 - core_data_offset;
 
-    let escaped = query.replace('\'', "''");
+    let escaped = escape_sql_like(query);
     let sql = format!(
         "SELECT COALESCE(hv.title, ''), hi.url, \
          datetime(hv.visit_time + {core_data_offset}, 'unixepoch') \
          FROM history_visits hv JOIN history_items hi ON hv.history_item = hi.id \
-         WHERE (hi.url LIKE '%{escaped}%' OR hv.title LIKE '%{escaped}%') \
+         WHERE (hi.url LIKE '%{escaped}%' ESCAPE '\\' OR hv.title LIKE '%{escaped}%' ESCAPE '\\') \
          AND hv.visit_time > {cutoff} \
          ORDER BY hv.visit_time DESC LIMIT {max_results};"
     );
@@ -269,12 +286,12 @@ async fn search_firefox(
     // Firefox uses microseconds since Unix epoch
     let cutoff_us = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000;
 
-    let escaped = query.replace('\'', "''");
+    let escaped = escape_sql_like(query);
     let sql = format!(
         "SELECT COALESCE(p.title, ''), p.url, \
          datetime(v.visit_date / 1000000, 'unixepoch') \
          FROM moz_historyvisits v JOIN moz_places p ON v.place_id = p.id \
-         WHERE (p.url LIKE '%{escaped}%' OR p.title LIKE '%{escaped}%') \
+         WHERE (p.url LIKE '%{escaped}%' ESCAPE '\\' OR p.title LIKE '%{escaped}%' ESCAPE '\\') \
          AND v.visit_date > {cutoff_us} \
          ORDER BY v.visit_date DESC LIMIT {max_results};"
     );

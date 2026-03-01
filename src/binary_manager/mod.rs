@@ -111,7 +111,7 @@ impl BinaryManager {
         download::download_ollama(&self.http_client, &archive_path, |current, total| {
             let percent = total.map(|t| {
                 if t > 0 {
-                    ((current as f64 / t as f64) * 90.0) as u8
+                    ((current as f64 / t as f64) * 90.0).min(100.0) as u8
                 } else {
                     0
                 }

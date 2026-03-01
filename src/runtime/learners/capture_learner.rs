@@ -326,7 +326,11 @@ impl CaptureLearner {
             .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
 
         // Find existing visual diary
-        let existing_content = self.find_visual_diary(window_start).await;
+        let existing_content = self
+            .find_visual_diary_memory(window_start)
+            .await
+            .map(|m| m.content)
+            .unwrap_or_default();
         let llm_context = Self::tail_lines(&existing_content, 30);
 
         let obs_id_short = &observation_id[..observation_id.len().min(8)];
@@ -386,34 +390,6 @@ impl CaptureLearner {
         }
 
         Ok(())
-    }
-
-    async fn find_visual_diary(&self, window_start: Option<DateTime<Utc>>) -> String {
-        let memories = self
-            .memory_repo
-            .find_all(
-                Some(MemoryType::ShortTerm.as_str()),
-                Some("observation"),
-                Some(MemorySource::VisualDiary.as_str()),
-                false,
-                5,
-                0,
-            )
-            .await;
-
-        match memories {
-            Ok((mems, _)) => {
-                if let Some(ws) = window_start {
-                    for m in &mems {
-                        if m.created_at >= ws {
-                            return m.content.clone();
-                        }
-                    }
-                }
-                String::new()
-            }
-            Err(_) => String::new(),
-        }
     }
 
     async fn find_visual_diary_memory(

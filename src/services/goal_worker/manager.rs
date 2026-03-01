@@ -72,7 +72,7 @@ impl GoalWorkerManager {
         }
 
         let has_key = !cfg.llm.anthropic_api_key.is_empty();
-        if !has_key && !cli_authenticated() {
+        if !has_key && !cli_authenticated().await {
             warn!(
                 enabled = true,
                 has_api_key = false,
@@ -431,19 +431,20 @@ impl GoalWorkerManager {
 }
 
 /// Check if the Claude CLI is authenticated.
-fn cli_authenticated() -> bool {
+async fn cli_authenticated() -> bool {
     let claude_bin = match which::which("claude") {
         Ok(p) => p,
         Err(_) => return false,
     };
 
-    let result = std::process::Command::new(claude_bin)
+    let result = tokio::process::Command::new(claude_bin)
         .arg("auth")
         .arg("status")
         .env("CLAUDECODE", "")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .output();
+        .output()
+        .await;
 
     match result {
         Ok(output) if output.status.success() => {

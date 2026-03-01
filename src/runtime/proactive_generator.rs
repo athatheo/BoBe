@@ -183,66 +183,73 @@ impl ProactiveGenerator {
         };
 
         if result.success && !result.full_response.is_empty() {
-            let tokens_per_sec = if result.duration_ms > 0.0 {
-                result.token_count as f64 / (result.duration_ms / 1000.0)
-            } else {
-                0.0
-            };
-
-            if let Some(ref target) = target_conversation {
-                // Re-fetch conversation to guard against race conditions
-                match self.conversation.get_conversation(target.id).await {
-                    Ok(Some(conv)) if !conv.is_closed() => {
-                        match self
-                            .conversation
-                            .add_turn(target.id, TurnRole::Assistant, &result.full_response)
-                            .await
-                        {
-                            Ok(Some(_)) => {
-                                info!(
-                                    tokens = result.token_count,
-                                    ms = result.duration_ms as u64,
-                                    tps = format!("{tokens_per_sec:.1}"),
-                                    first_token_ms = ?result.first_token_ms.map(|v| v as u64),
-                                    "proactive_generator.complete"
-                                );
-                            }
-                            Ok(None) => warn!("proactive_generator.turn_failed"),
-                            Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
-                        }
-                    }
-                    Ok(Some(_)) => {
-                        warn!(
-                            conversation_id = %target.id,
-                            "proactive_generator.conversation_closed_before_persist"
-                        );
-                    }
-                    Ok(None) => {
-                        error!(conversation_id = %target.id, "proactive_generator.conversation_not_found")
-                    }
-                    Err(e) => error!(error = %e, "proactive_generator.conversation_refetch_failed"),
-                }
-            } else {
-                match self
-                    .conversation
-                    .create_pending(&result.full_response)
-                    .await
-                {
-                    Ok(conv) => {
-                        info!(
-                            conversation_id = &conv.id.to_string()[..8],
-                            tokens = result.token_count,
-                            "proactive_generator.conversation_created"
-                        );
-                    }
-                    Err(e) => error!(error = %e, "proactive_generator.create_failed"),
-                }
-            }
-
+            self.persist_proactive_response(&result, target_conversation.as_ref())
+                .await;
             self.record_engagement().await;
         }
 
         self.event_queue.set_indicator(IndicatorType::Idle);
+    }
+
+    async fn persist_proactive_response(
+        &self,
+        result: &crate::runtime::response_streamer::StreamResult,
+        target: Option<&Conversation>,
+    ) {
+        let tokens_per_sec = if result.duration_ms > 0.0 {
+            result.token_count as f64 / (result.duration_ms / 1000.0)
+        } else {
+            0.0
+        };
+
+        if let Some(target) = target {
+            match self.conversation.get_conversation(target.id).await {
+                Ok(Some(conv)) if !conv.is_closed() => {
+                    match self
+                        .conversation
+                        .add_turn(target.id, TurnRole::Assistant, &result.full_response)
+                        .await
+                    {
+                        Ok(Some(_)) => {
+                            info!(
+                                tokens = result.token_count,
+                                ms = result.duration_ms as u64,
+                                tps = format!("{tokens_per_sec:.1}"),
+                                first_token_ms = ?result.first_token_ms.map(|v| v as u64),
+                                "proactive_generator.complete"
+                            );
+                        }
+                        Ok(None) => warn!("proactive_generator.turn_failed"),
+                        Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
+                    }
+                }
+                Ok(Some(_)) => {
+                    warn!(
+                        conversation_id = %target.id,
+                        "proactive_generator.conversation_closed_before_persist"
+                    );
+                }
+                Ok(None) => {
+                    error!(conversation_id = %target.id, "proactive_generator.conversation_not_found")
+                }
+                Err(e) => error!(error = %e, "proactive_generator.conversation_refetch_failed"),
+            }
+        } else {
+            match self
+                .conversation
+                .create_pending(&result.full_response)
+                .await
+            {
+                Ok(conv) => {
+                    info!(
+                        conversation_id = &conv.id.to_string()[..8],
+                        tokens = result.token_count,
+                        "proactive_generator.conversation_created"
+                    );
+                }
+                Err(e) => error!(error = %e, "proactive_generator.create_failed"),
+            }
+        }
     }
 
     async fn record_engagement(&self) {

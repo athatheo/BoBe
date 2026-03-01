@@ -130,7 +130,7 @@ impl MessageHandler {
         let cfg = self.config.load();
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
-        // Get context (gracefully degrade on failure)
+        // Build context and conversation history
         let assembled = self
             .context_assembler
             .build_context(
@@ -148,45 +148,7 @@ impl MessageHandler {
             .await;
 
         let (context_summary, soul) = assembled.to_context_string();
-
-        // Get conversation history (gracefully degrade on failure)
-        let mut conversation_history: Vec<(String, String)> = Vec::new();
-        match self
-            .conversation
-            .get_conversation_turns(conversation_id, 20)
-            .await
-        {
-            Ok(turns) => {
-                // Fresh conversation — load previous context for continuity
-                if turns.len() <= 1 {
-                    let previous = self.conversation.get_previous_conversation_context().await;
-                    if !previous.is_empty() {
-                        info!(
-                            previous_turns = previous.len(),
-                            "message_handler.loaded_previous_context"
-                        );
-                    }
-                    conversation_history.extend(previous);
-                }
-
-                let slice = if turns.is_empty() {
-                    &[]
-                } else {
-                    &turns[..turns.len() - 1]
-                };
-                for turn in slice {
-                    conversation_history
-                        .push((turn.role.as_str().to_owned(), turn.content.clone()));
-                }
-            }
-            Err(e) => {
-                error!(
-                    error = %e,
-                    conversation_id = %conversation_id,
-                    "message_handler.history_load_failed"
-                );
-            }
-        }
+        let conversation_history = self.build_conversation_history(conversation_id).await;
 
         let history_refs: Vec<(&str, &str)> = conversation_history
             .iter()
@@ -244,46 +206,92 @@ impl MessageHandler {
             stream_llm_response(stream, &self.event_queue, Some(msg_id)).await
         };
 
-        // Persist response (re-fetch conversation to guard against race conditions)
-        if result.success && !result.full_response.is_empty() {
-            match self.conversation.get_conversation(conversation_id).await {
-                Ok(Some(conv)) if !conv.is_closed() => {
-                    if let Err(e) = self
-                        .conversation
-                        .add_turn(conversation_id, TurnRole::Assistant, &result.full_response)
-                        .await
-                    {
-                        error!(error = %e, "message_handler.persist_failed");
-                    } else {
-                        let tokens_per_sec = if result.duration_ms > 0.0 {
-                            result.token_count as f64 / (result.duration_ms / 1000.0)
-                        } else {
-                            0.0
-                        };
+        self.persist_response(&result, conversation_id).await;
+        self.event_queue.set_indicator(IndicatorType::Idle);
+    }
+
+    async fn build_conversation_history(&self, conversation_id: Uuid) -> Vec<(String, String)> {
+        let mut history: Vec<(String, String)> = Vec::new();
+        match self
+            .conversation
+            .get_conversation_turns(conversation_id, 20)
+            .await
+        {
+            Ok(turns) => {
+                if turns.len() <= 1 {
+                    let previous = self.conversation.get_previous_conversation_context().await;
+                    if !previous.is_empty() {
                         info!(
-                            tokens = result.token_count,
-                            ms = result.duration_ms as u64,
-                            tps = format!("{tokens_per_sec:.1}"),
-                            "message_handler.response_complete"
+                            previous_turns = previous.len(),
+                            "message_handler.loaded_previous_context"
                         );
                     }
+                    history.extend(previous);
                 }
-                Ok(Some(_)) => {
-                    warn!(
-                        conversation_id = %conversation_id,
-                        "message_handler.conversation_closed_before_persist"
-                    );
-                }
-                Ok(None) => {
-                    error!(conversation_id = %conversation_id, "message_handler.conversation_not_found");
-                }
-                Err(e) => {
-                    error!(error = %e, "message_handler.conversation_refetch_failed");
+
+                let slice = if turns.is_empty() {
+                    &[]
+                } else {
+                    &turns[..turns.len() - 1]
+                };
+                for turn in slice {
+                    history.push((turn.role.as_str().to_owned(), turn.content.clone()));
                 }
             }
+            Err(e) => {
+                error!(
+                    error = %e,
+                    conversation_id = %conversation_id,
+                    "message_handler.history_load_failed"
+                );
+            }
         }
+        history
+    }
 
-        self.event_queue.set_indicator(IndicatorType::Idle);
+    async fn persist_response(
+        &self,
+        result: &crate::runtime::response_streamer::StreamResult,
+        conversation_id: Uuid,
+    ) {
+        if !result.success || result.full_response.is_empty() {
+            return;
+        }
+        match self.conversation.get_conversation(conversation_id).await {
+            Ok(Some(conv)) if !conv.is_closed() => {
+                if let Err(e) = self
+                    .conversation
+                    .add_turn(conversation_id, TurnRole::Assistant, &result.full_response)
+                    .await
+                {
+                    error!(error = %e, "message_handler.persist_failed");
+                } else {
+                    let tokens_per_sec = if result.duration_ms > 0.0 {
+                        result.token_count as f64 / (result.duration_ms / 1000.0)
+                    } else {
+                        0.0
+                    };
+                    info!(
+                        tokens = result.token_count,
+                        ms = result.duration_ms as u64,
+                        tps = format!("{tokens_per_sec:.1}"),
+                        "message_handler.response_complete"
+                    );
+                }
+            }
+            Ok(Some(_)) => {
+                warn!(
+                    conversation_id = %conversation_id,
+                    "message_handler.conversation_closed_before_persist"
+                );
+            }
+            Ok(None) => {
+                error!(conversation_id = %conversation_id, "message_handler.conversation_not_found");
+            }
+            Err(e) => {
+                error!(error = %e, "message_handler.conversation_refetch_failed");
+            }
+        }
     }
 
     /// Get available tools, optionally preselected based on conversation context.

@@ -43,10 +43,22 @@ impl McpServerConfig {
     }
 
     pub fn args_vec(&self) -> Vec<String> {
-        serde_json::from_str(&self.args).unwrap_or_default()
+        match serde_json::from_str(&self.args) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, raw = %self.args, "mcp_server_config.args_parse_failed");
+                Vec::new()
+            }
+        }
     }
 
     pub fn env_map(&self) -> std::collections::HashMap<String, String> {
-        serde_json::from_str(&self.env).unwrap_or_default()
+        match serde_json::from_str(&self.env) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, raw = %self.env, "mcp_server_config.env_parse_failed");
+                std::collections::HashMap::new()
+            }
+        }
     }
 }

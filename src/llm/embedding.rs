@@ -23,6 +23,19 @@ struct OpenAiEmbedData {
     embedding: Vec<f32>,
 }
 
+/// Validate an embedding has the expected dimension and all finite values.
+fn validate_embedding(embedding: &[f32], expected_dimension: usize) -> bool {
+    if embedding.len() != expected_dimension {
+        warn!(
+            expected = expected_dimension,
+            actual = embedding.len(),
+            "embedding.dimension_mismatch"
+        );
+        return false;
+    }
+    embedding.iter().all(|v| v.is_finite())
+}
+
 /// Local embedding provider that calls Ollama's embedding endpoint.
 ///
 /// Uses the `/api/embed` API with a configurable model (default: nomic-embed-text).
@@ -46,19 +59,6 @@ impl LocalEmbeddingProvider {
             model: model.to_owned(),
             dimension,
         }
-    }
-
-    /// Validate an embedding has the expected dimension and all finite values.
-    fn validate_embedding(&self, embedding: &[f32]) -> bool {
-        if embedding.len() != self.dimension {
-            warn!(
-                expected = self.dimension,
-                actual = embedding.len(),
-                "embedding.dimension_mismatch"
-            );
-            return false;
-        }
-        embedding.iter().all(|v| v.is_finite())
     }
 }
 
@@ -119,18 +119,6 @@ impl OpenAiEmbeddingProvider {
         }
     }
 
-    fn validate_embedding(&self, embedding: &[f32]) -> bool {
-        if embedding.len() != self.dimension {
-            warn!(
-                expected = self.dimension,
-                actual = embedding.len(),
-                "embedding.dimension_mismatch"
-            );
-            return false;
-        }
-        embedding.iter().all(|v| v.is_finite())
-    }
-
     async fn request_embeddings(
         &self,
         input: serde_json::Value,
@@ -176,7 +164,7 @@ impl OpenAiEmbeddingProvider {
 
         let embeddings: Vec<Vec<f32>> = resp.data.into_iter().map(|item| item.embedding).collect();
         for (index, emb) in embeddings.iter().enumerate() {
-            if !self.validate_embedding(emb) {
+            if !validate_embedding(emb, self.dimension) {
                 return Err(AppError::Embedding(format!(
                     "Invalid embedding at index {index}: expected {} dimensions, got {}",
                     self.dimension,
@@ -225,7 +213,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
             .next()
             .ok_or_else(|| AppError::Embedding("No embeddings in response".into()))?;
 
-        if !self.validate_embedding(&embedding) {
+        if !validate_embedding(&embedding, self.dimension) {
             return Err(AppError::Embedding(format!(
                 "Invalid embedding: expected {} dimensions, got {}",
                 self.dimension,
@@ -271,7 +259,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
             .map_err(|e| AppError::Embedding(format!("Failed to parse batch response: {e}")))?;
 
         for (i, emb) in resp.embeddings.iter().enumerate() {
-            if !self.validate_embedding(emb) {
+            if !validate_embedding(emb, self.dimension) {
                 return Err(AppError::Embedding(format!(
                     "Invalid embedding at index {i}: expected {} dimensions, got {}",
                     self.dimension,

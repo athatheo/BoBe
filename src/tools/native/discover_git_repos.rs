@@ -80,14 +80,20 @@ impl NativeTool for DiscoverGitReposTool {
             return Ok("No standard project directories found.".into());
         }
 
-        let mut repos = Vec::new();
-        for dir in &search_dirs {
-            find_git_repos(dir, 0, &mut repos);
-            if repos.len() >= MAX_REPOS {
-                break;
+        let search_dirs_owned = search_dirs;
+        let repos = tokio::task::spawn_blocking(move || {
+            let mut repos = Vec::new();
+            for dir in &search_dirs_owned {
+                find_git_repos(dir, 0, &mut repos);
+                if repos.len() >= MAX_REPOS {
+                    break;
+                }
             }
-        }
-        repos.truncate(MAX_REPOS);
+            repos.truncate(MAX_REPOS);
+            repos
+        })
+        .await
+        .map_err(|e| AppError::Tool(format!("Git repo discovery task failed: {e}")))?;
 
         if repos.is_empty() {
             return Ok("No git repositories found.".into());
