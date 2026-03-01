@@ -53,19 +53,19 @@ pub async fn get_options(
                 id: "small".into(),
                 label: "Small (4B)".into(),
                 description: "Fast, low resource usage. Good for quick interactions.".into(),
-                disk_estimate_bytes: 6_000_000_000,
+                disk_estimate_bytes: tier_disk_estimate("small"),
             },
             LocalTier {
                 id: "medium".into(),
                 label: "Medium (8B)".into(),
                 description: "Balanced performance and quality.".into(),
-                disk_estimate_bytes: 11_000_000_000,
+                disk_estimate_bytes: tier_disk_estimate("medium"),
             },
             LocalTier {
                 id: "large".into(),
                 label: "Large (14B)".into(),
                 description: "Best quality, requires more resources.".into(),
-                disk_estimate_bytes: 15_000_000_000,
+                disk_estimate_bytes: tier_disk_estimate("large"),
             },
         ],
         cloud_providers: vec![
@@ -170,6 +170,16 @@ fn job_state() -> &'static SharedJobState {
 }
 
 // ── Model tier mapping ─────────────────────────────────────────────────────
+
+/// Disk space estimate in bytes for a given local tier.
+/// Used by both `get_options` (client-facing) and `run_local_setup` (validation).
+fn tier_disk_estimate(tier: &str) -> u64 {
+    match tier {
+        "small" => 6_000_000_000,
+        "medium" => 11_000_000_000,
+        _ => 15_000_000_000,
+    }
+}
 
 struct TierModels {
     text: &'static str,
@@ -352,11 +362,7 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
     }
 
     // Check available disk space against the tier's estimate
-    let required_bytes = match tier {
-        "small" => 6_000_000_000_u64,
-        "medium" => 11_000_000_000,
-        _ => 15_000_000_000,
-    };
+    let required_bytes = tier_disk_estimate(tier);
     if let Some(available) = available_disk_space(&data_dir)
         && available < required_bytes
     {
@@ -981,15 +987,15 @@ async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> 
 
 /// Returns available bytes on the filesystem containing `path`, or None on error.
 fn available_disk_space(path: &std::path::Path) -> Option<u64> {
-    // fs4 or platform-specific APIs could be used, but a simple cross-platform
-    // approach: use the unstable `Metadata` method or shell out to `df`.
+    // -P: POSIX format (prevents long filesystem names from wrapping lines)
+    // -k: output in 1K blocks
     let output = std::process::Command::new("df")
-        .arg("-k")
+        .args(["-Pk"])
         .arg(path)
         .output()
         .ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // df -k output: Filesystem 1K-blocks Used Available ...
+    // POSIX df output: Filesystem 1024-blocks Used Available Capacity Mounted
     let line = stdout.lines().nth(1)?;
     let available_kb: u64 = line.split_whitespace().nth(3)?.parse().ok()?;
     Some(available_kb * 1024)

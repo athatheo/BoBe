@@ -1,6 +1,7 @@
 use std::process::Stdio;
 use std::sync::Mutex;
 
+use futures::StreamExt;
 use reqwest::Client;
 use serde::Deserialize;
 use tracing::{info, warn};
@@ -194,7 +195,6 @@ impl OllamaManager {
         let mut buf = String::new();
         let mut last_logged_pct: i64 = -10;
 
-        use futures::StreamExt;
         while let Some(chunk) = stream.next().await {
             if is_canceled() {
                 info!(model = model_name, "ollama.pull_canceled");

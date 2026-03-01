@@ -48,8 +48,10 @@ final class BobeStore {
     private init() {}
 
     /// Observe backend service state and update UI accordingly.
+    /// Called once — persists across reconnects. The sleep/wake handler
+    /// reconnects SSE without recreating this observer.
     func observeBackendState() {
-        backendObserverTask?.cancel()
+        guard backendObserverTask == nil else { return }
         backendObserverTask = Task { [weak self] in
             for await state in BackendService.shared.stateStream {
                 guard !Task.isCancelled else { return }
@@ -61,6 +63,7 @@ final class BobeStore {
                         self?.updateState { $0.daemonConnected = false }
                     case .ready:
                         self?.isBackendFatal = false
+                        self?.isReconnecting = false
                     case .crashed:
                         self?.isReconnecting = true
                     default:
@@ -97,7 +100,7 @@ final class BobeStore {
         registerSleepWakeObservers()
         if appNapActivity == nil {
             appNapActivity = ProcessInfo.processInfo.beginActivity(
-                options: [.userInitiated, .idleSystemSleepDisabled],
+                options: .userInitiated,
                 reason: "Maintaining SSE connection to backend"
             )
         }
