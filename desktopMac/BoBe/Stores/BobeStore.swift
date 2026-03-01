@@ -37,12 +37,20 @@ final class BobeStore {
     private var streamingMessageId: String?
     private var lastMessageTimer: Task<Void, Never>?
     private var captureStartupTask: Task<Void, Never>?
+    /// Prevents App Nap from throttling the SSE connection.
+    private var appNapActivity: NSObjectProtocol?
 
     private init() {}
 
     // MARK: - Connection
 
     func connect() {
+        if appNapActivity == nil {
+            appNapActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleSystemSleepDisabled],
+                reason: "Maintaining SSE connection to backend"
+            )
+        }
         Task {
             await client.connectSSE(
                 onEvent: { [weak self] bundle in
@@ -68,6 +76,10 @@ final class BobeStore {
 
     func disconnect() {
         captureStartupTask?.cancel()
+        if let activity = appNapActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            appNapActivity = nil
+        }
         Task {
             await client.disconnectSSE()
         }

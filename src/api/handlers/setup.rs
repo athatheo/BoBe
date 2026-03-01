@@ -337,9 +337,8 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
     let tier = body.tier.as_deref().unwrap_or("large");
     let models = tier_models(tier);
 
-    // Step 1: Validate disk space
+    // Step 1: Validate data directory and disk space
     update_step("validate", StepStatus::InProgress, None).await;
-    // Simple disk check — just verify we can write to the data dir
     let data_dir = state.config().resolved_data_dir();
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
         update_step(
@@ -351,6 +350,25 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         finish_job(JobStatus::Failed, Some(e.to_string())).await;
         return;
     }
+
+    // Check available disk space against the tier's estimate
+    let required_bytes = match tier {
+        "small" => 6_000_000_000_u64,
+        "medium" => 11_000_000_000,
+        _ => 15_000_000_000,
+    };
+    if let Some(available) = available_disk_space(&data_dir)
+        && available < required_bytes
+    {
+        let needed_gb = required_bytes / 1_000_000_000;
+        let avail_gb = available / 1_000_000_000;
+        let msg =
+            format!("Not enough disk space: ~{needed_gb} GB required, {avail_gb} GB available");
+        update_step("validate", StepStatus::Failed, Some(msg.clone())).await;
+        finish_job(JobStatus::Failed, Some(msg)).await;
+        return;
+    }
+
     update_step(
         "validate",
         StepStatus::Succeeded,
@@ -558,6 +576,7 @@ async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         "vision.ollama_model".to_string(),
         serde_json::Value::String(models.vision.into()),
     );
+    changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
 
     let update = state.config_manager.update(&changes);
     if update.persist_failed {
@@ -703,6 +722,7 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
                 "llm.openai_model".to_string(),
                 serde_json::Value::String(model),
             );
+            changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
             let update = state.config_manager.update(&changes);
             if update.persist_failed {
                 update_step(
@@ -850,6 +870,7 @@ async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
                 "llm.azure_openai_deployment".to_string(),
                 serde_json::Value::String(deployment),
             );
+            changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
             let update = state.config_manager.update(&changes);
             if update.persist_failed {
                 update_step(
@@ -945,4 +966,20 @@ async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> 
 
     state.ollama_manager.pull_model(model).await?;
     Ok(())
+}
+
+/// Returns available bytes on the filesystem containing `path`, or None on error.
+fn available_disk_space(path: &std::path::Path) -> Option<u64> {
+    // fs4 or platform-specific APIs could be used, but a simple cross-platform
+    // approach: use the unstable `Metadata` method or shell out to `df`.
+    let output = std::process::Command::new("df")
+        .arg("-k")
+        .arg(path)
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // df -k output: Filesystem 1K-blocks Used Available ...
+    let line = stdout.lines().nth(1)?;
+    let available_kb: u64 = line.split_whitespace().nth(3)?.parse().ok()?;
+    Some(available_kb * 1024)
 }

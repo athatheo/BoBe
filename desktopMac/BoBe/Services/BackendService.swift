@@ -77,9 +77,16 @@ actor BackendService {
     private func spawnAndWaitHealthy() async throws {
         let binaryPath = findBinaryPath()
         guard let binaryPath else {
-            logger.warning("bobe binary not found — running in dev mode")
-            state = .ready
-            return
+            // In dev mode (BOBE_DEV set), the user starts the backend manually.
+            // In production, a missing binary is fatal — the app bundle is likely corrupted.
+            if ProcessInfo.processInfo.environment["BOBE_DEV"] != nil {
+                logger.info("bobe binary not found — dev mode, expecting manual backend")
+                state = .ready
+                return
+            }
+            state = .fatal
+            lastError = "Backend binary not found in app bundle. Try reinstalling BoBe."
+            throw BackendServiceError.spawnFailed("bobe-daemon binary not found")
         }
 
         logger.info("Starting bobe backend: \(binaryPath)")

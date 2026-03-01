@@ -170,6 +170,7 @@ struct SetupWizard: View {
 
     func loadOptions() async {
         for attempt in 1...5 {
+            guard !Task.isCancelled else { return }
             do {
                 options = try await DaemonClient.shared.getOnboardingOptions()
                 if let rec = options?.cloudProviders.first?.recommended {

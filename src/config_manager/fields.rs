@@ -249,6 +249,7 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             // ── Top-level ─────────────────────────────────────────────
             "soul_file" => set_parsed!(config.soul_file, value, k),
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
+            "setup_completed" => set_parsed!(config.setup_completed, value, k),
 
             _ => {} // Unknown — already warned during classification
         }

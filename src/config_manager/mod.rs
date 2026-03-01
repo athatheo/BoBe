@@ -128,6 +128,7 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "goals.file",
     "soul_file",
     "seed_default_documents",
+    "setup_completed",
 ];
 
 // ── Public types ───────────────────────────────────────────────────────────
