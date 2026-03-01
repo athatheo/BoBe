@@ -349,3 +349,35 @@ impl ToolCallAccumulator {
             .collect()
     }
 }
+
+/// Parse SSE lines from a buffer, extracting JSON data objects.
+///
+/// Drains complete lines from `buffer`. For each line, strips the `data: ` prefix,
+/// skips empty lines and `[DONE]` sentinels, and parses JSON.
+/// Returns all successfully parsed JSON values from the buffer.
+pub fn drain_sse_lines(buffer: &mut String, provider_label: &str) -> Vec<Value> {
+    let mut results = Vec::new();
+    while let Some(line_end) = buffer.find('\n') {
+        let parsed: Option<Value> = {
+            let line = buffer[..line_end].trim();
+            if line.is_empty() || line == "data: [DONE]" {
+                None
+            } else {
+                let json_str = line.strip_prefix("data: ").unwrap_or(line);
+                match serde_json::from_str(json_str) {
+                    Ok(d) => Some(d),
+                    Err(e) => {
+                        tracing::warn!("Failed to parse {provider_label} SSE chunk: {e}");
+                        None
+                    }
+                }
+            }
+        };
+        buffer.drain(..line_end + 1);
+
+        if let Some(data) = parsed {
+            results.push(data);
+        }
+    }
+    results
+}

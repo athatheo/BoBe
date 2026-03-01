@@ -3,12 +3,12 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use reqwest::Client;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use crate::error::AppError;
 use crate::llm::LlmProvider;
 use crate::llm::shared::{
-    ToolCallAccumulator, build_chat_request, parse_response, parse_stream_chunk,
+    ToolCallAccumulator, build_chat_request, drain_sse_lines, parse_response, parse_stream_chunk,
 };
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
@@ -153,26 +153,7 @@ impl LlmProvider for LlamaCppProvider {
                     return;
                 }
 
-                while let Some(line_end) = buffer.find('\n') {
-                    let data: Option<serde_json::Value> = {
-                        let line = buffer[..line_end].trim();
-                        if line.is_empty() || line == "data: [DONE]" {
-                            None
-                        } else {
-                            let json_str = line.strip_prefix("data: ").unwrap_or(line);
-                            match serde_json::from_str(json_str) {
-                                Ok(d) => Some(d),
-                                Err(e) => {
-                                    warn!("Failed to parse llama.cpp SSE chunk: {e}");
-                                    None
-                                }
-                            }
-                        }
-                    };
-                    buffer.drain(..line_end + 1);
-
-                    let Some(data) = data else { continue };
-
+                for data in drain_sse_lines(&mut buffer, "llama.cpp") {
                     tool_accumulator.feed(&data);
 
                     if let Some(mut chunk) = parse_stream_chunk(&data) {
