@@ -56,5 +56,29 @@
   },
 
   // Snyk
-  "snyk.advanced.autoSelectOrganization": true
+  "snyk.advanced.autoSelectOrganization": true,
+  "cSpell.ignorePaths": [
+    "**/justfile",
+    "**/Justfile",
+    "**/*.toml",
+    "**/*.lock",
+    "**/*.yml",
+    "**/*.yaml",
+    "**/.gitignore",
+    "**/.dockerignore",
+    "**/.ignore",
+    "**/.npmignore"
+  ],
+  "cSpell.words": [
+    "APFS",
+    "bobe",
+    "codesign",
+    "libexec",
+    "notarytool",
+    "pipefail",
+    "UDZO",
+    "volname",
+    "xcodegen",
+    "xcrun"
+  ]
 }

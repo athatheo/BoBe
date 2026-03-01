@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+ALWAYS FOLLOW RUST GUIDELINES IN RUST_GUIDELINES.MD
+
 ## Project Overview
 
 BoBe — local-first proactive AI companion. Rust backend (`bobe-daemon`) + native Swift/SwiftUI macOS overlay app. Communication via HTTP REST + SSE on `localhost:8766`.

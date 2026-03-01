@@ -10,63 +10,46 @@ unsafe_code = "deny"
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-# Allow these pedantic lints project-wide
-module_name_repetitions = "allow"
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-must_use_candidate = "allow"
-struct_excessive_bools = "allow"
-too_many_lines = "allow"
-cast_possible_truncation = "allow"
-cast_sign_loss = "allow"
-cast_precision_loss = "allow"
-doc_markdown = "allow"
-needless_pass_by_value = "allow"
-return_self_not_must_use = "allow"
-manual_let_else = "allow"
-single_match_else = "allow"
-match_wildcard_for_single_variants = "allow"
-unused_self = "allow"
-items_after_statements = "allow"
-cast_possible_wrap = "allow"
-cast_lossless = "allow"
-unnecessary_wraps = "allow"
-uninlined_format_args = "allow"
-unused_async = "allow"
-redundant_else = "allow"
-wildcard_imports = "allow"
-implicit_clone = "allow"
-trivially_copy_pass_by_ref = "allow"
-needless_lifetimes = "allow"
-redundant_closure_for_method_calls = "allow"
-needless_raw_string_hashes = "allow"
-match_same_arms = "allow"
-manual_string_new = "allow"
-semicolon_if_nothing_returned = "allow"
-option_option = "allow"
-map_unwrap_or = "allow"
-needless_borrows_for_generic_args = "allow"
-format_push_string = "allow"
-match_bool = "allow"
-manual_assert = "allow"
-clone_on_ref_ptr = "allow"
-bool_to_int_with_if = "allow"
-similar_names = "allow"
-struct_field_names = "allow"
-unnecessary_literal_bound = "allow"
-assigning_clones = "allow"
-if_not_else = "allow"
-needless_continue = "allow"
-ignored_unit_patterns = "allow"
-missing_fields_in_debug = "allow"
-range_plus_one = "allow"
-incompatible_msrv = "allow"
-implicit_hasher = "allow"
-case_sensitive_file_extension_comparisons = "allow"
-unchecked_time_subtraction = "allow"
 
-[profile.dev]
-opt-level = 0
+# --- Justified allows: architecture-driven (see CLAUDE.md for rationale) ---
+
+# Internal app, not a public crate — naming/docs norms don't apply
+module_name_repetitions = "allow" # config::ConfigManager is normal
+missing_errors_doc = "allow"      # not a public crate
+must_use_candidate = "allow"      # not a library
+doc_markdown = "allow"            # internal docs only
+implicit_hasher = "allow"         # not a library
+
+# DTOs/config structs match API contracts
+struct_excessive_bools = "allow"  # config/settings DTOs have many bool fields
+struct_field_names = "allow"      # DTO fields match API contracts
+missing_fields_in_debug = "allow" # partial Debug is fine
+
+# Axum framework requirements
+unused_async = "allow"            # all instances are Axum handler signatures
+unused_self = "allow"             # all instances are trait implementation contracts
+
+# Design patterns — intentional ownership/clone semantics
+needless_pass_by_value = "allow"  # ~90% intentional ownership for DI/storage/repos
+implicit_clone = "allow"          # all instances intentional — serialization, prompting, API
+unnecessary_wraps = "allow"       # Result<Option<T>> is intentional for idempotent repo ops
+
+# Cast safety — all verified safe in context
+cast_possible_truncation = "allow" # config→bounds expansions, loop counters bounded by config
+cast_sign_loss = "allow"           # expanding types or FFI-required
+cast_precision_loss = "allow"      # f64 precision loss acceptable
+cast_possible_wrap = "allow"       # FFI requirement (libc expects c_int)
+cast_lossless = "allow"            # only 1-2 instances, style-only
+
+# Style preferences
+return_self_not_must_use = "allow" # builder patterns
+similar_names = "allow"            # id/idx noisy false positives
+needless_lifetimes = "allow"       # explicit lifetimes sometimes clearer
+items_after_statements = "allow"   # helper closures after use is fine
+too_many_lines = "allow"           # some handlers are legitimately long
+incompatible_msrv = "allow"        # false positives with deps
+trivially_copy_pass_by_ref = "allow" # trait impls and handler signatures
+unnecessary_literal_bound = "allow"  # 56 tool trait impls return &str literals — changing trait sig is churn
 
 [profile.release]
 opt-level = 3
@@ -82,11 +65,11 @@ axum = { version = "0.8.8", features = ["macros"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.5.60", features = ["derive"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
-toml_edit = "0.22.27"
-flate2 = "1.1.2"
+toml_edit = "0.25.3+spec-1.1.0"
+flate2 = "1.1.9"
 tar = "0.4.44"
-security-framework = "3.2.1"
-security-framework-sys = "2.14.0"
+security-framework = "3.7.0"
+security-framework-sys = "2.17.0"
 core-foundation = "0.10.1"
 core-foundation-sys = "0.8.7"
 futures = "0.3.32"
@@ -118,7 +101,7 @@ which = "8.0.0"
 libc = "0.2.182"
 base64 = "0.22.1"
 rand = "0.10.0"
-mdns-sd = { version = "0.18.0", features = ["async"] }
+mdns-sd = { version = "0.18.1", features = ["async"] }
 rustix = { version = "1.1.4", features = ["fs"] }
 dashmap = "6.1.0"
 scraper = "0.25.0"

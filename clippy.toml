@@ -1,2 +1,3 @@
+# Keep these thresholds a bit relaxed to reduce low-signal pedantic warnings.
 too-many-arguments-threshold = 12
 type-complexity-threshold = 350

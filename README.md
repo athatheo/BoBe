@@ -32,7 +32,7 @@ Three processes work together:
 | **bobe-shell** | Swift / SwiftUI (macOS) | Native desktop overlay that displays state via SSE |
 | **LLM backend** | Ollama / llama.cpp / OpenAI / Azure OpenAI | Local or cloud inference |
 
-```
+```bash
 ┌─────────────────────────────────────────────────────────────┐
 │                      USER'S DESKTOP                          │
 │                                                              │
@@ -53,7 +53,7 @@ Three processes work together:
 
 ### Internal Structure
 
-```
+```bash
 src/
 ├── main.rs                  # Entry point + CLI (clap)
 ├── config.rs                # Settings from BOBE_* env vars
@@ -91,42 +91,10 @@ Or during development:
 cargo run -- serve --host 127.0.0.1 --port 8765
 ```
 
-Server starts at http://127.0.0.1:8765
+Server starts at <http://127.0.0.1:8765>
 
-- Health check: http://127.0.0.1:8765/health
-- SSE stream: http://127.0.0.1:8765/events
-
-### Configure LLM Backend
-
-All config via environment variables with `BOBE_` prefix:
-
-**Ollama (recommended):**
-```bash
-BOBE_LLM_BACKEND=ollama
-BOBE_OLLAMA_MODEL=qwen3:14b
-```
-
-**llama.cpp:**
-```bash
-BOBE_LLM_BACKEND=local
-BOBE_LLAMA_URL=http://localhost:8080
-```
-
-**OpenAI:**
-```bash
-BOBE_LLM_BACKEND=openai
-BOBE_OPENAI_API_KEY=sk-...
-```
-
-**Azure OpenAI:**
-```bash
-BOBE_LLM_BACKEND=azure_openai
-BOBE_AZURE_OPENAI_ENDPOINT=https://xxx.cognitiveservices.azure.com/openai/v1/
-BOBE_AZURE_OPENAI_API_KEY=...
-BOBE_AZURE_OPENAI_DEPLOYMENT=gpt-5-mini
-```
-
----
+- Health check: <http://127.0.0.1:8765/health>
+- SSE stream: <http://127.0.0.1:8765/events>
 
 ## Domain Model
 
@@ -180,27 +148,6 @@ BOBE_AZURE_OPENAI_DEPLOYMENT=gpt-5-mini
 | `/onboarding/setup/{job_id}` | GET/DELETE | Poll or cancel setup job |
 | `/onboarding/mark-complete` | POST | Mark setup done |
 | `/user-profile` | GET/PUT | User profile |
-
----
-
-## Configuration
-
-All via `BOBE_*` environment variables. Key settings:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BOBE_HOST` | `127.0.0.1` | Bind address |
-| `BOBE_PORT` | `8765` | Bind port |
-| `BOBE_LLM_BACKEND` | `ollama` | `ollama`, `local`, `openai`, `azure_openai` |
-| `BOBE_DATABASE_URL` | `sqlite:~/.bobe/data/bobe.db` | Database connection |
-| `BOBE_CAPTURE_ENABLED` | `true` | Screen capture |
-| `BOBE_CAPTURE_INTERVAL_SECONDS` | `45` | Capture frequency |
-| `BOBE_LEARNING_ENABLED` | `true` | Background learning |
-| `BOBE_LOG_LEVEL` | `INFO` | Logging verbosity |
-| `BOBE_TOOLS_ENABLED` | `true` | Tool calling |
-| `BOBE_MCP_ENABLED` | `true` | MCP integration |
-
-See `src/config.rs` for the complete list (100+ settings).
 
 ---
 
