@@ -964,7 +964,18 @@ async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> 
         return Ok(());
     }
 
-    state.ollama_manager.pull_model(model).await?;
+    state
+        .ollama_manager
+        .pull_model(model, || {
+            // Check the shared job state for cancellation.
+            // Use try_read to avoid blocking — if the lock is held, assume not canceled.
+            SETUP_JOB
+                .get()
+                .and_then(|s| s.try_read().ok())
+                .and_then(|lock| lock.as_ref().map(|j| j.status == JobStatus::Canceled))
+                .unwrap_or(false)
+        })
+        .await?;
     Ok(())
 }
 

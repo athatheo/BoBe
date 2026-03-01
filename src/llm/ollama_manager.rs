@@ -81,7 +81,7 @@ impl OllamaManager {
             info!(model = %self.model, "ollama.model_available");
         } else if self.auto_pull {
             info!(model = %self.model, "ollama.pulling_model");
-            self.pull_model(&self.model).await?;
+            self.pull_model(&self.model, || false).await?;
             info!(model = %self.model, "ollama.model_pulled");
         } else {
             return Err(AppError::LlmUnavailable(format!(
@@ -109,7 +109,7 @@ impl OllamaManager {
         }
 
         info!(model = model_name, "ollama.pulling_model");
-        self.pull_model(model_name).await?;
+        self.pull_model(model_name, || false).await?;
         info!(model = model_name, "ollama.model_pulled");
         Ok(true)
     }
@@ -165,7 +165,14 @@ impl OllamaManager {
     }
 
     /// Pull a model from the Ollama registry.
-    pub async fn pull_model(&self, model_name: &str) -> Result<(), AppError> {
+    ///
+    /// Streams the NDJSON response line-by-line and checks `is_canceled` between
+    /// lines, allowing the caller to abort a multi-GB download promptly.
+    pub async fn pull_model(
+        &self,
+        model_name: &str,
+        is_canceled: impl Fn() -> bool,
+    ) -> Result<(), AppError> {
         let url = format!("{}/api/pull", self.base_url);
         let resp = self
             .client
@@ -182,36 +189,53 @@ impl OllamaManager {
             )));
         }
 
-        // Stream the response lines to track progress
-        let body = resp.text().await.unwrap_or_default();
+        // Stream response line-by-line to track progress and support cancellation.
+        let mut stream = resp.bytes_stream();
+        let mut buf = String::new();
         let mut last_logged_pct: i64 = -10;
 
-        for line in body.lines() {
-            if line.is_empty() {
-                continue;
+        use futures::StreamExt;
+        while let Some(chunk) = stream.next().await {
+            if is_canceled() {
+                info!(model = model_name, "ollama.pull_canceled");
+                return Err(AppError::LlmUnavailable("Model pull canceled".to_string()));
             }
-            if let Ok(progress) = serde_json::from_str::<PullProgress>(line)
-                && let Some(status) = &progress.status
-            {
-                if status == "success" {
-                    return Ok(());
+
+            let bytes =
+                chunk.map_err(|e| AppError::LlmUnavailable(format!("Stream read error: {e}")))?;
+            buf.push_str(&String::from_utf8_lossy(&bytes));
+
+            // Process complete lines from the buffer
+            while let Some(newline_pos) = buf.find('\n') {
+                let line = buf[..newline_pos].trim().to_string();
+                buf.drain(..=newline_pos);
+
+                if line.is_empty() {
+                    continue;
                 }
-                if let Some(err) = &progress.error {
-                    return Err(AppError::LlmUnavailable(format!(
-                        "Ollama pull error: {err}"
-                    )));
-                }
-                if let (Some(completed), Some(total)) = (progress.completed, progress.total)
-                    && total > 0
+                if let Ok(progress) = serde_json::from_str::<PullProgress>(&line)
+                    && let Some(status) = &progress.status
                 {
-                    let pct = (completed as f64 / total as f64 * 100.0) as i64;
-                    if pct >= last_logged_pct + 10 {
-                        last_logged_pct = (pct / 10) * 10;
-                        info!(
-                            model = model_name,
-                            progress = format!("{pct}%"),
-                            "ollama.pull_progress"
-                        );
+                    if status == "success" {
+                        return Ok(());
+                    }
+                    if let Some(err) = &progress.error {
+                        return Err(AppError::LlmUnavailable(format!(
+                            "Ollama pull error: {err}"
+                        )));
+                    }
+                    if let (Some(completed), Some(total)) = (progress.completed, progress.total)
+                        && total > 0
+                    {
+                        let pct = (completed as f64 / total as f64 * 100.0) as i64;
+                        if pct >= last_logged_pct + 10 {
+                            last_logged_pct = (pct / 10) * 10;
+                            info!(
+                                model = model_name,
+                                progress = format!("{pct}%"),
+                                "ollama.pull_progress"
+                            );
+                        }
                     }
                 }
             }

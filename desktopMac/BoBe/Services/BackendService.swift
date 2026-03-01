@@ -22,10 +22,21 @@ actor BackendService {
     private let pidFilePath: URL
     /// Last stderr output captured from a failed backend launch.
     private(set) var lastError: String?
+    /// Stream of state changes for external observers (e.g. BobeStore).
+    private var stateContinuation: AsyncStream<ServiceState>.Continuation?
+    nonisolated let stateStream: AsyncStream<ServiceState>
 
     private init() {
+        var cont: AsyncStream<ServiceState>.Continuation?
+        stateStream = AsyncStream { cont = $0 }
+        stateContinuation = cont
         dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bobe")
         pidFilePath = dataDir.appendingPathComponent("bobe-service.pid")
+    }
+
+    private func transition(to newState: ServiceState) {
+        state = newState
+        stateContinuation?.yield(newState)
     }
 
     /// Start the backend with up to 3 retry attempts on failure.
@@ -36,7 +47,7 @@ actor BackendService {
         await cleanStalePID()
         try createDataDirIfNeeded()
 
-        state = .starting
+        transition(to: .starting)
         try await spawnAndWaitHealthy()
     }
 
@@ -81,10 +92,10 @@ actor BackendService {
             // In production, a missing binary is fatal — the app bundle is likely corrupted.
             if ProcessInfo.processInfo.environment["BOBE_DEV"] != nil {
                 logger.info("bobe binary not found — dev mode, expecting manual backend")
-                state = .ready
+                transition(to: .ready)
                 return
             }
-            state = .fatal
+            transition(to: .fatal)
             lastError = "Backend binary not found in app bundle. Try reinstalling BoBe."
             throw BackendServiceError.spawnFailed("bobe-daemon binary not found")
         }
@@ -139,7 +150,7 @@ actor BackendService {
         do {
             try proc.run()
         } catch {
-            state = .fatal
+            transition(to: .fatal)
             throw BackendServiceError.spawnFailed(error.localizedDescription)
         }
 
@@ -164,7 +175,7 @@ actor BackendService {
             }
             throw error
         }
-        state = .ready
+        transition(to: .ready)
         restartCount = 0
         logger.info("bobe backend healthy (PID: \(proc.processIdentifier))")
     }
@@ -196,12 +207,12 @@ actor BackendService {
         guard !stopping else { return }
 
         logger.warning("bobe backend exited unexpectedly (code: \(exitCode))")
-        state = .crashed
+        transition(to: .crashed)
 
         restartCount += 1
         if restartCount > maxRestartAttempts {
             logger.error("bobe backend failed \(self.maxRestartAttempts) times, giving up")
-            state = .fatal
+            transition(to: .fatal)
             return
         }
 
@@ -215,7 +226,7 @@ actor BackendService {
                 try await spawnAndWaitHealthy()
             } catch {
                 logger.error("Restart failed: \(error.localizedDescription)")
-                state = .fatal
+                transition(to: .fatal)
             }
         }
     }
@@ -270,7 +281,7 @@ actor BackendService {
 
     private func cleanup() {
         process = nil
-        state = .stopped
+        transition(to: .stopped)
         try? FileManager.default.removeItem(at: pidFilePath)
     }
 

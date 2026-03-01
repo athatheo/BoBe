@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import Observation
@@ -15,6 +16,8 @@ final class BobeStore {
 
     private(set) var context = BobeContext()
     private(set) var isReconnecting = false
+    /// True when the backend has crashed beyond recovery (3+ restarts).
+    private(set) var isBackendFatal = false
 
     /// Set after initial SSE connection is established
     private var hasConnectedOnce = false
@@ -39,12 +42,59 @@ final class BobeStore {
     private var captureStartupTask: Task<Void, Never>?
     /// Prevents App Nap from throttling the SSE connection.
     private var appNapActivity: NSObjectProtocol?
+    private var backendObserverTask: Task<Void, Never>?
+    private var sleepWakeObservers: [NSObjectProtocol] = []
 
     private init() {}
+
+    /// Observe backend service state and update UI accordingly.
+    func observeBackendState() {
+        backendObserverTask?.cancel()
+        backendObserverTask = Task { [weak self] in
+            for await state in BackendService.shared.stateStream {
+                guard !Task.isCancelled else { return }
+                await MainActor.run { [weak self] in
+                    switch state {
+                    case .fatal:
+                        self?.isBackendFatal = true
+                        self?.isReconnecting = false
+                        self?.updateState { $0.daemonConnected = false }
+                    case .ready:
+                        self?.isBackendFatal = false
+                    case .crashed:
+                        self?.isReconnecting = true
+                    default:
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    /// Proactively reconnect SSE on wake — the TCP connection is likely stale.
+    private func registerSleepWakeObservers() {
+        guard sleepWakeObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        let wakeObserver = center.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isBackendFatal else { return }
+                logger.info("System woke — reconnecting SSE")
+                await self.client.disconnectSSE()
+                self.connect()
+            }
+        }
+        sleepWakeObservers.append(wakeObserver)
+    }
 
     // MARK: - Connection
 
     func connect() {
+        observeBackendState()
+        registerSleepWakeObservers()
         if appNapActivity == nil {
             appNapActivity = ProcessInfo.processInfo.beginActivity(
                 options: [.userInitiated, .idleSystemSleepDisabled],
@@ -76,6 +126,11 @@ final class BobeStore {
 
     func disconnect() {
         captureStartupTask?.cancel()
+        backendObserverTask?.cancel()
+        for observer in sleepWakeObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        sleepWakeObservers.removeAll()
         if let activity = appNapActivity {
             ProcessInfo.processInfo.endActivity(activity)
             appNapActivity = nil
@@ -112,6 +167,10 @@ final class BobeStore {
             return newState
         } catch {
             logger.error("toggleCapture failed: \(error.localizedDescription)")
+            // If starting capture failed, check if screen recording permission was revoked.
+            if newState && !CGPreflightScreenCaptureAccess() {
+                updateState { $0.capturePermissionMissing = true }
+            }
             return context.capturing
         }
     }
