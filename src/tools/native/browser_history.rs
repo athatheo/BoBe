@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::PathBuf;
 
 use super::base::NativeTool;
@@ -80,13 +81,13 @@ impl NativeTool for BrowserHistoryTool {
 
         let days = arguments
             .get("days")
-            .and_then(|v| v.as_i64())
+            .and_then(Value::as_i64)
             .unwrap_or(7)
             .clamp(1, 365);
 
         let max_results = arguments
             .get("max_results")
-            .and_then(|v| v.as_u64())
+            .and_then(Value::as_u64)
             .unwrap_or(50)
             .min(200) as usize;
 
@@ -134,7 +135,7 @@ impl NativeTool for BrowserHistoryTool {
             } else {
                 title
             };
-            output.push_str(&format!("• {display_title}\n  {url}\n  {timestamp}\n\n"));
+            let _ = write!(output, "• {display_title}\n  {url}\n  {timestamp}\n\n");
         }
         Ok(output)
     }
@@ -278,9 +279,8 @@ async fn search_firefox(
         }
     }
 
-    let db_path = match db_path {
-        Some(p) => p,
-        None => return Ok(Vec::new()),
+    let Some(db_path) = db_path else {
+        return Ok(Vec::new());
     };
 
     // Firefox uses microseconds since Unix epoch

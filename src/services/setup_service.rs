@@ -414,17 +414,14 @@ pub(crate) async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
 }
 
 async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
-    let api_key = match body.api_key.as_ref().filter(|k| !k.is_empty()) {
-        Some(k) => k.clone(),
-        None => {
-            fail_step(
-                "validate",
-                "API key is required",
-                "API key is required for OpenAI",
-            )
-            .await;
-            return;
-        }
+    let Some(api_key) = body.api_key.as_ref().filter(|k| !k.is_empty()).cloned() else {
+        fail_step(
+            "validate",
+            "API key is required",
+            "API key is required for OpenAI",
+        )
+        .await;
+        return;
     };
 
     match state
@@ -468,7 +465,7 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
         .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
     match test_openai_embedding(state, &api_key, &model).await {
-        Ok(_) => {
+        Ok(()) => {
             update_step(
                 "embedding_warmup",
                 StepStatus::Succeeded,
@@ -506,31 +503,22 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
 }
 
 async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
-    let api_key = match body.api_key.as_ref().filter(|k| !k.is_empty()) {
-        Some(k) => k.clone(),
-        None => {
-            fail_step("validate", "API key is required", "API key required").await;
-            return;
-        }
+    let Some(api_key) = body.api_key.as_ref().filter(|k| !k.is_empty()).cloned() else {
+        fail_step("validate", "API key is required", "API key required").await;
+        return;
     };
-    let endpoint = match body.endpoint.as_ref().filter(|e| !e.is_empty()) {
-        Some(e) => e.clone(),
-        None => {
-            fail_step("validate", "Endpoint is required", "Endpoint required").await;
-            return;
-        }
+    let Some(endpoint) = body.endpoint.as_ref().filter(|e| !e.is_empty()).cloned() else {
+        fail_step("validate", "Endpoint is required", "Endpoint required").await;
+        return;
     };
-    let deployment = match body.deployment.as_ref().filter(|d| !d.is_empty()) {
-        Some(d) => d.clone(),
-        None => {
-            fail_step(
-                "validate",
-                "Deployment name is required",
-                "Deployment required",
-            )
-            .await;
-            return;
-        }
+    let Some(deployment) = body.deployment.as_ref().filter(|d| !d.is_empty()).cloned() else {
+        fail_step(
+            "validate",
+            "Deployment name is required",
+            "Deployment required",
+        )
+        .await;
+        return;
     };
 
     // Test Azure endpoint
@@ -575,7 +563,7 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
     )
     .await;
     match test_azure_embedding(state, &endpoint, &api_key, &deployment).await {
-        Ok(_) => {
+        Ok(()) => {
             update_step(
                 "embedding_warmup",
                 StepStatus::Succeeded,

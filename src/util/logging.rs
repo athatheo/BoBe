@@ -58,8 +58,7 @@ fn build_file_writer(log_file: Option<&str>) -> Option<NonBlocking> {
     let dir = file_path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf);
 
     if let Err(err) = std::fs::create_dir_all(&dir) {
         eprintln!(

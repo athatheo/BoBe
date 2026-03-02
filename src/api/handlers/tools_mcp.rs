@@ -242,7 +242,7 @@ pub async fn remove_mcp_server(
     let cfg = repo
         .get_by_name(&server_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("MCP server '{}' not found", server_name)))?;
+        .ok_or_else(|| AppError::NotFound(format!("MCP server '{server_name}' not found")))?;
 
     if let Some(ref adapter) = state.mcp_tool_adapter {
         let _ = adapter.disconnect_server_by_name(&cfg.server_name).await;
@@ -268,7 +268,7 @@ pub async fn update_mcp_server(
     let existing = repo
         .get_by_name(&server_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("MCP server '{}' not found", server_name)))?;
+        .ok_or_else(|| AppError::NotFound(format!("MCP server '{server_name}' not found")))?;
 
     let excluded_json = serde_json::to_string(&body.excluded_tools)?;
     let updated = repo
@@ -282,7 +282,7 @@ pub async fn update_mcp_server(
             Some(&excluded_json),
         )
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("MCP server '{}' not found", server_name)))?;
+        .ok_or_else(|| AppError::NotFound(format!("MCP server '{server_name}' not found")))?;
 
     if let Some(ref adapter) = state.mcp_tool_adapter {
         let was_connected = adapter.get_tools_for_server(&server_name).await.is_ok();
@@ -319,7 +319,7 @@ pub async fn reconnect_mcp_server(
     let _cfg = repo
         .get_by_name(&server_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("MCP server '{}' not found", server_name)))?;
+        .ok_or_else(|| AppError::NotFound(format!("MCP server '{server_name}' not found")))?;
 
     mcp_adapter.reconnect_server(&server_name).await?;
     let connected = mcp_adapter.get_tools_for_server(&server_name).await.is_ok();

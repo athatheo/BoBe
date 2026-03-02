@@ -133,7 +133,7 @@ pub async fn ensure_ollama_ready(config: &Config, manager: &OllamaManager) {
         match manager.ensure_model(&config.vision.ollama_model).await {
             Ok(true) => info!(model = %config.vision.ollama_model, "ollama.vision_ready"),
             Ok(false) => {
-                warn!(model = %config.vision.ollama_model, "ollama.vision_model_unavailable")
+                warn!(model = %config.vision.ollama_model, "ollama.vision_model_unavailable");
             }
             Err(e) => warn!(error = %e, "ollama.vision_model_check_failed"),
         }

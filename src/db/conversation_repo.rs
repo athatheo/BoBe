@@ -23,13 +23,13 @@ impl SqliteConversationRepo {
 impl ConversationRepository for SqliteConversationRepo {
     async fn save(&self, conversation: &Conversation) -> Result<Conversation, AppError> {
         sqlx::query(
-            r#"INSERT INTO conversations (id, state, closed_at, summary, created_at, updated_at)
+            r"INSERT INTO conversations (id, state, closed_at, summary, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                ON CONFLICT(id) DO UPDATE SET
                    state = excluded.state,
                    closed_at = excluded.closed_at,
                    summary = excluded.summary,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(conversation.id)
         .bind(conversation.state)
@@ -155,8 +155,8 @@ impl ConversationRepository for SqliteConversationRepo {
         };
 
         let result = sqlx::query(
-            r#"UPDATE conversations SET state = ?1, summary = COALESCE(?2, summary),
-               closed_at = COALESCE(?3, closed_at), updated_at = ?4 WHERE id = ?5"#,
+            r"UPDATE conversations SET state = ?1, summary = COALESCE(?2, summary),
+               closed_at = COALESCE(?3, closed_at), updated_at = ?4 WHERE id = ?5",
         )
         .bind(state.as_str())
         .bind(&summary)
@@ -212,8 +212,8 @@ impl ConversationRepository for SqliteConversationRepo {
         }
 
         sqlx::query(
-            r#"INSERT INTO conversation_turns (id, role, content, conversation_id, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+            r"INSERT INTO conversation_turns (id, role, content, conversation_id, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
         .bind(turn.id)
         .bind(turn.role)

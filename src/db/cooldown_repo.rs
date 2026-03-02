@@ -34,7 +34,7 @@ impl SqliteCooldownRepo {
         drop(guard);
         self.load_or_create().await?;
         let guard = self.state.lock().await;
-        Ok(guard.as_ref().map(|s| s.id).unwrap_or_else(Uuid::new_v4))
+        Ok(guard.as_ref().map_or_else(Uuid::new_v4, |s| s.id))
     }
 }
 

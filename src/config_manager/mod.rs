@@ -7,7 +7,6 @@
 //! - Non-secret values are persisted to `~/.bobe/config.toml`
 
 mod fields;
-pub(crate) mod migration;
 pub(crate) mod persistence;
 
 use std::collections::{BTreeMap, HashMap, HashSet};

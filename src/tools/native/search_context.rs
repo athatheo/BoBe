@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
@@ -76,7 +77,7 @@ impl NativeTool for SearchContextTool {
 
         let limit = arguments
             .get("limit")
-            .and_then(|v| v.as_i64())
+            .and_then(Value::as_i64)
             .unwrap_or(5)
             .clamp(1, 20);
 
@@ -106,14 +107,15 @@ impl NativeTool for SearchContextTool {
 
         let mut output = format!("Found {} context items:\n\n", filtered.len());
         for (i, (memory, score)) in filtered.iter().enumerate() {
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "{}. [{}] (score: {:.2}) {}\n   Category: {}\n\n",
                 i + 1,
                 memory.memory_type,
                 score,
                 memory.content,
                 memory.category,
-            ));
+            );
         }
         Ok(output)
     }

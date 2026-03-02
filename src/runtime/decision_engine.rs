@@ -58,7 +58,7 @@ impl DecisionEngine {
             }
             TriggerType::Goal => self.decide_on_goal(&context.context_text).await,
             TriggerType::Checkin => Decision::Engage,
-            _ => {
+            TriggerType::AgentJob => {
                 warn!(trigger_type = ?context.trigger_type, "decision_engine.unknown_trigger");
                 Decision::Idle
             }
@@ -312,60 +312,57 @@ impl DecisionEngine {
         embedding: Option<&[f32]>,
     ) -> Vec<crate::models::observation::Observation> {
         let cfg = self.config.load();
-        match embedding {
-            Some(emb) => {
-                let start = std::time::Instant::now();
-                match self
-                    .observation_repo
-                    .find_similar(emb, cfg.decision.semantic_search_limit)
-                    .await
-                {
-                    Ok(results) => {
-                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if !results.is_empty() {
-                            let top_scores: Vec<f64> = results
-                                .iter()
-                                .take(3)
-                                .map(|(_, s)| (*s * 1000.0).round() / 1000.0)
-                                .collect();
-                            info!(
-                                result_count = results.len(),
-                                top_scores = ?top_scores,
-                                duration_ms = format!("{duration_ms:.1}"),
-                                "decision_engine.semantic_search_complete"
-                            );
-                        } else {
-                            debug!(
-                                duration_ms = format!("{duration_ms:.1}"),
-                                "decision_engine.semantic_search_empty"
-                            );
-                        }
-                        results.into_iter().map(|(obs, _score)| obs).collect()
+        if let Some(emb) = embedding {
+            let start = std::time::Instant::now();
+            match self
+                .observation_repo
+                .find_similar(emb, cfg.decision.semantic_search_limit)
+                .await
+            {
+                Ok(results) => {
+                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    if results.is_empty() {
+                        debug!(
+                            duration_ms = format!("{duration_ms:.1}"),
+                            "decision_engine.semantic_search_empty"
+                        );
+                    } else {
+                        let top_scores: Vec<f64> = results
+                            .iter()
+                            .take(3)
+                            .map(|(_, s)| (*s * 1000.0).round() / 1000.0)
+                            .collect();
+                        info!(
+                            result_count = results.len(),
+                            top_scores = ?top_scores,
+                            duration_ms = format!("{duration_ms:.1}"),
+                            "decision_engine.semantic_search_complete"
+                        );
                     }
-                    Err(e) => {
-                        warn!(error = %e, "decision_engine.semantic_search_failed");
-                        // Fallback 1: recent observations
-                        match self.observation_repo.find_recent(10).await {
-                            Ok(obs) => {
-                                debug!(
-                                    count = obs.len(),
-                                    "decision_engine.fallback_recent_observations"
-                                );
-                                obs
-                            }
-                            Err(_) => Vec::new(),
+                    results.into_iter().map(|(obs, _score)| obs).collect()
+                }
+                Err(e) => {
+                    warn!(error = %e, "decision_engine.semantic_search_failed");
+                    // Fallback 1: recent observations
+                    match self.observation_repo.find_recent(10).await {
+                        Ok(obs) => {
+                            debug!(
+                                count = obs.len(),
+                                "decision_engine.fallback_recent_observations"
+                            );
+                            obs
                         }
+                        Err(_) => Vec::new(),
                     }
                 }
             }
-            None => {
-                debug!("decision_engine.no_embedding_fallback");
-                match self.observation_repo.find_recent(10).await {
-                    Ok(obs) => obs,
-                    Err(e) => {
-                        warn!(error = %e, "decision_engine.get_recent_failed");
-                        Vec::new()
-                    }
+        } else {
+            debug!("decision_engine.no_embedding_fallback");
+            match self.observation_repo.find_recent(10).await {
+                Ok(obs) => obs,
+                Err(e) => {
+                    warn!(error = %e, "decision_engine.get_recent_failed");
+                    Vec::new()
                 }
             }
         }

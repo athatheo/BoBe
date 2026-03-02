@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::Path;
 
 use super::base::NativeTool;
@@ -101,24 +102,24 @@ impl NativeTool for SearchFilesTool {
 
         let case_sensitive = arguments
             .get("case_sensitive")
-            .and_then(|v| v.as_bool())
+            .and_then(Value::as_bool)
             .unwrap_or(false);
 
         let use_regex = arguments
             .get("regex")
-            .and_then(|v| v.as_bool())
+            .and_then(Value::as_bool)
             .unwrap_or(false);
 
         let max_results = arguments
             .get("max_results")
-            .and_then(|v| v.as_u64())
+            .and_then(Value::as_u64)
             .unwrap_or(MAX_RESULTS as u64)
             .min(MAX_RESULTS as u64) as usize;
 
         let file_pattern = arguments
             .get("file_pattern")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_owned());
+            .and_then(Value::as_str)
+            .map(str::to_owned);
 
         let canonical = super::path_validation::validate_path(Path::new(path_str))?;
 
@@ -168,7 +169,7 @@ impl NativeTool for SearchFilesTool {
 
         let mut output = format!("Found {} matches:\n\n", results.len());
         for (file, line_num, line) in &results {
-            output.push_str(&format!("{}:{}: {}\n", file, line_num, line.trim()));
+            let _ = writeln!(output, "{file}:{line_num}: {}", line.trim());
         }
         Ok(output)
     }
@@ -183,7 +184,7 @@ fn search_directory(
     let mut results = Vec::new();
     let walker = walkdir::WalkDir::new(dir).max_depth(10).into_iter();
 
-    for entry in walker.filter_map(|e| e.ok()) {
+    for entry in walker.filter_map(Result::ok) {
         if results.len() >= max_results {
             break;
         }

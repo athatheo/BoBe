@@ -87,7 +87,7 @@ pub fn parse_claude_ndjson(output_path: &Path) -> AgentJobResult {
     if let Some(ref rl) = last_result_line {
         result.summary = rl.get("result").and_then(|v| v.as_str()).map(String::from);
 
-        if let Some(cost) = rl.get("total_cost_usd").and_then(|v| v.as_f64()) {
+        if let Some(cost) = rl.get("total_cost_usd").and_then(Value::as_f64) {
             result.cost_usd = Some(cost);
         }
 
@@ -96,11 +96,11 @@ pub fn parse_claude_ndjson(output_path: &Path) -> AgentJobResult {
         if subtype != "success" {
             result.is_error = true;
             if let Some(errors) = rl.get("errors").and_then(|v| v.as_array()) {
-                if !errors.is_empty() {
-                    let joined: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
-                    result.error_detail = Some(joined.join("; "));
-                } else {
+                if errors.is_empty() {
                     result.error_detail = Some(subtype.to_owned());
+                } else {
+                    let joined: Vec<String> = errors.iter().map(ToString::to_string).collect();
+                    result.error_detail = Some(joined.join("; "));
                 }
             } else {
                 result.error_detail = Some(subtype.to_owned());

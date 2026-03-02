@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use super::base::NativeTool;
 use crate::error::AppError;
@@ -73,15 +74,16 @@ impl NativeTool for DiscoverInstalledToolsTool {
 
         // Check package manager (macOS: Homebrew)
         if let Some(brew_info) = check_tool("brew", &["--version"]).await {
-            output.push_str(&format!("### Package Manager\n• Homebrew: {brew_info}\n\n"));
+            let _ = write!(output, "### Package Manager\n• Homebrew: {brew_info}\n\n");
 
             // List installed packages
             if let Some(packages) = run_command("brew", &["list", "--formula", "-1"]).await {
                 let count = packages.lines().count();
                 let preview: String = packages.lines().take(20).collect::<Vec<_>>().join(", ");
-                output.push_str(&format!(
+                let _ = write!(
+                    output,
                     "  Installed formulae: {count}\n  Sample: {preview}\n\n"
-                ));
+                );
             }
         }
 
@@ -89,7 +91,7 @@ impl NativeTool for DiscoverInstalledToolsTool {
         for (tool, args) in DEV_TOOLS {
             if let Some(version) = check_tool(tool, args).await {
                 let first_line = version.lines().next().unwrap_or(&version);
-                output.push_str(&format!("• {tool}: {first_line}\n"));
+                let _ = writeln!(output, "• {tool}: {first_line}");
             }
         }
 

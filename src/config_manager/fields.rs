@@ -46,11 +46,11 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             "llm.openai_api_key" => set_parsed!(config.llm.openai_api_key, value, k),
             "llm.openai_model" => set_parsed!(config.llm.openai_model, value, k),
             "llm.azure_openai_endpoint" => {
-                set_parsed!(config.llm.azure_openai_endpoint, value, k)
+                set_parsed!(config.llm.azure_openai_endpoint, value, k);
             }
             "llm.azure_openai_api_key" => set_parsed!(config.llm.azure_openai_api_key, value, k),
             "llm.azure_openai_deployment" => {
-                set_parsed!(config.llm.azure_openai_deployment, value, k)
+                set_parsed!(config.llm.azure_openai_deployment, value, k);
             }
             "llm.anthropic_api_key" => set_parsed!(config.llm.anthropic_api_key, value, k),
 
@@ -66,7 +66,7 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             "vision.ollama_model" => set_parsed!(config.vision.ollama_model, value, k),
             "vision.openai_model" => set_parsed!(config.vision.openai_model, value, k),
             "vision.azure_openai_deployment" => {
-                set_parsed!(config.vision.azure_openai_deployment, value, k)
+                set_parsed!(config.vision.azure_openai_deployment, value, k);
             }
 
             // ── Embedding ─────────────────────────────────────────────
@@ -76,7 +76,7 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             // ── Capture ───────────────────────────────────────────────
             "capture.enabled" => set_parsed!(config.capture.enabled, value, k),
             "capture.interval_seconds" => {
-                set_parsed!(config.capture.interval_seconds, value, k)
+                set_parsed!(config.capture.interval_seconds, value, k);
             }
 
             // ── Check-in ──────────────────────────────────────────────
@@ -84,18 +84,18 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             "checkin.times" => set_parsed!(config.checkin.times, value, k),
             "checkin.jitter_minutes" => set_parsed!(config.checkin.jitter_minutes, value, k),
             "checkin.interval_minutes" => {
-                set_parsed!(config.checkin.interval_minutes, value, k)
+                set_parsed!(config.checkin.interval_minutes, value, k);
             }
 
             // ── Conversation ──────────────────────────────────────────
             "conversation.inactivity_timeout_seconds" => {
-                set_parsed!(config.conversation.inactivity_timeout_seconds, value, k)
+                set_parsed!(config.conversation.inactivity_timeout_seconds, value, k);
             }
             "conversation.auto_close_minutes" => {
-                set_parsed!(config.conversation.auto_close_minutes, value, k)
+                set_parsed!(config.conversation.auto_close_minutes, value, k);
             }
             "conversation.summary_enabled" => {
-                set_parsed!(config.conversation.summary_enabled, value, k)
+                set_parsed!(config.conversation.summary_enabled, value, k);
             }
 
             // ── Logging ───────────────────────────────────────────────
@@ -105,23 +105,23 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
 
             // ── Decision ──────────────────────────────────────────────
             "decision.cooldown_minutes" => {
-                set_parsed!(config.decision.cooldown_minutes, value, k)
+                set_parsed!(config.decision.cooldown_minutes, value, k);
             }
             "decision.extended_cooldown_minutes" => {
-                set_parsed!(config.decision.extended_cooldown_minutes, value, k)
+                set_parsed!(config.decision.extended_cooldown_minutes, value, k);
             }
             "decision.min_context" => set_parsed!(config.decision.min_context, value, k),
             "decision.semantic_search_limit" => {
-                set_parsed!(config.decision.semantic_search_limit, value, k)
+                set_parsed!(config.decision.semantic_search_limit, value, k);
             }
             "decision.recent_ai_messages_limit" => {
-                set_parsed!(config.decision.recent_ai_messages_limit, value, k)
+                set_parsed!(config.decision.recent_ai_messages_limit, value, k);
             }
             "decision.max_response_tokens" => {
-                set_parsed!(config.decision.max_response_tokens, value, k)
+                set_parsed!(config.decision.max_response_tokens, value, k);
             }
             "decision.response_temperature" => {
-                set_parsed!(config.decision.response_temperature, value, k)
+                set_parsed!(config.decision.response_temperature, value, k);
             }
 
             // ── Tools ─────────────────────────────────────────────────
@@ -129,7 +129,7 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             "tools.max_iterations" => set_parsed!(config.tools.max_iterations, value, k),
             "tools.timeout_seconds" => set_parsed!(config.tools.timeout_seconds, value, k),
             "tools.preselector_enabled" => {
-                set_parsed!(config.tools.preselector_enabled, value, k)
+                set_parsed!(config.tools.preselector_enabled, value, k);
             }
             "tools.allowed_file_dirs" => set_parsed!(config.tools.allowed_file_dirs, value, k),
 
@@ -142,54 +142,54 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             // ── Learning ──────────────────────────────────────────────
             "learning.enabled" => set_parsed!(config.learning.enabled, value, k),
             "learning.interval_minutes" => {
-                set_parsed!(config.learning.interval_minutes, value, k)
+                set_parsed!(config.learning.interval_minutes, value, k);
             }
             "learning.min_context_items" => {
-                set_parsed!(config.learning.min_context_items, value, k)
+                set_parsed!(config.learning.min_context_items, value, k);
             }
             "learning.max_memories_per_cycle" => {
-                set_parsed!(config.learning.max_memories_per_cycle, value, k)
+                set_parsed!(config.learning.max_memories_per_cycle, value, k);
             }
             "learning.max_goals_per_cycle" => {
-                set_parsed!(config.learning.max_goals_per_cycle, value, k)
+                set_parsed!(config.learning.max_goals_per_cycle, value, k);
             }
             "learning.max_context_per_cycle" => {
-                set_parsed!(config.learning.max_context_per_cycle, value, k)
+                set_parsed!(config.learning.max_context_per_cycle, value, k);
             }
             "learning.max_memories_per_consolidation" => {
-                set_parsed!(config.learning.max_memories_per_consolidation, value, k)
+                set_parsed!(config.learning.max_memories_per_consolidation, value, k);
             }
             "learning.daily_consolidation_enabled" => {
-                set_parsed!(config.learning.daily_consolidation_enabled, value, k)
+                set_parsed!(config.learning.daily_consolidation_enabled, value, k);
             }
             "learning.daily_consolidation_hour" => {
-                set_parsed!(config.learning.daily_consolidation_hour, value, k)
+                set_parsed!(config.learning.daily_consolidation_hour, value, k);
             }
 
             // ── Similarity ────────────────────────────────────────────
             "similarity.deduplication_threshold" => {
-                set_parsed!(config.similarity.deduplication_threshold, value, k)
+                set_parsed!(config.similarity.deduplication_threshold, value, k);
             }
             "similarity.search_recall_threshold" => {
-                set_parsed!(config.similarity.search_recall_threshold, value, k)
+                set_parsed!(config.similarity.search_recall_threshold, value, k);
             }
             "similarity.clustering_threshold" => {
-                set_parsed!(config.similarity.clustering_threshold, value, k)
+                set_parsed!(config.similarity.clustering_threshold, value, k);
             }
 
             // ── Memory ────────────────────────────────────────────────
             "memory.raw_context_retention_days" => {
-                set_parsed!(config.memory.raw_context_retention_days, value, k)
+                set_parsed!(config.memory.raw_context_retention_days, value, k);
             }
             "memory.short_term_retention_days" => {
-                set_parsed!(config.memory.short_term_retention_days, value, k)
+                set_parsed!(config.memory.short_term_retention_days, value, k);
             }
             "memory.long_term_retention_days" => {
-                set_parsed!(config.memory.long_term_retention_days, value, k)
+                set_parsed!(config.memory.long_term_retention_days, value, k);
             }
             "memory.pruning_enabled" => set_parsed!(config.memory.pruning_enabled, value, k),
             "memory.goal_retention_days" => {
-                set_parsed!(config.memory.goal_retention_days, value, k)
+                set_parsed!(config.memory.goal_retention_days, value, k);
             }
 
             // ── Goals ─────────────────────────────────────────────────
@@ -197,10 +197,10 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             "goals.max_active" => set_parsed!(config.goals.max_active, value, k),
             "goals.sync_on_startup" => set_parsed!(config.goals.sync_on_startup, value, k),
             "goals.sync_interval_minutes" => {
-                set_parsed!(config.goals.sync_interval_minutes, value, k)
+                set_parsed!(config.goals.sync_interval_minutes, value, k);
             }
             "goals.check_interval_seconds" => {
-                set_parsed!(config.goals.check_interval_seconds, value, k)
+                set_parsed!(config.goals.check_interval_seconds, value, k);
             }
 
             // ── Coding Agent ──────────────────────────────────────────
@@ -208,42 +208,42 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             "coding_agent.profiles" => set_parsed!(config.coding_agent.profiles, value, k),
             "coding_agent.output_dir" => set_parsed!(config.coding_agent.output_dir, value, k),
             "coding_agent.poll_interval_seconds" => {
-                set_parsed!(config.coding_agent.poll_interval_seconds, value, k)
+                set_parsed!(config.coding_agent.poll_interval_seconds, value, k);
             }
             "coding_agent.max_concurrent" => {
-                set_parsed!(config.coding_agent.max_concurrent, value, k)
+                set_parsed!(config.coding_agent.max_concurrent, value, k);
             }
             "coding_agent.max_runtime_seconds" => {
-                set_parsed!(config.coding_agent.max_runtime_seconds, value, k)
+                set_parsed!(config.coding_agent.max_runtime_seconds, value, k);
             }
 
             // ── Goal Worker ───────────────────────────────────────────
             "goal_worker.enabled" => set_parsed!(config.goal_worker.enabled, value, k),
             "goal_worker.max_concurrent" => {
-                set_parsed!(config.goal_worker.max_concurrent, value, k)
+                set_parsed!(config.goal_worker.max_concurrent, value, k);
             }
             "goal_worker.poll_interval_seconds" => {
-                set_parsed!(config.goal_worker.poll_interval_seconds, value, k)
+                set_parsed!(config.goal_worker.poll_interval_seconds, value, k);
             }
             "goal_worker.plan_max_steps" => {
-                set_parsed!(config.goal_worker.plan_max_steps, value, k)
+                set_parsed!(config.goal_worker.plan_max_steps, value, k);
             }
             "goal_worker.step_max_turns" => {
-                set_parsed!(config.goal_worker.step_max_turns, value, k)
+                set_parsed!(config.goal_worker.step_max_turns, value, k);
             }
             "goal_worker.autonomous" => set_parsed!(config.goal_worker.autonomous, value, k),
             "goal_worker.ask_user_timeout_seconds" => {
-                set_parsed!(config.goal_worker.ask_user_timeout_seconds, value, k)
+                set_parsed!(config.goal_worker.ask_user_timeout_seconds, value, k);
             }
             "goal_worker.approval_timeout_minutes" => {
-                set_parsed!(config.goal_worker.approval_timeout_minutes, value, k)
+                set_parsed!(config.goal_worker.approval_timeout_minutes, value, k);
             }
             "goal_worker.max_failure_retries" => {
-                set_parsed!(config.goal_worker.max_failure_retries, value, k)
+                set_parsed!(config.goal_worker.max_failure_retries, value, k);
             }
             "goal_worker.claude_model" => set_parsed!(config.goal_worker.claude_model, value, k),
             "goal_worker.projects_dir" => {
-                set_parsed!(config.goal_worker.projects_dir, value, k)
+                set_parsed!(config.goal_worker.projects_dir, value, k);
             }
 
             // ── Top-level ─────────────────────────────────────────────

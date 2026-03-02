@@ -291,7 +291,7 @@ pub async fn update_settings(
 
     let total = result.applied_fields.len() + result.restart_required_fields.len();
     Ok(Json(SettingsUpdateResponse {
-        message: format!("Updated {} setting(s)", total),
+        message: format!("Updated {total} setting(s)"),
         applied_fields: result.applied_fields,
         restart_required_fields: result.restart_required_fields,
         persist_failed: result.persist_failed,

@@ -104,10 +104,10 @@ impl AssembledContext {
                     .and_then(|v| {
                         v.get("summary")
                             .and_then(|s| s.as_str())
-                            .map(|s| s.to_string())
+                            .map(str::to_string)
                     });
                 if let Some(ref s) = summary {
-                    let _ = write!(buf, "- [{}] {}", category, s);
+                    let _ = write!(buf, "- [{category}] {s}");
                 } else if o.content.len() > 100 {
                     let _ = write!(buf, "- [{}] {}...", category, truncate_str(&o.content, 100));
                 } else {

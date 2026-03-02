@@ -30,7 +30,7 @@ pub static GOAL_DECISION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| 
 pub struct GoalDecisionPrompt;
 
 impl GoalDecisionPrompt {
-    const SYSTEM_TEMPLATE: &str = r#"{soul}
+    const SYSTEM_TEMPLATE: &str = r"{soul}
 
 You are deciding whether to proactively reach out to help the user with one of their goals.
 Respond with a JSON object containing your decision and reasoning.
@@ -49,7 +49,7 @@ IDLE when:
 - You've recently discussed this goal and haven't seen new context
 - The goal seems paused or deprioritized based on user activity
 
-Being helpful means knowing when NOT to interrupt. Default to IDLE when uncertain."#;
+Being helpful means knowing when NOT to interrupt. Default to IDLE when uncertain.";
 
     pub fn config() -> PromptConfig {
         PromptConfig {

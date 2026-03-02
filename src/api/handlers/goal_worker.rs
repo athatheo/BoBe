@@ -228,7 +228,7 @@ pub async fn pause_goal(
         .goal_repo
         .get_by_id(goal_id)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("Goal {} not found", goal_id)))?;
+        .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
     if goal.status != GoalStatus::Active {
         return Err(AppError::Validation(format!(
@@ -263,7 +263,7 @@ pub async fn resume_goal(
         .goal_repo
         .get_by_id(goal_id)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("Goal {} not found", goal_id)))?;
+        .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
     if goal.status != GoalStatus::Paused {
         return Err(AppError::Validation(format!(

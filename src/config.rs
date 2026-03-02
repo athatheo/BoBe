@@ -513,16 +513,6 @@ impl Config {
         let data_dir = resolve_data_dir();
         let config_path = PathBuf::from(&data_dir).join("config.toml");
 
-        // Try one-time migration from .env if config.toml doesn't exist
-        let env_path = PathBuf::from(&data_dir).join(".env");
-        if !config_path.exists()
-            && env_path.exists()
-            && let Err(e) =
-                crate::config_manager::migration::migrate_env_to_toml(&env_path, &config_path)
-        {
-            tracing::warn!(error = %e, "config.migration_failed, using defaults + env vars");
-        }
-
         let defaults = Self {
             data_dir,
             ..Self::default()
@@ -545,13 +535,13 @@ impl Config {
         for (key, value) in &secrets {
             match key.as_str() {
                 "llm.openai_api_key" if config.llm.openai_api_key.is_empty() => {
-                    config.llm.openai_api_key = value.clone();
+                    config.llm.openai_api_key.clone_from(value);
                 }
                 "llm.azure_openai_api_key" if config.llm.azure_openai_api_key.is_empty() => {
-                    config.llm.azure_openai_api_key = value.clone();
+                    config.llm.azure_openai_api_key.clone_from(value);
                 }
                 "llm.anthropic_api_key" if config.llm.anthropic_api_key.is_empty() => {
-                    config.llm.anthropic_api_key = value.clone();
+                    config.llm.anthropic_api_key.clone_from(value);
                 }
                 _ => {}
             }

@@ -21,7 +21,7 @@ impl SqliteMcpConfigRepo {
 impl McpConfigRepository for SqliteMcpConfigRepo {
     async fn save(&self, config: &McpServerConfig) -> Result<McpServerConfig, AppError> {
         sqlx::query(
-            r#"INSERT INTO mcp_server_configs (id, server_name, command, args, env, enabled,
+            r"INSERT INTO mcp_server_configs (id, server_name, command, args, env, enabled,
                    timeout_seconds, is_default, last_connected_at, last_error, excluded_tools,
                    created_at, updated_at)
                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
@@ -36,7 +36,7 @@ impl McpConfigRepository for SqliteMcpConfigRepo {
                    last_connected_at = excluded.last_connected_at,
                    last_error = excluded.last_error,
                    excluded_tools = excluded.excluded_tools,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(config.id)
         .bind(&config.server_name)

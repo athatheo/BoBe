@@ -80,6 +80,6 @@ impl NativeTool for CancelCodingAgentTool {
         cancelled.mark_cancelled(Some("Cancelled by user".into()));
         self.agent_job_repo.save(&cancelled).await?;
 
-        Ok(format!("Job {} cancelled.", job_id))
+        Ok(format!("Job {job_id} cancelled."))
     }
 }

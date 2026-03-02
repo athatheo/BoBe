@@ -11,7 +11,10 @@ use core_foundation::boolean::CFBoolean;
 use core_foundation::data::CFData;
 use core_foundation::dictionary::CFMutableDictionary;
 use core_foundation::string::CFString;
-use security_framework_sys::item::*;
+use security_framework_sys::item::{
+    kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecReturnData,
+    kSecValueData,
+};
 use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
 
 // kSecUseDataProtectionKeychain is available since macOS 10.15 but may not be

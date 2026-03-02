@@ -96,7 +96,7 @@ pub async fn pull_model(
     let client = state.http_client.clone();
 
     let stream = async_stream::stream! {
-        let url = format!("{}/api/pull", ollama_url);
+        let url = format!("{ollama_url}/api/pull");
         match client.post(&url)
             .json(&serde_json::json!({"name": model_name, "stream": true}))
             .send()
@@ -113,8 +113,8 @@ pub async fn pull_model(
                                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(line) {
                                     let status = data.get("status").and_then(|s| s.as_str()).unwrap_or("pulling");
                                     let mut event_data = serde_json::json!({"status": status});
-                                    if let Some(total) = data.get("total").and_then(|t| t.as_u64()) {
-                                        let completed = data.get("completed").and_then(|c| c.as_u64()).unwrap_or(0);
+                                    if let Some(total) = data.get("total").and_then(serde_json::Value::as_u64) {
+                                        let completed = data.get("completed").and_then(serde_json::Value::as_u64).unwrap_or(0);
                                         let progress = if total > 0 { (completed as f64 / total as f64 * 100.0) as u64 } else { 0 };
                                         event_data["progress"] = serde_json::json!(progress);
                                         event_data["completed"] = serde_json::json!(completed);

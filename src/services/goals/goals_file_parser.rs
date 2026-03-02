@@ -57,15 +57,15 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
                 in_inferred_section = true;
                 in_completed_section = false;
             } else if lower.contains("high") {
-                current_priority = "high".to_owned();
+                "high".clone_into(&mut current_priority);
                 in_inferred_section = false;
                 in_completed_section = false;
             } else if lower.contains("medium") {
-                current_priority = "medium".to_owned();
+                "medium".clone_into(&mut current_priority);
                 in_inferred_section = false;
                 in_completed_section = false;
             } else if lower.contains("low") {
-                current_priority = "low".to_owned();
+                "low".clone_into(&mut current_priority);
                 in_inferred_section = false;
                 in_completed_section = false;
             } else if lower.contains("completed") {
@@ -80,8 +80,8 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
             continue;
         };
 
-        let checkbox = caps.get(1).map(|m| m.as_str()).unwrap_or(" ");
-        let goal_content = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+        let checkbox = caps.get(1).map_or(" ", |m| m.as_str());
+        let goal_content = caps.get(2).map_or("", |m| m.as_str().trim());
         if goal_content.is_empty() {
             continue;
         }

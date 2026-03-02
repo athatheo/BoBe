@@ -230,7 +230,7 @@ impl ProactiveGenerator {
                     );
                 }
                 Ok(None) => {
-                    error!(conversation_id = %target.id, "proactive_generator.conversation_not_found")
+                    error!(conversation_id = %target.id, "proactive_generator.conversation_not_found");
                 }
                 Err(e) => error!(error = %e, "proactive_generator.conversation_refetch_failed"),
             }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
@@ -49,7 +50,7 @@ impl NativeTool for GetRecentContextTool {
     ) -> Result<String, AppError> {
         let limit = arguments
             .get("limit")
-            .and_then(|v| v.as_i64())
+            .and_then(Value::as_i64)
             .unwrap_or(5)
             .clamp(1, 20);
 
@@ -66,14 +67,15 @@ impl NativeTool for GetRecentContextTool {
             } else {
                 obs.content.clone()
             };
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "{}. [{}] {} — {}\n   {}\n\n",
                 i + 1,
                 obs.source,
                 obs.category,
                 obs.created_at.format("%H:%M:%S"),
                 preview,
-            ));
+            );
         }
         Ok(output)
     }

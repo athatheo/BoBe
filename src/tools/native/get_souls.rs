@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
@@ -50,10 +51,11 @@ impl NativeTool for GetSoulsTool {
         let mut output = String::new();
         for soul in &souls {
             let default_marker = if soul.is_default { " (default)" } else { "" };
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "## {}{}\n\n{}\n\n---\n\n",
                 soul.name, default_marker, soul.content
-            ));
+            );
         }
         Ok(output)
     }

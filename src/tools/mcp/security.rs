@@ -57,8 +57,7 @@ pub fn validate_mcp_command(command: &str, blocked: &[String]) -> Result<(), App
 
     if is_blocked {
         return Err(AppError::Mcp(format!(
-            "Command '{}' is blocked for security reasons",
-            basename
+            "Command '{basename}' is blocked for security reasons"
         )));
     }
 
@@ -73,13 +72,13 @@ pub fn validate_mcp_env(
     let check_keys: Vec<&str> = if dangerous_keys.is_empty() {
         DEFAULT_DANGEROUS_ENV_KEYS.to_vec()
     } else {
-        dangerous_keys.iter().map(|s| s.as_str()).collect()
+        dangerous_keys.iter().map(String::as_str).collect()
     };
 
     let forbidden: Vec<&str> = env
         .keys()
         .filter(|k| check_keys.contains(&k.as_str()))
-        .map(|k| k.as_str())
+        .map(String::as_str)
         .collect();
 
     if !forbidden.is_empty() {

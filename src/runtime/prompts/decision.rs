@@ -30,7 +30,7 @@ pub static DECISION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
 pub struct DecisionPrompt;
 
 impl DecisionPrompt {
-    const SYSTEM_TEMPLATE: &str = r#"{soul}
+    const SYSTEM_TEMPLATE: &str = r"{soul}
 
 You are deciding whether to proactively reach out to the user.
 Respond with a JSON object containing your decision and reasoning.
@@ -67,7 +67,7 @@ NEED_MORE_INFO when:
 - You need more observations before making a good decision
 - The situation is ambiguous and more data would help
 
-Being helpful means knowing when NOT to interrupt. Default to IDLE when uncertain."#;
+Being helpful means knowing when NOT to interrupt. Default to IDLE when uncertain.";
 
     pub fn config() -> PromptConfig {
         PromptConfig {

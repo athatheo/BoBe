@@ -107,8 +107,8 @@ impl LearningLoop {
             let cfg = self.deps.config.load();
             let sleep_duration = std::time::Duration::from_mins(cfg.learning.interval_minutes);
             tokio::select! {
-                _ = tokio::time::sleep(sleep_duration) => {},
-                _ = self.stop_notify.notified() => {
+                () = tokio::time::sleep(sleep_duration) => {},
+                () = self.stop_notify.notified() => {
                     break;
                 }
             }

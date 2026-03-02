@@ -65,7 +65,7 @@ axum = { version = "0.8.8", features = ["macros"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.5.60", features = ["derive"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
-toml_edit = "0.25.3+spec-1.1.0"
+toml_edit = "0.25.3"
 flate2 = "1.1.9"
 tar = "0.4.44"
 security-framework = "3.7.0"

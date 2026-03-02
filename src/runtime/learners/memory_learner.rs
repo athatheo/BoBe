@@ -114,9 +114,8 @@ impl MemoryLearner {
             MemoryDistillationPrompt::messages(&context_strings, &memory_strings, &goal_strings);
         let prompt_config = MemoryDistillationPrompt::config();
 
-        let raw_memories = match self.call_llm_for_memories(messages, prompt_config).await {
-            Some(m) => m,
-            None => return Vec::new(),
+        let Some(raw_memories) = self.call_llm_for_memories(messages, prompt_config).await else {
+            return Vec::new();
         };
 
         self.deduplicate_and_store(&raw_memories, existing_memories)
@@ -145,9 +144,8 @@ impl MemoryLearner {
         let messages = ConversationMemoryPrompt::messages(&turn_strings, &memory_strings);
         let prompt_config = ConversationMemoryPrompt::config();
 
-        let raw_memories = match self.call_llm_for_memories(messages, prompt_config).await {
-            Some(m) => m,
-            None => return Vec::new(),
+        let Some(raw_memories) = self.call_llm_for_memories(messages, prompt_config).await else {
+            return Vec::new();
         };
 
         self.deduplicate_and_store(&raw_memories, existing_memories)

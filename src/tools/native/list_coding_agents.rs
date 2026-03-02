@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
@@ -59,26 +60,27 @@ impl NativeTool for ListCodingAgentsTool {
         let mut output = String::new();
 
         if !running.is_empty() {
-            output.push_str(&format!("## Running ({}):\n\n", running.len()));
+            let _ = write!(output, "## Running ({}):\n\n", running.len());
             for job in &running {
                 let runtime = job
                     .runtime_seconds()
-                    .map(|s| format!("{s:.0}s"))
-                    .unwrap_or_else(|| "N/A".into());
-                output.push_str(&format!(
+                    .map_or_else(|| "N/A".into(), |s| format!("{s:.0}s"));
+                let _ = write!(
+                    output,
                     "• [{}] {} — {}\n  Profile: {} | Runtime: {}\n\n",
                     job.id, job.user_intent, job.status, job.profile_name, runtime,
-                ));
+                );
             }
         }
 
         if !pending.is_empty() {
-            output.push_str(&format!("## Pending ({}):\n\n", pending.len()));
+            let _ = write!(output, "## Pending ({}):\n\n", pending.len());
             for job in &pending {
-                output.push_str(&format!(
+                let _ = write!(
+                    output,
                     "• [{}] {} — Profile: {}\n\n",
                     job.id, job.user_intent, job.profile_name,
-                ));
+                );
             }
         }
 

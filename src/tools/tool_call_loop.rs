@@ -106,7 +106,7 @@ async fn run_streaming_loop(
 
         let mut llm_stream = llm.stream(
             current_messages.clone(),
-            current_tools.map(|t| t.to_vec()),
+            current_tools.map(<[ToolDefinition]>::to_vec),
             None,
             temperature,
             max_tokens,

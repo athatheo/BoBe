@@ -227,7 +227,7 @@ impl McpClient {
 
         let is_error = result
             .get("isError")
-            .and_then(|e| e.as_bool())
+            .and_then(Value::as_bool)
             .unwrap_or(false);
 
         let content_parts = result
@@ -268,7 +268,7 @@ impl McpClient {
             .ok_or_else(|| AppError::Mcp("MCP server not connected".into()))?;
 
         // Write request (sync I/O — fast for pipes)
-        writeln!(process.stdin, "{}", request_str)
+        writeln!(process.stdin, "{request_str}")
             .map_err(|e| AppError::Mcp(format!("Failed to write to MCP server: {e}")))?;
         process
             .stdin
@@ -295,23 +295,19 @@ impl McpClient {
                         .map(|s| format!(" (exit status: {s})"))
                         .unwrap_or_default();
                     return Err(AppError::Mcp(format!(
-                        "MCP server '{}' closed stdout before responding{}",
-                        server_name, details
+                        "MCP server '{server_name}' closed stdout before responding{details}"
                     )));
                 }
                 Ok(_) => break,
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
                     if let Ok(Some(status)) = child.try_wait() {
                         return Err(AppError::Mcp(format!(
-                            "MCP server '{}' exited before responding (status: {status})",
-                            server_name
+                            "MCP server '{server_name}' exited before responding (status: {status})"
                         )));
                     }
                     if Instant::now() >= deadline {
                         return Err(AppError::Mcp(format!(
-                            "MCP server '{}' did not respond to '{}' within {:.1}s",
-                            server_name,
-                            method_name,
+                            "MCP server '{server_name}' did not respond to '{method_name}' within {:.1}s",
                             timeout.as_secs_f64()
                         )));
                     }
@@ -320,8 +316,7 @@ impl McpClient {
                 }
                 Err(e) => {
                     return Err(AppError::Mcp(format!(
-                        "Failed to read from MCP server '{}': {e}",
-                        server_name
+                        "Failed to read from MCP server '{server_name}': {e}"
                     )));
                 }
             }
@@ -354,7 +349,7 @@ impl McpClient {
             .as_mut()
             .ok_or_else(|| AppError::Mcp("MCP server not connected".into()))?;
 
-        writeln!(process.stdin, "{}", notification_str)
+        writeln!(process.stdin, "{notification_str}")
             .map_err(|e| AppError::Mcp(format!("Failed to write notification: {e}")))?;
         process
             .stdin

@@ -23,7 +23,7 @@ impl SqliteGoalRepo {
 impl GoalRepository for SqliteGoalRepo {
     async fn save(&self, goal: &Goal) -> Result<Goal, AppError> {
         sqlx::query(
-            r#"INSERT INTO goals (id, content, priority, source, status, enabled, inference_reason, embedding, created_at, updated_at)
+            r"INSERT INTO goals (id, content, priority, source, status, enabled, inference_reason, embedding, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                ON CONFLICT(id) DO UPDATE SET
                    content = excluded.content,
@@ -33,7 +33,7 @@ impl GoalRepository for SqliteGoalRepo {
                    enabled = excluded.enabled,
                    inference_reason = excluded.inference_reason,
                    embedding = excluded.embedding,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(goal.id)
         .bind(&goal.content)
@@ -252,7 +252,7 @@ impl GoalRepository for SqliteGoalRepo {
             return Ok(0);
         }
         // Build parameterized IN clause: WHERE status IN (?, ?, ?)
-        let params: Vec<&str> = statuses.iter().map(|s| s.as_str()).collect();
+        let params: Vec<&str> = statuses.iter().map(GoalStatus::as_str).collect();
         let placeholders = (0..params.len())
             .map(|i| format!("?{}", i + 2))
             .collect::<Vec<_>>()

@@ -63,7 +63,7 @@ impl NativeTool for ArchiveGoalTool {
             .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
         if goal.is_archived() {
-            return Ok(format!("Goal {} is already archived.", goal_id));
+            return Ok(format!("Goal {goal_id} is already archived."));
         }
 
         self.goal_repo

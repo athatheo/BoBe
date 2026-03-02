@@ -84,30 +84,27 @@ impl ToolPreselector {
         match response {
             Ok(Ok(ai_response)) => {
                 let content = ai_response.message.content.text_or_empty().to_owned();
-                match parse_tool_names(&content) {
-                    Some(names) => {
-                        let selected: Vec<ToolDefinition> = all_tools
-                            .iter()
-                            .filter(|t| names.contains(&t.name))
-                            .cloned()
-                            .collect();
+                if let Some(names) = parse_tool_names(&content) {
+                    let selected: Vec<ToolDefinition> = all_tools
+                        .iter()
+                        .filter(|t| names.contains(&t.name))
+                        .cloned()
+                        .collect();
 
-                        if selected.is_empty() {
-                            warn!("Preselector returned no valid tools, using all");
-                            all_tools.to_vec()
-                        } else {
-                            info!(
-                                selected = selected.len(),
-                                total = all_tools.len(),
-                                "Tool preselection completed"
-                            );
-                            selected
-                        }
-                    }
-                    None => {
-                        warn!("Failed to parse preselector response, using all tools");
+                    if selected.is_empty() {
+                        warn!("Preselector returned no valid tools, using all");
                         all_tools.to_vec()
+                    } else {
+                        info!(
+                            selected = selected.len(),
+                            total = all_tools.len(),
+                            "Tool preselection completed"
+                        );
+                        selected
                     }
+                } else {
+                    warn!("Failed to parse preselector response, using all tools");
+                    all_tools.to_vec()
                 }
             }
             Ok(Err(e)) => {
@@ -171,7 +168,7 @@ fn parse_tool_names(content: &str) -> Option<Vec<String>> {
     let tools = parsed.get("tools")?.as_array()?;
     let names: Vec<String> = tools
         .iter()
-        .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+        .filter_map(|v| v.as_str().map(str::to_owned))
         .collect();
 
     if names.is_empty() { None } else { Some(names) }

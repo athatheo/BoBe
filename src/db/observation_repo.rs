@@ -23,13 +23,13 @@ impl SqliteObservationRepo {
 impl ObservationRepository for SqliteObservationRepo {
     async fn save(&self, observation: &Observation) -> Result<Observation, AppError> {
         sqlx::query(
-            r#"INSERT INTO observations (id, source, content, category, embedding, metadata, created_at, updated_at)
+            r"INSERT INTO observations (id, source, content, category, embedding, metadata, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                ON CONFLICT(id) DO UPDATE SET
                    content = excluded.content,
                    embedding = excluded.embedding,
                    metadata = excluded.metadata,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(observation.id)
         .bind(observation.source)

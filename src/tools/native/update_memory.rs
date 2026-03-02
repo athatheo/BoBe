@@ -66,7 +66,7 @@ impl NativeTool for UpdateMemoryTool {
         let memory_id = Uuid::parse_str(memory_id_str)
             .map_err(|_| AppError::Validation(format!("Invalid UUID: {memory_id_str}")))?;
 
-        let enabled = arguments.get("enabled").and_then(|v| v.as_bool());
+        let enabled = arguments.get("enabled").and_then(Value::as_bool);
         let new_cat = arguments.get("category").and_then(|v| v.as_str());
 
         if enabled.is_none() && new_cat.is_none() {

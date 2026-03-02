@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::Path;
 
 use super::base::NativeTool;
@@ -64,7 +65,7 @@ impl NativeTool for FileReaderTool {
 
         let max_lines = arguments
             .get("max_lines")
-            .and_then(|v| v.as_u64())
+            .and_then(Value::as_u64)
             .unwrap_or(MAX_LINES as u64)
             .min(MAX_LINES as u64) as usize;
 
@@ -105,9 +106,10 @@ impl NativeTool for FileReaderTool {
 
         let mut output = display_lines.join("\n");
         if truncated {
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "\n\n--- Truncated: showing {max_lines} of {total_lines} lines ---"
-            ));
+            );
         }
 
         Ok(format!(

@@ -68,7 +68,6 @@ impl SseConnectionManager {
         {
             let mut st = self.state.lock().await;
             st.current_indicator = match ind {
-                "IDLE" | "idle" | "Idle" => IndicatorType::Idle,
                 "SCREEN_CAPTURE" | "screen_capture" | "ScreenCapture" => {
                     IndicatorType::ScreenCapture
                 }

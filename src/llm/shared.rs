@@ -187,7 +187,7 @@ pub fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
     let usage = data.get("usage").map(|u| {
         let to_u32 = |key: &str| -> u32 {
             u.get(key)
-                .and_then(|v| v.as_u64())
+                .and_then(Value::as_u64)
                 .and_then(|v| u32::try_from(v).ok())
                 .unwrap_or(0)
         };
@@ -258,12 +258,12 @@ pub fn extract_tool_call_deltas(data: &Value) -> Vec<ToolCallDelta> {
         .iter()
         .filter_map(|tc| {
             let index = usize::try_from(tc.get("index")?.as_u64()?).ok()?;
-            let id = tc.get("id").and_then(|v| v.as_str()).map(|s| s.to_owned());
+            let id = tc.get("id").and_then(Value::as_str).map(str::to_owned);
             let func = tc.get("function");
             let name = func
                 .and_then(|f| f.get("name"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_owned());
+                .and_then(Value::as_str)
+                .map(str::to_owned);
             let arguments = func
                 .and_then(|f| f.get("arguments"))
                 .and_then(|v| v.as_str())
@@ -373,7 +373,7 @@ pub fn drain_sse_lines(buffer: &mut String, provider_label: &str) -> Vec<Value> 
                 }
             }
         };
-        buffer.drain(..line_end + 1);
+        buffer.drain(..=line_end);
 
         if let Some(data) = parsed {
             results.push(data);

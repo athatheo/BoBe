@@ -59,16 +59,13 @@ impl ToolSource for NativeToolAdapter {
         tool_call: &AiToolCall,
         context: Option<&ToolExecutionContext>,
     ) -> ToolResult {
-        let tool = match self.tools.get(&tool_call.name) {
-            Some(t) => t,
-            None => {
-                warn!(tool = %tool_call.name, "Native tool not found");
-                return ToolResult::err(
-                    tool_call.id.clone(),
-                    tool_call.name.clone(),
-                    format!("Tool '{}' not found", tool_call.name),
-                );
-            }
+        let Some(tool) = self.tools.get(&tool_call.name) else {
+            warn!(tool = %tool_call.name, "Native tool not found");
+            return ToolResult::err(
+                tool_call.id.clone(),
+                tool_call.name.clone(),
+                format!("Tool '{}' not found", tool_call.name),
+            );
         };
 
         // Check if disabled

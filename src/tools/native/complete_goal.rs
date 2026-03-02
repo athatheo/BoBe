@@ -63,7 +63,7 @@ impl NativeTool for CompleteGoalTool {
             .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
         if goal.is_completed() {
-            return Ok(format!("Goal {} is already completed.", goal_id));
+            return Ok(format!("Goal {goal_id} is already completed."));
         }
 
         self.goal_repo

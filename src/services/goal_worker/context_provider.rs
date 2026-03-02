@@ -4,6 +4,8 @@
 
 use std::sync::Arc;
 
+use std::fmt::Write;
+
 use async_trait::async_trait;
 use tracing::{debug, warn};
 
@@ -57,8 +59,7 @@ impl GoalContextProvider for DefaultGoalContextProvider {
                     Ok(memories) if !memories.is_empty() => {
                         let mut mem_section = String::from("## Relevant Memories\n");
                         for (memory, score) in &memories {
-                            mem_section
-                                .push_str(&format!("- [score: {:.2}] {}\n", score, memory.content));
+                            let _ = writeln!(mem_section, "- [score: {score:.2}] {}", memory.content);
                         }
                         sections.push(mem_section);
                         debug!(
@@ -96,7 +97,7 @@ impl GoalContextProvider for DefaultGoalContextProvider {
                 if !other_goals.is_empty() {
                     let mut goals_section = String::from("## Other Active Goals\n");
                     for g in &other_goals {
-                        goals_section.push_str(&format!("- [{}] {}\n", g.priority, g.content));
+                        let _ = writeln!(goals_section, "- [{}] {}", g.priority, g.content);
                     }
                     sections.push(goals_section);
                 }
@@ -111,7 +112,7 @@ impl GoalContextProvider for DefaultGoalContextProvider {
             Ok(souls) if !souls.is_empty() => {
                 let mut soul_section = String::from("## Soul / Identity\n");
                 for soul in &souls {
-                    soul_section.push_str(&format!("### {}\n{}\n\n", soul.name, soul.content));
+                    let _ = write!(soul_section, "### {}\n{}\n\n", soul.name, soul.content);
                 }
                 sections.push(soul_section);
             }

@@ -81,13 +81,14 @@ Output: \"User strongly prefers Python, using it daily for scripting\" (merged a
     ///
     /// Each inner `Vec<String>` is a cluster of similar memories.
     pub fn messages(memory_clusters: &[Vec<String>]) -> Vec<AiMessage> {
+        use std::fmt::Write;
         let mut clusters_text = String::new();
         let mut global_idx: usize = 0;
 
         for (i, cluster) in memory_clusters.iter().enumerate() {
-            clusters_text.push_str(&format!("\n## Cluster {}\n", i + 1));
+            let _ = write!(clusters_text, "\n## Cluster {}\n", i + 1);
             for memory in cluster {
-                clusters_text.push_str(&format!("[{global_idx}] {memory}\n"));
+                let _ = writeln!(clusters_text, "[{global_idx}] {memory}");
                 global_idx += 1;
             }
         }

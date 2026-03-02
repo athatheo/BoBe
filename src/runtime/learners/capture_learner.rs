@@ -359,34 +359,31 @@ impl CaptureLearner {
             return Ok(());
         }
 
-        let updated_diary = if !updated_diary.starts_with('#') {
-            format!("{header}\n\n{updated_diary}")
-        } else {
+        let updated_diary = if updated_diary.starts_with('#') {
             updated_diary
+        } else {
+            format!("{header}\n\n{updated_diary}")
         };
 
         // Find existing diary by searching memories with visual_diary source
         let existing = self.find_visual_diary_memory(window_start).await;
 
-        match existing {
-            Some(mut diary) => {
-                diary.content = updated_diary;
-                diary.updated_at = Utc::now();
-                self.memory_repo
-                    .update(diary.id, Some(&diary.content), None, None)
-                    .await?;
-                debug!("capture_learner.visual_memory_updated");
-            }
-            None => {
-                let new_memory = Memory::new(
-                    updated_diary,
-                    MemoryType::ShortTerm,
-                    MemorySource::VisualDiary,
-                    "observation".into(),
-                );
-                self.memory_repo.save(&new_memory).await?;
-                debug!(period = %format!("{date_str} {period}"), "capture_learner.visual_memory_created");
-            }
+        if let Some(mut diary) = existing {
+            diary.content = updated_diary;
+            diary.updated_at = Utc::now();
+            self.memory_repo
+                .update(diary.id, Some(&diary.content), None, None)
+                .await?;
+            debug!("capture_learner.visual_memory_updated");
+        } else {
+            let new_memory = Memory::new(
+                updated_diary,
+                MemoryType::ShortTerm,
+                MemorySource::VisualDiary,
+                "observation".into(),
+            );
+            self.memory_repo.save(&new_memory).await?;
+            debug!(period = %format!("{date_str} {period}"), "capture_learner.visual_memory_created");
         }
 
         Ok(())
@@ -427,10 +424,10 @@ impl CaptureLearner {
             ""
         };
         let tail: Vec<&str> = lines[lines.len() - max_lines..].to_vec();
-        if !header.is_empty() {
-            format!("{header}\n...\n{}", tail.join("\n"))
-        } else {
+        if header.is_empty() {
             tail.join("\n")
+        } else {
+            format!("{header}\n...\n{}", tail.join("\n"))
         }
     }
 
@@ -451,13 +448,13 @@ impl CaptureLearner {
             None => String::new(),
         };
         let max_len = 200;
-        let summary = if description.len() > max_len {
+        let summary = if description.len() <= max_len {
+            description.to_owned()
+        } else {
             format!(
                 "{}...",
                 crate::util::text::truncate_str(description, max_len - 3)
             )
-        } else {
-            description.to_owned()
         };
         format!("{app_prefix}{summary}")
     }

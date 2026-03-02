@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use super::base::NativeTool;
@@ -103,13 +104,14 @@ impl NativeTool for DiscoverGitReposTool {
         let mut output = format!("Found {} git repositories:\n\n", repos.len());
         for repo_path in &repos {
             let info = get_repo_info(repo_path).await;
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "📁 {}\n   Branch: {} | Remote: {}\n   Last commit: {}\n\n",
                 repo_path.display(),
                 info.branch,
                 info.remote,
                 info.last_commit,
-            ));
+            );
         }
         Ok(output)
     }
@@ -127,8 +129,8 @@ fn find_git_repos(dir: &Path, depth: usize, repos: &mut Vec<PathBuf>) {
     }
 
     if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.filter_map(|e| e.ok()) {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+        for entry in entries.filter_map(Result::ok) {
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
                 if !name_str.starts_with('.') && name_str != "node_modules" && name_str != "target"

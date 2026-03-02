@@ -21,14 +21,14 @@ impl SqliteUserProfileRepo {
 impl UserProfileRepository for SqliteUserProfileRepo {
     async fn save(&self, profile: &UserProfile) -> Result<UserProfile, AppError> {
         sqlx::query(
-            r#"INSERT INTO user_profiles (id, name, content, enabled, is_default, created_at, updated_at)
+            r"INSERT INTO user_profiles (id, name, content, enabled, is_default, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                ON CONFLICT(id) DO UPDATE SET
                    name = excluded.name,
                    content = excluded.content,
                    enabled = excluded.enabled,
                    is_default = excluded.is_default,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(profile.id)
         .bind(&profile.name)

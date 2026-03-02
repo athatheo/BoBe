@@ -22,6 +22,8 @@ pub struct OllamaProvider {
 }
 
 impl OllamaProvider {
+    /// # Panics
+    /// Panics if the hardcoded think-tag regex fails to compile (should never happen).
     pub fn new(client: Client, base_url: impl Into<String>, model: impl Into<String>) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_owned();
         Self {

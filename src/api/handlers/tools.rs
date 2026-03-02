@@ -52,8 +52,7 @@ pub async fn list_tools(
             .tool_registry
             .get_source_for_tool(&def.name)
             .await
-            .map(|s| s.name().to_owned())
-            .unwrap_or_else(|| "unknown".to_owned());
+            .map_or_else(|| "unknown".to_owned(), |s| s.name().to_owned());
 
         if provider == "bobe" && !cfg.tools.enabled {
             continue;
@@ -99,8 +98,7 @@ pub async fn enable_tool(
 
     if !success {
         return Err(AppError::NotFound(format!(
-            "Tool '{}' not found",
-            tool_name
+            "Tool '{tool_name}' not found"
         )));
     }
 
@@ -109,7 +107,7 @@ pub async fn enable_tool(
     Ok(Json(ToolUpdateResponse {
         name: tool_name.clone(),
         enabled: true,
-        message: format!("Tool '{}' enabled", tool_name),
+        message: format!("Tool '{tool_name}' enabled"),
     }))
 }
 
@@ -123,8 +121,7 @@ pub async fn disable_tool(
 
     if !success {
         return Err(AppError::NotFound(format!(
-            "Tool '{}' not found",
-            tool_name
+            "Tool '{tool_name}' not found"
         )));
     }
 
@@ -133,7 +130,7 @@ pub async fn disable_tool(
     Ok(Json(ToolUpdateResponse {
         name: tool_name.clone(),
         enabled: false,
-        message: format!("Tool '{}' disabled", tool_name),
+        message: format!("Tool '{tool_name}' disabled"),
     }))
 }
 
@@ -153,8 +150,7 @@ pub async fn update_tool(
 
     if !success {
         return Err(AppError::NotFound(format!(
-            "Tool '{}' not found",
-            tool_name
+            "Tool '{tool_name}' not found"
         )));
     }
 
@@ -164,8 +160,7 @@ pub async fn update_tool(
         name: tool_name.clone(),
         enabled: body.enabled,
         message: format!(
-            "Tool '{}' {}",
-            tool_name,
+            "Tool '{tool_name}' {}",
             if body.enabled { "enabled" } else { "disabled" }
         ),
     }))

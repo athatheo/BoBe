@@ -392,7 +392,13 @@ fn build_native_tools(
     embed: &Arc<dyn crate::llm::EmbeddingProvider>,
     agent_mgr: Option<&Arc<AgentJobManager>>,
 ) -> Vec<Arc<dyn NativeTool>> {
-    use crate::tools::native::*;
+    use crate::tools::native::{
+        approve_plan, archive_goal, browser_history, cancel_coding_agent, check_coding_agent,
+        complete_goal, create_goal, create_memory, discover_git_repos, discover_installed_tools,
+        fetch_url, file_reader, get_goals, get_recent_context, get_souls, launch_coding_agent,
+        list_coding_agents, list_directory, pause_goal, reject_plan, resume_goal, search_context,
+        search_files, search_goal, search_memories, update_goal, update_memory,
+    };
 
     vec![
         Arc::new(search_memories::SearchMemoriesTool::new(

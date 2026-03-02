@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
@@ -66,7 +67,7 @@ impl NativeTool for SearchMemoriesTool {
 
         let limit = arguments
             .get("limit")
-            .and_then(|v| v.as_i64())
+            .and_then(Value::as_i64)
             .unwrap_or(5)
             .clamp(1, 20);
 
@@ -82,7 +83,8 @@ impl NativeTool for SearchMemoriesTool {
 
         let mut output = format!("Found {} memories:\n\n", results.len());
         for (i, (memory, score)) in results.iter().enumerate() {
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "{}. [{}] (score: {:.2}) {}\n   Category: {} | Created: {}\n\n",
                 i + 1,
                 memory.memory_type,
@@ -90,7 +92,7 @@ impl NativeTool for SearchMemoriesTool {
                 memory.content,
                 memory.category,
                 memory.created_at.format("%Y-%m-%d %H:%M"),
-            ));
+            );
         }
         Ok(output)
     }

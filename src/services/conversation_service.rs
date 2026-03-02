@@ -195,9 +195,8 @@ impl ConversationService {
 
     /// Get last 2 turns from previous closed conversation for cross-conversation context.
     pub async fn get_previous_conversation_context(&self) -> Vec<(String, String)> {
-        let last_closed = match self.get_last_closed_conversation().await {
-            Ok(Some(c)) => c,
-            _ => return Vec::new(),
+        let Ok(Some(last_closed)) = self.get_last_closed_conversation().await else {
+            return Vec::new();
         };
 
         let turns = match self.repo.get_turns(last_closed.id, 50).await {

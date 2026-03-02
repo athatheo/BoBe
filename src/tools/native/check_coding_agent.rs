@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -63,8 +64,7 @@ impl NativeTool for CheckCodingAgentTool {
 
         let runtime = job
             .runtime_seconds()
-            .map(|s| format!("{s:.1}s"))
-            .unwrap_or_else(|| "N/A".into());
+            .map_or_else(|| "N/A".into(), |s| format!("{s:.1}s"));
 
         let mut output = format!(
             "Job: {}\nStatus: {}\nProfile: {}\nTask: {}\nRuntime: {}\n",
@@ -72,16 +72,16 @@ impl NativeTool for CheckCodingAgentTool {
         );
 
         if let Some(summary) = &job.result_summary {
-            output.push_str(&format!("\nSummary:\n{summary}\n"));
+            let _ = write!(output, "\nSummary:\n{summary}\n");
         }
         if let Some(err) = &job.error_message {
-            output.push_str(&format!("\nError: {err}\n"));
+            let _ = write!(output, "\nError: {err}\n");
         }
         if let Some(files_json) = &job.files_changed_json {
-            output.push_str(&format!("\nFiles changed: {files_json}\n"));
+            let _ = write!(output, "\nFiles changed: {files_json}\n");
         }
         if let Some(cost) = job.cost_usd {
-            output.push_str(&format!("Cost: ${cost:.4}\n"));
+            let _ = writeln!(output, "Cost: ${cost:.4}");
         }
 
         Ok(output)

@@ -123,7 +123,7 @@ fn spawn_background_tasks(
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+                    () = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
                         eq.push_heartbeat();
                     }
                     _ = shutdown_rx.recv() => break,
@@ -138,7 +138,7 @@ fn spawn_background_tasks(
         let mut shutdown_rx = shutdown_tx.subscribe();
         tokio::spawn(async move {
             tokio::select! {
-                _ = session.run() => {}
+                () = session.run() => {}
                 _ = shutdown_rx.recv() => {
                     session.stop().await;
                 }
@@ -152,7 +152,7 @@ fn spawn_background_tasks(
         let mut shutdown_rx = shutdown_tx.subscribe();
         tokio::spawn(async move {
             tokio::select! {
-                _ = ll.run() => {}
+                () = ll.run() => {}
                 _ = shutdown_rx.recv() => {
                     ll.stop();
                 }

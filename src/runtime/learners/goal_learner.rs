@@ -199,7 +199,6 @@ impl GoalLearner {
                         content_preview = &content[..content.len().min(50)],
                         "goal_learner.skipped"
                     );
-                    continue;
                 }
                 DeduplicationDecision::Update {
                     existing_goal_id,
@@ -213,7 +212,6 @@ impl GoalLearner {
                     } else {
                         info!(goal_id = %existing_goal_id, "goal_learner.goal_updated");
                     }
-                    continue;
                 }
                 DeduplicationDecision::Create => {
                     let priority = match priority_str {
@@ -257,13 +255,12 @@ impl GoalLearner {
             }
         };
 
-        let similar_goals = match self
+        let Ok(similar_goals) = self
             .goals
             .get_by_embedding(&query_embedding, 5, SIMILARITY_SEARCH_THRESHOLD, None)
             .await
-        {
-            Ok(g) => g,
-            Err(_) => return DeduplicationDecision::Create,
+        else {
+            return DeduplicationDecision::Create;
         };
 
         if similar_goals.is_empty() {
@@ -284,7 +281,7 @@ impl GoalLearner {
         let messages = GoalDeduplicationPrompt::messages(content, &existing_data);
         let prompt_config = GoalDeduplicationPrompt::config();
 
-        let response = match tokio::time::timeout(
+        let Ok(Ok(response)) = tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
@@ -295,15 +292,13 @@ impl GoalLearner {
             ),
         )
         .await
-        {
-            Ok(Ok(r)) => r,
-            _ => return DeduplicationDecision::Skip,
+        else {
+            return DeduplicationDecision::Skip;
         };
 
         let resp_content = response.message.content.text_or_empty().to_string();
-        let data = match serde_json::from_str::<Value>(&resp_content) {
-            Ok(d) => d,
-            Err(_) => return DeduplicationDecision::Create,
+        let Ok(data) = serde_json::from_str::<Value>(&resp_content) else {
+            return DeduplicationDecision::Create;
         };
 
         let decision = data

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
@@ -55,7 +56,8 @@ impl NativeTool for GetGoalsTool {
                 GoalPriority::Medium => "🟡 MEDIUM",
                 GoalPriority::Low => "🟢 LOW",
             };
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "{}. [{}] {} {}\n   Source: {} | Created: {}\n\n",
                 i + 1,
                 goal.id,
@@ -63,7 +65,7 @@ impl NativeTool for GetGoalsTool {
                 goal.content,
                 goal.source,
                 goal.created_at.format("%Y-%m-%d"),
-            ));
+            );
         }
         Ok(output)
     }

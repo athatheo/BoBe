@@ -24,7 +24,7 @@ impl SqliteMemoryRepo {
 impl MemoryRepository for SqliteMemoryRepo {
     async fn save(&self, memory: &Memory) -> Result<Memory, AppError> {
         sqlx::query(
-            r#"INSERT INTO memories (id, content, memory_type, enabled, category, source, embedding,
+            r"INSERT INTO memories (id, content, memory_type, enabled, category, source, embedding,
                    source_observation_id, source_conversation_id, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                ON CONFLICT(id) DO UPDATE SET
@@ -34,7 +34,7 @@ impl MemoryRepository for SqliteMemoryRepo {
                    category = excluded.category,
                    source = excluded.source,
                    embedding = excluded.embedding,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(memory.id)
         .bind(&memory.content)

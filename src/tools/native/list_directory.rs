@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::Path;
 
 use super::base::NativeTool;
@@ -86,12 +87,12 @@ impl NativeTool for ListDirectoryTool {
 
         let show_hidden = arguments
             .get("show_hidden")
-            .and_then(|v| v.as_bool())
+            .and_then(Value::as_bool)
             .unwrap_or(false);
 
         let recursive = arguments
             .get("recursive")
-            .and_then(|v| v.as_bool())
+            .and_then(Value::as_bool)
             .unwrap_or(false);
 
         let canonical = super::path_validation::validate_path(Path::new(path_str))?;
@@ -133,7 +134,7 @@ impl NativeTool for ListDirectoryTool {
 
         let mut output = format!("Directory: {}\n{} entries", canonical.display(), total);
         if truncated {
-            output.push_str(&format!(" (showing {MAX_ENTRIES})"));
+            let _ = write!(output, " (showing {MAX_ENTRIES})");
         }
         output.push_str("\n\n");
         output.push_str(&display.join("\n"));
@@ -170,9 +171,8 @@ async fn collect_entries(
             return Ok(());
         }
 
-        let metadata = match entry.metadata().await {
-            Ok(m) => m,
-            Err(_) => continue,
+        let Ok(metadata) = entry.metadata().await else {
+            continue;
         };
 
         let relative = entry

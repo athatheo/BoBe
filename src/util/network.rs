@@ -63,7 +63,7 @@ impl MdnsAnnouncer {
                 };
 
                 match daemon.register(service_info) {
-                    Ok(_) => {
+                    Ok(()) => {
                         info!(
                             port = self.port,
                             service_type = SERVICE_TYPE,

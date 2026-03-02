@@ -388,12 +388,9 @@ impl GoalWorkerManager {
     }
 
     async fn pause_exhausted_goal(&mut self, goal_id: Uuid) {
-        let goal = match self.goal_repo.get_by_id(goal_id).await {
-            Ok(Some(g)) => g,
-            _ => {
-                self.failure_counts.remove(&goal_id);
-                return;
-            }
+        let Ok(Some(goal)) = self.goal_repo.get_by_id(goal_id).await else {
+            self.failure_counts.remove(&goal_id);
+            return;
         };
 
         let failure_count = self.failure_counts.get(&goal_id).copied().unwrap_or(0);
@@ -432,9 +429,8 @@ impl GoalWorkerManager {
 
 /// Check if the Claude CLI is authenticated.
 async fn cli_authenticated() -> bool {
-    let claude_bin = match which::which("claude") {
-        Ok(p) => p,
-        Err(_) => return false,
+    let Ok(claude_bin) = which::which("claude") else {
+        return false;
     };
 
     let result = tokio::process::Command::new(claude_bin)

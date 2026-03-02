@@ -135,7 +135,7 @@ impl LlmProvider for OpenAiProvider {
         Box::pin(async_stream::stream! {
             let resp = match client
                 .post(&url)
-                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Authorization", format!("Bearer {api_key}"))
                 .json(&body)
                 .send()
                 .await

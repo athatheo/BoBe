@@ -96,8 +96,7 @@ impl ToolRegistry {
         Some(
             self.enabled_overrides
                 .get(tool_name)
-                .map(|e| *e.value())
-                .unwrap_or(true),
+                .is_none_or(|e| *e.value()),
         )
     }
 

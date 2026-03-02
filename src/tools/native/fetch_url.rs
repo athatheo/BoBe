@@ -11,8 +11,11 @@ use crate::tools::ToolExecutionContext;
 /// Check whether a host string (IP literal or hostname) resolves to a
 /// private, loopback, or link-local address that must be blocked for SSRF.
 fn is_private_host(host: &str) -> bool {
-    // Hostname-based checks
-    if host == "localhost" || host.ends_with(".local") {
+    // Hostname-based checks (not a file extension — suppress false positive)
+    #[allow(clippy::case_sensitive_file_extension_comparisons)]
+    let is_local = host.eq_ignore_ascii_case("localhost")
+        || host.to_ascii_lowercase().ends_with(".local");
+    if is_local {
         return true;
     }
 

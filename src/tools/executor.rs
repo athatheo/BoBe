@@ -30,16 +30,13 @@ impl ToolExecutor {
         let start = Instant::now();
         let timeout = timeout.unwrap_or(self.default_timeout);
 
-        let source = match self.registry.get_source_for_tool(&tool_call.name).await {
-            Some(s) => s,
-            None => {
-                warn!(tool = %tool_call.name, "No source found for tool");
-                return ToolResult::err(
-                    tool_call.id.clone(),
-                    tool_call.name.clone(),
-                    format!("Unknown tool: '{}'", tool_call.name),
-                );
-            }
+        let Some(source) = self.registry.get_source_for_tool(&tool_call.name).await else {
+            warn!(tool = %tool_call.name, "No source found for tool");
+            return ToolResult::err(
+                tool_call.id.clone(),
+                tool_call.name.clone(),
+                format!("Unknown tool: '{}'", tool_call.name),
+            );
         };
 
         debug!(
@@ -53,32 +50,29 @@ impl ToolExecutor {
 
         let duration = start.elapsed();
 
-        match result {
-            Ok(tool_result) => {
-                info!(
-                    tool = %tool_call.name,
-                    success = tool_result.success,
-                    duration_ms = duration.as_millis(),
-                    content_len = tool_result.content.len(),
-                    "Tool execution completed"
-                );
-                tool_result
-            }
-            Err(_) => {
-                warn!(
-                    tool = %tool_call.name,
-                    timeout_ms = timeout.as_millis(),
-                    "Tool execution timed out"
-                );
-                ToolResult::err(
-                    tool_call.id.clone(),
-                    tool_call.name.clone(),
-                    format!(
-                        "Tool execution timed out after {:.1}s",
-                        timeout.as_secs_f64()
-                    ),
-                )
-            }
+        if let Ok(tool_result) = result {
+            info!(
+                tool = %tool_call.name,
+                success = tool_result.success,
+                duration_ms = duration.as_millis(),
+                content_len = tool_result.content.len(),
+                "Tool execution completed"
+            );
+            tool_result
+        } else {
+            warn!(
+                tool = %tool_call.name,
+                timeout_ms = timeout.as_millis(),
+                "Tool execution timed out"
+            );
+            ToolResult::err(
+                tool_call.id.clone(),
+                tool_call.name.clone(),
+                format!(
+                    "Tool execution timed out after {:.1}s",
+                    timeout.as_secs_f64()
+                ),
+            )
         }
     }
 

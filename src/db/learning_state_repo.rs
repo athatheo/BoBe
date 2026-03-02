@@ -51,13 +51,13 @@ impl LearningStateRepository for SqliteLearningStateRepo {
 
     async fn save(&self, state: &LearningState) -> Result<(), AppError> {
         sqlx::query(
-            r#"UPDATE learning_state SET
+            r"UPDATE learning_state SET
                    last_conversation_processed_at = ?1,
                    last_context_processed_at = ?2,
                    last_consolidation_at = ?3,
                    last_pruning_at = ?4,
                    updated_at = ?5
-               WHERE id = ?6"#,
+               WHERE id = ?6",
         )
         .bind(state.last_conversation_processed_at)
         .bind(state.last_context_processed_at)

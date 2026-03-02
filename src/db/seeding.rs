@@ -48,13 +48,10 @@ pub async fn seed_default_souls(soul_repo: &dyn SoulRepository) -> Result<SeedRe
     };
 
     for &(filename, name) in DEFAULT_SOULS {
-        let content = match load_default_asset(filename) {
-            Some(c) => c,
-            None => {
-                warn!(filename = filename, "db_seeding.asset_not_found");
-                result.errors += 1;
-                continue;
-            }
+        let Some(content) = load_default_asset(filename) else {
+            warn!(filename = filename, "db_seeding.asset_not_found");
+            result.errors += 1;
+            continue;
         };
 
         match soul_repo.get_by_name(name).await {
@@ -113,16 +110,13 @@ pub async fn seed_default_user_profiles(
     };
 
     for &(filename, name) in DEFAULT_USER_PROFILES {
-        let content = match load_default_asset(filename) {
-            Some(c) => c,
-            None => {
-                warn!(
-                    filename = filename,
-                    "db_seeding.user_profile_asset_not_found"
-                );
-                result.errors += 1;
-                continue;
-            }
+        let Some(content) = load_default_asset(filename) else {
+            warn!(
+                filename = filename,
+                "db_seeding.user_profile_asset_not_found"
+            );
+            result.errors += 1;
+            continue;
         };
 
         match profile_repo.get_by_name(name).await {

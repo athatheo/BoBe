@@ -98,13 +98,12 @@ impl GoalsService {
     ) -> Result<Vec<Goal>, AppError> {
         let results = self.repo.find_similar(embedding, limit * 2, true).await?;
 
-        let status_filter: HashSet<&str> = match include_statuses {
-            Some(statuses) => statuses.iter().map(|s| s.as_str()).collect(),
-            None => {
-                let mut set = HashSet::new();
-                set.insert("active");
-                set
-            }
+        let status_filter: HashSet<&str> = if let Some(statuses) = include_statuses {
+            statuses.iter().map(GoalStatus::as_str).collect()
+        } else {
+            let mut set = HashSet::new();
+            set.insert("active");
+            set
         };
 
         let goals: Vec<Goal> = results

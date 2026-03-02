@@ -46,34 +46,29 @@ pub async fn stream_events(
             // Pop with timeout to periodically re-check connection liveness
             let event = tokio::time::timeout(Duration::from_secs(1), queue.pop()).await;
 
-            match event {
-                Ok(bundle) => {
-                    // Track indicator state
-                    cm.track_indicator(&bundle).await;
+            if let Ok(bundle) = event {
+                // Track indicator state
+                cm.track_indicator(&bundle).await;
 
-                    let sse_data = match serde_json::to_string(&bundle) {
-                        Ok(json) => json,
-                        Err(e) => {
-                            tracing::warn!(error = %e, "sse.serialize_event_failed");
-                            String::new()
-                        }
-                    };
-                    let sse_event = Event::default().event("message").data(sse_data);
-                    if tx.send(Ok(sse_event)).await.is_err() {
-                        tracing::info!(
-                            connection_id = %conn_id_inner,
-                            "sse.client_disconnected"
-                        );
-                        cm.disconnect(Some(&conn_id_inner)).await;
-                        rs.on_disconnection().await;
-                        break;
+                let sse_data = match serde_json::to_string(&bundle) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "sse.serialize_event_failed");
+                        String::new()
                     }
-                }
-                Err(_) => {
-                    // Timeout — loop will re-check connection liveness
-                    continue;
+                };
+                let sse_event = Event::default().event("message").data(sse_data);
+                if tx.send(Ok(sse_event)).await.is_err() {
+                    tracing::info!(
+                        connection_id = %conn_id_inner,
+                        "sse.client_disconnected"
+                    );
+                    cm.disconnect(Some(&conn_id_inner)).await;
+                    rs.on_disconnection().await;
+                    break;
                 }
             }
+            // Timeout — loop will re-check connection liveness
         }
     });
 

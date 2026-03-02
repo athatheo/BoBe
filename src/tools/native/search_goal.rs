@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
@@ -76,19 +77,19 @@ impl NativeTool for SearchGoalTool {
 
         let limit = arguments
             .get("limit")
-            .and_then(|v| v.as_i64())
+            .and_then(Value::as_i64)
             .unwrap_or(5)
             .clamp(1, 20);
 
         let include_completed = arguments
             .get("include_completed")
-            .and_then(|v| v.as_bool())
+            .and_then(Value::as_bool)
             .unwrap_or(false);
 
         let priority_filter = arguments
             .get("priority_filter")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_owned());
+            .and_then(Value::as_str)
+            .map(str::to_owned);
 
         let embedding = self.embedding_provider.embed(query).await?;
         let results = self.goal_repo.find_similar(&embedding, limit, true).await?;
@@ -109,7 +110,8 @@ impl NativeTool for SearchGoalTool {
 
         let mut output = format!("Found {} goals:\n\n", filtered.len());
         for (i, (goal, score)) in filtered.iter().enumerate() {
-            output.push_str(&format!(
+            let _ = write!(
+                output,
                 "{}. (score: {:.2}) [{}] {}\n   Priority: {} | Status: {} | Source: {}\n\n",
                 i + 1,
                 score,
@@ -118,7 +120,7 @@ impl NativeTool for SearchGoalTool {
                 goal.priority,
                 goal.status,
                 goal.source,
-            ));
+            );
         }
         Ok(output)
     }

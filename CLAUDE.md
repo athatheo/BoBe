@@ -21,7 +21,7 @@ just release 1.0.0  # build → sign → DMG
 
 ## Architecture
 
-```
+```bash
 bobe-daemon (Rust/Axum, :8766)  ←── SSE + HTTP ──→  BoBe.app (Swift/SwiftUI)
          │                                                   │
          ▼                                                   ▼
@@ -73,13 +73,31 @@ Swift 6.0, macOS 14+ (Sonoma), SPM.
 ## Coding Conventions
 
 ### Rust
+
 - Edition 2024, MSRV 1.93, `unsafe_code = "deny"`
-- Clippy pedantic (see `[lints.clippy]` in Cargo.toml)
+- Clippy pedantic enabled — see `[lints.clippy]` in Cargo.toml for the ~26 justified allows
 - `thiserror` errors, handlers return `Result<T, AppError>`, no `unwrap()`/`expect()`
 - Prompts only in `runtime/prompts/`
 - Config via `BOBE_*` env vars
 
+#### Clippy Pedantic Allow Rationale
+
+The project enables `clippy::pedantic` with specific allows. Each has a documented reason:
+
+| Category | Lints Allowed | Why |
+|----------|--------------|-----|
+| Not a library | `must_use_candidate`, `missing_errors_doc`, `doc_markdown`, `implicit_hasher` | Internal app, not a published crate |
+| DTO/API contracts | `struct_excessive_bools`, `struct_field_names`, `missing_fields_in_debug` | Config/settings structs match API shapes |
+| Axum framework | `unused_async`, `unused_self` | Handler signatures and trait contracts require these |
+| DI/ownership | `needless_pass_by_value`, `implicit_clone`, `unnecessary_wraps` | Intentional ownership transfer for Arc DI, repos, serialization |
+| Casts (all verified) | `cast_possible_truncation`, `cast_sign_loss`, `cast_precision_loss`, `cast_possible_wrap`, `cast_lossless` | Config→bounds, FFI, f64 precision — all audited |
+| Style | `module_name_repetitions`, `similar_names`, `return_self_not_must_use`, `needless_lifetimes`, `items_after_statements`, `too_many_lines`, `incompatible_msrv` | False-positive-heavy or stylistic preference |
+| Tool traits | `unnecessary_literal_bound`, `trivially_copy_pass_by_ref` | 56+ tool trait impls, function signatures |
+
+To add a new allow: add it to `Cargo.toml` with a comment explaining why. Prefer targeted `#[allow]` on individual items over project-wide allows.
+
 ### Swift
+
 - SwiftLint: see `desktopMac/.swiftlint.yml`
 - `sorted_imports` enforced, `force_unwrapping` opt-in (avoid)
 - Split large views into subviews

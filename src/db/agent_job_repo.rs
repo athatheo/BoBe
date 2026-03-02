@@ -22,7 +22,7 @@ impl SqliteAgentJobRepo {
 impl AgentJobRepository for SqliteAgentJobRepo {
     async fn save(&self, job: &AgentJob) -> Result<AgentJob, AppError> {
         sqlx::query(
-            r#"INSERT INTO agent_jobs (id, profile_name, command, user_intent, status, working_directory,
+            r"INSERT INTO agent_jobs (id, profile_name, command, user_intent, status, working_directory,
                    conversation_id, pid, exit_code, result_summary, raw_output_path, error_message,
                    started_at, completed_at, cost_usd, files_changed_json, agent_session_id,
                    continuation_count, reported, created_at, updated_at)
@@ -41,7 +41,7 @@ impl AgentJobRepository for SqliteAgentJobRepo {
                    agent_session_id = excluded.agent_session_id,
                    continuation_count = excluded.continuation_count,
                    reported = excluded.reported,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(job.id)
         .bind(&job.profile_name)

@@ -21,14 +21,14 @@ impl SqliteSoulRepo {
 impl SoulRepository for SqliteSoulRepo {
     async fn save(&self, soul: &Soul) -> Result<Soul, AppError> {
         sqlx::query(
-            r#"INSERT INTO souls (id, name, content, enabled, is_default, created_at, updated_at)
+            r"INSERT INTO souls (id, name, content, enabled, is_default, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                ON CONFLICT(id) DO UPDATE SET
                    name = excluded.name,
                    content = excluded.content,
                    enabled = excluded.enabled,
                    is_default = excluded.is_default,
-                   updated_at = excluded.updated_at"#,
+                   updated_at = excluded.updated_at",
         )
         .bind(soul.id)
         .bind(&soul.name)
