@@ -14,9 +14,7 @@
       },
       "args": ["serve"],
       "env": {
-        "RUST_LOG": "debug,sqlx=warn,hyper=warn",
-        "BOBE_HOST": "127.0.0.1",
-        "BOBE_PORT": "8766"
+        "RUST_LOG": "debug,sqlx=warn,hyper=warn"
       },
       "cwd": "${workspaceFolder}"
     },

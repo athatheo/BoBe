@@ -4,24 +4,13 @@
     "rust-lang.rust-analyzer",
     "tamasfe.even-better-toml",
     "vadimcn.vscode-lldb",
-    "serayuzgur.crates",
     "fill-labs.dependi",
-
-    // General
-    "esbenp.prettier-vscode",
-    "editorconfig.editorconfig",
     "usernamehw.errorlens",
+
+    // Git
     "eamodio.gitlens",
 
-    // SQL
-    "mtxr.sqltools",
-    "alexcvzz.vscode-sqlite",
-
-    // TypeScript (desktop)
-    "dbaeumer.vscode-eslint",
-
-    // Testing
-    "hbenl.vscode-test-explorer",
-    "swellaby.vscode-rust-test-adapter"
+    // SQLite (optional — for browsing ~/.bobe/data/bobrust.db)
+    "alexcvzz.vscode-sqlite"
   ]
 }

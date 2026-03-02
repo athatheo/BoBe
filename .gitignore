@@ -3,13 +3,10 @@
 **/.DS_Store
 build/
 
-# Snyk Security Extension - AI Rules (auto-generated)
-.github/instructions/snyk_rules.instructions.md
-
 # SwiftPM local build cache
 desktopMac/.build/
 
-# Sparkle local signing key exports (if you ever export from Keychain)
+# Sparkle signing keys
 sparkle_private_key
 sparkle_private_key.pem
 *.sparkle_private_key

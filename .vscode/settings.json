@@ -3,7 +3,6 @@
   "rust-analyzer.check.command": "clippy",
   "rust-analyzer.check.extraArgs": ["--all-targets"],
   "rust-analyzer.cargo.features": "all",
-  "rust-analyzer.diagnostics.experimental.enable": true,
   "rust-analyzer.inlayHints.typeHints.enable": true,
   "rust-analyzer.inlayHints.parameterHints.enable": true,
   "rust-analyzer.inlayHints.chainingHints.enable": true,
@@ -23,7 +22,7 @@
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "tamasfe.even-better-toml"
   },
-  "[sql]": {
+  "[swift]": {
     "editor.formatOnSave": false
   },
 
@@ -33,30 +32,16 @@
   "files.insertFinalNewline": true,
   "files.exclude": {
     "target": true,
-    "desktop/node_modules": true,
-    "desktop/dist": true,
-    "desktop/out": true
+    ".worktrees": true
   },
   "search.exclude": {
     "target": true,
-    "desktop/node_modules": true,
-    "desktop/pnpm-lock.yaml": true,
-    "Cargo.lock": true
+    "Cargo.lock": true,
+    "desktopMac/.build": true,
+    "desktopMac/Package.resolved": true
   },
 
-  // TypeScript (desktop)
-  "typescript.preferences.importModuleSpecifier": "non-relative",
-  "[typescript]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescriptreact]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-
-  // Snyk
-  "snyk.advanced.autoSelectOrganization": true,
+  // Spelling
   "cSpell.ignorePaths": [
     "**/justfile",
     "**/Justfile",
@@ -65,9 +50,7 @@
     "**/*.yml",
     "**/*.yaml",
     "**/.gitignore",
-    "**/.dockerignore",
-    "**/.ignore",
-    "**/.npmignore"
+    "**/.dockerignore"
   ],
   "cSpell.words": [
     "APFS",
@@ -76,9 +59,11 @@
     "libexec",
     "notarytool",
     "pipefail",
+    "UDFO",
     "UDZO",
     "volname",
     "xcodegen",
     "xcrun"
-  ]
+  ],
+  "snyk.advanced.autoSelectOrganization": true
 }
