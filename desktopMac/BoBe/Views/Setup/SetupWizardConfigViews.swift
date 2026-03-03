@@ -23,11 +23,12 @@ extension SetupWizard {
                         options: providers.map(\.id),
                         label: { providerId in
                             providers.first(where: { $0.id == providerId })?.label ?? providerId
-                        }
+                        },
+                        width: 440
                     )
                     .onChange(of: selectedProvider) { _, newProvider in
                         let provider = providers.first(where: { $0.id == newProvider })
-                        selectedModel = provider?.recommended ?? provider?.models.first ?? ""
+                        selectedModel = provider?.models.first?.id ?? ""
                         apiKey = ""
                         endpoint = ""
                         deployment = ""
@@ -62,13 +63,11 @@ extension SetupWizard {
                         .foregroundStyle(theme.colors.text)
                     BobeMenuPicker(
                         selection: $selectedModel,
-                        options: provider.models,
-                        label: { model in
-                            if model == provider.recommended {
-                                return "\(model) (recommended)"
-                            }
-                            return model
-                        }
+                        options: provider.models.map(\.id),
+                        label: { modelId in
+                            provider.models.first(where: { $0.id == modelId })?.label ?? modelId
+                        },
+                        width: 440
                     )
                 }
 

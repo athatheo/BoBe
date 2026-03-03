@@ -83,6 +83,9 @@ pub struct LlmConfig {
     pub azure_openai_deployment: String,
     #[serde(skip_serializing)]
     pub anthropic_api_key: SecretString,
+    /// Context window size in tokens. Auto-detected for Ollama at startup;
+    /// manual override via `BOBE_LLM__CONTEXT_WINDOW` takes precedence.
+    pub context_window: u32,
 }
 
 impl LlmConfig {
@@ -105,11 +108,12 @@ impl Default for LlmConfig {
             backend: LlmBackend::Ollama,
             llama_url: "http://localhost:8080".into(),
             openai_api_key: SecretString::default(),
-            openai_model: "gpt-4o-mini".into(),
+            openai_model: "gpt-5-mini".into(),
             azure_openai_endpoint: String::new(),
             azure_openai_api_key: SecretString::default(),
             azure_openai_deployment: String::new(),
             anthropic_api_key: SecretString::default(),
+            context_window: 128_000,
         }
     }
 }
@@ -150,7 +154,7 @@ impl Default for VisionConfig {
         Self {
             backend: LlmBackend::None,
             ollama_model: "qwen3-vl:8b".into(),
-            openai_model: "gpt-4o-mini".into(),
+            openai_model: "gpt-5-mini".into(),
             azure_openai_deployment: String::new(),
         }
     }

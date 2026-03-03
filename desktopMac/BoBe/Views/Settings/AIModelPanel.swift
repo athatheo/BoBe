@@ -5,7 +5,7 @@ struct AIModelPanel: View {
     @State private var settings: DaemonSettings?
     @State private var selectedProvider = "ollama"
     @State private var ollamaModel = ""
-    @State private var openaiModel = "gpt-4o-mini"
+    @State private var openaiModel = "gpt-5-mini"
     @State private var openaiApiKey = ""
     @State private var azureEndpoint = ""
     @State private var azureDeployment = ""
@@ -20,12 +20,12 @@ struct AIModelPanel: View {
     @State private var error: String?
     @Environment(\.theme) private var theme
 
+    private var openAIProvider: CloudProvider? {
+        self.onboardingOptions?.cloudProviders.first(where: { $0.id == "openai" })
+    }
+
     private var openAIModelChoices: [String] {
-        var choices =
-            self.onboardingOptions?
-                .cloudProviders
-                .first(where: { $0.id == "openai" })?
-                .models ?? []
+        var choices = self.openAIProvider?.models.map(\.id) ?? []
         if !self.openaiModel.isEmpty, !choices.contains(self.openaiModel) {
             choices.insert(self.openaiModel, at: 0)
         }
@@ -228,7 +228,9 @@ struct AIModelPanel: View {
                 BobeMenuPicker(
                     selection: self.$openaiModel,
                     options: self.openAIModelChoices,
-                    label: { $0 },
+                    label: { modelId in
+                        self.openAIProvider?.models.first(where: { $0.id == modelId })?.label ?? modelId
+                    },
                     width: 220
                 )
                 .onChange(of: self.openaiModel) { _, _ in self.isDirty = true }

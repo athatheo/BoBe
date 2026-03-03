@@ -25,6 +25,7 @@ use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::conversation_closed_event;
 use crate::util::sse::types::IndicatorType;
+use crate::util::tokens::{clamp_max_tokens, count_message_tokens};
 
 pub struct ProactiveGenerator {
     llm: Arc<dyn LlmProvider>,
@@ -154,6 +155,24 @@ impl ProactiveGenerator {
         );
         let prompt_config = ProactiveResponsePrompt::config();
 
+        // Clamp max_tokens so prompt + response fits within context window
+        let cfg = self.config.load();
+        let prompt_tokens = count_message_tokens(&messages);
+        let max_tokens = clamp_max_tokens(
+            cfg.llm.context_window,
+            prompt_tokens,
+            prompt_config.max_tokens,
+        );
+        if max_tokens < prompt_config.max_tokens {
+            info!(
+                requested = prompt_config.max_tokens,
+                clamped = max_tokens,
+                prompt_tokens,
+                context_window = cfg.llm.context_window,
+                "proactive_generator.max_tokens_clamped"
+            );
+        }
+
         // Load tools if registry available
         let tools = if let Some(ref registry) = self.tool_registry {
             registry.get_all_tools(false).await
@@ -163,13 +182,8 @@ impl ProactiveGenerator {
 
         // Use tool call loop if tools are available, otherwise plain LLM stream
         let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
-            let tool_stream = tcl.stream(
-                messages,
-                tools,
-                prompt_config.temperature,
-                prompt_config.max_tokens,
-                None,
-            );
+            let tool_stream =
+                tcl.stream(messages, tools, prompt_config.temperature, max_tokens, None);
             stream_response(tool_stream, &self.event_queue, Some(&msg_id)).await
         } else {
             let stream = self.llm.stream(
@@ -177,7 +191,7 @@ impl ProactiveGenerator {
                 None,
                 prompt_config.response_format,
                 prompt_config.temperature,
-                prompt_config.max_tokens,
+                max_tokens,
             );
             stream_llm_response(stream, &self.event_queue, Some(&msg_id)).await
         };
@@ -317,6 +331,14 @@ impl ProactiveGenerator {
         let messages = ConversationSummaryPrompt::messages(&turn_refs);
         let prompt_config = ConversationSummaryPrompt::config();
 
+        let cfg = self.config.load();
+        let prompt_tokens = count_message_tokens(&messages);
+        let max_tokens = clamp_max_tokens(
+            cfg.llm.context_window,
+            prompt_tokens,
+            prompt_config.max_tokens,
+        );
+
         match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
@@ -324,7 +346,7 @@ impl ProactiveGenerator {
                 None,
                 prompt_config.response_format.as_ref(),
                 prompt_config.temperature,
-                prompt_config.max_tokens,
+                max_tokens,
             ),
         )
         .await

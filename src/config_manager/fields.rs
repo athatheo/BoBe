@@ -53,6 +53,7 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
                 set_parsed!(config.llm.azure_openai_deployment, value, k);
             }
             "llm.anthropic_api_key" => set_parsed!(config.llm.anthropic_api_key, value, k),
+            "llm.context_window" => set_parsed!(config.llm.context_window, value, k),
 
             // ── Ollama ────────────────────────────────────────────────
             "ollama.url" => set_parsed!(config.ollama.url, value, k),
@@ -286,6 +287,7 @@ fn normalize_key(key: &str) -> String {
         "azure_openai_api_key" => "llm.azure_openai_api_key",
         "azure_openai_deployment" => "llm.azure_openai_deployment",
         "anthropic_api_key" => "llm.anthropic_api_key",
+        "llm_context_window" => "llm.context_window",
         "ollama_url" => "ollama.url",
         "ollama_model" => "ollama.model",
         "ollama_auto_start" => "ollama.auto_start",

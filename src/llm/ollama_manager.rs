@@ -8,6 +8,9 @@ use tracing::{info, warn};
 
 use crate::error::AppError;
 
+/// Ollama's compiled-in default when no `num_ctx` is configured.
+const OLLAMA_DEFAULT_CONTEXT: u32 = 4_096;
+
 /// Manages Ollama process lifecycle and model availability.
 ///
 /// Responsibilities:
@@ -41,6 +44,16 @@ struct PullProgress {
     completed: Option<u64>,
     total: Option<u64>,
     error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShowResponse {
+    /// Runtime parameters as a newline-delimited key-value string.
+    #[serde(default)]
+    parameters: Option<String>,
+    /// Model metadata containing context_length and other model info.
+    #[serde(default)]
+    model_info: Option<serde_json::Value>,
 }
 
 impl OllamaManager {
@@ -113,6 +126,73 @@ impl OllamaManager {
         self.pull_model(model_name, || false).await?;
         info!(model = model_name, "ollama.model_pulled");
         Ok(true)
+    }
+
+    /// Query Ollama for the effective context window of a model.
+    ///
+    /// Resolution order:
+    /// 1. `num_ctx` from runtime `parameters` (the *actual* window in use)
+    /// 2. `context_length` from `model_info` (model's max capability)
+    /// 3. [`OLLAMA_DEFAULT_CONTEXT`] (Ollama's built-in default)
+    pub async fn get_context_window(&self, model: &str) -> u32 {
+        let url = format!("{}/api/show", self.base_url);
+        let resp = match self
+            .client
+            .post(&url)
+            .json(&serde_json::json!({"name": model}))
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                warn!(status = %r.status(), "ollama.show_request_failed");
+                return OLLAMA_DEFAULT_CONTEXT;
+            }
+            Err(e) => {
+                warn!(error = %e, "ollama.show_request_error");
+                return OLLAMA_DEFAULT_CONTEXT;
+            }
+        };
+
+        let show: ShowResponse = match resp.json().await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(error = %e, "ollama.show_parse_error");
+                return OLLAMA_DEFAULT_CONTEXT;
+            }
+        };
+
+        // 1. Check runtime parameters for num_ctx
+        if let Some(ref params) = show.parameters
+            && let Some(ctx) = parse_num_ctx(params)
+        {
+            info!(
+                model = model,
+                num_ctx = ctx,
+                "ollama.context_window_from_parameters"
+            );
+            return ctx;
+        }
+
+        // 2. Check model_info for context_length
+        if let Some(ref info) = show.model_info
+            && let Some(ctx) = extract_context_length(info)
+        {
+            info!(
+                model = model,
+                context_length = ctx,
+                "ollama.context_window_from_model_info"
+            );
+            return ctx;
+        }
+
+        info!(
+            model = model,
+            default = OLLAMA_DEFAULT_CONTEXT,
+            "ollama.context_window_using_default"
+        );
+        OLLAMA_DEFAULT_CONTEXT
     }
 
     /// Check if Ollama API is reachable.
@@ -318,4 +398,45 @@ fn lock_or_recover<'a, T>(
             poisoned.into_inner()
         }
     }
+}
+
+/// Parse `num_ctx` from Ollama's newline-delimited parameter string.
+///
+/// Example input: `"num_ctx 8192\ntemperature 0.7\n"`
+fn parse_num_ctx(parameters: &str) -> Option<u32> {
+    for line in parameters.lines() {
+        let trimmed = line.trim();
+        if let Some(value_str) = trimmed.strip_prefix("num_ctx")
+            && let Ok(v) = value_str.trim().parse::<u32>()
+        {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// Extract `context_length` from model_info JSON.
+///
+/// Ollama stores this under a model-family-specific key, e.g.
+/// `model_info.llama.context_length` or `model_info.qwen2.context_length`.
+/// We scan all top-level objects for a `context_length` field.
+fn extract_context_length(model_info: &serde_json::Value) -> Option<u32> {
+    let obj = model_info.as_object()?;
+    for (key, value) in obj {
+        // Direct context_length at top level
+        if let Some(n) = value.as_u64()
+            && key.contains("context_length")
+        {
+            return u32::try_from(n).ok();
+        }
+        // Nested within a family object
+        if let Some(inner) = value.as_object()
+            && let Some(ctx) = inner
+                .get("context_length")
+                .and_then(serde_json::Value::as_u64)
+        {
+            return u32::try_from(ctx).ok();
+        }
+    }
+    None
 }

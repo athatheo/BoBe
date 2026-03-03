@@ -372,6 +372,18 @@ struct BobeMenuPicker<Option: Hashable>: View {
         .buttonStyle(.plain)
         .onHover { self.isHovered = $0 }
         .frame(width: self.width)
+        .overlay {
+            if self.isOpen {
+                Color.clear
+                    .frame(maxWidth: 9999, maxHeight: 9999)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            self.isOpen = false
+                        }
+                    }
+            }
+        }
         .overlay(alignment: .topLeading) {
             if self.isOpen {
                 self.dropdownPanel
@@ -380,7 +392,9 @@ struct BobeMenuPicker<Option: Hashable>: View {
             }
         }
         .onChange(of: self.selection) { _, _ in
-            self.isOpen = false
+            withAnimation(.easeOut(duration: 0.12)) {
+                self.isOpen = false
+            }
         }
         .zIndex(self.isOpen ? 50 : 0)
     }

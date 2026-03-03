@@ -37,6 +37,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
     integrity::run(&pool, repos.agent_job_repo.as_ref()).await;
 
     infra::ensure_ollama_ready(&config, &infra.ollama_manager).await;
+    infra::detect_context_window(&config, &infra.config_arc, &infra.ollama_manager).await;
 
     if config.seed_default_documents {
         if let Err(e) = crate::db::seeding::seed_default_souls(repos.soul_repo.as_ref()).await {
@@ -61,7 +62,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
 
     infra.mdns_announcer.start().await;
 
-    print_banner(&config);
+    print_banner(&infra.config_arc.load());
 
     let state = Arc::new(AppState {
         db: pool,
@@ -105,6 +106,7 @@ fn print_banner(config: &Config) {
     info!("  BoBe Server Started");
     info!("  LLM backend: {}", config.llm.backend);
     info!("  Model: {}", config.ollama.model);
+    info!("  Context window: {} tokens", config.llm.context_window);
     info!("  Capture enabled: {}", config.capture.enabled);
     info!("  Learning enabled: {}", config.learning.enabled);
     info!("  Tools enabled: {}", config.tools.enabled);

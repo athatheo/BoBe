@@ -463,7 +463,7 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
     let model = body
         .model
         .clone()
-        .unwrap_or_else(|| "gpt-4o-mini".to_string());
+        .unwrap_or_else(|| "gpt-5-mini".to_string());
 
     match test_openai_embedding(state, &api_key, &model).await {
         Ok(()) => {

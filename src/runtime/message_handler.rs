@@ -25,6 +25,7 @@ use crate::tools::registry::ToolRegistry;
 use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
+use crate::util::tokens::{clamp_max_tokens, count_message_tokens};
 
 pub struct MessageHandler {
     llm: Arc<dyn LlmProvider>,
@@ -174,10 +175,26 @@ impl MessageHandler {
             Vec::new()
         };
 
+        // Clamp max_tokens so prompt + response fits within context window
+        let prompt_tokens = count_message_tokens(&messages);
+        let context_window = cfg.llm.context_window;
+        let max_tokens = clamp_max_tokens(context_window, prompt_tokens, prompt_config.max_tokens);
+        if max_tokens < prompt_config.max_tokens {
+            info!(
+                requested = prompt_config.max_tokens,
+                clamped = max_tokens,
+                prompt_tokens,
+                context_window,
+                "message_handler.max_tokens_clamped"
+            );
+        }
+
         info!(
             context_len = context_summary.len(),
             history = conversation_history.len(),
             tools = tools.len(),
+            prompt_tokens,
+            max_tokens,
             "message_handler.stream_start"
         );
 
@@ -191,7 +208,7 @@ impl MessageHandler {
                 messages,
                 tools,
                 prompt_config.temperature,
-                prompt_config.max_tokens,
+                max_tokens,
                 Some(tool_context),
             );
             stream_response(stream, &self.event_queue, Some(msg_id)).await
@@ -201,7 +218,7 @@ impl MessageHandler {
                 None,
                 prompt_config.response_format,
                 prompt_config.temperature,
-                prompt_config.max_tokens,
+                max_tokens,
             );
             stream_llm_response(stream, &self.event_queue, Some(msg_id)).await
         };

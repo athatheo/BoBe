@@ -26,13 +26,17 @@ pub struct LocalTier {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ModelChoice {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct CloudProvider {
     pub id: String,
     pub label: String,
     pub requires: Vec<String>,
-    pub models: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub recommended: Option<String>,
+    pub models: Vec<ModelChoice>,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,6 +44,13 @@ pub struct OnboardingOptions {
     pub local_tiers: Vec<LocalTier>,
     pub cloud_providers: Vec<CloudProvider>,
 }
+
+// ── Cloud model definitions ─────────────────────────────────────────────
+// Single source of truth for cloud model choices.
+// The frontend reads these via GET /api/onboarding/options and
+// displays labels directly — no client-side mapping needed.
+// First model in each list is the default selection.
+// To add/remove/rename models, only edit this list.
 
 /// GET /api/onboarding/options
 pub async fn get_options(
@@ -71,15 +82,26 @@ pub async fn get_options(
                 id: "openai".into(),
                 label: "OpenAI".into(),
                 requires: vec!["api_key".into()],
-                models: vec!["gpt-4o-mini".into(), "gpt-4o".into()],
-                recommended: Some("gpt-4o-mini".into()),
+                models: vec![
+                    ModelChoice {
+                        id: "gpt-5-mini".into(),
+                        label: "GPT-5 Mini".into(),
+                    },
+                    ModelChoice {
+                        id: "gpt-5-nano".into(),
+                        label: "GPT-5 Nano".into(),
+                    },
+                    ModelChoice {
+                        id: "gpt-5.2".into(),
+                        label: "GPT-5.2".into(),
+                    },
+                ],
             },
             CloudProvider {
                 id: "azure_openai".into(),
                 label: "Azure OpenAI".into(),
                 requires: vec!["api_key".into(), "endpoint".into(), "deployment".into()],
                 models: vec![],
-                recommended: None,
             },
         ],
     }))

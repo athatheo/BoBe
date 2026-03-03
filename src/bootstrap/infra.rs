@@ -129,6 +129,9 @@ impl Infrastructure {
     }
 }
 
+/// OpenAI max input tokens (gpt-5 family, all variants).
+const OPENAI_CONTEXT_WINDOW: u32 = 272_000;
+
 /// Best-effort Ollama startup — never fails the bootstrap.
 pub async fn ensure_ollama_ready(config: &Config, manager: &OllamaManager) {
     let needs_ollama =
@@ -155,4 +158,44 @@ pub async fn ensure_ollama_ready(config: &Config, manager: &OllamaManager) {
             Err(e) => warn!(error = %e, "ollama.vision_model_check_failed"),
         }
     }
+}
+
+/// Auto-detect context window size and update config if no manual override is set.
+///
+/// For Ollama: queries the running model via `/api/show`.
+/// For OpenAI/Azure: uses the known max input limit.
+/// Skips detection if the user has set an explicit override via env var or config.toml.
+pub async fn detect_context_window(
+    config: &Config,
+    config_arc: &Arc<ArcSwap<Config>>,
+    manager: &OllamaManager,
+) {
+    let default_window = crate::config::LlmConfig::default().context_window;
+    let has_manual_override = std::env::var("BOBE_LLM__CONTEXT_WINDOW").is_ok()
+        || config.llm.context_window != default_window;
+    if has_manual_override {
+        info!(
+            context_window = config.llm.context_window,
+            "bootstrap.context_window_manual_override"
+        );
+        return;
+    }
+
+    let detected = match config.llm.backend {
+        LlmBackend::Ollama => manager.get_context_window(&config.ollama.model).await,
+        LlmBackend::Openai | LlmBackend::AzureOpenai => OPENAI_CONTEXT_WINDOW,
+        LlmBackend::LlamaCpp | LlmBackend::None => return,
+    };
+
+    // Swap the config with the detected value
+    let current = config_arc.load();
+    let mut updated = (**current).clone();
+    updated.llm.context_window = detected;
+    config_arc.store(Arc::new(updated));
+
+    info!(
+        backend = %config.llm.backend,
+        context_window = detected,
+        "bootstrap.context_window_detected"
+    );
 }

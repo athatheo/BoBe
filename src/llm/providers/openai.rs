@@ -222,10 +222,7 @@ impl LlmProvider for OpenAiProvider {
 
     fn supports_vision(&self) -> bool {
         let m = self.model.to_lowercase();
-        m.contains("gpt-4o")
-            || m.contains("gpt-4-vision")
-            || m.contains("gpt-4-turbo")
-            || m.contains("gpt-5")
+        m.contains("gpt-5")
     }
 
     fn supports_tools(&self) -> bool {

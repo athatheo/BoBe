@@ -182,8 +182,8 @@ struct SetupWizard: View {
             guard !Task.isCancelled else { return }
             do {
                 self.options = try await DaemonClient.shared.getOnboardingOptions()
-                if let rec = options?.cloudProviders.first?.recommended {
-                    self.selectedModel = rec
+                if let firstModel = options?.cloudProviders.first?.models.first?.id {
+                    self.selectedModel = firstModel
                 }
                 return
             } catch {

@@ -13,6 +13,7 @@ use crate::error::AppError;
 use crate::llm::LlmProvider;
 use crate::llm::types::{AiMessage, StreamItem, ToolDefinition};
 use crate::tools::{ToolExecutionContext, ToolNotification, ToolResult};
+use crate::util::tokens::{clamp_max_tokens, count_message_tokens};
 
 /// Agentic loop: LLM → tool calls → results → LLM, until stop or max iterations.
 pub struct ToolCallLoop {
@@ -54,6 +55,11 @@ impl ToolCallLoop {
         let executor = self.executor.clone();
         let cfg = self.config.load();
         let max_iterations = cfg.tools.max_iterations as usize;
+
+        // Clamp max_tokens for initial prompt; subsequent iterations may have
+        // more messages (tool results), but use the same budget as a safety net.
+        let prompt_tokens = count_message_tokens(&messages);
+        let max_tokens = clamp_max_tokens(cfg.llm.context_window, prompt_tokens, max_tokens);
 
         tokio::spawn(async move {
             if let Err(e) = run_streaming_loop(

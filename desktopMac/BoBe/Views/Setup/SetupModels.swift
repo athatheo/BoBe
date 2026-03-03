@@ -36,12 +36,16 @@ struct LocalTier: Codable, Identifiable, Equatable {
     }
 }
 
+struct ModelChoice: Codable, Identifiable, Equatable {
+    let id: String
+    let label: String
+}
+
 struct CloudProvider: Codable, Identifiable, Equatable {
     let id: String
     let label: String
     let requires: [String]
-    let models: [String]
-    let recommended: String?
+    let models: [ModelChoice]
 
     var needsEndpoint: Bool {
         self.requires.contains("endpoint")

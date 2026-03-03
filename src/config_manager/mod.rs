@@ -53,6 +53,7 @@ static LLM_KEY_FIELDS: &[&str] = &[
 ];
 
 static HOT_SWAP_FIELDS: &[&str] = &[
+    "llm.context_window",
     "capture.enabled",
     "capture.interval_seconds",
     "decision.cooldown_minutes",
