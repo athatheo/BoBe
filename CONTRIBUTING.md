@@ -102,10 +102,6 @@ docs/                         # Additional documentation
 - **Hot-swappable config** via `ArcSwap` — settings changes apply without restart
 - **localhost-only** by design — all network traffic stays on `127.0.0.1`
 
-## Database
-
-SQLite via sqlx. The schema (`migrations/schema.sql`) is applied on every startup using `CREATE TABLE IF NOT EXISTS` — no migration tracking or tooling needed. Data stored at `~/.bobe/data/bobrust.db`.
-
 ## Security
 
 BoBe handles screen captures and LLM API keys. Please be mindful of:
