@@ -82,6 +82,76 @@ just release 1.0.0  # Build + sign + create DMG
 
 ---
 
+## Development Commands
+
+### `just` recipes
+
+| Command | What it does |
+|---------|---------------|
+| `just` | List all available recipes |
+| `just run` | Build backend + frontend (debug) and launch the app |
+| `just backend` / `just run-backend` | Run only the Rust daemon (`cargo run -- serve`) |
+| `just build` | Build release binaries and bundle `build/BoBe.app` |
+| `just release 1.0.0` | Build + sign app + create/sign DMG |
+| `just ship <version> <apple-id> <team-id> <password>` | End-to-end ship flow (clean, resolve deps, release, notarize, staple, Sparkle zip) |
+| `just clean` | Clean cargo, SwiftPM, and `build/` artifacts |
+| `just check` / `just test` | Run Rust + Swift checks (`fmt`, clippy, tests, SwiftLint, Swift build) |
+| `just format-swift` | Format Swift sources with SwiftFormat |
+| `just check-swift-format` | Lint Swift formatting without rewriting files |
+| `just xcode` | Regenerate Xcode project files via XcodeGen |
+| `just sparkle-zip version=1.0.0` | Create Sparkle update zip from `build/BoBe.app` |
+| `just sparkle-sign-update version=1.0.0` | Sign Sparkle zip archive with private Sparkle key |
+| `just sparkle-generate-appcast ...` | Generate/update Sparkle `appcast.xml` |
+
+### Backend (Rust daemon)
+
+**Package manager / build tool:** `cargo`
+
+**Code layout (`src/`)**
+- `main.rs`: CLI entrypoint (`serve`, `version`) and server bootstrap
+- `api/`: Axum routes + handlers
+- `runtime/`: proactive session engine, triggers, learners, prompts
+- `services/`: business logic and orchestration
+- `db/`: SQLite repository layer (`sqlx`)
+- `llm/`: model provider integrations (Ollama/OpenAI/Azure/llama.cpp)
+
+**Common backend commands**
+
+```bash
+cargo fetch          # Download Rust dependencies
+cargo build          # Debug build
+cargo build --release
+cargo run -- serve   # Run backend server on localhost:8766
+cargo fmt --check    # Rust formatting check
+cargo clippy -q      # Lints (pedantic profile configured in Cargo.toml)
+cargo test -q        # Run backend tests
+```
+
+### Frontend (macOS SwiftUI app)
+
+**Package manager / build tool:** Swift Package Manager (`swift package`)
+
+**Code layout (`desktopMac/BoBe/`)**
+- `App/`: app lifecycle, tray, overlay panel, updater
+- `Views/`: overlay UI, settings screens, setup wizard
+- `Stores/`: observable app state
+- `Services/`: backend process + HTTP/SSE client
+- `Models/`: API DTOs and domain view models
+
+**Common frontend commands**
+
+```bash
+cd desktopMac
+swift package resolve      # Resolve Swift dependencies
+swift build -c debug       # Debug build
+swift build -c release     # Release build
+swiftlint lint --quiet     # Swift lint checks
+swiftformat --lint BoBe    # Formatting check
+swiftformat BoBe           # Apply formatting
+```
+
+---
+
 ## Configuration
 
 All settings are configurable at runtime through the app's settings panel. They persist to `~/.bobe/config.toml`.
