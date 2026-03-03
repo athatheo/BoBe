@@ -22,8 +22,8 @@ struct BoBeApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isQuitting = false
+    private var isStartingUp = true
     private var setupWindow: NSWindow?
-    private var setupCloseObserver: Any?
     private var setupCompletedObserver: Any?
     private var isShowingSetupAlert = false
     private var isTransitioningFromSetup = false
@@ -34,10 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func completeSetupAndCloseWizard() {
         logger.info("setup.complete_handoff.begin")
         self.setupCompletedSuccessfully = true
-        if let observer = setupCloseObserver {
-            NotificationCenter.default.removeObserver(observer)
-            self.setupCloseObserver = nil
-        }
+        self.unregisterSetupCloseObserver(for: self.setupWindow)
 
         let windowToHide = self.setupWindow ?? NSApplication.shared.keyWindow
         windowToHide?.animationBehavior = .none
@@ -147,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         if OverlayWindowManager.shared.panel == nil, self.setupWindow == nil, !self.isQuitting, !self.isShowingSetupAlert,
-           !self.isTransitioningFromSetup {
+           !self.isTransitioningFromSetup, !self.isStartingUp {
             Task { @MainActor in
                 self.showOverlay()
             }
@@ -156,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func startApp() async {
+        defer { self.isStartingUp = false }
         let isDev = ProcessInfo.processInfo.environment["BOBE_DEV"] != nil
         let forceOnboarding = ProcessInfo.processInfo.environment["BOBE_FORCE_ONBOARDING"] == "1"
 
@@ -220,10 +218,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func showSetupWizard() {
-        if let observer = setupCloseObserver {
-            NotificationCenter.default.removeObserver(observer)
-            self.setupCloseObserver = nil
-        }
+        // Close any existing overlay — only one UI path should be active
+        OverlayWindowManager.shared.close()
+
+        self.unregisterSetupCloseObserver(for: self.setupWindow)
         self.setupCompletedSuccessfully = false
 
         let theme = ThemeStore.shared.currentTheme
@@ -247,60 +245,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
 
         self.setupWindow = window
+        self.registerSetupCloseObserver(for: window)
+    }
 
-        self.setupCloseObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self, !self.isQuitting else { return }
+    @objc
+    private func handleSetupWindowWillClose(_ notification: Notification) {
+        guard let closedWindow = notification.object as? NSWindow,
+              closedWindow == self.setupWindow,
+              !self.isQuitting else { return }
 
-                if let observer = setupCloseObserver {
-                    NotificationCenter.default.removeObserver(observer)
-                    self.setupCloseObserver = nil
-                }
+        self.unregisterSetupCloseObserver(for: closedWindow)
+        self.setupWindow = nil
 
-                self.setupWindow = nil
-
-                if self.setupCompletedSuccessfully {
-                    logger.info("setup.wizard_closed_after_success")
-                    self.setupCompletedSuccessfully = false
-                    self.setupCloseCount = 0
-                    return
-                }
-
-                self.setupCloseCount += 1
-                if self.setupCloseCount >= 3 {
-                    logger.info("setup.wizard_closed_3x_showing_escape")
-                    self.isShowingSetupAlert = true
-                    let alert = NSAlert()
-                    alert.messageText = "Setup incomplete"
-                    alert.informativeText = "BoBe needs to be configured before it can work."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "Retry Setup")
-                    alert.addButton(withTitle: "Open Settings")
-                    alert.addButton(withTitle: "Quit")
-                    let response = alert.runModal()
-                    self.isShowingSetupAlert = false
-                    switch response {
-                    case .alertFirstButtonReturn:
-                        self.setupCloseCount = 0
-                        self.showSetupWizard()
-                    case .alertSecondButtonReturn:
-                        self.showOverlay()
-                        BobeStore.shared.connect()
-                        SettingsWindowManager.shared.show()
-                    default:
-                        NSApp.terminate(nil)
-                    }
-                    return
-                }
-
-                logger.info("setup.wizard_closed_incomplete_reopening (\(self.setupCloseCount)/3)")
-                self.showSetupWizard()
-            }
+        if self.setupCompletedSuccessfully {
+            logger.info("setup.wizard_closed_after_success")
+            self.setupCompletedSuccessfully = false
+            self.setupCloseCount = 0
+            return
         }
+
+        self.setupCloseCount += 1
+        if self.setupCloseCount >= 3 {
+            logger.info("setup.wizard_closed_3x_showing_escape")
+            self.isShowingSetupAlert = true
+            let alert = NSAlert()
+            alert.messageText = "Setup incomplete"
+            alert.informativeText = "BoBe needs to be configured before it can work."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Retry Setup")
+            alert.addButton(withTitle: "Open Settings")
+            alert.addButton(withTitle: "Quit")
+            let response = alert.runModal()
+            self.isShowingSetupAlert = false
+            switch response {
+            case .alertFirstButtonReturn:
+                self.setupCloseCount = 0
+                self.showSetupWizard()
+            case .alertSecondButtonReturn:
+                self.showOverlay()
+                BobeStore.shared.connect()
+                SettingsWindowManager.shared.show()
+            default:
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
+        logger.info("setup.wizard_closed_incomplete_reopening (\(self.setupCloseCount)/3)")
+        self.showSetupWizard()
+    }
+
+    private func registerSetupCloseObserver(for window: NSWindow) {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSetupWindowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
+    }
+
+    private func unregisterSetupCloseObserver(for window: NSWindow?) {
+        guard let window else { return }
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
     }
 
     @MainActor

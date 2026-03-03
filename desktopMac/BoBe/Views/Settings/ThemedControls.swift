@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - Control Sizing
@@ -336,136 +337,85 @@ struct BobeMenuPicker<Option: Hashable>: View {
     }
 
     @Environment(\.theme) private var theme
-    @State private var isHovered = false
-    @State private var isOpen = false
 
     var body: some View {
-        Button {
-            withAnimation(.easeOut(duration: 0.12)) {
-                self.isOpen.toggle()
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text(self.label(self.selection))
-                    .font(.system(size: self.size.fontSize, weight: .medium))
-                    .foregroundStyle(self.theme.colors.text)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: self.isOpen ? "chevron.up" : "chevron.down")
-                    .font(.system(size: max(9, self.size.fontSize - 2), weight: .semibold))
-                    .foregroundStyle(self.theme.colors.textMuted)
-            }
-            .padding(.horizontal, max(8, self.size.horizontalPadding - 1))
-            .padding(.vertical, max(5, self.size.verticalPadding))
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(self.theme.colors.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(
-                        self.isOpen ? self.theme.colors.primary : self.isHovered ? self.theme.colors.primary.opacity(0.55) : self.theme.colors.border,
-                        lineWidth: 1
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { self.isHovered = $0 }
+        ThemedPopUpButton(
+            selection: self.$selection,
+            options: self.options,
+            label: self.label,
+            isDark: self.theme.isDark,
+            textColor: self.theme.colors.text,
+            controlSize: self.size
+        )
         .frame(width: self.width)
-        .overlay {
-            if self.isOpen {
-                Color.clear
-                    .frame(maxWidth: 9999, maxHeight: 9999)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            self.isOpen = false
-                        }
-                    }
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            if self.isOpen {
-                self.dropdownPanel
-                    .offset(y: self.controlHeight + 6)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-            }
-        }
-        .onChange(of: self.selection) { _, _ in
-            withAnimation(.easeOut(duration: 0.12)) {
-                self.isOpen = false
-            }
-        }
-        .zIndex(self.isOpen ? 50 : 0)
-    }
-
-    private var controlHeight: CGFloat {
-        max(30, self.size.fontSize + (self.size.verticalPadding * 2) + 8)
-    }
-
-    private var dropdownPanel: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                ForEach(self.options, id: \.self) { option in
-                    BobeDropdownOptionRow(
-                        text: self.label(option),
-                        isSelected: option == self.selection
-                    ) {
-                        self.selection = option
-                    }
-                }
-            }
-            .padding(4)
-        }
-        .frame(maxHeight: min(CGFloat(self.options.count) * 30 + 8, 220))
-        .frame(width: self.width ?? 220, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(self.theme.colors.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(self.theme.colors.border, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-private struct BobeDropdownOptionRow: View {
-    let text: String
-    let isSelected: Bool
-    let action: () -> Void
+// MARK: - Native Pop-Up Button
 
-    @Environment(\.theme) private var theme
-    @State private var isHovered = false
+private struct ThemedPopUpButton<Option: Hashable>: NSViewRepresentable {
+    @Binding var selection: Option
+    let options: [Option]
+    let label: (Option) -> String
+    let isDark: Bool
+    let textColor: Color
+    let controlSize: BobeControlSize
 
-    var body: some View {
-        Button(action: self.action) {
-            HStack(spacing: 8) {
-                Text(self.text)
-                    .font(.system(size: 12, weight: self.isSelected ? .semibold : .regular))
-                    .foregroundStyle(self.theme.colors.text)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if self.isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(self.theme.colors.primary)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(
-                        self.isSelected
-                            ? self.theme.colors.primary.opacity(self.theme.isDark ? 0.26 : 0.16)
-                            : self.isHovered ? self.theme.colors.background : .clear
-                    )
-            )
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: false)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.changed(_:))
+        self.configure(button)
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        context.coordinator.parent = self
+        self.configure(button)
+    }
+
+    private func configure(_ button: NSPopUpButton) {
+        button.appearance = NSAppearance(named: self.isDark ? .darkAqua : .aqua)
+        button.isEnabled = !self.options.isEmpty
+        button.contentTintColor = NSColor(self.textColor)
+        switch self.controlSize {
+        case .mini:
+            button.controlSize = .mini
+            button.font = .systemFont(ofSize: 10, weight: .medium)
+        case .small:
+            button.controlSize = .small
+            button.font = .systemFont(ofSize: 11, weight: .medium)
+        case .regular:
+            button.controlSize = .regular
+            button.font = .systemFont(ofSize: 13, weight: .medium)
         }
-        .buttonStyle(.plain)
-        .onHover { self.isHovered = $0 }
+
+        let titles = self.options.map { self.label($0) }
+        let current = (0 ..< button.numberOfItems).compactMap { button.item(at: $0)?.title }
+        if current != titles {
+            button.removeAllItems()
+            button.addItems(withTitles: titles)
+        }
+        if let idx = self.options.firstIndex(of: self.selection) {
+            button.selectItem(at: idx)
+        } else if let fallback = self.options.first {
+            self.selection = fallback
+            button.selectItem(at: 0)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject {
+        var parent: ThemedPopUpButton
+        init(_ parent: ThemedPopUpButton) { self.parent = parent }
+
+        @MainActor @objc func changed(_ sender: NSPopUpButton) {
+            let idx = sender.indexOfSelectedItem
+            guard idx >= 0, idx < self.parent.options.count else { return }
+            self.parent.selection = self.parent.options[idx]
+        }
     }
 }
 
