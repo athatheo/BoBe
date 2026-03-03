@@ -71,7 +71,7 @@ impl GoalWorkerManager {
             return;
         }
 
-        let has_key = !cfg.llm.anthropic_api_key.is_empty();
+        let has_key = cfg.llm.has_anthropic_key();
         if !has_key && !cli_authenticated().await {
             warn!(
                 enabled = true,

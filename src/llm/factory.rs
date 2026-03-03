@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use reqwest::Client;
+use secrecy::ExposeSecret;
 use tracing::info;
 
 use crate::config::{Config, LlmBackend};
@@ -35,7 +36,7 @@ impl LlmProviderFactory {
         let config = self.config.load();
         match config.llm.backend {
             LlmBackend::Openai => {
-                if config.llm.openai_api_key.is_empty() {
+                if !config.llm.has_openai_key() {
                     return Err(AppError::Config(
                         "BOBE_OPENAI_API_KEY is required for OpenAI embedding backend".into(),
                     ));
@@ -43,14 +44,14 @@ impl LlmProviderFactory {
                 let model = resolve_openai_embedding_model(&config.embedding.model);
                 Ok(Arc::new(OpenAiEmbeddingProvider::openai(
                     self.client.clone(),
-                    &config.llm.openai_api_key,
+                    config.llm.openai_api_key.expose_secret(),
                     &model,
                     config.embedding.dimension,
                 )))
             }
             LlmBackend::AzureOpenai => {
                 if config.llm.azure_openai_endpoint.is_empty()
-                    || config.llm.azure_openai_api_key.is_empty()
+                    || !config.llm.has_azure_key()
                     || config.llm.azure_openai_deployment.is_empty()
                 {
                     return Err(AppError::Config(
@@ -60,7 +61,7 @@ impl LlmProviderFactory {
                 Ok(Arc::new(OpenAiEmbeddingProvider::azure(
                     self.client.clone(),
                     &config.llm.azure_openai_endpoint,
-                    &config.llm.azure_openai_api_key,
+                    config.llm.azure_openai_api_key.expose_secret(),
                     &config.llm.azure_openai_deployment,
                     config.embedding.dimension,
                 )))
@@ -117,22 +118,20 @@ impl LlmProviderFactory {
                 (Arc::new(p), "ollama-vision".into())
             }
             LlmBackend::Openai => {
-                if config.llm.openai_api_key.is_empty() {
+                if !config.llm.has_openai_key() {
                     return Err(crate::error::AppError::Config(
                         "BOBE_OPENAI_API_KEY is required for OpenAI vision backend".into(),
                     ));
                 }
                 let p = OpenAiProvider::new(
                     self.client.clone(),
-                    &config.llm.openai_api_key,
+                    config.llm.openai_api_key.expose_secret(),
                     &config.vision.openai_model,
                 );
                 (Arc::new(p), "openai-vision".into())
             }
             LlmBackend::AzureOpenai => {
-                if config.llm.azure_openai_endpoint.is_empty()
-                    || config.llm.azure_openai_api_key.is_empty()
-                {
+                if config.llm.azure_openai_endpoint.is_empty() || !config.llm.has_azure_key() {
                     return Err(crate::error::AppError::Config(
                         "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY required for Azure vision".into(),
                     ));
@@ -145,7 +144,7 @@ impl LlmProviderFactory {
                 let p = OpenAiProvider::with_base_url(
                     self.client.clone(),
                     &config.llm.azure_openai_endpoint,
-                    &config.llm.azure_openai_api_key,
+                    config.llm.azure_openai_api_key.expose_secret(),
                     deployment,
                 );
                 (Arc::new(p), "azure_openai-vision".into())
@@ -191,14 +190,14 @@ impl LlmProviderFactory {
                 Ok((Arc::new(provider), "ollama".into()))
             }
             LlmBackend::Openai => {
-                if config.llm.openai_api_key.is_empty() {
+                if !config.llm.has_openai_key() {
                     return Err(crate::error::AppError::Config(
                         "BOBE_OPENAI_API_KEY is required for OpenAI backend".into(),
                     ));
                 }
                 let provider = OpenAiProvider::new(
                     self.client.clone(),
-                    &config.llm.openai_api_key,
+                    config.llm.openai_api_key.expose_secret(),
                     &config.llm.openai_model,
                 );
                 Ok((Arc::new(provider), "openai".into()))
@@ -209,9 +208,7 @@ impl LlmProviderFactory {
                 Ok((Arc::new(provider), "llamacpp".into()))
             }
             LlmBackend::AzureOpenai => {
-                if config.llm.azure_openai_endpoint.is_empty()
-                    || config.llm.azure_openai_api_key.is_empty()
-                {
+                if config.llm.azure_openai_endpoint.is_empty() || !config.llm.has_azure_key() {
                     return Err(crate::error::AppError::Config(
                         "BOBE_AZURE_OPENAI_ENDPOINT and BOBE_AZURE_OPENAI_API_KEY are required for Azure OpenAI backend".into(),
                     ));
@@ -224,7 +221,7 @@ impl LlmProviderFactory {
                 let provider = OpenAiProvider::with_base_url(
                     self.client.clone(),
                     &config.llm.azure_openai_endpoint,
-                    &config.llm.azure_openai_api_key,
+                    config.llm.azure_openai_api_key.expose_secret(),
                     &config.llm.azure_openai_deployment,
                 );
                 Ok((Arc::new(provider), "azure_openai".into()))

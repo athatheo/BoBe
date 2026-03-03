@@ -12,7 +12,7 @@ pub(crate) mod persistence;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use tracing::{error, info, warn};
 
 use crate::config::Config;
@@ -144,16 +144,16 @@ pub struct UpdateResult {
 /// Coordinates runtime config changes.
 pub struct ConfigManager {
     config: Arc<ArcSwap<Config>>,
-    llm_provider: Arc<ArcSwap<Arc<dyn LlmProvider>>>,
-    embedding_provider: Arc<ArcSwap<Arc<dyn EmbeddingProvider>>>,
+    llm_provider: Arc<ArcSwapOption<Arc<dyn LlmProvider>>>,
+    embedding_provider: Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>,
     llm_factory: Option<Arc<LlmProviderFactory>>,
 }
 
 impl ConfigManager {
     pub fn new(
         config: Arc<ArcSwap<Config>>,
-        llm_provider: Arc<ArcSwap<Arc<dyn LlmProvider>>>,
-        embedding_provider: Arc<ArcSwap<Arc<dyn EmbeddingProvider>>>,
+        llm_provider: Arc<ArcSwapOption<Arc<dyn LlmProvider>>>,
+        embedding_provider: Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>,
         llm_factory: Option<Arc<LlmProviderFactory>>,
     ) -> Self {
         Self {
@@ -264,7 +264,7 @@ impl ConfigManager {
 
         match factory.create(backend) {
             Ok(p) => {
-                self.llm_provider.store(Arc::new(p));
+                self.llm_provider.store(Some(Arc::new(p)));
                 info!(backend = %backend, "config_manager.llm_rebuilt");
             }
             Err(e) => {
@@ -285,7 +285,7 @@ impl ConfigManager {
 
         match factory.create_embedding() {
             Ok(p) => {
-                self.embedding_provider.store(Arc::new(p));
+                self.embedding_provider.store(Some(Arc::new(p)));
                 info!("config_manager.embedding_rebuilt");
             }
             Err(e) => {

@@ -266,15 +266,15 @@ impl MessageHandler {
                 {
                     error!(error = %e, "message_handler.persist_failed");
                 } else {
-                    let tokens_per_sec = if result.duration_ms > 0.0 {
-                        result.token_count as f64 / (result.duration_ms / 1000.0)
+                    let chunks_per_sec = if result.duration_ms > 0.0 {
+                        result.chunk_count as f64 / (result.duration_ms / 1000.0)
                     } else {
                         0.0
                     };
                     info!(
-                        tokens = result.token_count,
+                        chunks = result.chunk_count,
                         ms = result.duration_ms as u64,
-                        tps = format!("{tokens_per_sec:.1}"),
+                        cps = format!("{chunks_per_sec:.1}"),
                         "message_handler.response_complete"
                     );
                 }

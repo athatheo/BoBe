@@ -20,8 +20,13 @@ use crate::models::observation::Observation;
 use crate::models::soul::Soul;
 use crate::models::user_profile::UserProfile;
 use crate::util::text::truncate_str;
+use crate::util::tokens::count_tokens;
 
 use super::soul_service::SoulService;
+
+/// Token count above which we emit a warning log. Conservative baseline;
+/// individual models may support much larger contexts (32K–128K+).
+const CONTEXT_TOKEN_WARN_THRESHOLD: usize = 4_000;
 
 /// Container for assembled context items from all sources.
 #[derive(Debug, Clone, Default)]
@@ -135,6 +140,15 @@ impl AssembledContext {
         if let Some(memories) = sections.get("relevant_memories") {
             context = format!("Relevant memories:\n{memories}\n\n{context}");
         }
+
+        let token_count = count_tokens(&context);
+        if token_count > CONTEXT_TOKEN_WARN_THRESHOLD {
+            tracing::warn!(
+                tokens = token_count,
+                "context_assembler.context_large — may approach model limits"
+            );
+        }
+
         (context, personality)
     }
 }

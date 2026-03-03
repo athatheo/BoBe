@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
@@ -146,10 +147,10 @@ pub async fn get_settings(
         llm_backend: cfg.llm.backend,
         ollama_model: cfg.ollama.model.clone(),
         openai_model: cfg.llm.openai_model.clone(),
-        openai_api_key_set: !cfg.llm.openai_api_key.is_empty(),
+        openai_api_key_set: cfg.llm.has_openai_key(),
         azure_openai_endpoint: cfg.llm.azure_openai_endpoint.clone(),
         azure_openai_deployment: cfg.llm.azure_openai_deployment.clone(),
-        azure_openai_api_key_set: !cfg.llm.azure_openai_api_key.is_empty(),
+        azure_openai_api_key_set: cfg.llm.has_azure_key(),
         vision_backend: cfg.vision.backend,
         vision_ollama_model: cfg.vision.ollama_model.clone(),
         capture_enabled: cfg.capture.enabled,
@@ -315,7 +316,7 @@ async fn validate_llm_settings_update(
     let openai_key = body
         .openai_api_key
         .clone()
-        .unwrap_or_else(|| cfg.llm.openai_api_key.clone());
+        .unwrap_or_else(|| cfg.llm.openai_api_key.expose_secret().to_owned());
     let azure_endpoint = body
         .azure_openai_endpoint
         .clone()
@@ -323,7 +324,7 @@ async fn validate_llm_settings_update(
     let azure_key = body
         .azure_openai_api_key
         .clone()
-        .unwrap_or_else(|| cfg.llm.azure_openai_api_key.clone());
+        .unwrap_or_else(|| cfg.llm.azure_openai_api_key.expose_secret().to_owned());
     let azure_deployment = body
         .azure_openai_deployment
         .clone()

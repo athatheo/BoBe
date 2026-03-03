@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 /// Supported LLM backend providers.
@@ -73,12 +74,29 @@ impl Default for DatabaseConfig {
 pub struct LlmConfig {
     pub backend: LlmBackend,
     pub llama_url: String,
-    pub openai_api_key: String,
+    #[serde(skip_serializing)]
+    pub openai_api_key: SecretString,
     pub openai_model: String,
     pub azure_openai_endpoint: String,
-    pub azure_openai_api_key: String,
+    #[serde(skip_serializing)]
+    pub azure_openai_api_key: SecretString,
     pub azure_openai_deployment: String,
-    pub anthropic_api_key: String,
+    #[serde(skip_serializing)]
+    pub anthropic_api_key: SecretString,
+}
+
+impl LlmConfig {
+    pub fn has_openai_key(&self) -> bool {
+        !self.openai_api_key.expose_secret().is_empty()
+    }
+
+    pub fn has_azure_key(&self) -> bool {
+        !self.azure_openai_api_key.expose_secret().is_empty()
+    }
+
+    pub fn has_anthropic_key(&self) -> bool {
+        !self.anthropic_api_key.expose_secret().is_empty()
+    }
 }
 
 impl Default for LlmConfig {
@@ -86,12 +104,12 @@ impl Default for LlmConfig {
         Self {
             backend: LlmBackend::Ollama,
             llama_url: "http://localhost:8080".into(),
-            openai_api_key: String::new(),
+            openai_api_key: SecretString::default(),
             openai_model: "gpt-4o-mini".into(),
             azure_openai_endpoint: String::new(),
-            azure_openai_api_key: String::new(),
+            azure_openai_api_key: SecretString::default(),
             azure_openai_deployment: String::new(),
-            anthropic_api_key: String::new(),
+            anthropic_api_key: SecretString::default(),
         }
     }
 }
@@ -534,14 +552,14 @@ impl Config {
         let secrets = crate::secrets::load_secrets();
         for (key, value) in &secrets {
             match key.as_str() {
-                "llm.openai_api_key" if config.llm.openai_api_key.is_empty() => {
-                    config.llm.openai_api_key.clone_from(value);
+                "llm.openai_api_key" if !config.llm.has_openai_key() => {
+                    config.llm.openai_api_key = SecretString::from(value.clone());
                 }
-                "llm.azure_openai_api_key" if config.llm.azure_openai_api_key.is_empty() => {
-                    config.llm.azure_openai_api_key.clone_from(value);
+                "llm.azure_openai_api_key" if !config.llm.has_azure_key() => {
+                    config.llm.azure_openai_api_key = SecretString::from(value.clone());
                 }
-                "llm.anthropic_api_key" if config.llm.anthropic_api_key.is_empty() => {
-                    config.llm.anthropic_api_key.clone_from(value);
+                "llm.anthropic_api_key" if !config.llm.has_anthropic_key() => {
+                    config.llm.anthropic_api_key = SecretString::from(value.clone());
                 }
                 _ => {}
             }

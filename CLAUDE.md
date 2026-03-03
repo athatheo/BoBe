@@ -11,12 +11,14 @@ BoBe — local-first proactive AI companion. Rust backend (`bobe-daemon`) + nati
 All via `just` (see `justfile`):
 
 ```bash
-just dev          # Debug build (backend + frontend)
-just serve        # cargo run -- serve
-just build        # Release build + bundle .app
-just clean        # Clean all artifacts
-just test         # fmt + clippy + cargo test + swiftlint + swift build
+just run            # Debug build + launch app
+just backend        # cargo run -- serve (backend only, for Xcode dev)
+just build          # Release build + bundle .app
+just clean          # Clean all artifacts
+just check          # fmt + clippy + cargo test + swiftlint + swift build
+just test           # Alias for check
 just release 1.0.0  # build → sign → DMG
+just ship 1.0.0 apple-id team-id password  # Full pipeline: clean → build → sign → DMG → notarize → staple → Sparkle
 ```
 
 ## Architecture

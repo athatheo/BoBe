@@ -20,7 +20,7 @@ use crate::util::sse::factories::{
 #[derive(Debug)]
 pub struct StreamResult {
     pub full_response: String,
-    pub token_count: usize,
+    pub chunk_count: usize,
     pub duration_ms: f64,
     pub success: bool,
     pub first_token_ms: Option<f64>,
@@ -83,7 +83,7 @@ pub async fn stream_response(
 
     StreamResult {
         full_response,
-        token_count: sequence,
+        chunk_count: sequence,
         duration_ms,
         success,
         first_token_ms,
@@ -140,7 +140,7 @@ pub async fn stream_llm_response(
 
     StreamResult {
         full_response,
-        token_count: sequence,
+        chunk_count: sequence,
         duration_ms,
         success,
         first_token_ms,
@@ -229,6 +229,7 @@ fn push_error_event_classified(
 fn classify_error(error: &AppError) -> (&'static str, bool) {
     match error {
         AppError::Tool(_) => ("TOOL_SYSTEM_ERROR", false),
+        AppError::LlmUnavailable(_) => ("LLM_UNAVAILABLE", false),
         AppError::LlmTimeout(_) => ("LLM_TIMEOUT", true),
         _ => ("RESPONSE_ERROR", true),
     }

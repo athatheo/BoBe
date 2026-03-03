@@ -148,10 +148,24 @@ sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" lin
     "$SPARKLE_BIN/generate_appcast" "${ARGS[@]}" "{{ archives_dir }}"
     echo "Generated appcast at {{ archives_dir }}/appcast.xml"
 
-# Dev: build debug + run
-dev:
+# Build debug + launch app (Swift app manages backend lifecycle)
+run:
+    #!/bin/bash
+    set -euo pipefail
     cargo build
-    cd desktopMac && swift build -c debug
+    (cd desktopMac && swift build -c debug)
+    # Place backend where BackendService.findBinaryPath() discovers it
+    mkdir -p desktopMac/.build/debug
+    cp target/debug/bobe desktopMac/.build/debug/bobe-daemon
+    echo "Launching BoBe..."
+    desktopMac/.build/debug/BoBe
+
+# Run backend only (use when running frontend from Xcode)
+backend:
+    cargo run -- serve
+
+# Alias for backend
+run-backend: backend
 
 # Clean all build artifacts
 clean:
@@ -163,10 +177,6 @@ clean:
 xcode:
     cd desktopMac && xcodegen generate
 
-# Run backend only (dev)
-serve:
-    cargo run -- serve
-
 # Format Swift frontend source files
 format-swift:
     cd desktopMac && swiftformat BoBe
@@ -175,10 +185,44 @@ format-swift:
 check-swift-format:
     cd desktopMac && swiftformat --lint BoBe
 
-# Run tests
-test:
+# fmt + clippy + test + swiftlint + swift build
+check:
     cargo fmt --check
     cargo clippy -q
     cargo test -q
     cd desktopMac && swiftlint lint --quiet
     cd desktopMac && swift build -c debug
+
+# Alias for check (muscle memory)
+test: check
+
+# Full ship: clean → resolve deps → build → sign → DMG → notarize → staple → Sparkle zip
+ship version apple-id team-id password identity="Developer ID Application":
+    #!/bin/bash
+    set -euo pipefail
+    echo "=== Clean ==="
+    just clean
+
+    echo "=== Resolve dependencies ==="
+    cargo fetch
+    (cd desktopMac && swift package resolve)
+
+    echo "=== Build + Bundle + Sign + DMG ==="
+    just release {{ version }} {{ identity }}
+
+    echo "=== Notarize ==="
+    just notarize {{ version }} apple-id={{ apple-id }} team-id={{ team-id }} password={{ password }}
+
+    echo "=== Staple ==="
+    just staple {{ version }}
+
+    echo "=== Sparkle ZIP ==="
+    just sparkle-zip {{ version }}
+
+    echo ""
+    echo "=== Ship complete ==="
+    echo "DMG:         build/BoBe-{{ version }}.dmg (signed + notarized + stapled)"
+    echo "Sparkle ZIP: build/BoBe-{{ version }}.zip"
+    echo ""
+    echo "Next: just sparkle-sign-update {{ version }}"
+    echo "Then: upload DMG + ZIP + update appcast.xml"

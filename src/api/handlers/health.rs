@@ -13,6 +13,7 @@ pub struct HealthResponse {
     status: &'static str,
     services: ServiceHealth,
     version: &'static str,
+    setup_completed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -24,7 +25,16 @@ pub struct ServiceHealth {
 pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let db_ok = sqlx::query("SELECT 1").fetch_one(&state.db).await.is_ok();
 
-    let llm_ok = state.llm_provider.health_check().await;
+    let cfg = state.config();
+    let setup_completed = cfg.setup_completed;
+    drop(cfg);
+
+    // Don't flag LLM as broken during onboarding — it's expected to be absent
+    let llm_ok = if setup_completed {
+        state.llm_provider.health_check().await
+    } else {
+        true
+    };
 
     let all_ok = db_ok && llm_ok;
     let status = if all_ok { "healthy" } else { "degraded" };
@@ -36,6 +46,7 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResp
             llm: if llm_ok { "ok" } else { "error" },
         },
         version: env!("CARGO_PKG_VERSION"),
+        setup_completed,
     })
 }
 

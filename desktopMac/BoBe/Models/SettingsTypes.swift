@@ -218,6 +218,12 @@ struct SendMessageResponse: Codable, Sendable {
 
 struct HealthResponse: Codable, Sendable {
     let status: String
+    let setupCompleted: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case setupCompleted = "setup_completed"
+    }
 }
 
 // MARK: - Onboarding

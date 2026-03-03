@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
+use secrecy::ExposeSecret;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -77,7 +78,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
     ) -> Result<Vec<PlanStep>, AppError> {
         let cfg = self.cfg();
         let effective_max_steps = max_steps.unwrap_or(cfg.goal_worker.plan_max_steps);
-        let api_key = cfg.llm.anthropic_api_key.clone();
+        let api_key = cfg.llm.anthropic_api_key.expose_secret().to_owned();
         let model = cfg.goal_worker.claude_model.clone();
         drop(cfg);
 
@@ -145,7 +146,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
     ) -> Result<GoalExecutionResult, AppError> {
         let cfg = self.cfg();
         let model = cfg.goal_worker.claude_model.clone();
-        let api_key = cfg.llm.anthropic_api_key.clone();
+        let api_key = cfg.llm.anthropic_api_key.expose_secret().to_owned();
         drop(cfg);
 
         let step_list: String = steps

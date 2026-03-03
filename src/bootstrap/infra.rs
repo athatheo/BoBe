@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use reqwest::Client;
 use tracing::{error, info, warn};
 
@@ -28,8 +28,8 @@ pub struct Infrastructure {
     pub llm_provider: Arc<dyn LlmProvider>,
     pub vision_llm_provider: Option<Arc<dyn LlmProvider>>,
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
-    pub llm_swap_handle: Arc<ArcSwap<Arc<dyn LlmProvider>>>,
-    pub embedding_swap_handle: Arc<ArcSwap<Arc<dyn EmbeddingProvider>>>,
+    pub llm_swap_handle: Arc<ArcSwapOption<Arc<dyn LlmProvider>>>,
+    pub embedding_swap_handle: Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>,
     pub llm_factory: Arc<LlmProviderFactory>,
     pub event_queue: Arc<EventQueue>,
     pub connection_manager: Arc<SseConnectionManager>,
@@ -48,23 +48,40 @@ impl Infrastructure {
             .build()
             .map_err(|e| AppError::Internal(format!("HTTP client: {e}")))?;
 
-        // LLM
+        // LLM — try to create, fall back to empty on fresh install
         let llm_factory = Arc::new(LlmProviderFactory::new(
             http_client.clone(),
             config_arc.clone(),
         ));
-        let (swappable, llm_swap_handle) =
-            SwappableLlmProvider::new(llm_factory.create(config.llm.backend)?);
+        let (swappable, llm_swap_handle) = match llm_factory.create(config.llm.backend) {
+            Ok(p) => SwappableLlmProvider::new(p),
+            Err(e) => {
+                warn!(error = %e, "LLM provider unavailable — starting without LLM until setup completes");
+                SwappableLlmProvider::new_empty()
+            }
+        };
         let llm_provider: Arc<dyn LlmProvider> = Arc::new(swappable);
 
+        // Vision — try to create, fall back to None (already optional)
         let vision_llm_provider = match config.vision.backend {
             LlmBackend::None => None,
-            backend => Some(llm_factory.create_vision(backend)?),
+            backend => match llm_factory.create_vision(backend) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    warn!(error = %e, "Vision LLM unavailable — starting without vision");
+                    None
+                }
+            },
         };
 
-        // Embedding
-        let (swappable_embed, embedding_swap_handle) =
-            SwappableEmbeddingProvider::new(llm_factory.create_embedding()?);
+        // Embedding — try to create, fall back to empty
+        let (swappable_embed, embedding_swap_handle) = match llm_factory.create_embedding() {
+            Ok(p) => SwappableEmbeddingProvider::new(p),
+            Err(e) => {
+                warn!(error = %e, "Embedding unavailable — starting without embeddings until setup completes");
+                SwappableEmbeddingProvider::new_empty()
+            }
+        };
         let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(swappable_embed);
 
         // SSE

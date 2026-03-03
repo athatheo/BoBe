@@ -196,8 +196,8 @@ impl ProactiveGenerator {
         result: &crate::runtime::response_streamer::StreamResult,
         target: Option<&Conversation>,
     ) {
-        let tokens_per_sec = if result.duration_ms > 0.0 {
-            result.token_count as f64 / (result.duration_ms / 1000.0)
+        let chunks_per_sec = if result.duration_ms > 0.0 {
+            result.chunk_count as f64 / (result.duration_ms / 1000.0)
         } else {
             0.0
         };
@@ -212,9 +212,9 @@ impl ProactiveGenerator {
                     {
                         Ok(Some(_)) => {
                             info!(
-                                tokens = result.token_count,
+                                chunks = result.chunk_count,
                                 ms = result.duration_ms as u64,
-                                tps = format!("{tokens_per_sec:.1}"),
+                                cps = format!("{chunks_per_sec:.1}"),
                                 first_token_ms = ?result.first_token_ms.map(|v| v as u64),
                                 "proactive_generator.complete"
                             );
@@ -243,7 +243,7 @@ impl ProactiveGenerator {
                 Ok(conv) => {
                     info!(
                         conversation_id = &conv.id.to_string()[..8],
-                        tokens = result.token_count,
+                        chunks = result.chunk_count,
                         "proactive_generator.conversation_created"
                     );
                 }

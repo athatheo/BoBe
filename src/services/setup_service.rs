@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use secrecy::SecretString;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
@@ -647,7 +648,7 @@ async fn test_openai_embedding(
     drop(current);
 
     candidate.llm.backend = LlmBackend::Openai;
-    candidate.llm.openai_api_key = api_key.to_string();
+    candidate.llm.openai_api_key = SecretString::from(api_key.to_string());
     candidate.llm.openai_model = model.to_string();
 
     let factory = LlmProviderFactory::new(
@@ -670,7 +671,7 @@ async fn test_azure_embedding(
 
     candidate.llm.backend = LlmBackend::AzureOpenai;
     candidate.llm.azure_openai_endpoint = endpoint.to_string();
-    candidate.llm.azure_openai_api_key = api_key.to_string();
+    candidate.llm.azure_openai_api_key = SecretString::from(api_key.to_string());
     candidate.llm.azure_openai_deployment = deployment.to_string();
 
     let factory = LlmProviderFactory::new(
