@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 // MARK: - Cloud & Local Config Views
@@ -26,6 +25,7 @@ extension SetupWizard {
                         },
                         width: 440
                     )
+                    .accessibilityLabel("Provider")
                     .onChange(of: selectedProvider) { _, newProvider in
                         let provider = providers.first(where: { $0.id == newProvider })
                         selectedModel = provider?.models.first?.id ?? ""
@@ -69,6 +69,7 @@ extension SetupWizard {
                         },
                         width: 440
                     )
+                    .accessibilityLabel("Model")
                 }
 
                 let provider = options?.cloudProviders.first { $0.id == selectedProvider }
@@ -84,6 +85,7 @@ extension SetupWizard {
                     handleCloudSetup()
                 }
                 .bobeButton(.primary, size: .regular)
+                .keyboardShortcut(.defaultAction)
                 .disabled(!canSubmit)
                 .frame(maxWidth: .infinity)
 
@@ -124,6 +126,7 @@ extension SetupWizard {
                 handleLocalSetup()
             }
             .bobeButton(.primary, size: .regular)
+            .keyboardShortcut(.defaultAction)
             .disabled(busy)
             .frame(maxWidth: .infinity)
 
@@ -148,10 +151,9 @@ extension SetupWizard {
             .foregroundStyle(theme.colors.textMuted)
         }
         .bobeButton(.ghost, size: .small)
+        .keyboardShortcut(.cancelAction)
     }
 }
-
-// MARK: - Tier Card (local config)
 
 struct TierCard: View {
     let tier: LocalTier
@@ -160,33 +162,36 @@ struct TierCard: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: self.isSelected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(self.isSelected ? self.theme.colors.primary : self.theme.colors.border)
-                .font(.system(size: 14))
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(self.tier.label)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(self.theme.colors.text)
-                    Text(self.tier.diskLabel)
+        Button(action: self.onSelect) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: self.isSelected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(self.isSelected ? self.theme.colors.primary : self.theme.colors.border)
+                    .font(.system(size: 14))
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(self.tier.label)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(self.theme.colors.text)
+                        Text(self.tier.diskLabel)
+                            .font(.system(size: 12))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                    }
+                    Text(self.tier.description)
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.textMuted)
                 }
-                Text(self.tier.description)
-                    .font(.system(size: 12))
-                    .foregroundStyle(self.theme.colors.textMuted)
+                Spacer()
             }
-            Spacer()
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(self.isSelected ? self.theme.colors.primary.opacity(0.12) : self.theme.colors.surface)
+                    .stroke(self.isSelected ? self.theme.colors.primary : self.theme.colors.border, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(self.isSelected ? self.theme.colors.primary.opacity(0.12) : self.theme.colors.surface)
-                .stroke(self.isSelected ? self.theme.colors.primary : self.theme.colors.border, lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { self.onSelect() }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(self.isSelected ? .isSelected : [])
     }
 }

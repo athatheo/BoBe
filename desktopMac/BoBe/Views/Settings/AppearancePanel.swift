@@ -49,81 +49,85 @@ struct ThemeCard: View {
     @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(self.themeConfig.colors.background)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(self.themeConfig.colors.border, lineWidth: 1)
-                    )
+        Button(action: self.onSelect) {
+            VStack(alignment: .leading, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(self.themeConfig.colors.background)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(self.themeConfig.colors.border, lineWidth: 1)
+                        )
 
-                VStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(self.themeConfig.colors.avatarRing)
-                            .frame(width: 48, height: 48)
-                            .overlay(
-                                Circle()
-                                    .stroke(self.themeConfig.colors.border, lineWidth: 1.5)
-                            )
-
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [self.themeConfig.colors.avatarFaceLight, self.themeConfig.colors.avatarFaceDark],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(self.themeConfig.colors.avatarRing)
+                                .frame(width: 48, height: 48)
+                                .overlay(
+                                    Circle()
+                                        .stroke(self.themeConfig.colors.border, lineWidth: 1.5)
                                 )
-                            )
-                            .frame(width: 32, height: 32)
 
-                        HStack(spacing: 6) {
-                            ClosedEyeArc(color: self.themeConfig.colors.avatarRing)
-                            ClosedEyeArc(color: self.themeConfig.colors.avatarRing)
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [self.themeConfig.colors.avatarFaceLight, self.themeConfig.colors.avatarFaceDark],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 32, height: 32)
+
+                            HStack(spacing: 6) {
+                                ClosedEyeArc(color: self.themeConfig.colors.avatarRing)
+                                ClosedEyeArc(color: self.themeConfig.colors.avatarRing)
+                            }
+                            .offset(y: 1)
                         }
-                        .offset(y: 1)
-                    }
 
-                    HStack(spacing: 4) {
-                        Circle().fill(self.themeConfig.colors.primary).frame(width: 14, height: 14)
-                        Circle().fill(self.themeConfig.colors.secondary).frame(width: 14, height: 14)
-                        Circle().fill(self.themeConfig.colors.tertiary).frame(width: 14, height: 14)
+                        HStack(spacing: 4) {
+                            Circle().fill(self.themeConfig.colors.primary).frame(width: 14, height: 14)
+                            Circle().fill(self.themeConfig.colors.secondary).frame(width: 14, height: 14)
+                            Circle().fill(self.themeConfig.colors.tertiary).frame(width: 14, height: 14)
+                        }
                     }
                 }
-            }
-            .frame(height: 92)
+                .frame(height: 92)
 
-            HStack(spacing: 4) {
-                Text(self.themeConfig.name)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(self.themeConfig.colors.text)
-                if self.isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(self.themeConfig.colors.primary)
+                HStack(spacing: 4) {
+                    Text(self.themeConfig.name)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(self.themeConfig.colors.text)
+                    if self.isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(self.themeConfig.colors.primary)
+                    }
                 }
-            }
 
-            Text(self.themeConfig.description)
-                .font(.system(size: 10))
-                .foregroundStyle(self.themeConfig.colors.textMuted)
-                .lineLimit(1)
+                Text(self.themeConfig.description)
+                    .font(.system(size: 10))
+                    .foregroundStyle(self.themeConfig.colors.textMuted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 152, alignment: .topLeading)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(self.themeConfig.colors.surface)
+                    .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(self.isSelected ? self.themeConfig.colors.primary : self.themeConfig.colors.border, lineWidth: self.isSelected ? 2 : 1)
+            )
         }
-        .frame(maxWidth: .infinity, minHeight: 152, alignment: .topLeading)
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(self.themeConfig.colors.surface)
-                .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(self.isSelected ? self.themeConfig.colors.primary : self.themeConfig.colors.border, lineWidth: self.isSelected ? 2 : 1)
-        )
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(self.themeConfig.name) theme")
+        .accessibilityAddTraits(self.isSelected ? .isSelected : [])
         .scaleEffect(self.isHovered ? 1.02 : 1.0)
         .animation(.easeOut(duration: 0.15), value: self.isHovered)
         .onHover { self.isHovered = $0 }
-        .onTapGesture(perform: self.onSelect)
     }
 }
 

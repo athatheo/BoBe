@@ -66,43 +66,47 @@ struct SoulsEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 4) {
-                            ForEach(self.souls) { soul in
-                                BobeSelectableRow(
-                                    isSelected: self.selectedId == soul.id,
-                                    action: { self.selectedId = soul.id },
-                                    content: {
-                                        VStack(alignment: .leading) {
-                                            HStack(spacing: 4) {
-                                                Text(soul.name)
-                                                    .bobeTextStyle(.rowTitle)
-                                                if soul.isDefault {
-                                                    Text("default")
-                                                        .bobeTextStyle(.badge)
-                                                        .padding(.horizontal, 4)
-                                                        .padding(.vertical, 1)
-                                                        .background(Capsule().fill(self.theme.colors.primary.opacity(0.2)))
-                                                        .foregroundStyle(self.theme.colors.primary)
-                                                }
+                    List(selection: self.$selectedId) {
+                        ForEach(self.souls) { soul in
+                            BobeSelectableRow(
+                                isSelected: self.selectedId == soul.id,
+                                content: {
+                                    VStack(alignment: .leading) {
+                                        HStack(spacing: 4) {
+                                            Text(soul.name)
+                                                .bobeTextStyle(.rowTitle)
+                                            if soul.isDefault {
+                                                Text("default")
+                                                    .bobeTextStyle(.badge)
+                                                    .padding(.horizontal, 4)
+                                                    .padding(.vertical, 1)
+                                                    .background(Capsule().fill(self.theme.colors.primary.opacity(0.2)))
+                                                    .foregroundStyle(self.theme.colors.primary)
                                             }
-                                            Text(String(soul.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
-                                                .bobeTextStyle(.rowMeta)
-                                                .foregroundStyle(self.theme.colors.textMuted)
-                                                .lineLimit(1)
                                         }
-                                        Spacer()
-                                        BobeToggle(
-                                            isOn: Binding(
-                                                get: { soul.enabled },
-                                                set: { _ in self.toggleSoul(soul) }
-                                            )
-                                        )
+                                        Text(String(soul.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
+                                            .bobeTextStyle(.rowMeta)
+                                            .foregroundStyle(self.theme.colors.textMuted)
+                                            .lineLimit(1)
                                     }
-                                )
-                            }
+                                    Spacer()
+                                    BobeToggle(
+                                        isOn: Binding(
+                                            get: { soul.enabled },
+                                            set: { _ in self.toggleSoul(soul) }
+                                        ),
+                                        accessibilityLabel: "Enable soul \(soul.name)"
+                                    )
+                                }
+                            )
+                            .tag(soul.id)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .background(self.theme.colors.background)
                 }
             }
@@ -155,6 +159,7 @@ struct SoulsEditor: View {
                                 } label: {
                                     Image(systemName: "trash")
                                 }
+                                .accessibilityLabel("Delete soul")
                                 .bobeButton(.destructive, size: .small)
                             }
                         }

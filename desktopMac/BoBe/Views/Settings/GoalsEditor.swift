@@ -67,46 +67,50 @@ struct GoalsEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 4) {
-                            ForEach(self.goals) { goal in
-                                BobeSelectableRow(
-                                    isSelected: self.selectedId == goal.id,
-                                    action: { self.selectedId = goal.id },
-                                    content: {
-                                        HStack(spacing: 8) {
-                                            Circle()
-                                                .fill(self.priorityColor(goal.priority))
-                                                .frame(width: 8, height: 8)
+                    List(selection: self.$selectedId) {
+                        ForEach(self.goals) { goal in
+                            BobeSelectableRow(
+                                isSelected: self.selectedId == goal.id,
+                                content: {
+                                    HStack(spacing: 8) {
+                                        Circle()
+                                            .fill(self.priorityColor(goal.priority))
+                                            .frame(width: 8, height: 8)
 
-                                            VStack(alignment: .leading, spacing: 3) {
-                                                Text(String(goal.content.prefix(40)))
-                                                    .bobeTextStyle(.rowTitle)
-                                                    .lineLimit(1)
-                                                HStack(spacing: 4) {
-                                                    Text(goal.status.rawValue)
-                                                    Text("•")
-                                                    Text(goal.priority.rawValue)
-                                                    Text("•")
-                                                    Text(goal.source.rawValue)
-                                                }
-                                                .bobeTextStyle(.rowMeta)
-                                                .foregroundStyle(self.theme.colors.textMuted)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(String(goal.content.prefix(40)))
+                                                .bobeTextStyle(.rowTitle)
+                                                .lineLimit(1)
+                                            HStack(spacing: 4) {
+                                                Text(goal.status.rawValue)
+                                                Text("•")
+                                                Text(goal.priority.rawValue)
+                                                Text("•")
+                                                Text(goal.source.rawValue)
                                             }
-                                            Spacer()
-
-                                            BobeToggle(
-                                                isOn: Binding(
-                                                    get: { goal.enabled },
-                                                    set: { _ in self.toggleGoal(goal) }
-                                                )
-                                            )
+                                            .bobeTextStyle(.rowMeta)
+                                            .foregroundStyle(self.theme.colors.textMuted)
                                         }
+                                        Spacer()
+
+                                        BobeToggle(
+                                            isOn: Binding(
+                                                get: { goal.enabled },
+                                                set: { _ in self.toggleGoal(goal) }
+                                            ),
+                                            accessibilityLabel: "Enable goal \(String(goal.content.prefix(40)))"
+                                        )
                                     }
-                                )
-                            }
+                                }
+                            )
+                            .tag(goal.id)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .background(self.theme.colors.background)
                 }
             }
@@ -164,6 +168,7 @@ struct GoalsEditor: View {
                             },
                             width: 180
                         )
+                        .accessibilityLabel("Goal priority")
                         .onChange(of: self.selectedPriority) { _, _ in self.isDirty = true }
 
                         Spacer()
@@ -221,6 +226,7 @@ struct GoalsEditor: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
+                            .accessibilityLabel("Delete goal")
                             .bobeButton(.destructive, size: .small)
                         }
 

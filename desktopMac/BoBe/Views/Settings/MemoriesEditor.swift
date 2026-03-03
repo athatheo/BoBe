@@ -53,6 +53,7 @@ struct MemoriesEditor: View {
                         width: 110,
                         size: .small
                     )
+                    .accessibilityLabel("Filter memories by category")
 
                     BobeMenuPicker(
                         selection: self.$filterType,
@@ -68,6 +69,7 @@ struct MemoriesEditor: View {
                         width: 90,
                         size: .small
                     )
+                    .accessibilityLabel("Filter memories by type")
 
                     Spacer()
 
@@ -135,38 +137,42 @@ struct MemoriesEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 4) {
-                            ForEach(self.filteredMemories) { memory in
-                                BobeSelectableRow(
-                                    isSelected: self.selectedId == memory.id,
-                                    action: { self.selectedId = memory.id },
-                                    content: {
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 3) {
-                                                Text(String(memory.content.prefix(45)))
-                                                    .bobeTextStyle(.rowTitle)
-                                                    .lineLimit(1)
-                                                let catLabel = self.categoryLabels[memory.category] ?? memory.category.rawValue
-                                                let typeLabel = self.typeLabels[memory.memoryType] ?? memory.memoryType.rawValue
-                                                Text("\(catLabel) · \(typeLabel)")
-                                                    .bobeTextStyle(.rowMeta)
-                                                    .foregroundStyle(self.theme.colors.textMuted)
-                                            }
-                                            .opacity(memory.enabled ? 1 : 0.45)
-                                            Spacer()
-                                            BobeToggle(
-                                                isOn: Binding(
-                                                    get: { memory.enabled },
-                                                    set: { _ in self.toggleMemory(memory) }
-                                                )
-                                            )
+                    List(selection: self.$selectedId) {
+                        ForEach(self.filteredMemories) { memory in
+                            BobeSelectableRow(
+                                isSelected: self.selectedId == memory.id,
+                                content: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(String(memory.content.prefix(45)))
+                                                .bobeTextStyle(.rowTitle)
+                                                .lineLimit(1)
+                                            let catLabel = self.categoryLabels[memory.category] ?? memory.category.rawValue
+                                            let typeLabel = self.typeLabels[memory.memoryType] ?? memory.memoryType.rawValue
+                                            Text("\(catLabel) · \(typeLabel)")
+                                                .bobeTextStyle(.rowMeta)
+                                                .foregroundStyle(self.theme.colors.textMuted)
                                         }
+                                        .opacity(memory.enabled ? 1 : 0.45)
+                                        Spacer()
+                                        BobeToggle(
+                                            isOn: Binding(
+                                                get: { memory.enabled },
+                                                set: { _ in self.toggleMemory(memory) }
+                                            ),
+                                            accessibilityLabel: "Enable memory \(String(memory.content.prefix(40)))"
+                                        )
                                     }
-                                )
-                            }
+                                }
+                            )
+                            .tag(memory.id)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .background(self.theme.colors.background)
                 }
             }
@@ -216,6 +222,7 @@ struct MemoriesEditor: View {
                             width: 130,
                             size: .small
                         )
+                        .accessibilityLabel("Memory category")
                         .onChange(of: self.selectedCategory) { _, _ in self.isDirty = true }
 
                         Text(memory.createdAt.prefix(10))
@@ -254,6 +261,7 @@ struct MemoriesEditor: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
+                            .accessibilityLabel("Delete memory")
                             .bobeButton(.destructive, size: .small)
                         }
 

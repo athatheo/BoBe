@@ -50,14 +50,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         }
     }
 
-    var group: SettingsCategoryGroup? {
-        switch self {
-        case .souls, .goals, .memories, .userProfiles: .context
-        case .tools, .mcpServers: .integrations
-        case .appearance, .aiModel, .behavior, .privacy, .goalWorker: .preferences
-        case .advanced: .advanced
-        }
-    }
 }
 
 enum SettingsCategoryGroup: String, CaseIterable {
@@ -98,10 +90,10 @@ struct SettingsWindow: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        NavigationSplitView {
             self.settingsSidebar
-                .frame(width: 220)
-
+                .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 280)
+        } detail: {
             VStack(spacing: 0) {
                 self.settingsHeader
                 self.settingsContent
@@ -109,6 +101,7 @@ struct SettingsWindow: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(self.theme.colors.background)
         }
+        .navigationSplitViewStyle(.balanced)
         .environment(\.theme, self.theme)
         .preferredColorScheme(self.theme.isDark ? .dark : .light)
         .background(self.theme.colors.background)
@@ -136,44 +129,20 @@ struct SettingsWindow: View {
                     .frame(height: 1)
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.rawValue)
-                                .bobeTextStyle(.sectionLabel)
-                                .tracking(1)
-                                .foregroundStyle(self.theme.colors.textMuted)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 4)
-
-                            ForEach(group.categories) { category in
-                                self.sidebarItem(category)
-                            }
+            List(selection: self.$selectedCategory) {
+                ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
+                    Section(group.rawValue) {
+                        ForEach(group.categories) { category in
+                            Label(category.label, systemImage: category.icon)
+                                .tag(category as SettingsCategory?)
                         }
                     }
                 }
-                .padding(.vertical, 8)
             }
+            .listStyle(.sidebar)
+            .tint(self.theme.colors.primary)
         }
         .background(self.theme.colors.background)
-        .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(self.theme.colors.border)
-                .frame(width: 1)
-        }
-    }
-
-    private func sidebarItem(_ category: SettingsCategory) -> some View {
-        let isSelected = self.selectedCategory == category
-        return BobeSidebarItem(
-            icon: category.icon,
-            title: category.label,
-            isSelected: isSelected
-        ) {
-            self.selectedCategory = category
-        }
-        .padding(.horizontal, 8)
     }
 
     private var settingsHeader: some View {
