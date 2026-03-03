@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn parse_basic_goals() {
-        let content = r#"# My Goals
+        let content = r"# My Goals
 
 ## High Priority
 - [ ] Learn Rust
@@ -129,7 +129,7 @@ mod tests {
 ## Inferred by BoBe
 
 - [ ] Improve async skills
-"#;
+";
         let goals = parse_goals_file(content);
         assert_eq!(goals.len(), 6);
 

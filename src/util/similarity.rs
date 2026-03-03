@@ -36,16 +36,16 @@ mod tests {
 
     #[test]
     fn empty_returns_zero() {
-        assert_eq!(cosine_similarity(&[], &[]), 0.0);
+        assert!(cosine_similarity(&[], &[]).abs() < f64::EPSILON);
     }
 
     #[test]
     fn mismatched_length_returns_zero() {
-        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0);
+        assert!(cosine_similarity(&[1.0], &[1.0, 2.0]).abs() < f64::EPSILON);
     }
 
     #[test]
     fn zero_norm_returns_zero() {
-        assert_eq!(cosine_similarity(&[0.0, 0.0], &[1.0, 1.0]), 0.0);
+        assert!(cosine_similarity(&[0.0, 0.0], &[1.0, 1.0]).abs() < f64::EPSILON);
     }
 }
