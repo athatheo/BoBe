@@ -133,10 +133,8 @@ Server starts at <http://127.0.0.1:8765>
 | `/souls` | GET/POST | List/create souls |
 | `/souls/{id}` | GET/PUT/DELETE | Soul CRUD |
 | `/tools` | GET | List available tools |
-| `/tools/refresh` | POST | Refresh MCP connections |
-| `/tools/mcp` | GET/POST | MCP server management |
-| `/tools/mcp/{name}` | PATCH/DELETE | MCP server CRUD |
-| `/tools/mcp/{name}/reconnect` | POST | Reconnect MCP server |
+| `/tools/mcp/config` | GET/PUT/DELETE | MCP full-document config (read/save/reset) |
+| `/tools/mcp/config/validate` | POST | MCP config validation + tool discovery preview |
 | `/settings` | GET/PATCH | Runtime settings |
 | `/models` | GET | List installed models |
 | `/models/registry` | GET | Browse model registry |

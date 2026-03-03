@@ -1,288 +1,298 @@
 import SwiftUI
 
-/// MCP Servers management panel.
+/// Full-document MCP configuration editor (`mcp.json`) with validation and save flow.
 struct MCPServersPanel: View {
+    @State private var rawJson = ""
     @State private var servers: [MCPServer] = []
-    @State private var selectedId: String?
-    @State private var isAdding = false
     @State private var isLoading = false
-    @State private var isReconnecting = false
-    @State private var deleteConfirm = false
-    @State private var newName = ""
-    @State private var newCommand = ""
-    @State private var newArgs = ""
-    @State private var newEnv = ""
-    @State private var newExcluded = ""
-    @State private var addExcludedText = ""
+    @State private var isValidating = false
+    @State private var isSaving = false
+    @State private var status: String?
     @State private var error: String?
+    @State private var lastValidSecretMap: [String: [String]]?
     @Environment(\.theme) private var theme
 
-    private var selectedServer: MCPServer? {
-        self.servers.first { $0.id == self.selectedId }
+    private var isJsonEmpty: Bool {
+        self.rawJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
-        ThemedSplitPane(leftWidth: 300) {
-            VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "MCP Servers") { self.isAdding = true }
-                    .padding(.bottom, 12)
-
-                if self.isLoading, self.servers.isEmpty {
-                    HStack(spacing: 8) {
-                        BobeSpinner(size: 14)
-                        Text("Loading MCP servers...")
-                            .font(.system(size: 12))
-                            .foregroundStyle(self.theme.colors.textMuted)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 20)
-                } else if self.servers.isEmpty, !self.isLoading, !self.isAdding {
-                    VStack(spacing: 8) {
-                        Image(systemName: "server.rack")
-                            .font(.system(size: 28))
-                            .foregroundStyle(self.theme.colors.textMuted)
-                        Text("No MCP servers")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(self.theme.colors.textMuted)
-                        Text("Add servers to extend BoBe's capabilities")
-                            .font(.system(size: 11))
-                            .foregroundStyle(self.theme.colors.textMuted.opacity(0.7))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 32)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 4) {
-                            ForEach(self.servers) { server in
-                                BobeSelectableRow(
-                                    isSelected: self.selectedId == server.id,
-                                    action: {
-                                        self.selectedId = server.id
-                                        self.isAdding = false
-                                    },
-                                    content: {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: server.connected ? "wifi" : "wifi.slash")
-                                                .foregroundStyle(server.connected ? self.theme.colors.secondary : self.theme.colors.primary)
-                                                .font(.system(size: 12))
-
-                                            VStack(alignment: .leading, spacing: 3) {
-                                                Text(server.name)
-                                                    .font(.system(size: 13, weight: .semibold))
-                                                Text("\(server.command) • \(server.toolCount) tools")
-                                                    .font(.system(size: 11))
-                                                    .foregroundStyle(self.theme.colors.textMuted)
-                                            }
-
-                                            if server.error != nil {
-                                                Image(systemName: "exclamationmark.triangle.fill")
-                                                    .foregroundStyle(self.theme.colors.tertiary)
-                                                    .font(.system(size: 10))
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-                    .background(self.theme.colors.background)
-                }
-            }
-            .frame(minWidth: 220, idealWidth: 300)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-        } right: {
-            if self.isAdding {
-                self.addServerForm
-            } else if let server = selectedServer {
-                MCPServerDetail(
-                    server: server,
-                    deleteConfirm: self.$deleteConfirm,
-                    isReconnecting: self.$isReconnecting,
-                    addExcludedText: self.$addExcludedText,
-                    error: self.$error,
-                    onReconnect: self.reconnectServer,
-                    onRemove: self.removeServer,
-                    onAddExcluded: self.addExcludedTool,
-                    onRemoveExcluded: self.removeExcludedTool
-                )
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 28))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                    Text("Select a server or add a new one")
-                        .font(.system(size: 13))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .task { await self.loadServers() }
-    }
-
-    private var addServerForm: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("New MCP Server")
-                    .font(.headline)
+                Text("MCP Configuration")
+                    .font(.title2.bold())
                     .foregroundStyle(self.theme.colors.text)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Server Name")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(self.theme.colors.text)
-                    BobeTextField(placeholder: "e.g. filesystem", text: self.$newName)
-                }
+                // swiftlint:disable:next line_length
+                Text("Edit the full mcp.json document. Save persists the config and connects servers. Secret values are stored securely in the system keychain.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(self.theme.colors.textMuted)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Command")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(self.theme.colors.text)
-                    BobeTextField(placeholder: "e.g. npx or /usr/local/bin/...", text: self.$newCommand)
-                }
+                CodeEditor(text: self.$rawJson, theme: self.theme, fontSize: 12)
+                    .frame(height: 260)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(self.theme.colors.surface)
+                            .stroke(self.theme.colors.border, lineWidth: 1)
+                    )
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Arguments")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(self.theme.colors.text)
-                    BobeTextField(placeholder: "e.g. -y @modelcontextprotocol/...", text: self.$newArgs)
-                }
+                HStack(spacing: 8) {
+                    Button("Reload") { self.reloadConfig() }
+                        .bobeButton(.secondary, size: .small)
+                        .disabled(self.isLoading || self.isValidating || self.isSaving)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Environment Variables (JSON)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(self.theme.colors.text)
-                    CodeEditor(text: self.$newEnv, theme: self.theme, fontSize: 12)
-                        .frame(height: 80)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(self.theme.colors.surface)
-                                .stroke(self.theme.colors.border, lineWidth: 1)
-                        )
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Excluded Tools")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(self.theme.colors.text)
-                    BobeTextField(placeholder: "e.g. update_event, delete_event", text: self.$newExcluded)
-                    Text("Tool names to hide from BoBe (server still exposes them)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                }
-
-                HStack {
-                    Button("Cancel") {
-                        self.isAdding = false
-                        self.clearForm()
+                    Button {
+                        self.validateConfig()
+                    } label: {
+                        HStack(spacing: 4) {
+                            if self.isValidating {
+                                BobeSpinner(size: 12)
+                            }
+                            Text(self.isValidating ? "Validating..." : "Validate")
+                        }
                     }
                     .bobeButton(.secondary, size: .small)
+                    .disabled(self.isLoading || self.isValidating || self.isSaving || self.isJsonEmpty)
+
+                    Button {
+                        self.saveConfig()
+                    } label: {
+                        HStack(spacing: 4) {
+                            if self.isSaving {
+                                BobeSpinner(size: 12)
+                            }
+                            Text(self.isSaving ? "Saving..." : "Save")
+                        }
+                    }
+                    .bobeButton(.primary, size: .small)
+                    .disabled(self.isLoading || self.isValidating || self.isSaving || self.isJsonEmpty)
 
                     Spacer()
 
-                    Button("Add & Connect") { self.addServer() }
-                        .bobeButton(.primary, size: .small)
-                        .disabled(self.newName.isEmpty || self.newCommand.isEmpty)
+                    Button("Reset") { self.resetConfig() }
+                        .bobeButton(.destructive, size: .small)
+                        .disabled(self.isLoading || self.isValidating || self.isSaving)
+                }
+
+                if let status {
+                    Text(status)
+                        .font(.system(size: 12))
+                        .foregroundStyle(self.theme.colors.secondary)
                 }
 
                 if let error {
-                    Text(error).font(.caption).foregroundStyle(self.theme.colors.primary)
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(self.theme.colors.primary)
                 }
+
+                Divider()
+
+                self.discoverySection
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
+            .padding(.bottom, 16)
+        }
+        .task { await self.loadConfig() }
+    }
+
+    @ViewBuilder
+    private var discoverySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Discovered Servers")
+                .font(.headline)
+                .foregroundStyle(self.theme.colors.text)
+
+            if self.isLoading {
+                HStack(spacing: 8) {
+                    BobeSpinner(size: 12)
+                    Text("Loading MCP config...")
+                        .font(.system(size: 12))
+                        .foregroundStyle(self.theme.colors.textMuted)
+                }
+            } else if self.servers.isEmpty {
+                Text("No MCP servers configured.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(self.theme.colors.textMuted)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(self.servers) { server in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
+                                Text(server.name)
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(server.connected ? "connected" : "disconnected")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(server.connected ? self.theme.colors.secondary : self.theme.colors.primary)
+                                Text("\(server.toolCount) tools")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(self.theme.colors.textMuted)
+                            }
+                            .foregroundStyle(self.theme.colors.text)
+
+                            if !server.command.isEmpty {
+                                Text("\(server.command) \(server.args.joined(separator: " "))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(self.theme.colors.textMuted)
+                            }
+
+                            if let serverError = server.error, !serverError.isEmpty {
+                                Text(serverError)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(self.theme.colors.primary)
+                            }
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(self.theme.colors.surface))
+                    }
+                }
+            }
         }
     }
 
-    // MARK: - Actions
-
-    private func loadServers() async {
+    private func loadConfig() async {
         self.isLoading = true
-        defer { isLoading = false }
+        self.status = nil
+        self.error = nil
+        defer { self.isLoading = false }
+
         do {
-            let resp = try await DaemonClient.shared.listMCPServers()
-            self.servers = resp.servers
-        } catch { self.error = error.localizedDescription }
-    }
-
-    private func addServer() {
-        let args = self.newArgs.isEmpty ? nil : self.newArgs.split(separator: " ").map(String.init)
-        let env: [String: String]? = {
-            guard !self.newEnv.isEmpty, let data = newEnv.data(using: .utf8) else { return nil }
-            return try? JSONDecoder().decode([String: String].self, from: data)
-        }()
-        let excluded = self.newExcluded.isEmpty ? nil : self.newExcluded.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-
-        Task {
-            do {
-                _ = try await DaemonClient.shared.createMCPServer(
-                    MCPServerCreateRequest(name: self.newName, command: self.newCommand, args: args, env: env, excludedTools: excluded)
-                )
-                self.clearForm()
-                self.isAdding = false
-                await self.loadServers()
-            } catch { self.error = error.localizedDescription }
+            let response = try await DaemonClient.shared.getMCPConfig()
+            self.rawJson = response.rawJson
+            self.servers = response.servers
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
-    private func reconnectServer(_ server: MCPServer) {
-        self.isReconnecting = true
+    private func reloadConfig() {
+        Task { await self.loadConfig() }
+    }
+
+    private func validateConfig() {
+        guard !self.rawJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            self.error = "MCP JSON must not be empty."
+            return
+        }
+
+        self.isValidating = true
+        self.status = nil
+        self.error = nil
+        let capturedJson = self.rawJson
+        let request = MCPConfigMutationRequest(
+            rawJson: capturedJson,
+            secretKeys: self.extractSecretKeyMap(from: capturedJson)
+        )
+
         Task {
-            defer { isReconnecting = false }
+            defer { self.isValidating = false }
             do {
-                _ = try await DaemonClient.shared.reconnectMCPServer(server.name)
-                await self.loadServers()
-            } catch { self.error = error.localizedDescription }
+                let response = try await DaemonClient.shared.validateMCPConfig(request)
+                if response.valid {
+                    self.rawJson = response.normalizedJson
+                    self.status = "Validation passed (\(response.serverCount) server(s))."
+                } else {
+                    self.error = response.errors.joined(separator: "\n")
+                }
+            } catch {
+                self.error = error.localizedDescription
+            }
         }
     }
 
-    private func removeServer(_ server: MCPServer) {
+    private func saveConfig() {
+        guard !self.rawJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            self.error = "MCP JSON must not be empty."
+            return
+        }
+
+        self.isSaving = true
+        self.status = nil
+        self.error = nil
+        let capturedJson = self.rawJson
+        let request = MCPConfigMutationRequest(
+            rawJson: capturedJson,
+            secretKeys: self.extractSecretKeyMap(from: capturedJson)
+        )
+
         Task {
+            defer { self.isSaving = false }
             do {
-                try await DaemonClient.shared.deleteMCPServer(server.name)
-                self.servers.removeAll { $0.id == server.id }
-                if self.selectedId == server.id { self.selectedId = nil }
-            } catch { self.error = error.localizedDescription }
+                let response = try await DaemonClient.shared.saveMCPConfig(request)
+                self.rawJson = response.rawJson
+                self.servers = response.servers
+                self.status = response.message
+            } catch {
+                self.error = error.localizedDescription
+            }
         }
     }
 
-    private func addExcludedTool(server: MCPServer) {
-        guard !self.addExcludedText.isEmpty else { return }
-        var updated = server.excludedTools
-        updated.append(self.addExcludedText.trimmingCharacters(in: .whitespaces))
-        self.addExcludedText = ""
+    private func resetConfig() {
+        self.status = nil
+        self.error = nil
+        self.isSaving = true
+
         Task {
+            defer { self.isSaving = false }
             do {
-                _ = try await DaemonClient.shared.updateMCPServer(
-                    server.name,
-                    MCPServerUpdateRequest(excludedTools: updated)
-                )
-                await self.loadServers()
-            } catch { self.error = error.localizedDescription }
+                let response = try await DaemonClient.shared.resetMCPConfig()
+                self.rawJson = response.rawJson
+                self.servers = []
+                self.status = response.message
+            } catch {
+                self.error = error.localizedDescription
+            }
         }
     }
 
-    private func removeExcludedTool(server: MCPServer, tool: String) {
-        var updated = server.excludedTools
-        updated.removeAll { $0 == tool }
-        Task {
-            do {
-                _ = try await DaemonClient.shared.updateMCPServer(
-                    server.name,
-                    MCPServerUpdateRequest(excludedTools: updated)
-                )
-                await self.loadServers()
-            } catch { self.error = error.localizedDescription }
+    private func extractSecretKeyMap(from json: String) -> [String: [String]]? {
+        guard let data = json.data(using: .utf8),
+              let doc = try? JSONDecoder().decode(InputDoc.self, from: data)
+        else {
+            return self.lastValidSecretMap
         }
-    }
 
-    private func clearForm() {
-        self.newName = ""
-        self.newCommand = ""
-        self.newArgs = ""
-        self.newEnv = ""
-        self.newExcluded = ""
+        let allServers = doc.mcpServers ?? doc.servers ?? [:]
+        var secretMap: [String: [String]] = [:]
+
+        for (serverName, entry) in allServers {
+            guard let env = entry.env else {
+                continue
+            }
+
+            let keys = env.compactMap { key, value -> String? in
+                let upper = key.uppercased()
+                if value.isEmpty || value.contains("${") || value.hasPrefix("bobe-secret://") {
+                    return nil
+                }
+                if upper.contains("SECRET")
+                    || upper.contains("TOKEN")
+                    || upper.contains("PASSWORD")
+                    || upper.hasSuffix("API_KEY") {
+                    return key
+                }
+                return nil
+            }
+
+            if !keys.isEmpty {
+                secretMap[serverName] = keys.sorted()
+            }
+        }
+
+        let result = secretMap.isEmpty ? nil : secretMap
+        self.lastValidSecretMap = result
+        return result
     }
+}
+
+private struct InputServerEntry: Decodable {
+    let env: [String: String]?
+}
+
+private struct InputDoc: Decodable {
+    let mcpServers: [String: InputServerEntry]?
+    let servers: [String: InputServerEntry]?
 }

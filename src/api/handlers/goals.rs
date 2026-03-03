@@ -91,10 +91,11 @@ fn goal_to_response(goal: &Goal) -> GoalResponse {
 fn parse_goal_status(s: &str) -> Result<GoalStatus, AppError> {
     match s {
         "active" => Ok(GoalStatus::Active),
+        "paused" => Ok(GoalStatus::Paused),
         "completed" => Ok(GoalStatus::Completed),
         "archived" => Ok(GoalStatus::Archived),
         _ => Err(AppError::Validation(format!(
-            "Invalid status '{s}'. Valid: active, completed, archived"
+            "Invalid status '{s}'. Valid: active, paused, completed, archived"
         ))),
     }
 }

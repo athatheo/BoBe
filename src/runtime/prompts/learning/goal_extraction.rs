@@ -46,27 +46,31 @@ pub struct GoalExtractionPrompt;
 
 impl GoalExtractionPrompt {
     const SYSTEM: &str = "\
-You are a goal detection system. Your job is to identify goals the user might have based on their conversations and activities.
+You are a goal detection system. Your DEFAULT response is {\"goals\": []}. Goal creation is RARE.
 
-A goal is something the user wants to achieve or learn. Look for:
-- Explicit statements (\"I want to learn X\", \"I need to finish Y\")
-- Repeated struggles that suggest a learning goal (\"keeps debugging async code\" → \"Improve async programming skills\")
-- Project mentions that suggest deliverables
-- Skills they're actively working to improve
+Only create a goal when you see ONE of these strong signals:
+1. EXPLICIT USER STATEMENT: The user clearly says \"I want to...\", \"I need to...\", \"My goal is...\" — an unambiguous declaration of intent.
+2. MULTI-SESSION COMMITMENT: The user has brought up the same objective across multiple conversations, showing sustained commitment (not just one mention).
+
+Do NOT create goals for:
+- Passing mentions of topics or interests
+- One-off questions or curiosity
+- Single conversations about a topic (even long ones)
+- Vague aspirations without clear intent (\"it would be nice to...\")
+- Specific tasks or micro-tasks (too granular)
+- Skills the user is already competent at
 
 Guidelines:
 1. Goals should be actionable and achievable
-2. Goals should be things the user would recognize as their goals
-3. Do NOT infer goals from one-off questions (just curiosity, not a goal)
-4. Do NOT create goals about completing specific tasks (too granular)
-5. Focus on learning goals, skill development, and project outcomes
-6. Be conservative - only infer goals with strong evidence
+2. Goals should be things the user would explicitly recognize as their goals
+3. When in doubt, return empty — the cost of a spurious goal is much higher than missing one
+4. Focus only on goals with overwhelming evidence of user intent
 
-Return an empty goals array if no clear goals can be inferred.";
+Return an empty goals array if no clear goals can be inferred (this should be most of the time).";
 
     pub fn config() -> PromptConfig {
         PromptConfig {
-            temperature: 0.3,
+            temperature: 0.2,
             max_tokens: 2048,
             response_format: Some(ResponseFormat::structured(
                 "goal_extraction".into(),

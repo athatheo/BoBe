@@ -246,8 +246,8 @@ actor DaemonClient {
         try await self.fetch("/goals/\(id)", method: "PATCH", body: request)
     }
 
-    func deleteGoal(_ id: String) async throws -> GoalActionResponse {
-        try await self.fetch("/goals/\(id)", method: "DELETE")
+    func deleteGoal(_ id: String) async throws {
+        try await self.fetchVoid("/goals/\(id)", method: "DELETE")
     }
 
     func completeGoal(_ id: String) async throws -> GoalActionResponse {

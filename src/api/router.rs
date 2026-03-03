@@ -166,20 +166,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::setup::get_setup_status)
                 .delete(handlers::setup::cancel_setup_job),
         )
-        // Tools (MCP sub-routes before wildcard)
+        // Tools (MCP full-document config routes)
         .route(
-            "/tools/mcp",
-            get(handlers::tools_mcp::list_mcp_servers)
-                .post(handlers::tools_mcp::add_mcp_server),
+            "/tools/mcp/config",
+            get(handlers::tools_mcp::get_mcp_config)
+                .put(handlers::tools_mcp::save_mcp_config)
+                .delete(handlers::tools_mcp::reset_mcp_config),
         )
         .route(
-            "/tools/mcp/{server_name}",
-            delete(handlers::tools_mcp::remove_mcp_server)
-                .patch(handlers::tools_mcp::update_mcp_server),
-        )
-        .route(
-            "/tools/mcp/{server_name}/reconnect",
-            post(handlers::tools_mcp::reconnect_mcp_server),
+            "/tools/mcp/config/validate",
+            post(handlers::tools_mcp::validate_mcp_config),
         )
         .route("/tools", get(handlers::tools::list_tools))
         .route(

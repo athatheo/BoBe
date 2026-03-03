@@ -4,7 +4,6 @@ pub mod cooldown;
 pub mod goal;
 pub mod goal_plan;
 pub mod learning_state;
-pub mod mcp_server_config;
 pub mod memory;
 pub mod observation;
 pub mod soul;

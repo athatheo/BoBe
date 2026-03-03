@@ -357,7 +357,7 @@ impl Default for LearningConfig {
             interval_minutes: 30,
             min_context_items: 5,
             max_memories_per_cycle: 10,
-            max_goals_per_cycle: 3,
+            max_goals_per_cycle: 1,
             max_context_per_cycle: 50,
             max_memories_per_consolidation: 1000,
             daily_consolidation_enabled: true,
