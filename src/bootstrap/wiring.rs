@@ -173,8 +173,17 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         &infra.embedding_provider,
         agent_job_manager.as_ref(),
     )));
+    let mcp_config_path =
+        crate::tools::mcp::config::resolve_mcp_config_path(config.mcp.config_file.as_deref())
+            .unwrap_or_else(|e| {
+                warn!(
+                    error = %e,
+                    "wiring.mcp_config_path_resolution_failed"
+                );
+                PathBuf::from(".bobe/mcp.json")
+            });
     let mcp_adapter = Arc::new(McpToolAdapter::new(
-        config.mcp.enabled.then(|| repos.mcp_config_repo.clone()),
+        mcp_config_path,
         config.mcp_blocked_commands_vec().to_vec(),
         config.mcp_dangerous_env_keys_vec().to_vec(),
     ));

@@ -279,6 +279,7 @@ struct GoalsEditor: View {
     private func statusColor(_ status: GoalStatus) -> Color {
         switch status {
         case .active: self.theme.colors.secondary
+        case .paused: self.theme.colors.primary
         case .completed: self.theme.colors.tertiary
         case .archived: self.theme.colors.textMuted
         case .unknown: self.theme.colors.textMuted

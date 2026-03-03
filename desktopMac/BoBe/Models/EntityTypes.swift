@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Goals
 
 enum GoalStatus: String, Codable, Sendable, CaseIterable {
-    case active, completed, archived, unknown
+    case active, paused, completed, archived, unknown
 
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -281,8 +281,17 @@ struct ToolUpdateResponse: Codable, Sendable {
 
 // MARK: - MCP Servers
 
+struct MCPServerTool: Codable, Sendable, Hashable {
+    let name: String
+    let description: String
+    let excluded: Bool
+}
+
 struct MCPServer: Identifiable, Codable, Sendable {
-    let id: String
+    var id: String {
+        self.name
+    }
+
     let name: String
     let command: String
     let args: [String]
@@ -290,81 +299,78 @@ struct MCPServer: Identifiable, Codable, Sendable {
     var enabled: Bool
     var toolCount: Int
     var excludedTools: [String]
+    var tools: [MCPServerTool]?
+    var envKeys: [String]?
+    var secretEnvKeys: [String]?
     var error: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, command, args, connected, enabled, error
+        case name, command, args, connected, enabled, error
+        case tools
+        case envKeys = "env_keys"
+        case secretEnvKeys = "secret_env_keys"
         case toolCount = "tool_count"
         case excludedTools = "excluded_tools"
     }
 }
 
-struct MCPServerListResponse: Codable, Sendable {
+struct MCPConfigDocumentResponse: Codable, Sendable {
+    let rawJson: String
     let servers: [MCPServer]
     let count: Int
     let connectedCount: Int
 
     enum CodingKeys: String, CodingKey {
         case servers, count
+        case rawJson = "raw_json"
         case connectedCount = "connected_count"
     }
 }
 
-struct MCPServerCreateRequest: Codable, Sendable {
-    let name: String
-    let command: String
-    var args: [String]?
-    var env: [String: String]?
-    var enabled: Bool?
-    var excludedTools: [String]?
+struct MCPConfigMutationRequest: Codable, Sendable {
+    let rawJson: String
+    var secretKeys: [String: [String]]?
 
     enum CodingKeys: String, CodingKey {
-        case name, command, args, env, enabled
-        case excludedTools = "excluded_tools"
+        case rawJson = "raw_json"
+        case secretKeys = "secret_keys"
     }
 }
 
-struct MCPServerCreateResponse: Codable, Sendable {
-    let name: String
-    let connected: Bool
-    let toolCount: Int
+struct MCPConfigValidateResponse: Codable, Sendable {
+    let valid: Bool
+    let normalizedJson: String
+    let serverCount: Int
+    let errors: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case valid, errors
+        case normalizedJson = "normalized_json"
+        case serverCount = "server_count"
+    }
+}
+
+struct MCPConfigSaveResponse: Codable, Sendable {
     let message: String
-    let error: String?
+    let rawJson: String
+    let servers: [MCPServer]
+    let count: Int
+    let connectedCount: Int
 
     enum CodingKeys: String, CodingKey {
-        case name, connected, message, error
-        case toolCount = "tool_count"
+        case message, servers, count
+        case rawJson = "raw_json"
+        case connectedCount = "connected_count"
     }
 }
 
-struct MCPServerReconnectResponse: Codable, Sendable {
-    let name: String
-    let connected: Bool
-    let toolCount: Int
+struct MCPConfigResetResponse: Codable, Sendable {
     let message: String
-    let error: String?
+    let rawJson: String
+    let count: Int
 
     enum CodingKeys: String, CodingKey {
-        case name, connected, message, error
-        case toolCount = "tool_count"
-    }
-}
-
-struct MCPServerUpdateRequest: Codable, Sendable {
-    var excludedTools: [String]?
-
-    enum CodingKeys: String, CodingKey {
-        case excludedTools = "excluded_tools"
-    }
-}
-
-struct MCPServerUpdateResponse: Codable, Sendable {
-    let name: String
-    let excludedTools: [String]
-    let message: String
-
-    enum CodingKeys: String, CodingKey {
-        case name, message
-        case excludedTools = "excluded_tools"
+        case message, count
+        case rawJson = "raw_json"
     }
 }

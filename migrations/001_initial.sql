@@ -142,23 +142,7 @@ CREATE TABLE IF NOT EXISTS learning_state (
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
--- MCP server configurations
-CREATE TABLE IF NOT EXISTS mcp_server_configs (
-    id BLOB PRIMARY KEY NOT NULL,
-    server_name TEXT NOT NULL UNIQUE,
-    command TEXT NOT NULL,
-    args TEXT NOT NULL DEFAULT '[]',
-    env TEXT NOT NULL DEFAULT '{}',
-    enabled INTEGER NOT NULL DEFAULT 1,
-    timeout_seconds REAL NOT NULL DEFAULT 30.0,
-    is_default INTEGER NOT NULL DEFAULT 0,
-    last_connected_at TEXT,
-    last_error TEXT,
-    excluded_tools TEXT,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-CREATE INDEX IF NOT EXISTS ix_mcp_server_configs_name ON mcp_server_configs(server_name);
+-- MCP server configurations are file-based (mcp.json), not stored in DB.
 
 -- Agent jobs (coding agent)
 CREATE TABLE IF NOT EXISTS agent_jobs (

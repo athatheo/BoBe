@@ -165,14 +165,7 @@ struct PrivacyPanel: View {
         }
 
         do {
-            let servers = try await DaemonClient.shared.listMCPServers().servers
-            for server in servers {
-                do {
-                    try await DaemonClient.shared.deleteMCPServer(server.name)
-                } catch {
-                    errors.append("mcp \(server.name)")
-                }
-            }
+            _ = try await DaemonClient.shared.resetMCPConfig()
         } catch {
             errors.append("mcp")
         }

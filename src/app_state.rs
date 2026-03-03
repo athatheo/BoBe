@@ -2,6 +2,7 @@ use arc_swap::ArcSwap;
 use reqwest::Client;
 use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::binary_manager::BinaryManager;
 use crate::config::Config;
@@ -12,7 +13,6 @@ use crate::db::CooldownRepository;
 use crate::db::GoalPlanRepository;
 use crate::db::GoalRepository;
 use crate::db::LearningStateRepository;
-use crate::db::McpConfigRepository;
 use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
 use crate::db::SoulRepository;
@@ -51,7 +51,6 @@ pub struct AppState {
     pub cooldown_repo: Arc<dyn CooldownRepository>,
     pub learning_state_repo: Arc<dyn LearningStateRepository>,
     pub agent_job_repo: Arc<dyn AgentJobRepository>,
-    pub mcp_config_repo: Arc<dyn McpConfigRepository>,
     pub soul_repo: Arc<dyn SoulRepository>,
     pub user_profile_repo: Arc<dyn UserProfileRepository>,
     pub goal_plan_repo: Arc<dyn GoalPlanRepository>,
@@ -68,6 +67,7 @@ pub struct AppState {
     pub binary_manager: Arc<BinaryManager>,
     pub config_manager: Arc<ConfigManager>,
     pub mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
+    pub mcp_config_lock: Arc<Mutex<()>>,
     pub mdns_announcer: Arc<MdnsAnnouncer>,
 }
 

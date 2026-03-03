@@ -106,4 +106,5 @@ rustix = { version = "1.1.4", features = ["fs"] }
 dashmap = "6.1.0"
 scraper = "0.25.0"
 moka = { version = "0.12.13", features = ["future"] }
+secrecy = { version = "0.10", features = ["serde"] }
 tower = { version = "0.5.3", features = ["timeout", "limit"] }

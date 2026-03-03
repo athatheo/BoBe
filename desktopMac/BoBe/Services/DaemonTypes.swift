@@ -49,24 +49,20 @@ extension DaemonClient {
 
     // MARK: MCP Servers
 
-    func listMCPServers() async throws -> MCPServerListResponse {
-        try await fetch("/tools/mcp")
+    func getMCPConfig() async throws -> MCPConfigDocumentResponse {
+        try await fetch("/tools/mcp/config")
     }
 
-    func createMCPServer(_ request: MCPServerCreateRequest) async throws -> MCPServerCreateResponse {
-        try await fetch("/tools/mcp", method: "POST", body: request)
+    func validateMCPConfig(_ request: MCPConfigMutationRequest) async throws -> MCPConfigValidateResponse {
+        try await fetch("/tools/mcp/config/validate", method: "POST", body: request)
     }
 
-    func deleteMCPServer(_ name: String) async throws {
-        try await fetchVoid("/tools/mcp/\(name)", method: "DELETE")
+    func saveMCPConfig(_ request: MCPConfigMutationRequest) async throws -> MCPConfigSaveResponse {
+        try await fetch("/tools/mcp/config", method: "PUT", body: request)
     }
 
-    func reconnectMCPServer(_ name: String) async throws -> MCPServerReconnectResponse {
-        try await fetch("/tools/mcp/\(name)/reconnect", method: "POST")
-    }
-
-    func updateMCPServer(_ name: String, _ request: MCPServerUpdateRequest) async throws -> MCPServerUpdateResponse {
-        try await fetch("/tools/mcp/\(name)", method: "PATCH", body: request)
+    func resetMCPConfig() async throws -> MCPConfigResetResponse {
+        try await fetch("/tools/mcp/config", method: "DELETE")
     }
 
     // MARK: Goal Worker

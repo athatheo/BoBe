@@ -23,7 +23,7 @@ use crate::services::goals::goals_service::GoalsService;
 const VALID_PRIORITIES: &[&str] = &["high", "medium", "low"];
 
 /// Threshold for initial semantic search.
-const SIMILARITY_SEARCH_THRESHOLD: f64 = 0.5;
+const SIMILARITY_SEARCH_THRESHOLD: f64 = 0.35;
 
 /// Maximum length for updated goal content from LLM.
 const MAX_GOAL_CONTENT_LENGTH: usize = 10_000;
@@ -134,7 +134,7 @@ impl GoalLearner {
     async fn deduplicate_and_store(
         &self,
         raw_goals: &[Value],
-        _existing_goals: &[Goal],
+        existing_goals: &[Goal],
     ) -> Vec<Goal> {
         let cfg = self.config.load();
         let mut created: Vec<Goal> = Vec::new();
@@ -191,7 +191,7 @@ impl GoalLearner {
 
             // LLM-based deduplication
             dedup_calls += 1;
-            let decision = self.evaluate_goal(content).await;
+            let decision = self.evaluate_goal(content, existing_goals).await;
 
             match decision {
                 DeduplicationDecision::Skip => {
@@ -245,22 +245,30 @@ impl GoalLearner {
         created
     }
 
-    async fn evaluate_goal(&self, content: &str) -> DeduplicationDecision {
+    async fn evaluate_goal(&self, content: &str, existing_goals: &[Goal]) -> DeduplicationDecision {
         // Search for similar goals
         let query_embedding = match self.embedding.embed(content).await {
             Ok(e) => e,
             Err(e) => {
                 warn!(error = %e, "goal_learner.embed_failed");
-                return DeduplicationDecision::Create;
+                return Self::fallback_decision(content, existing_goals, "embed_failed");
             }
         };
 
-        let Ok(similar_goals) = self
+        let similar_goals = match self
             .goals
             .get_by_embedding(&query_embedding, 5, SIMILARITY_SEARCH_THRESHOLD, None)
             .await
-        else {
-            return DeduplicationDecision::Create;
+        {
+            Ok(goals) => goals,
+            Err(e) => {
+                warn!(error = %e, "goal_learner.similarity_search_failed");
+                return Self::fallback_decision(
+                    content,
+                    existing_goals,
+                    "similarity_search_failed",
+                );
+            }
         };
 
         if similar_goals.is_empty() {
@@ -281,7 +289,7 @@ impl GoalLearner {
         let messages = GoalDeduplicationPrompt::messages(content, &existing_data);
         let prompt_config = GoalDeduplicationPrompt::config();
 
-        let Ok(Ok(response)) = tokio::time::timeout(
+        let response = match tokio::time::timeout(
             std::time::Duration::from_secs(240),
             self.llm.complete(
                 &messages,
@@ -292,23 +300,34 @@ impl GoalLearner {
             ),
         )
         .await
-        else {
-            return DeduplicationDecision::Skip;
+        {
+            Ok(Ok(response)) => response,
+            Ok(Err(e)) => {
+                warn!(error = %e, "goal_learner.dedup_llm_error");
+                return Self::fallback_decision(content, &similar_goals, "dedup_llm_error");
+            }
+            Err(_) => {
+                warn!("goal_learner.dedup_llm_timeout");
+                return Self::fallback_decision(content, &similar_goals, "dedup_llm_timeout");
+            }
         };
 
         let resp_content = response.message.content.text_or_empty().to_string();
-        let Ok(data) = serde_json::from_str::<Value>(&resp_content) else {
-            return DeduplicationDecision::Create;
+        let data = match serde_json::from_str::<Value>(&resp_content) {
+            Ok(data) => data,
+            Err(e) => {
+                warn!(error = %e, "goal_learner.dedup_json_parse_error");
+                return Self::fallback_decision(content, &similar_goals, "dedup_json_parse_error");
+            }
         };
 
         let decision = data
             .get("decision")
             .and_then(|d| d.as_str())
-            .unwrap_or("CREATE")
+            .unwrap_or("")
             .to_uppercase();
 
         match decision.as_str() {
-            "SKIP" => DeduplicationDecision::Skip,
             "UPDATE" => {
                 let raw_id = data.get("existing_goal_id").and_then(|v| v.as_str());
                 let updated_content = data.get("updated_content").and_then(|v| v.as_str());
@@ -325,16 +344,84 @@ impl GoalLearner {
                                     updated_content: truncated.trim().to_owned(),
                                 }
                             } else {
-                                DeduplicationDecision::Create
+                                Self::fallback_decision(
+                                    content,
+                                    &similar_goals,
+                                    "dedup_update_target_unknown",
+                                )
                             }
                         }
-                        Err(_) => DeduplicationDecision::Create,
+                        Err(_) => Self::fallback_decision(
+                            content,
+                            &similar_goals,
+                            "dedup_update_id_invalid",
+                        ),
                     },
-                    _ => DeduplicationDecision::Create,
+                    _ => Self::fallback_decision(content, &similar_goals, "dedup_update_invalid"),
                 }
             }
-            _ => DeduplicationDecision::Create,
+            "CREATE" => DeduplicationDecision::Create,
+            "SKIP" => DeduplicationDecision::Skip,
+            _ => {
+                warn!(decision = %decision, "goal_learner.dedup_unknown_decision");
+                Self::fallback_decision(content, &similar_goals, "dedup_unknown_decision")
+            }
         }
+    }
+
+    fn fallback_decision(
+        content: &str,
+        goals: &[Goal],
+        reason: &'static str,
+    ) -> DeduplicationDecision {
+        if goals
+            .iter()
+            .any(|goal| Self::has_obvious_overlap(content, &goal.content))
+        {
+            warn!(
+                reason,
+                compared_goals = goals.len(),
+                content_preview = %Self::preview(content),
+                "goal_learner.dedup_fallback_skip"
+            );
+            DeduplicationDecision::Skip
+        } else {
+            warn!(
+                reason,
+                compared_goals = goals.len(),
+                content_preview = %Self::preview(content),
+                "goal_learner.dedup_fallback_create"
+            );
+            DeduplicationDecision::Create
+        }
+    }
+
+    fn has_obvious_overlap(candidate: &str, existing: &str) -> bool {
+        let candidate = Self::normalize_content(candidate);
+        let existing = Self::normalize_content(existing);
+
+        !candidate.is_empty()
+            && !existing.is_empty()
+            && (candidate == existing
+                || candidate.contains(&existing)
+                || existing.contains(&candidate))
+    }
+
+    fn normalize_content(content: &str) -> String {
+        content
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_lowercase()
+    }
+
+    fn preview(content: &str) -> String {
+        const MAX_CHARS: usize = 120;
+        let mut out = String::new();
+        for ch in content.chars().take(MAX_CHARS) {
+            out.push(ch);
+        }
+        out
     }
 
     async fn update_existing_goal(&self, goal_id: Uuid, content: &str) -> Result<(), AppError> {

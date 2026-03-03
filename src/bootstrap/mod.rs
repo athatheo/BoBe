@@ -15,7 +15,7 @@ mod wiring;
 
 use std::sync::Arc;
 
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::app_state::AppState;
 use crate::config::Config;
@@ -31,6 +31,13 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
 
     let infra = infra::Infrastructure::build(&config)?;
     let repos = repos::Repositories::from_pool(&pool);
+
+    if config.mcp.enabled
+        && let Err(e) =
+            crate::tools::mcp::config::ensure_mcp_config_exists(config.mcp.config_file.as_deref())
+    {
+        warn!(error = %e, "bootstrap.ensure_mcp_config_failed");
+    }
 
     let wired = wiring::wire(&config, &infra, &repos).await;
 
@@ -79,7 +86,6 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         cooldown_repo: repos.cooldown_repo,
         learning_state_repo: repos.learning_state_repo,
         agent_job_repo: repos.agent_job_repo,
-        mcp_config_repo: repos.mcp_config_repo,
         soul_repo: repos.soul_repo,
         user_profile_repo: repos.user_profile_repo,
         goal_plan_repo: repos.goal_plan_repo,
@@ -94,6 +100,7 @@ pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), A
         binary_manager: infra.binary_manager,
         config_manager: wired.config_manager,
         mcp_tool_adapter: Some(wired.mcp_adapter),
+        mcp_config_lock: Arc::new(tokio::sync::Mutex::new(())),
         mdns_announcer: infra.mdns_announcer,
     });
 

@@ -6,7 +6,6 @@ mod cooldown_repo;
 mod goal_plan_repo;
 mod goal_repo;
 mod learning_state_repo;
-mod mcp_config_repo;
 mod memory_repo;
 mod observation_repo;
 mod soul_repo;
@@ -20,7 +19,6 @@ pub use cooldown_repo::SqliteCooldownRepo;
 pub use goal_plan_repo::SqliteGoalPlanRepo;
 pub use goal_repo::SqliteGoalRepo;
 pub use learning_state_repo::SqliteLearningStateRepo;
-pub use mcp_config_repo::SqliteMcpConfigRepo;
 pub use memory_repo::SqliteMemoryRepo;
 pub use observation_repo::SqliteObservationRepo;
 pub use soul_repo::SqliteSoulRepo;
@@ -39,7 +37,6 @@ use crate::models::cooldown::CooldownInfo;
 use crate::models::goal::Goal;
 use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
 use crate::models::learning_state::LearningState;
-use crate::models::mcp_server_config::McpServerConfig;
 use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::soul::Soul;
@@ -269,26 +266,6 @@ pub trait CooldownRepository: Send + Sync {
     async fn load_or_create(&self) -> Result<(), AppError>;
     async fn update_last_engagement(&self, timestamp: DateTime<Utc>) -> Result<(), AppError>;
     async fn update_last_user_response(&self, timestamp: DateTime<Utc>) -> Result<(), AppError>;
-}
-
-#[async_trait]
-pub trait McpConfigRepository: Send + Sync {
-    async fn save(&self, config: &McpServerConfig) -> Result<McpServerConfig, AppError>;
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<McpServerConfig>, AppError>;
-    async fn get_by_name(&self, name: &str) -> Result<Option<McpServerConfig>, AppError>;
-    async fn get_all(&self) -> Result<Vec<McpServerConfig>, AppError>;
-    async fn find_enabled(&self) -> Result<Vec<McpServerConfig>, AppError>;
-    async fn update(
-        &self,
-        id: Uuid,
-        command: Option<&str>,
-        args: Option<&str>,
-        env: Option<&str>,
-        enabled: Option<bool>,
-        timeout_seconds: Option<f64>,
-        excluded_tools: Option<&str>,
-    ) -> Result<Option<McpServerConfig>, AppError>;
-    async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
 }
 
 #[async_trait]

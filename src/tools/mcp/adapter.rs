@@ -1,15 +1,14 @@
 use async_trait::async_trait;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
 use tracing::{debug, info, warn};
 
 use super::client::{McpClient, McpToolInfo};
-use super::config::{McpParsedServer, load_default_mcp_config};
-use crate::db::McpConfigRepository;
+use super::config::{McpParsedServer, load_mcp_config};
 use crate::error::AppError;
 use crate::llm::types::{AiToolCall, ToolDefinition};
-use crate::models::mcp_server_config::McpServerConfig;
 use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 
 const TOOL_NAME_SEPARATOR: &str = "__";
@@ -21,14 +20,14 @@ pub struct McpToolAdapter {
     clients: DashMap<String, Arc<McpClient>>,
     tool_to_server: DashMap<String, String>,
     server_configs: DashMap<String, McpParsedServer>,
-    config_repo: Option<Arc<dyn McpConfigRepository>>,
+    config_path: PathBuf,
     blocked_commands: Vec<String>,
     dangerous_env_keys: Vec<String>,
 }
 
 impl McpToolAdapter {
     pub fn new(
-        config_repo: Option<Arc<dyn McpConfigRepository>>,
+        config_path: PathBuf,
         blocked_commands: Vec<String>,
         dangerous_env_keys: Vec<String>,
     ) -> Self {
@@ -36,13 +35,13 @@ impl McpToolAdapter {
             clients: DashMap::new(),
             tool_to_server: DashMap::new(),
             server_configs: DashMap::new(),
-            config_repo,
+            config_path,
             blocked_commands,
             dangerous_env_keys,
         }
     }
 
-    /// Initialize all MCP servers from DB or file config.
+    /// Initialize all MCP servers from file config.
     pub async fn initialize(&self) -> Result<(), AppError> {
         let servers = self.load_enabled_servers().await;
         if servers.is_empty() {
@@ -76,49 +75,10 @@ impl McpToolAdapter {
         self.server_configs.clear();
     }
 
-    /// Reconnect a single server by name.
-    pub async fn reconnect_server(&self, name: &str) -> Result<(), AppError> {
-        if let Some((_, client)) = self.clients.remove(name) {
-            client.disconnect().await;
-        }
-        self.tool_to_server.retain(|_, v| v != name);
-
-        if let Some(config) = self.server_configs.get(name).map(|e| e.value().clone()) {
-            self.connect_server(config).await?;
-        }
-        Ok(())
-    }
-
-    /// Add a server config and connect it at runtime.
-    pub async fn add_and_connect_server(&self, config: McpParsedServer) -> Result<bool, AppError> {
-        let name = config.name.clone();
-
-        // Disconnect existing if present
-        if let Some((_, client)) = self.clients.remove(&name) {
-            client.disconnect().await;
-        }
-        self.tool_to_server.retain(|_, v| v != &name);
-
-        match self.connect_server(config).await {
-            Ok(()) => Ok(true),
-            Err(e) => {
-                warn!(server = %name, error = %e, "Failed to connect MCP server");
-                Ok(false)
-            }
-        }
-    }
-
-    /// Disconnect and remove a server by name.
-    pub async fn disconnect_server_by_name(&self, name: &str) -> bool {
-        if let Some((_, client)) = self.clients.remove(name) {
-            client.disconnect().await;
-            self.tool_to_server.retain(|_, v| v != name);
-            self.server_configs.remove(name);
-            info!(server = %name, "MCP server disconnected");
-            true
-        } else {
-            false
-        }
+    /// Reload all MCP servers from the canonical config file.
+    pub async fn reload_from_config(&self) -> Result<(), AppError> {
+        self.shutdown().await;
+        self.initialize().await
     }
 
     /// Get the last error for a specific server.
@@ -127,11 +87,11 @@ impl McpToolAdapter {
         client.value().last_error().await
     }
 
-    /// Get tools for a specific server.
-    pub async fn get_tools_for_server(
+    /// Get unfiltered/raw tools directly from the MCP server.
+    pub async fn get_raw_tools_for_server(
         &self,
         server_name: &str,
-    ) -> Result<Vec<ToolDefinition>, AppError> {
+    ) -> Result<Vec<McpToolInfo>, AppError> {
         let client = self
             .clients
             .get(server_name)
@@ -143,30 +103,29 @@ impl McpToolAdapter {
             )));
         }
 
-        let tools = client.list_tools().await?;
-        let excluded = self
-            .server_configs
-            .get(server_name)
-            .map(|e| e.excluded_tools.clone())
-            .unwrap_or_default();
-
-        Ok(tools
-            .into_iter()
-            .filter(|t| !excluded.contains(&t.name))
-            .map(|t| to_tool_definition(server_name, &t))
-            .collect())
+        client.list_tools().await
     }
 
     async fn load_enabled_servers(&self) -> Vec<McpParsedServer> {
-        if let Some(repo) = &self.config_repo
-            && let Ok(configs) = repo.find_enabled().await
-        {
-            return configs
-                .into_iter()
-                .map(|c| db_config_to_parsed(&c))
-                .collect();
+        if !self.config_path.exists() {
+            return Vec::new();
         }
-        load_default_mcp_config(&self.blocked_commands, &self.dangerous_env_keys)
+
+        match load_mcp_config(
+            &self.config_path,
+            &self.blocked_commands,
+            &self.dangerous_env_keys,
+        ) {
+            Ok(servers) => servers,
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    path = %self.config_path.display(),
+                    "mcp.load_enabled_servers_failed"
+                );
+                Vec::new()
+            }
+        }
     }
 
     async fn connect_server(&self, config: McpParsedServer) -> Result<(), AppError> {
@@ -317,20 +276,5 @@ fn unprefix_tool_name(prefixed: &str) -> String {
         prefixed[pos + TOOL_NAME_SEPARATOR.len()..].to_owned()
     } else {
         prefixed.to_owned()
-    }
-}
-
-pub fn db_config_to_parsed(c: &McpServerConfig) -> McpParsedServer {
-    McpParsedServer {
-        name: c.server_name.clone(),
-        command: c.command.clone(),
-        args: c.args_vec(),
-        env: c.env_map(),
-        timeout_seconds: c.timeout_seconds,
-        excluded_tools: c
-            .excluded_tools
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default(),
     }
 }
