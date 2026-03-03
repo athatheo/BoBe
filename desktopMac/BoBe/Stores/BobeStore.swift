@@ -67,6 +67,7 @@ final class BobeStore {
     private var streamingMessage = ""
     private var streamingMessageId: String?
     private var lastMessageTimer: Task<Void, Never>?
+    private var textDeltaFlushTask: Task<Void, Never>?
     private var captureStartupTask: Task<Void, Never>?
     /// Prevents App Nap from throttling the SSE connection.
     private var appNapActivity: NSObjectProtocol?
@@ -156,6 +157,8 @@ final class BobeStore {
     }
 
     func disconnect() {
+        self.textDeltaFlushTask?.cancel()
+        self.lastMessageTimer?.cancel()
         self.captureStartupTask?.cancel()
         self.backendObserverTask?.cancel()
         for observer in self.sleepWakeObservers {
@@ -199,6 +202,7 @@ final class BobeStore {
         } catch {
             logger.error("toggleCapture failed: \(error.localizedDescription)")
             if newState, !CGPreflightScreenCaptureAccess() {
+                CGRequestScreenCaptureAccess()
                 self.updateState { $0.capturePermissionMissing = true }
             }
             return self.context.capturing
@@ -319,9 +323,33 @@ final class BobeStore {
         if self.streamingMessageId != messageId {
             self.streamingMessage = ""
             self.streamingMessageId = messageId
+            self.textDeltaFlushTask?.cancel()
+            self.textDeltaFlushTask = nil
         }
 
         self.streamingMessage += payload.delta
+
+        if payload.done {
+            self.flushStreamingToUI(messageId: messageId)
+            self.finalizeStreamingMessage()
+            return
+        }
+
+        // Throttle UI updates: flush at ~150ms intervals for a typing appearance.
+        // Task existence is the dirty flag — if a task is already scheduled, new
+        // deltas just accumulate in streamingMessage until the timer fires.
+        if self.textDeltaFlushTask == nil {
+            self.textDeltaFlushTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(150))
+                guard let self, !Task.isCancelled else { return }
+                self.flushStreamingToUI(messageId: messageId)
+            }
+        }
+    }
+
+    private func flushStreamingToUI(messageId: String) {
+        self.textDeltaFlushTask?.cancel()
+        self.textDeltaFlushTask = nil
 
         self.updateState { ctx in
             ctx.messages = ctx.messages.map {
@@ -349,13 +377,12 @@ final class BobeStore {
             ctx.thinking = !hasVisibleText
             ctx.speaking = hasVisibleText
         }
-
-        if payload.done {
-            self.finalizeStreamingMessage()
-        }
     }
 
     private func finalizeStreamingMessage() {
+        self.textDeltaFlushTask?.cancel()
+        self.textDeltaFlushTask = nil
+
         guard let msgId = streamingMessageId else { return }
 
         self.updateState { ctx in
@@ -379,10 +406,10 @@ final class BobeStore {
         self.streamingMessageId = nil
 
         self.lastMessageTimer?.cancel()
-        self.lastMessageTimer = Task {
+        self.lastMessageTimer = Task { [weak self] in
             try? await Task.sleep(for: .seconds(30))
             if !Task.isCancelled {
-                self.updateState { $0.lastMessage = nil }
+                self?.updateState { $0.lastMessage = nil }
             }
         }
     }
@@ -410,9 +437,9 @@ final class BobeStore {
             }
 
             let completedId = complete.toolCallId
-            Task {
+            Task { [weak self] in
                 try? await Task.sleep(for: .seconds(5))
-                self.updateState { ctx in
+                self?.updateState { ctx in
                     ctx.toolExecutions.removeAll { $0.toolCallId == completedId && $0.status != .running }
                 }
             }
@@ -467,6 +494,7 @@ final class BobeStore {
                 }
 
                 if !captureActive, !CGPreflightScreenCaptureAccess() {
+                    CGRequestScreenCaptureAccess()
                     self.updateState { $0.capturePermissionMissing = true }
                     logger.warning("Screen capture permission not granted")
                 } else {

@@ -17,8 +17,6 @@ final class SettingsWindowManager {
             return
         }
 
-        NSApp.setActivationPolicy(.regular)
-
         let theme = ThemeStore.shared.currentTheme
         let settingsView = SettingsWindow()
 
@@ -47,7 +45,6 @@ final class SettingsWindowManager {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.window = nil
-                NSApp.setActivationPolicy(.accessory)
             }
         }
     }

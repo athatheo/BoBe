@@ -8,7 +8,8 @@ use tracing::{debug, error};
 use crate::error::AppError;
 use crate::llm::LlmProvider;
 use crate::llm::shared::{
-    ToolCallAccumulator, build_chat_request, drain_sse_lines, parse_response, parse_stream_chunk,
+    ToolCallAccumulator, build_chat_request, drain_next_sse_line, parse_response,
+    parse_stream_chunk,
 };
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
@@ -153,7 +154,7 @@ impl LlmProvider for LlamaCppProvider {
                     return;
                 }
 
-                for data in drain_sse_lines(&mut buffer, "llama.cpp") {
+                while let Some(data) = drain_next_sse_line(&mut buffer, "llama.cpp") {
                     tool_accumulator.feed(&data);
 
                     if let Some(mut chunk) = parse_stream_chunk(&data) {

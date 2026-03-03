@@ -48,7 +48,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             try? await Task.sleep(for: .milliseconds(150))
-            NSApp.setActivationPolicy(.accessory)
             self.showOverlay()
             BobeStore.shared.connect()
             self.setupCompletedSuccessfully = false
@@ -72,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
 
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let bundleMatches = NSRunningApplication.runningApplications(
@@ -229,8 +228,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.setupCompletedSuccessfully = false
 
-        NSApp.setActivationPolicy(.regular)
-
         let theme = ThemeStore.shared.currentTheme
         let setupView = SetupWizard()
             .environment(\.theme, theme)
@@ -267,7 +264,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 self.setupWindow = nil
-                NSApp.setActivationPolicy(.accessory)
 
                 if self.setupCompletedSuccessfully {
                     logger.info("setup.wizard_closed_after_success")

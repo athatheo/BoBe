@@ -8,7 +8,8 @@ use tracing::{debug, error};
 use crate::error::AppError;
 use crate::llm::LlmProvider;
 use crate::llm::shared::{
-    ToolCallAccumulator, build_chat_request, drain_sse_lines, parse_response, parse_stream_chunk,
+    ToolCallAccumulator, build_chat_request, drain_next_sse_line, parse_response,
+    parse_stream_chunk,
 };
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
@@ -188,7 +189,7 @@ impl LlmProvider for OpenAiProvider {
                     return;
                 }
 
-                for data in drain_sse_lines(&mut buffer, "OpenAI") {
+                while let Some(data) = drain_next_sse_line(&mut buffer, "OpenAI") {
                     tool_accumulator.feed(&data);
 
                     if let Some(mut chunk) = parse_stream_chunk(&data) {

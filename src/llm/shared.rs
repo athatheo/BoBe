@@ -243,7 +243,7 @@ pub fn parse_stream_chunk(data: &Value) -> Option<StreamChunk> {
 }
 
 /// Extract raw tool call delta info from an SSE chunk for accumulation.
-pub fn extract_tool_call_deltas(data: &Value) -> Vec<ToolCallDelta> {
+fn extract_tool_call_deltas(data: &Value) -> Vec<ToolCallDelta> {
     let Some(choice) = data.get("choices").and_then(|c| c.get(0)) else {
         return vec![];
     };
@@ -281,11 +281,11 @@ pub fn extract_tool_call_deltas(data: &Value) -> Vec<ToolCallDelta> {
 
 /// Raw tool call delta from a single SSE chunk.
 #[derive(Debug)]
-pub struct ToolCallDelta {
-    pub index: usize,
-    pub id: Option<String>,
-    pub name: Option<String>,
-    pub arguments: String,
+struct ToolCallDelta {
+    index: usize,
+    id: Option<String>,
+    name: Option<String>,
+    arguments: String,
 }
 
 /// Accumulates streaming tool call deltas into complete `AiToolCall` objects.
@@ -339,7 +339,13 @@ impl ToolCallAccumulator {
             .filter(|tc| !tc.id.is_empty() && !tc.name.is_empty())
             .map(|tc| {
                 let arguments: HashMap<String, Value> =
-                    serde_json::from_str(&tc.arguments).unwrap_or_default();
+                    serde_json::from_str(&tc.arguments).unwrap_or_else(|e| {
+                        tracing::warn!(
+                            tool = %tc.name,
+                            "Failed to parse tool call arguments: {e}"
+                        );
+                        HashMap::new()
+                    });
                 AiToolCall {
                     id: tc.id,
                     name: tc.name,
@@ -350,14 +356,14 @@ impl ToolCallAccumulator {
     }
 }
 
-/// Parse SSE lines from a buffer, extracting JSON data objects.
+/// Parse the next complete SSE line from a buffer, extracting a JSON data object.
 ///
-/// Drains complete lines from `buffer`. For each line, strips the `data: ` prefix,
+/// Drains a single complete line from `buffer`. Strips the `data: ` prefix,
 /// skips empty lines and `[DONE]` sentinels, and parses JSON.
-/// Returns all successfully parsed JSON values from the buffer.
-pub fn drain_sse_lines(buffer: &mut String, provider_label: &str) -> Vec<Value> {
-    let mut results = Vec::new();
-    while let Some(line_end) = buffer.find('\n') {
+/// Returns the parsed JSON value, or `None` if no complete line is available.
+pub fn drain_next_sse_line(buffer: &mut String, provider_label: &str) -> Option<Value> {
+    loop {
+        let line_end = buffer.find('\n')?;
         let parsed: Option<Value> = {
             let line = buffer[..line_end].trim();
             if line.is_empty() || line == "data: [DONE]" {
@@ -375,9 +381,9 @@ pub fn drain_sse_lines(buffer: &mut String, provider_label: &str) -> Vec<Value> 
         };
         buffer.drain(..=line_end);
 
-        if let Some(data) = parsed {
-            results.push(data);
+        if parsed.is_some() {
+            return parsed;
         }
+        // Skip empty/unparseable lines — try the next line in the buffer
     }
-    results
 }

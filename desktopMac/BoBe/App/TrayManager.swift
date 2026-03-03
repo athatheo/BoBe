@@ -130,15 +130,8 @@ final class TrayManager: NSObject, NSMenuDelegate {
 
     @objc
     private func showAbout() {
-        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if NSApp.windows.first(where: { $0.title == "About BoBe" || $0.className.contains("About") }) == nil {
-                NSApp.setActivationPolicy(.accessory)
-            }
-        }
     }
 
     @objc

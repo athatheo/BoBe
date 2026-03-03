@@ -6,7 +6,15 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "SetupWizard")
 
 extension SetupWizard {
     func checkScreenPermission() {
-        screenPermission = CGPreflightScreenCaptureAccess() ? "granted" : "not-determined"
+        if CGPreflightScreenCaptureAccess() {
+            screenPermission = "granted"
+        } else {
+            if !hasRequestedCaptureAccess {
+                CGRequestScreenCaptureAccess()
+                hasRequestedCaptureAccess = true
+            }
+            screenPermission = "not-determined"
+        }
     }
 
     func startPermissionPolling() {

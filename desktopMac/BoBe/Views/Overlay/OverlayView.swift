@@ -10,7 +10,6 @@ struct OverlayView: View {
     @State private var lastMessageActivity: Date = .now
     @State private var measuredContentSize: CGSize = .zero
     @State private var inactivityTimer: Task<Void, Never>?
-    @State private var loadingPulseScale: CGFloat = 0.96
 
     var body: some View {
         VStack(spacing: 0) {
@@ -92,9 +91,6 @@ struct OverlayView: View {
                                 }
                             }
                         )
-                        .opacity(self.store.stateType == .loading ? 0.7 : 1.0)
-                        .scaleEffect(self.store.stateType == .loading ? self.loadingPulseScale : 1.0)
-                        .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: self.loadingPulseScale)
 
                         if self.store.isReconnecting {
                             Text("Reconnecting...")
@@ -142,9 +138,6 @@ struct OverlayView: View {
         .onAppear {
             self.resizeWindow()
             self.startInactivityTimer()
-            if self.store.stateType == .loading {
-                self.loadingPulseScale = 1.04
-            }
         }
         .onDisappear {
             self.inactivityTimer?.cancel()
