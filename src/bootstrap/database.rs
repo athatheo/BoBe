@@ -1,12 +1,16 @@
-//! Database pool creation and schema migration.
+//! Database pool creation and schema initialization.
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use tracing::info;
 
 use crate::error::AppError;
 
-/// Open (or create) the SQLite database and run pending migrations.
-pub async fn connect_and_migrate(db_url: &str) -> Result<SqlitePool, AppError> {
+/// The full database schema. All statements use `IF NOT EXISTS` so this is
+/// safe to run on every startup — no migration tracking needed.
+const SCHEMA: &str = include_str!("../../migrations/schema.sql");
+
+/// Open (or create) the SQLite database and apply the schema.
+pub async fn connect_and_apply_schema(db_url: &str) -> Result<SqlitePool, AppError> {
     // Ensure parent directory exists for file-based SQLite.
     if let Some(path) = db_url.strip_prefix("sqlite:")
         && let Some(parent) = std::path::Path::new(path).parent()
@@ -28,11 +32,11 @@ pub async fn connect_and_migrate(db_url: &str) -> Result<SqlitePool, AppError> {
         .await
         .map_err(AppError::Database)?;
 
-    sqlx::migrate!("./migrations")
-        .run(&pool)
+    sqlx::raw_sql(SCHEMA)
+        .execute(&pool)
         .await
-        .map_err(|e| AppError::Database(e.into()))?;
+        .map_err(AppError::Database)?;
 
-    info!("database.migrations_complete");
+    info!("database.schema_applied");
     Ok(pool)
 }

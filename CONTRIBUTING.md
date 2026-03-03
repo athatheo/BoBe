@@ -104,13 +104,7 @@ docs/                         # Additional documentation
 
 ## Database
 
-SQLite via sqlx with auto-migrations on startup. Data stored at `~/.bobe/data/bobrust.db`.
-
-```bash
-# Migrations run automatically. To add a new one:
-cargo install sqlx-cli --features sqlite
-sqlx migrate add <name> --source migrations/
-```
+SQLite via sqlx. The schema (`migrations/schema.sql`) is applied on every startup using `CREATE TABLE IF NOT EXISTS` — no migration tracking or tooling needed. Data stored at `~/.bobe/data/bobrust.db`.
 
 ## Security
 

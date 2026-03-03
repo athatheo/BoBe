@@ -54,7 +54,7 @@ bobe-daemon (Rust/Axum, :8766)  ←── SSE + HTTP ──→  BoBe.app (Swift/
 
 **DI:** No framework. Constructor injection via `AppState` (Arc-wrapped, Axum State extractor).
 
-**Database:** SQLite via sqlx. Migrations in `migrations/`, auto-run on startup. All entities use UUID (BLOB) primary keys. Data at `~/.bobe/data/bobrust.db`.
+**Database:** SQLite via sqlx. Schema in `migrations/schema.sql`, applied on every startup (all `IF NOT EXISTS`). All entities use UUID (BLOB) primary keys. Data at `~/.bobe/data/bobrust.db`.
 
 ### Swift macOS App (`desktopMac/`)
 

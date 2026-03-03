@@ -27,7 +27,7 @@ use crate::services::goal_worker::manager::GoalWorkerManager;
 /// Returns the shared `AppState` (for Axum) and a `GoalWorkerManager`
 /// (owned by `main` so it can be shut down independently).
 pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), AppError> {
-    let pool = database::connect_and_migrate(&config.database.url).await?;
+    let pool = database::connect_and_apply_schema(&config.database.url).await?;
 
     let infra = infra::Infrastructure::build(&config)?;
     let repos = repos::Repositories::from_pool(&pool);
