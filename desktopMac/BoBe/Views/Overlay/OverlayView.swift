@@ -116,8 +116,7 @@ struct OverlayView: View {
             )
             .onPreferenceChange(OverlayContentSizePreferenceKey.self) { newSize in
                 if newSize.width > 0, newSize.height > 0,
-                   abs(newSize.width - self.measuredContentSize.width) > 0.5 || abs(newSize.height - self.measuredContentSize.height) > 0.5
-                {
+                   abs(newSize.width - self.measuredContentSize.width) > 0.5 || abs(newSize.height - self.measuredContentSize.height) > 0.5 {
                     self.measuredContentSize = newSize
                     self.resizeWindow()
                 }

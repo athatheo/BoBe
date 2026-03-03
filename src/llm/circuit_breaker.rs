@@ -98,7 +98,9 @@ impl CircuitBreaker {
                         );
                         Ok(())
                     } else {
-                        let remaining = inner.current_recovery_timeout.saturating_sub(last_failure.elapsed());
+                        let remaining = inner
+                            .current_recovery_timeout
+                            .saturating_sub(last_failure.elapsed());
                         Err(AppError::CircuitOpen(format!(
                             "Circuit '{}' is open, retry after {:.1}s",
                             self.name,

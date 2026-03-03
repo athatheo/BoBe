@@ -38,8 +38,7 @@ pub async fn stream_response(
     event_queue: &EventQueue,
     msg_id: Option<&str>,
 ) -> StreamResult {
-    let msg_id = msg_id
-        .map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned);
+    let msg_id = msg_id.map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned);
 
     let start_time = Instant::now();
     let mut sequence = 0usize;
@@ -101,8 +100,7 @@ pub async fn stream_llm_response(
     event_queue: &EventQueue,
     msg_id: Option<&str>,
 ) -> StreamResult {
-    let msg_id = msg_id
-        .map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned);
+    let msg_id = msg_id.map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned);
 
     let start_time = Instant::now();
     let mut sequence = 0usize;
@@ -242,8 +240,7 @@ fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {
 
 /// Stream a simple text message (no LLM call needed).
 pub fn stream_simple_message(message: &str, event_queue: &EventQueue, msg_id: Option<&str>) {
-    let msg_id = msg_id
-        .map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned);
+    let msg_id = msg_id.map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned);
 
     event_queue.push(text_delta_event(&msg_id, message, 0, false));
     event_queue.push(end_of_turn_event(&msg_id, 1));

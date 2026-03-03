@@ -143,8 +143,7 @@ final class TrayManager: NSObject, NSMenuDelegate {
     private func loadTrayIcon() -> NSImage? {
         for name in ["trayIconTemplate@2x", "trayIconTemplate"] {
             if let url = Bundle.appResources.url(forResource: name, withExtension: "png"),
-               let image = NSImage(contentsOf: url)
-            {
+               let image = NSImage(contentsOf: url) {
                 return image
             }
         }

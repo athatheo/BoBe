@@ -27,8 +27,7 @@ struct SetupWizard: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 if let logoURL = Bundle.main.url(forResource: "logo-128", withExtension: "png"),
-                   let nsImage = NSImage(contentsOf: logoURL)
-                {
+                   let nsImage = NSImage(contentsOf: logoURL) {
                     Image(nsImage: nsImage)
                         .resizable()
                         .frame(width: 28, height: 28)
@@ -81,8 +80,7 @@ struct SetupWizard: View {
     private var welcomeView: some View {
         VStack(spacing: 0) {
             if let logoURL = Bundle.main.url(forResource: "logo-128", withExtension: "png"),
-               let nsImage = NSImage(contentsOf: logoURL)
-            {
+               let nsImage = NSImage(contentsOf: logoURL) {
                 Image(nsImage: nsImage)
                     .resizable()
                     .frame(width: 72, height: 72)

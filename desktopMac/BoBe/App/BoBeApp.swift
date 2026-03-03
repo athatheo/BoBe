@@ -83,8 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for app in NSWorkspace.shared.runningApplications
             where app.processIdentifier != currentPID
             && (app.executableURL?.lastPathComponent == "BoBe" || app.localizedName == "BoBe")
-            && !candidates.contains(where: { $0.processIdentifier == app.processIdentifier })
-        {
+            && !candidates.contains(where: { $0.processIdentifier == app.processIdentifier }) {
             candidates.append(app)
         }
 
@@ -148,8 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         if OverlayWindowManager.shared.panel == nil, self.setupWindow == nil, !self.isQuitting, !self.isShowingSetupAlert,
-           !self.isTransitioningFromSetup
-        {
+           !self.isTransitioningFromSetup {
             Task { @MainActor in
                 self.showOverlay()
             }
@@ -341,8 +339,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let iconName = isDark ? "bobe_app_dock_dark" : "bobe_app_dock_light"
         if let iconURL = Bundle.appResources.url(forResource: iconName, withExtension: "png"),
-           let icon = NSImage(contentsOf: iconURL)
-        {
+           let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
         }
     }

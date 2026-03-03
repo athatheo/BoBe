@@ -180,7 +180,7 @@ struct MCPServerDetail: View {
     @Previewable @State var deleteConfirm = false
     @Previewable @State var isReconnecting = false
     @Previewable @State var addExcludedText = ""
-    @Previewable @State var error: String? = nil
+    @Previewable @State var error: String?
     MCPServerDetail(
         server: MCPServer(
             id: "preview-1",

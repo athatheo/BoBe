@@ -338,8 +338,8 @@ impl ToolCallAccumulator {
             .into_iter()
             .filter(|tc| !tc.id.is_empty() && !tc.name.is_empty())
             .map(|tc| {
-                let arguments: HashMap<String, Value> =
-                    serde_json::from_str(&tc.arguments).unwrap_or_else(|e| {
+                let arguments: HashMap<String, Value> = serde_json::from_str(&tc.arguments)
+                    .unwrap_or_else(|e| {
                         tracing::warn!(
                             tool = %tc.name,
                             "Failed to parse tool call arguments: {e}"

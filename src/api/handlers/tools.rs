@@ -97,9 +97,7 @@ pub async fn enable_tool(
     let success = state.tool_registry.enable_tool(&tool_name);
 
     if !success {
-        return Err(AppError::NotFound(format!(
-            "Tool '{tool_name}' not found"
-        )));
+        return Err(AppError::NotFound(format!("Tool '{tool_name}' not found")));
     }
 
     tracing::info!(tool_name = %tool_name, "tools.enabled");
@@ -120,9 +118,7 @@ pub async fn disable_tool(
     let success = state.tool_registry.disable_tool(&tool_name);
 
     if !success {
-        return Err(AppError::NotFound(format!(
-            "Tool '{tool_name}' not found"
-        )));
+        return Err(AppError::NotFound(format!("Tool '{tool_name}' not found")));
     }
 
     tracing::info!(tool_name = %tool_name, "tools.disabled");
@@ -149,9 +145,7 @@ pub async fn update_tool(
     };
 
     if !success {
-        return Err(AppError::NotFound(format!(
-            "Tool '{tool_name}' not found"
-        )));
+        return Err(AppError::NotFound(format!("Tool '{tool_name}' not found")));
     }
 
     tracing::info!(tool_name = %tool_name, enabled = body.enabled, "tools.updated");

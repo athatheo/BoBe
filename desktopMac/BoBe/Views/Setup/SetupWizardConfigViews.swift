@@ -40,8 +40,7 @@ extension SetupWizard {
                 BobeSecureField(placeholder: "Your API key", text: $apiKey)
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
-                   provider.needsEndpoint
-                {
+                   provider.needsEndpoint {
                     Text("Endpoint URL")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
@@ -49,8 +48,7 @@ extension SetupWizard {
                 }
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
-                   provider.needsDeployment
-                {
+                   provider.needsDeployment {
                     Text("Deployment Name")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
@@ -58,8 +56,7 @@ extension SetupWizard {
                 }
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
-                   !provider.models.isEmpty
-                {
+                   !provider.models.isEmpty {
                     Text("Model")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)

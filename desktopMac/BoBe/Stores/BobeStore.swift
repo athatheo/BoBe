@@ -481,8 +481,7 @@ final class BobeStore {
                         captureActive = true
                         break
                     } catch let DaemonError.httpError(statusCode, message)
-                        where statusCode == 409 || message.localizedCaseInsensitiveContains("already")
-                    {
+                        where statusCode == 409 || message.localizedCaseInsensitiveContains("already") {
                         captureActive = true
                         break
                     } catch {

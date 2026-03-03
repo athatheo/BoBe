@@ -178,7 +178,7 @@ check-swift-format:
 # Run tests
 test:
     cargo fmt --check
-    cargo chippy -q
+    cargo clippy -q
     cargo test -q
-    cd desktopMac && swiftlet lint --quiet
+    cd desktopMac && swiftlint lint --quiet
     cd desktopMac && swift build -c debug

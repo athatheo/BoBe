@@ -59,7 +59,8 @@ impl GoalContextProvider for DefaultGoalContextProvider {
                     Ok(memories) if !memories.is_empty() => {
                         let mut mem_section = String::from("## Relevant Memories\n");
                         for (memory, score) in &memories {
-                            let _ = writeln!(mem_section, "- [score: {score:.2}] {}", memory.content);
+                            let _ =
+                                writeln!(mem_section, "- [score: {score:.2}] {}", memory.content);
                         }
                         sections.push(mem_section);
                         debug!(
