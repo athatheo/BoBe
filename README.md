@@ -1,72 +1,53 @@
-# BoBe (Rust)
+# BoBe
 
-**Local-first proactive AI companion that observes, remembers, and helps — rewritten in Rust.**
+**A local-first proactive AI companion for macOS that observes, remembers, and helps.**
 
-This is a complete Rust port of the [BoBe Python service](https://github.com/user/BoBe). Same architecture, same API contract, same features — but compiled, fast, and with a single binary.
+BoBe lives on your desktop as a transparent overlay. It watches what you're working on, builds memories over time, tracks your goals, and reaches out when it thinks it can help — like a thoughtful colleague who actually pays attention.
 
----
-
-## What BoBe Does
-
-BoBe inverts the typical AI interaction. Instead of you loading context into the AI, the AI already knows:
-
-| Capability | How It Works |
-|------------|--------------|
-| **Observes your work** | Screenshots every N seconds, OCR, vision LLM analysis |
-| **Remembers short-term** | Recent activities stored with semantic embeddings |
-| **Remembers long-term** | Background learning distills observations into lasting memories |
-| **Tracks your goals** | Extracts goals from conversations, persists and references them |
-| **Reaches out proactively** | Decides when help would be valuable — like a thoughtful colleague |
-| **Respects your flow** | Cooldowns prevent spam; learns when to stay quiet |
-| **Executes tools** | Native tools + MCP server integration for file access, memory search, coding agents |
+Everything runs locally. Your data never leaves your machine unless you choose a cloud LLM provider.
 
 ---
 
-## Architecture
+## Features
 
-Three processes work together:
+| | |
+|---|---|
+| **Observes your work** | Periodic screen captures analyzed by a vision LLM to understand what you're doing |
+| **Remembers you** | Short-term and long-term memory built from conversations and observations, powered by semantic embeddings |
+| **Tracks your goals** | Extracts goals from conversations, persists them, and references them when relevant |
+| **Reaches out proactively** | A decision engine evaluates when help would be valuable — not a chatbot waiting for input |
+| **Respects your flow** | Cooldown logic and engagement awareness prevent interruptions when you're focused |
+| **Uses tools** | Native file access, memory search, and extensible [MCP](https://modelcontextprotocol.io/) server integration |
+| **Customizable personality** | Soul documents shape how BoBe communicates — make it formal, casual, technical, or anything in between |
 
-| Process | Technology | Responsibility |
-|---------|------------|----------------|
-| **bobe** | Rust / Axum | All business logic: orchestration, capture, learning, tools |
-| **bobe-shell** | Swift / SwiftUI (macOS) | Native desktop overlay that displays state via SSE |
-| **LLM backend** | Ollama / llama.cpp / OpenAI / Azure OpenAI | Local or cloud inference |
+---
 
-```bash
-┌─────────────────────────────────────────────────────────────┐
-│                      USER'S DESKTOP                          │
-│                                                              │
-│  Screen Activity ──┐                                         │
-│                    ▼                                         │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                   bobe (Rust/Axum)                     │  │
-│  │                                                        │  │
-│  │  Capture ──▶ Analyze ──▶ Remember ──▶ Decide ──▶ Help  │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                    │ SSE + HTTP                               │
-│                    ▼                                         │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │              bobe-shell (Swift/SwiftUI)                 │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+## How It Works
+
+BoBe is two processes that communicate over localhost:
+
+```
+bobe-daemon (Rust/Axum, :8766)  <── SSE + HTTP ──>  BoBe.app (Swift/SwiftUI)
+         |                                                    |
+         v                                                    v
+   LLM Backend                                     Transparent overlay
+   (Ollama / OpenAI / Azure / llama.cpp)           + settings + menu bar
 ```
 
-### Internal Structure
+The **Rust backend** handles all intelligence: screen capture, context assembly, LLM orchestration, learning pipelines, tool execution, and goal tracking. It exposes a REST + SSE API on `127.0.0.1:8766`.
 
-```bash
-src/
-├── main.rs                  # Entry point + CLI (clap)
-├── config.rs                # Settings from BOBE_* env vars
-├── error.rs                 # Shared error types
-├── app_state.rs             # Arc-wrapped shared singletons
-├── domain/                  # Pure structs + enums (no framework deps)
-├── ports/                   # Trait definitions (interfaces)
-├── application/             # Business logic (learners, triggers, runtime, services, prompts)
-├── adapters/                # Implementations (LLM providers, DB repos, tools, SSE, capture)
-├── entrypoints/             # HTTP handlers (Axum controllers)
-├── composition/             # Wiring, bootstrap, config management
-└── shared/                  # Leaf utilities (IDs, clock)
-```
+The **Swift app** is a native macOS overlay — a floating avatar with chat bubbles, a message input, a settings panel, and a menu bar icon. It connects to the backend via SSE for real-time updates.
+
+### LLM Providers
+
+| Provider | Use Case |
+|----------|----------|
+| **[Ollama](https://ollama.ai)** | Recommended for local inference. Auto-started and managed by BoBe. |
+| **OpenAI** | Cloud inference (gpt-5 family). Requires API key. |
+| **Azure OpenAI** | Enterprise cloud inference. Requires endpoint + key + deployment. |
+| **llama.cpp** | Direct local inference without Ollama. |
+
+BoBe auto-detects your model's context window and clamps response budgets to prevent overflows.
 
 ---
 
@@ -74,118 +55,111 @@ src/
 
 ### Prerequisites
 
-- Rust 1.75+ (edition 2021)
-- SQLite 3.35+ (bundled via sqlx)
-- [Ollama](https://ollama.ai) (recommended) or llama.cpp or OpenAI API key
+- **macOS 14+** (Sonoma)
+- **[Ollama](https://ollama.ai)** (recommended) or an OpenAI/Azure API key
+- **[just](https://github.com/casey/just)** task runner
 
-### Build & Run
+For building from source:
+- Rust 1.93+ (edition 2024)
+- Xcode 16+ with Swift 6.0
 
-```bash
-cargo build --release
-./target/release/bobe serve
-```
-
-Or during development:
+### Install & Run
 
 ```bash
-cargo run -- serve --host 127.0.0.1 --port 8765
+git clone https://github.com/user/bobe.git
+cd bobe
+just run
 ```
 
-Server starts at <http://127.0.0.1:8765>
+This builds the Rust backend and launches the macOS app. On first launch, a setup wizard guides you through choosing an LLM provider and pulling a model.
 
-- Health check: <http://127.0.0.1:8765/health>
-- SSE stream: <http://127.0.0.1:8765/events>
+### Build a Release
 
-## Domain Model
-
-| Concept | Description | Retention |
-|---------|-------------|-----------|
-| **Soul** | Personality documents injected into LLM prompts | Forever |
-| **Goal** | User intentions (active → completed/archived) | Until archived + 30d |
-| **Memory (short)** | Recent distilled facts | 30 days |
-| **Memory (long)** | Consolidated knowledge | 90 days |
-| **Memory (explicit)** | User-requested "remember this" | Forever |
-| **Observation** | Raw screen capture data | 7 days |
-| **Conversation** | Chat session (PENDING → ACTIVE → CLOSED) | Forever |
-| **Cooldown** | Proactive engagement timestamps (single row) | N/A |
+```bash
+just build          # Release build + bundle BoBe.app
+just release 1.0.0  # Build + sign + create DMG
+```
 
 ---
 
-## API Endpoints
+## Configuration
+
+All settings are configurable at runtime through the app's settings panel. They persist to `~/.bobe/config.toml`.
+
+Environment variable overrides use the `BOBE_` prefix with `__` for nesting:
+
+```bash
+BOBE_LLM__BACKEND=openai          # Switch to OpenAI
+BOBE_LLM__CONTEXT_WINDOW=8192     # Override auto-detected context window
+BOBE_CAPTURE__ENABLED=false        # Disable screen capture
+BOBE_CAPTURE__INTERVAL_SECONDS=30  # Capture every 30 seconds
+```
+
+Data is stored at `~/.bobe/` — SQLite database, config, goals file, and MCP server configuration.
+
+---
+
+## Domain Model
+
+BoBe maintains several types of persistent knowledge:
+
+| Concept | What It Is | Retention |
+|---------|------------|-----------|
+| **Soul** | Personality documents that shape LLM behavior | Permanent |
+| **Goal** | Intentions extracted from conversations (active / completed / archived) | Until archived + 30 days |
+| **Memory (short-term)** | Recent distilled facts from conversations and observations | 30 days |
+| **Memory (long-term)** | Consolidated knowledge from the learning pipeline | 90 days |
+| **Memory (explicit)** | Things you explicitly ask BoBe to remember | Permanent |
+| **Observation** | Raw screen capture analysis data | 7 days |
+| **Conversation** | Chat sessions with full turn history | Permanent |
+| **User Profile** | Information about you that BoBe references in context | Permanent |
+
+---
+
+## API
+
+The backend exposes a REST API on `127.0.0.1:8766`. Key endpoints:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
-| `/status` | GET | Runtime session status |
-| `/events` | GET | SSE event stream |
-| `/conversation/message` | POST | Send a message |
-| `/conversation/history` | GET | Conversation history |
-| `/conversation/close` | POST | Close conversation |
-| `/capture` | POST | Trigger manual capture |
-| `/capture/start` | POST | Enable capture cycle |
-| `/capture/stop` | POST | Disable capture cycle |
-| `/context/search` | POST | Semantic search |
-| `/context/recent` | GET | Recent context items |
-| `/goals` | GET/POST | List/create goals |
-| `/goals/{id}` | GET/PUT/DELETE | Goal CRUD |
-| `/memories` | GET | List memories |
-| `/memories/{id}` | PUT/DELETE | Memory CRUD |
-| `/souls` | GET/POST | List/create souls |
-| `/souls/{id}` | GET/PUT/DELETE | Soul CRUD |
+| `/status` | GET | Runtime session state |
+| `/events` | GET | SSE event stream (real-time updates) |
+| `/message` | POST | Send a message to BoBe |
+| `/goals` | GET/POST | List or create goals |
+| `/goals/{id}` | GET/PATCH/DELETE | Goal CRUD + complete/archive |
+| `/memories` | GET/POST | List or create memories |
+| `/memories/search` | POST | Semantic memory search |
+| `/souls` | GET/POST | Personality document management |
+| `/user-profiles` | GET/POST | User profile management |
+| `/settings` | GET/PATCH | Runtime configuration |
+| `/models` | GET | List installed Ollama models |
+| `/models/pull` | POST | Download a model (SSE progress) |
 | `/tools` | GET | List available tools |
-| `/tools/mcp/config` | GET/PUT/DELETE | MCP full-document config (read/save/reset) |
-| `/tools/mcp/config/validate` | POST | MCP config validation + tool discovery preview |
-| `/settings` | GET/PATCH | Runtime settings |
-| `/models` | GET | List installed models |
-| `/models/registry` | GET | Browse model registry |
-| `/models/pull` | POST | Download model (SSE progress) |
-| `/models/{name}` | DELETE | Delete model |
-| `/onboarding/status` | GET | Setup status |
-| `/onboarding/options` | GET | Setup options (tiers/providers/models) |
-| `/onboarding/setup` | POST | Start idempotent setup job |
-| `/onboarding/setup/{job_id}` | GET/DELETE | Poll or cancel setup job |
-| `/onboarding/mark-complete` | POST | Mark setup done |
-| `/user-profile` | GET/PUT | User profile |
+| `/tools/mcp/config` | GET/PUT/DELETE | MCP server configuration |
+| `/onboarding/setup` | POST | Start setup wizard job |
+| `/capture/start` | POST | Enable screen capture |
+| `/capture/stop` | POST | Disable screen capture |
 
 ---
 
-## Development
+## Security
 
-```bash
-# Build
-cargo build
+BoBe handles sensitive data (screen captures, API keys, personal context). Security is taken seriously:
 
-# Run tests
-cargo test
-
-# Run with logging
-RUST_LOG=debug cargo run -- serve
-
-# Check without building
-cargo check
-
-# Lint
-cargo clippy -- -D warnings
-
-# Format
-cargo fmt
-```
-
-### Database Migrations
-
-```bash
-# Install sqlx-cli
-cargo install sqlx-cli --features sqlite
-
-# Run migrations
-sqlx migrate run --source migrations/
-
-# Create new migration
-sqlx migrate add <name> --source migrations/
-```
+- **Localhost only** — all endpoints bind to `127.0.0.1`, never exposed to the network
+- **Host validation** middleware on every route
+- **API keys** stored in macOS Keychain via the `secrecy` crate, never logged or written to disk in plaintext
+- **File tools** use `canonicalize()` + ancestry checks to prevent path traversal
+- **MCP commands** validated against a configurable blocklist
+- **CORS** locked to localhost origins
 
 ---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding conventions, and architecture details.
 
 ## License
 
-MIT
+[MIT](LICENSE)

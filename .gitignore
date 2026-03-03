@@ -10,3 +10,6 @@ desktopMac/.build/
 sparkle_private_key
 sparkle_private_key.pem
 *.sparkle_private_key
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.github/instructions/snyk_rules.instructions.md

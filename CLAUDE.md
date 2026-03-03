@@ -49,7 +49,7 @@ bobe-daemon (Rust/Axum, :8766)  ←── SSE + HTTP ──→  BoBe.app (Swift/
 | `llm/` | Provider abstraction (Ollama, OpenAI, Azure via OpenAI, llama.cpp); circuit breaker, embedding, runtime swappable |
 | `bootstrap/` | Dependency wiring → `AppState` construction |
 | `config.rs` | All `BOBE_*` env var settings; `ConfigManager` supports runtime hot-swap |
-| `config_manager/` | Persistence to `~/.bobe/.env` |
+| `config_manager/` | Runtime hot-swap + persistence to `~/.bobe/config.toml` |
 | `util/` | SSE connection manager, screen capture, similarity math, text utils |
 
 **DI:** No framework. Constructor injection via `AppState` (Arc-wrapped, Axum State extractor).
