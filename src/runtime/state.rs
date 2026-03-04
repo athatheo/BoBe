@@ -8,7 +8,6 @@ use crate::models::observation::Observation;
 pub enum Decision {
     Engage,
     Idle,
-    Ignore,
     NeedMoreInfo,
 }
 

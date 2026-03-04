@@ -145,6 +145,7 @@ struct PermissionCard<Content: View>: View {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Concept Card") {
     VStack(spacing: 12) {
         ConceptCard(icon: "brain.head.profile", title: "Observes", description: "Watches your screen to understand what you're working on")
@@ -206,3 +207,4 @@ struct PermissionCard<Content: View>: View {
     .frame(width: 440)
     .padding()
 }
+#endif

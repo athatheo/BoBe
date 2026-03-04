@@ -21,6 +21,9 @@ let package = Package(
             ],
             resources: [
                 .process("Resources")
+            ],
+            swiftSettings: [
+                .define("SPM_BUILD")
             ]
         )
     ]

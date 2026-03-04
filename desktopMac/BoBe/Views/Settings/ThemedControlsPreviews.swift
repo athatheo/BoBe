@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - ThemedControls Previews
 
+#if !SPM_BUILD
 #Preview("Button Variants") {
     VStack(spacing: 12) {
         HStack(spacing: 8) {
@@ -79,3 +80,4 @@ import SwiftUI
     .frame(width: 300)
     .padding()
 }
+#endif

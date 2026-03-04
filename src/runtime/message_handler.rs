@@ -25,7 +25,7 @@ use crate::tools::registry::ToolRegistry;
 use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
-use crate::util::tokens::{clamp_max_tokens, count_message_tokens};
+use crate::util::tokens::{clamp_max_tokens, count_message_tokens, count_tokens};
 
 pub struct MessageHandler {
     llm: Arc<dyn LlmProvider>,
@@ -149,7 +149,18 @@ impl MessageHandler {
             .await;
 
         let (context_summary, soul) = assembled.to_context_string();
-        let conversation_history = self.build_conversation_history(conversation_id).await;
+        let prompt_config = UserResponsePrompt::config();
+
+        let system_tokens = count_tokens(&context_summary)
+            + count_tokens(soul.as_deref().unwrap_or(""))
+            + 50; // template framing
+        let user_msg_tokens = count_tokens(user_content) + 4;
+        let overhead = system_tokens + user_msg_tokens + prompt_config.max_tokens as usize;
+        let history_budget = (cfg.llm.context_window as usize).saturating_sub(overhead);
+
+        let conversation_history = self
+            .build_conversation_history(conversation_id, history_budget)
+            .await;
 
         let history_refs: Vec<(&str, &str)> = conversation_history
             .iter()
@@ -166,7 +177,6 @@ impl MessageHandler {
             },
             soul.as_deref(),
         );
-        let prompt_config = UserResponsePrompt::config();
 
         // Get tools if enabled
         let tools = if cfg.tools.enabled {
@@ -227,7 +237,11 @@ impl MessageHandler {
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
-    async fn build_conversation_history(&self, conversation_id: Uuid) -> Vec<(String, String)> {
+    async fn build_conversation_history(
+        &self,
+        conversation_id: Uuid,
+        token_budget: usize,
+    ) -> Vec<(String, String)> {
         let mut history: Vec<(String, String)> = Vec::new();
         match self
             .conversation
@@ -263,6 +277,8 @@ impl MessageHandler {
                 );
             }
         }
+
+        trim_history_to_budget(&mut history, token_budget);
         history
     }
 
@@ -320,7 +336,7 @@ impl MessageHandler {
             return Vec::new();
         };
 
-        let all_tools = registry.get_all_tools(true).await;
+        let all_tools = registry.get_all_tools(false).await;
         if all_tools.is_empty() {
             return Vec::new();
         }
@@ -339,5 +355,93 @@ impl MessageHandler {
             );
         }
         selected
+    }
+}
+
+const PER_TURN_OVERHEAD: usize = 4;
+
+fn trim_history_to_budget(history: &mut Vec<(String, String)>, budget: usize) {
+    let total: usize = history
+        .iter()
+        .map(|(role, content)| count_tokens(role) + count_tokens(content) + PER_TURN_OVERHEAD)
+        .sum();
+
+    if total <= budget {
+        return;
+    }
+
+    let mut excess = total - budget;
+    let mut drop_count = 0;
+    for (role, content) in history.iter() {
+        if excess == 0 {
+            break;
+        }
+        let turn_tokens = count_tokens(role) + count_tokens(content) + PER_TURN_OVERHEAD;
+        excess = excess.saturating_sub(turn_tokens);
+        drop_count += 1;
+    }
+
+    if drop_count > 0 {
+        info!(
+            dropped = drop_count,
+            original = history.len(),
+            budget,
+            "message_handler.history_trimmed"
+        );
+        history.drain(..drop_count);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trim_noop_when_within_budget() {
+        let mut history = vec![
+            ("user".into(), "Hello".into()),
+            ("assistant".into(), "Hi there".into()),
+        ];
+        let original_len = history.len();
+        trim_history_to_budget(&mut history, 10_000);
+        assert_eq!(history.len(), original_len);
+    }
+
+    #[test]
+    fn trim_drops_oldest_turns_first() {
+        let mut history: Vec<(String, String)> = (0..10)
+            .map(|i| ("user".into(), format!("Message number {i} with some content")))
+            .collect();
+        trim_history_to_budget(&mut history, 50);
+        assert!(history.len() < 10, "should have trimmed some turns");
+        assert!(
+            history[0].1.contains("Message number"),
+            "remaining turns should be the newest"
+        );
+        let first_num: usize = history[0]
+            .1
+            .split_whitespace()
+            .nth(2)
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(first_num > 0, "oldest turns should be dropped");
+    }
+
+    #[test]
+    fn trim_empty_history_is_noop() {
+        let mut history: Vec<(String, String)> = Vec::new();
+        trim_history_to_budget(&mut history, 0);
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn trim_zero_budget_drops_all() {
+        let mut history = vec![
+            ("user".into(), "Hello".into()),
+            ("assistant".into(), "Hi".into()),
+        ];
+        trim_history_to_budget(&mut history, 0);
+        assert!(history.is_empty());
     }
 }

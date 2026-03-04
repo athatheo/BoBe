@@ -270,6 +270,7 @@ func formatBytes(_ bytes: Int) -> String {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("BobeToggle") {
     @Previewable @State var isOn = true
     HStack(spacing: 20) {
@@ -315,3 +316,4 @@ func formatBytes(_ bytes: Int) -> String {
     .padding()
     .frame(width: 400)
 }
+#endif

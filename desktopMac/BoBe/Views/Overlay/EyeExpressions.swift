@@ -253,6 +253,7 @@ private struct SmilePath: Shape {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Eye Unit") {
     HStack(spacing: 20) {
         EyeUnit(theme: allThemes[0].colors)
@@ -297,3 +298,4 @@ private struct SmilePath: Shape {
         .padding()
         .background(Color.gray.opacity(0.2))
 }
+#endif

@@ -149,6 +149,7 @@ final class FocusAwareTextView: NSTextView {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Code Editor") {
     @Previewable @State var text = """
     You are BoBe, a friendly AI companion.
@@ -159,3 +160,4 @@ final class FocusAwareTextView: NSTextView {
         .frame(width: 500, height: 300)
         .padding()
 }
+#endif

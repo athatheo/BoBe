@@ -99,6 +99,9 @@ CREATE TABLE IF NOT EXISTS goal_plan_steps (
 );
 CREATE INDEX IF NOT EXISTS ix_goal_plan_steps_plan ON goal_plan_steps(plan_id, step_order);
 
+-- Data migration: fix legacy "inprogress" values (was lowercase, now snake_case)
+UPDATE goal_plan_steps SET status = 'in_progress' WHERE status = 'inprogress';
+
 -- Soul documents (personality)
 CREATE TABLE IF NOT EXISTS souls (
     id BLOB PRIMARY KEY NOT NULL,

@@ -248,6 +248,7 @@ struct BobeLabel: View {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Idle") {
     AvatarView(stateType: .idle, isCapturing: false, isConnected: true, hasMessage: false)
         .environment(\.theme, allThemes[0])
@@ -282,3 +283,4 @@ struct BobeLabel: View {
         .frame(width: 200, height: 200)
         .background(Color.gray.opacity(0.1))
 }
+#endif

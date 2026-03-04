@@ -147,6 +147,7 @@ private struct ClosedEyeArc: View {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Appearance Panel") {
     AppearancePanel()
         .environment(\.theme, allThemes[0])
@@ -161,3 +162,4 @@ private struct ClosedEyeArc: View {
     .padding()
     .frame(width: 500)
 }
+#endif

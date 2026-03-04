@@ -47,6 +47,9 @@ impl ToolRegistry {
     }
 
     /// Collect all tool definitions from every registered source.
+    ///
+    /// When `include_disabled` is false, tools disabled via [`Self::set_tool_enabled`]
+    /// are filtered out so the LLM never sees them.
     pub async fn get_all_tools(&self, include_disabled: bool) -> Vec<ToolDefinition> {
         let sources: Vec<Arc<dyn ToolSource>> =
             self.sources.iter().map(|e| e.value().clone()).collect();
@@ -58,6 +61,15 @@ impl ToolRegistry {
                 Err(e) => warn!(source = %source.name(), error = %e, "Failed to get tools"),
             }
         }
+
+        if !include_disabled {
+            all.retain(|tool| {
+                self.enabled_overrides
+                    .get(&tool.name)
+                    .is_none_or(|e| *e.value())
+            });
+        }
+
         all
     }
 
