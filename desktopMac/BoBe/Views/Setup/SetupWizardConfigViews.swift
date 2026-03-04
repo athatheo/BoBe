@@ -76,9 +76,9 @@ extension SetupWizard {
                 let needsEndpoint = provider?.needsEndpoint ?? false
                 let needsDeployment = provider?.needsDeployment ?? false
                 let canSubmit =
-                    !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
-                        && (!needsEndpoint || !endpoint.trimmingCharacters(in: .whitespaces).isEmpty)
-                        && (!needsDeployment || !deployment.trimmingCharacters(in: .whitespaces).isEmpty)
+                    !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && (!needsEndpoint || !endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        && (!needsDeployment || !deployment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         && !busy
 
                 Button(busy ? "Setting up..." : "Continue") {

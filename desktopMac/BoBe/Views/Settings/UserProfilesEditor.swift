@@ -67,7 +67,7 @@ struct UserProfilesEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    List(selection: self.$selectedId) {
+                    List {
                         ForEach(self.profiles) { profile in
                             BobeSelectableRow(
                                 isSelected: self.selectedId == profile.id,
@@ -100,7 +100,7 @@ struct UserProfilesEditor: View {
                                     )
                                 }
                             )
-                            .tag(profile.id)
+                            .onTapGesture { self.selectedId = profile.id }
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))

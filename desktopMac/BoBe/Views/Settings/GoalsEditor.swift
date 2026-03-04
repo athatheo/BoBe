@@ -67,7 +67,7 @@ struct GoalsEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    List(selection: self.$selectedId) {
+                    List {
                         ForEach(self.goals) { goal in
                             BobeSelectableRow(
                                 isSelected: self.selectedId == goal.id,
@@ -103,7 +103,7 @@ struct GoalsEditor: View {
                                     }
                                 }
                             )
-                            .tag(goal.id)
+                            .onTapGesture { self.selectedId = goal.id }
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))

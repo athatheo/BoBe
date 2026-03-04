@@ -137,7 +137,7 @@ struct MemoriesEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    List(selection: self.$selectedId) {
+                    List {
                         ForEach(self.filteredMemories) { memory in
                             BobeSelectableRow(
                                 isSelected: self.selectedId == memory.id,
@@ -165,7 +165,7 @@ struct MemoriesEditor: View {
                                     }
                                 }
                             )
-                            .tag(memory.id)
+                            .onTapGesture { self.selectedId = memory.id }
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))

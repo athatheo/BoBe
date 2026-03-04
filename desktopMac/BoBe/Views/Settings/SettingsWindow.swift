@@ -105,6 +105,8 @@ struct SettingsWindow: View {
         .environment(\.theme, self.theme)
         .preferredColorScheme(self.theme.isDark ? .dark : .light)
         .background(self.theme.colors.background)
+        .ignoresSafeArea(.container, edges: .top)
+        .toolbar(removing: .sidebarToggle)
     }
 
     // MARK: - Sidebar
@@ -129,20 +131,57 @@ struct SettingsWindow: View {
                     .frame(height: 1)
             }
 
-            List(selection: self.$selectedCategory) {
+            List {
                 ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
-                    Section(group.rawValue) {
+                    Section {
                         ForEach(group.categories) { category in
-                            Label(category.label, systemImage: category.icon)
-                                .tag(category as SettingsCategory?)
+                            self.sidebarRow(for: category)
+                                .onTapGesture { self.selectedCategory = category }
+                                .listRowInsets(.init(top: 2, leading: 8, bottom: 2, trailing: 8))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                         }
+                    } header: {
+                        Text(group.rawValue)
+                            .bobeTextStyle(.sectionLabel)
+                            .tracking(0.8)
+                            .foregroundStyle(self.theme.colors.textMuted)
                     }
                 }
             }
             .listStyle(.sidebar)
             .tint(self.theme.colors.primary)
+            .scrollContentBackground(.hidden)
         }
         .background(self.theme.colors.background)
+    }
+
+    private func sidebarRow(for category: SettingsCategory) -> some View {
+        let isSelected = self.selectedCategory == category
+
+        return HStack(spacing: 10) {
+            Image(systemName: category.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isSelected ? self.theme.colors.primary : self.theme.colors.textMuted)
+                .frame(width: 16)
+
+            Text(category.label)
+                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(self.theme.colors.text)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? self.theme.colors.primary.opacity(self.theme.isDark ? 0.24 : 0.14) : .clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? self.theme.colors.primary.opacity(0.55) : .clear, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
     }
 
     private var settingsHeader: some View {

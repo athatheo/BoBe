@@ -242,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.animationBehavior = .none
         window.center()
         window.setContentSize(NSSize(width: 540, height: 700))
-        window.contentView = NSHostingView(rootView: setupView)
+        window.contentViewController = NSHostingController(rootView: setupView)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
 

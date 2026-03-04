@@ -3,15 +3,15 @@ import SwiftUI
 
 /// Manages the settings window (separate from overlay).
 @MainActor
-final class SettingsWindowManager {
+final class SettingsWindowManager: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowManager()
 
     private var window: NSWindow?
 
-    private init() {}
+    private override init() {}
 
     func show() {
-        if let window, window.isVisible {
+        if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -21,8 +21,8 @@ final class SettingsWindowManager {
         let settingsView = SettingsWindow()
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1050, height: 720),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -30,27 +30,29 @@ final class SettingsWindowManager {
         window.center()
         window.minSize = NSSize(width: 800, height: 550)
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .visible
-        window.toolbar = nil
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.animationBehavior = .none
+        window.delegate = self
         window.backgroundColor = NSColor(theme.colors.background)
-        window.contentView = NSHostingView(rootView: settingsView)
+        window.contentViewController = NSHostingController(rootView: settingsView)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
-
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.window = nil
-            }
-        }
     }
 
     func close() {
-        self.window?.close()
+        self.window?.orderOut(nil)
+        self.window = nil
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let closingWindow = notification.object as? NSWindow, closingWindow == self.window else { return }
         self.window = nil
     }
 }

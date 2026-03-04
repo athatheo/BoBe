@@ -346,20 +346,37 @@ struct BobeMenuPicker<Option: Hashable>: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Picker(selection: self.$selection) {
+        Menu {
             ForEach(self.options, id: \.self) { option in
-                Text(self.label(option))
-                    .tag(option)
+                Button {
+                    self.selection = option
+                } label: {
+                    HStack {
+                        Text(self.label(option))
+                        if option == self.selection {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
             }
         } label: {
-            Text(self.label(self.selection))
-                .font(.system(size: self.size.fontSize, weight: .medium))
-                .foregroundStyle(self.theme.colors.text)
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                Text(self.label(self.selection))
+                    .font(.system(size: self.size.fontSize, weight: .medium))
+                    .foregroundStyle(self.theme.colors.text)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: max(10, self.size.fontSize - 1), weight: .semibold))
+                    .foregroundStyle(self.theme.colors.textMuted)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .pickerStyle(.menu)
+        .menuStyle(.borderlessButton)
         .controlSize(self.size.controlSize)
-        .tint(self.theme.colors.primary)
+        .buttonStyle(.plain)
         .padding(.horizontal, max(8, self.size.horizontalPadding - 1))
         .padding(.vertical, max(4, self.size.verticalPadding - 1))
         .background(
@@ -370,7 +387,8 @@ struct BobeMenuPicker<Option: Hashable>: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(self.theme.colors.border, lineWidth: 1)
         )
-        .frame(width: self.width)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: self.width, alignment: .leading)
     }
 }
 
