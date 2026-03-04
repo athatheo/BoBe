@@ -66,7 +66,6 @@ struct UserProfilesEditor: View {
                             ForEach(self.profiles) { profile in
                                 BobeSelectableRow(
                                     isSelected: self.editorState.selectedId == profile.id,
-                                    action: { self.editorState.select(profile.id) },
                                     content: {
                                         VStack(alignment: .leading) {
                                             HStack(spacing: 4) {
@@ -91,10 +90,12 @@ struct UserProfilesEditor: View {
                                             isOn: Binding(
                                                 get: { profile.enabled },
                                                 set: { _ in self.toggleProfile(profile) }
-                                            )
+                                            ),
+                                            accessibilityLabel: "Enable profile"
                                         )
                                     }
                                 )
+                                .onTapGesture { self.editorState.select(profile.id) }
                             }
                         }
                     }
@@ -146,6 +147,7 @@ struct UserProfilesEditor: View {
                                 } label: {
                                     Image(systemName: "trash")
                                 }
+                                .accessibilityLabel("Delete profile")
                                 .bobeButton(.destructive, size: .small)
                             }
                         }

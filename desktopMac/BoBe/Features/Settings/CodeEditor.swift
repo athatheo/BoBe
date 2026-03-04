@@ -61,6 +61,7 @@ struct CodeEditor: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        scrollView.backgroundColor = NSColor(self.theme.colors.surface)
         guard let textView = scrollView.documentView as? NSTextView else { return }
         if textView.string != self.text {
             let ranges = textView.selectedRanges
@@ -148,6 +149,7 @@ final class FocusAwareTextView: NSTextView {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Code Editor") {
     @Previewable @State var text = """
     You are BoBe, a friendly AI companion.
@@ -158,3 +160,4 @@ final class FocusAwareTextView: NSTextView {
         .frame(width: 500, height: 300)
         .padding()
 }
+#endif

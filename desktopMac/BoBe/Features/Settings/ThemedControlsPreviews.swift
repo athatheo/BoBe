@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - ThemedControls Previews
 
+#if !SPM_BUILD
 #Preview("Button Variants") {
     VStack(spacing: 12) {
         HStack(spacing: 8) {
@@ -66,23 +67,12 @@ import SwiftUI
     .padding()
 }
 
-#Preview("BobeSidebarItem") {
-    VStack(spacing: 4) {
-        BobeSidebarItem(icon: "paintpalette.fill", title: "Appearance", isSelected: true, action: {})
-        BobeSidebarItem(icon: "gearshape.fill", title: "Behavior", isSelected: false, action: {})
-        BobeSidebarItem(icon: "wrench.fill", title: "Tools", isSelected: false, action: {})
-    }
-    .environment(\.theme, allThemes[0])
-    .frame(width: 200)
-    .padding()
-}
-
 #Preview("BobeSelectableRow") {
     VStack(spacing: 6) {
-        BobeSelectableRow(isSelected: true, action: {}, content: {
+        BobeSelectableRow(isSelected: true, content: {
             Text("Selected item")
         })
-        BobeSelectableRow(isSelected: false, action: {}, content: {
+        BobeSelectableRow(isSelected: false, content: {
             Text("Unselected item")
         })
     }
@@ -90,3 +80,4 @@ import SwiftUI
     .frame(width: 300)
     .padding()
 }
+#endif

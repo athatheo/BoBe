@@ -279,8 +279,8 @@ impl std::fmt::Display for GoalPlanStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum GoalPlanStepStatus {
     Pending,
     InProgress,
@@ -293,7 +293,7 @@ impl GoalPlanStepStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Pending => "pending",
-            Self::InProgress => "inprogress",
+            Self::InProgress => "in_progress",
             Self::Completed => "completed",
             Self::Failed => "failed",
             Self::Skipped => "skipped",
@@ -308,5 +308,47 @@ impl GoalPlanStepStatus {
 impl std::fmt::Display for GoalPlanStepStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn goal_plan_step_status_in_progress_uses_snake_case() {
+        assert_eq!(GoalPlanStepStatus::InProgress.as_str(), "in_progress");
+        assert_eq!(GoalPlanStepStatus::InProgress.to_string(), "in_progress");
+    }
+
+    #[test]
+    fn goal_plan_step_status_serde_round_trip() {
+        let status = GoalPlanStepStatus::InProgress;
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(json, "\"in_progress\"");
+        let back: GoalPlanStepStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, GoalPlanStepStatus::InProgress);
+    }
+
+    #[test]
+    fn goal_plan_step_status_all_variants_consistent() {
+        for status in [
+            GoalPlanStepStatus::Pending,
+            GoalPlanStepStatus::InProgress,
+            GoalPlanStepStatus::Completed,
+            GoalPlanStepStatus::Failed,
+            GoalPlanStepStatus::Skipped,
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            let from_json: GoalPlanStepStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(from_json, status);
+            assert_eq!(format!("\"{status}\""), json, "as_str and serde must agree");
+        }
+    }
+
+    #[test]
+    fn goal_plan_status_in_progress_matches_step_convention() {
+        assert_eq!(GoalPlanStatus::InProgress.as_str(), "in_progress");
+        assert_eq!(GoalPlanStepStatus::InProgress.as_str(), "in_progress");
     }
 }

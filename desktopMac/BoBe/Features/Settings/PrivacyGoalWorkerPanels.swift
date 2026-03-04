@@ -325,8 +325,10 @@ struct GoalWorkerPanel: View {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Privacy Panel") {
     PrivacyPanel()
         .environment(\.theme, allThemes[0])
         .frame(width: 600, height: 500)
 }
+#endif

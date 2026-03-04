@@ -260,6 +260,7 @@ struct AttentionPulse: View {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Status Labels") {
     VStack(spacing: 12) {
         StatusLabel(stateType: .thinking)
@@ -293,3 +294,4 @@ struct AttentionPulse: View {
         .frame(width: 160, height: 160)
         .background(Color.gray.opacity(0.1))
 }
+#endif

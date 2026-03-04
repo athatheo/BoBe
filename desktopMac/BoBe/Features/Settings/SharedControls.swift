@@ -4,27 +4,21 @@ import SwiftUI
 
 struct BobeToggle: View {
     @Binding var isOn: Bool
+    var accessibilityLabel: String?
     @Environment(\.theme) private var theme
 
-    var body: some View {
-        Button {
-            withAnimation(.spring(duration: 0.2, bounce: 0.1)) {
-                self.isOn.toggle()
-            }
-        } label: {
-            ZStack(alignment: self.isOn ? .trailing : .leading) {
-                Capsule()
-                    .fill(self.isOn ? self.theme.colors.secondary : self.theme.colors.border)
-                    .frame(width: 36, height: 20)
+    init(isOn: Binding<Bool>, accessibilityLabel: String? = nil) {
+        _isOn = isOn
+        self.accessibilityLabel = accessibilityLabel
+    }
 
-                Circle()
-                    .fill(.white)
-                    .frame(width: 16, height: 16)
-                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
-                    .padding(.horizontal, 2)
-            }
-        }
-        .buttonStyle(.plain)
+    var body: some View {
+        Toggle("", isOn: self.$isOn)
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .tint(self.theme.colors.secondary)
+            .controlSize(.small)
+            .accessibilityLabel(Text(self.accessibilityLabel ?? "Enabled"))
     }
 }
 
@@ -211,54 +205,11 @@ struct CollapsibleSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     @State private var isExpanded = true
-    @State private var isHeaderHovered = false
     @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    self.isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: self.icon)
-                        .font(.system(size: 14))
-                        .foregroundStyle(self.theme.colors.primary)
-                        .frame(width: 20)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(self.title)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(self.theme.colors.text)
-                        if let description {
-                            Text(description)
-                                .font(.system(size: 11))
-                                .foregroundStyle(self.theme.colors.textMuted)
-                        }
-                    }
-
-                    Spacer()
-
-                    if let binding = toggleBinding {
-                        BobeToggle(isOn: binding)
-                    }
-
-                    Image(systemName: self.isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(self.isHeaderHovered ? self.theme.colors.surface : .clear)
-                )
-            }
-            .buttonStyle(.plain)
-            .onHover { self.isHeaderHovered = $0 }
-
-            if self.isExpanded {
+        DisclosureGroup(isExpanded: self.$isExpanded) {
+            VStack(alignment: .leading, spacing: 0) {
                 let isDisabled = self.toggleBinding.map { !$0.wrappedValue } ?? false
                 VStack(alignment: .leading, spacing: 12) {
                     self.content
@@ -270,7 +221,39 @@ struct CollapsibleSection<Content: View>: View {
                 .opacity(isDisabled ? 0.5 : 1)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: self.icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(self.theme.colors.primary)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(self.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(self.theme.colors.text)
+                    if let description {
+                        Text(description)
+                            .font(.system(size: 11))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                    }
+                }
+
+                Spacer()
+
+                if let toggleBinding {
+                    BobeToggle(isOn: toggleBinding, accessibilityLabel: "\(self.title) enabled")
+                }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(self.isExpanded ? self.theme.colors.surface : .clear)
+            )
         }
+        .tint(self.theme.colors.primary)
+        .animation(.easeInOut(duration: 0.2), value: self.isExpanded)
     }
 }
 
@@ -287,6 +270,7 @@ func formatBytes(_ bytes: Int) -> String {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("BobeToggle") {
     @Previewable @State var isOn = true
     HStack(spacing: 20) {
@@ -332,3 +316,4 @@ func formatBytes(_ bytes: Int) -> String {
     .padding()
     .frame(width: 400)
 }
+#endif

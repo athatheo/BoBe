@@ -415,7 +415,13 @@ pub(crate) async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
 }
 
 async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
-    let Some(api_key) = body.api_key.as_ref().filter(|k| !k.is_empty()).cloned() else {
+    let Some(api_key) = body
+        .api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_owned)
+    else {
         fail_step(
             "validate",
             "API key is required",
@@ -446,7 +452,11 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
             return;
         }
         Err(e) => {
-            let msg = format!("Cannot reach OpenAI: {e}");
+            let msg = if e.is_builder() {
+                "Invalid OpenAI API key format. Remove spaces/newlines and try again.".to_string()
+            } else {
+                format!("Cannot reach OpenAI: {e}")
+            };
             fail_step("validate", &msg, &msg).await;
             return;
         }
@@ -462,8 +472,11 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
 
     let model = body
         .model
-        .clone()
-        .unwrap_or_else(|| "gpt-5-mini".to_string());
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .unwrap_or("gpt-5-mini")
+        .to_string();
 
     match test_openai_embedding(state, &api_key, &model).await {
         Ok(()) => {
@@ -504,15 +517,33 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
 }
 
 async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
-    let Some(api_key) = body.api_key.as_ref().filter(|k| !k.is_empty()).cloned() else {
+    let Some(api_key) = body
+        .api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_owned)
+    else {
         fail_step("validate", "API key is required", "API key required").await;
         return;
     };
-    let Some(endpoint) = body.endpoint.as_ref().filter(|e| !e.is_empty()).cloned() else {
+    let Some(endpoint) = body
+        .endpoint
+        .as_deref()
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map(str::to_owned)
+    else {
         fail_step("validate", "Endpoint is required", "Endpoint required").await;
         return;
     };
-    let Some(deployment) = body.deployment.as_ref().filter(|d| !d.is_empty()).cloned() else {
+    let Some(deployment) = body
+        .deployment
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+        .map(str::to_owned)
+    else {
         fail_step(
             "validate",
             "Deployment name is required",
@@ -550,7 +581,12 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
             return;
         }
         Err(e) => {
-            let msg = format!("Cannot reach Azure endpoint: {e}");
+            let msg = if e.is_builder() {
+                "Invalid Azure setup value format. Remove spaces/newlines and try again."
+                    .to_string()
+            } else {
+                format!("Cannot reach Azure endpoint: {e}")
+            };
             fail_step("validate", &msg, &msg).await;
             return;
         }

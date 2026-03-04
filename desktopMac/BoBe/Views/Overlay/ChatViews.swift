@@ -236,6 +236,7 @@ struct BlinkingCursor: View {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Chat Bubble - User") {
     ChatBubble(message: ChatMessage(sender: .user, content: "Hello BoBe, how are you?"))
         .environment(\.theme, allThemes[0])
@@ -271,3 +272,4 @@ struct BlinkingCursor: View {
     .frame(width: 500, height: 400)
     .background(allThemes[0].colors.background)
 }
+#endif

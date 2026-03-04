@@ -66,7 +66,6 @@ struct GoalsEditor: View {
                             ForEach(self.goals) { goal in
                                 BobeSelectableRow(
                                     isSelected: self.editorState.selectedId == goal.id,
-                                    action: { self.editorState.select(goal.id) },
                                     content: {
                                         HStack(spacing: 8) {
                                             Circle()
@@ -93,11 +92,13 @@ struct GoalsEditor: View {
                                                 isOn: Binding(
                                                     get: { goal.enabled },
                                                     set: { _ in self.toggleGoal(goal) }
-                                                )
+                                                ),
+                                                accessibilityLabel: "Enable goal"
                                             )
                                         }
                                     }
                                 )
+                                .onTapGesture { self.editorState.select(goal.id) }
                             }
                         }
                     }
@@ -154,6 +155,7 @@ struct GoalsEditor: View {
                             },
                             width: 180
                         )
+                        .accessibilityLabel("Goal priority")
                         .onChange(of: self.selectedPriority) { _, _ in
                             self.editorState.setDirty()
                         }
@@ -215,6 +217,7 @@ struct GoalsEditor: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
+                            .accessibilityLabel("Delete goal")
                             .bobeButton(.destructive, size: .small)
                         }
                     } trailing: {

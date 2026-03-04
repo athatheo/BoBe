@@ -119,6 +119,7 @@ struct MessageInput: View {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Message Input") {
     MessageInput(onSend: { _ in }, onClose: {})
         .environment(\.theme, allThemes[0])
@@ -134,3 +135,4 @@ struct MessageInput: View {
         .padding()
         .background(Color.gray.opacity(0.1))
 }
+#endif

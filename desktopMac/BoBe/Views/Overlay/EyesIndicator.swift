@@ -131,6 +131,7 @@ private struct FrownArc: Shape {
 
 // MARK: - Previews
 
+#if !SPM_BUILD
 #Preview("Idle") {
     EyesIndicator(state: .idle)
         .environment(\.theme, allThemes[0])
@@ -165,3 +166,4 @@ private struct FrownArc: Shape {
         .padding()
         .background(Color.gray.opacity(0.2))
 }
+#endif

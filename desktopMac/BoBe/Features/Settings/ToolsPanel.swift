@@ -34,6 +34,7 @@ struct ToolsPanel: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .accessibilityLabel("Reload tools")
                     .bobeButton(.secondary, size: .small)
                 }
 
@@ -114,29 +115,32 @@ struct ToolsPanel: View {
                             }
 
                             if self.expandedTool != tool.name {
-                                HStack(spacing: 4) {
-                                    Text(
-                                        tool.description.count > 80
-                                            ? String(tool.description.prefix(80)) + "..."
-                                            : tool.description
-                                    )
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(self.theme.colors.textMuted)
-                                    .lineLimit(1)
-
-                                    if tool.description.count > 80 {
-                                        Image(systemName: "chevron.down")
-                                            .font(.system(size: 8))
-                                            .foregroundStyle(self.theme.colors.textMuted)
+                                Button {
+                                    guard tool.description.count > 80 else { return }
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        self.expandedTool = tool.name
                                     }
-                                }
-                                .onTapGesture {
-                                    if tool.description.count > 80 {
-                                        withAnimation(.easeOut(duration: 0.15)) {
-                                            self.expandedTool = tool.name
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Text(
+                                            tool.description.count > 80
+                                                ? String(tool.description.prefix(80)) + "..."
+                                                : tool.description
+                                        )
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(self.theme.colors.textMuted)
+                                        .lineLimit(1)
+
+                                        if tool.description.count > 80 {
+                                            Image(systemName: "chevron.down")
+                                                .font(.system(size: 8))
+                                                .foregroundStyle(self.theme.colors.textMuted)
                                         }
                                     }
                                 }
+                                .buttonStyle(.plain)
+                                .disabled(tool.description.count <= 80)
+                                .accessibilityLabel("Expand \(tool.name) description")
                             }
                         }
 
@@ -146,7 +150,8 @@ struct ToolsPanel: View {
                             isOn: Binding(
                                 get: { tool.enabled },
                                 set: { _ in self.toggleTool(tool) }
-                            )
+                            ),
+                            accessibilityLabel: "Enable tool \(tool.name)"
                         )
                     }
                     .padding(.vertical, 6)
@@ -175,6 +180,7 @@ struct ToolsPanel: View {
                                 }
                                 .foregroundStyle(self.theme.colors.textMuted)
                             }
+                            .accessibilityLabel("Collapse \(tool.name) description")
                             .bobeButton(.ghost, size: .mini)
                         }
                         .padding(.horizontal, 4)

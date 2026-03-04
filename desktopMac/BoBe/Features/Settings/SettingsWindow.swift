@@ -50,14 +50,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         }
     }
 
-    var group: SettingsCategoryGroup? {
-        switch self {
-        case .souls, .goals, .memories, .userProfiles: .context
-        case .tools, .mcpServers: .integrations
-        case .appearance, .aiModel, .behavior, .privacy, .goalWorker: .preferences
-        case .advanced: .advanced
-        }
-    }
 }
 
 enum SettingsCategoryGroup: String, CaseIterable {
@@ -98,10 +90,10 @@ struct SettingsWindow: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        NavigationSplitView {
             self.settingsSidebar
-                .frame(width: 220)
-
+                .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 280)
+        } detail: {
             VStack(spacing: 0) {
                 self.settingsHeader
                 self.settingsContent
@@ -109,9 +101,12 @@ struct SettingsWindow: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(self.theme.colors.background)
         }
+        .navigationSplitViewStyle(.balanced)
         .environment(\.theme, self.theme)
         .preferredColorScheme(self.theme.isDark ? .dark : .light)
         .background(self.theme.colors.background)
+        .ignoresSafeArea(.container, edges: .top)
+        .toolbar(removing: .sidebarToggle)
     }
 
     // MARK: - Sidebar
@@ -136,44 +131,57 @@ struct SettingsWindow: View {
                     .frame(height: 1)
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.rawValue)
-                                .bobeTextStyle(.sectionLabel)
-                                .tracking(1)
-                                .foregroundStyle(self.theme.colors.textMuted)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 4)
-
-                            ForEach(group.categories) { category in
-                                self.sidebarItem(category)
-                            }
+            List {
+                ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
+                    Section {
+                        ForEach(group.categories) { category in
+                            self.sidebarRow(for: category)
+                                .onTapGesture { self.selectedCategory = category }
+                                .listRowInsets(.init(top: 2, leading: 8, bottom: 2, trailing: 8))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                         }
+                    } header: {
+                        Text(group.rawValue)
+                            .bobeTextStyle(.sectionLabel)
+                            .tracking(0.8)
+                            .foregroundStyle(self.theme.colors.textMuted)
                     }
                 }
-                .padding(.vertical, 8)
             }
+            .listStyle(.sidebar)
+            .tint(self.theme.colors.primary)
+            .scrollContentBackground(.hidden)
         }
         .background(self.theme.colors.background)
-        .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(self.theme.colors.border)
-                .frame(width: 1)
-        }
     }
 
-    private func sidebarItem(_ category: SettingsCategory) -> some View {
+    private func sidebarRow(for category: SettingsCategory) -> some View {
         let isSelected = self.selectedCategory == category
-        return BobeSidebarItem(
-            icon: category.icon,
-            title: category.label,
-            isSelected: isSelected
-        ) {
-            self.selectedCategory = category
+
+        return HStack(spacing: 10) {
+            Image(systemName: category.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isSelected ? self.theme.colors.primary : self.theme.colors.textMuted)
+                .frame(width: 16)
+
+            Text(category.label)
+                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(self.theme.colors.text)
+
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? self.theme.colors.primary.opacity(self.theme.isDark ? 0.24 : 0.14) : .clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? self.theme.colors.primary.opacity(0.55) : .clear, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
     }
 
     private var settingsHeader: some View {

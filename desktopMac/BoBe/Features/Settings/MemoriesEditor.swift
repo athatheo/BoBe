@@ -47,6 +47,7 @@ struct MemoriesEditor: View {
                         width: 110,
                         size: .small
                     )
+                    .accessibilityLabel("Filter memories by category")
 
                     BobeMenuPicker(
                         selection: self.$filterType,
@@ -62,6 +63,7 @@ struct MemoriesEditor: View {
                         width: 90,
                         size: .small
                     )
+                    .accessibilityLabel("Filter memories by type")
 
                     Spacer()
 
@@ -134,7 +136,6 @@ struct MemoriesEditor: View {
                             ForEach(self.filteredMemories) { memory in
                                 BobeSelectableRow(
                                     isSelected: self.editorState.selectedId == memory.id,
-                                    action: { self.editorState.select(memory.id) },
                                     content: {
                                         HStack {
                                             VStack(alignment: .leading, spacing: 3) {
@@ -153,11 +154,13 @@ struct MemoriesEditor: View {
                                                 isOn: Binding(
                                                     get: { memory.enabled },
                                                     set: { _ in self.toggleMemory(memory) }
-                                                )
+                                                ),
+                                                accessibilityLabel: "Enable memory"
                                             )
                                         }
                                     }
                                 )
+                                .onTapGesture { self.editorState.select(memory.id) }
                             }
                         }
                     }
@@ -206,6 +209,7 @@ struct MemoriesEditor: View {
                             width: 130,
                             size: .small
                         )
+                        .accessibilityLabel("Memory category")
                         .onChange(of: self.selectedCategory) { _, _ in
                             self.editorState.setDirty()
                         }
@@ -247,6 +251,7 @@ struct MemoriesEditor: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
+                            .accessibilityLabel("Delete memory")
                             .bobeButton(.destructive, size: .small)
                         }
                     } trailing: {

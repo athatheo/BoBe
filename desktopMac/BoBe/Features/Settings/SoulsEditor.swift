@@ -65,7 +65,6 @@ struct SoulsEditor: View {
                             ForEach(self.souls) { soul in
                                 BobeSelectableRow(
                                     isSelected: self.editorState.selectedId == soul.id,
-                                    action: { self.editorState.select(soul.id) },
                                     content: {
                                         VStack(alignment: .leading) {
                                             HStack(spacing: 4) {
@@ -90,10 +89,12 @@ struct SoulsEditor: View {
                                             isOn: Binding(
                                                 get: { soul.enabled },
                                                 set: { _ in self.toggleSoul(soul) }
-                                            )
+                                            ),
+                                            accessibilityLabel: "Enable soul"
                                         )
                                     }
                                 )
+                                .onTapGesture { self.editorState.select(soul.id) }
                             }
                         }
                     }
@@ -145,6 +146,7 @@ struct SoulsEditor: View {
                                 } label: {
                                     Image(systemName: "trash")
                                 }
+                                .accessibilityLabel("Delete soul")
                                 .bobeButton(.destructive, size: .small)
                             }
                         }
