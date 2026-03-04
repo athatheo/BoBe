@@ -26,7 +26,7 @@ codesign -s "Developer ID Application: YOUR_TEAM_NAME (TEAM_ID)" \
 File: `desktopMac/entitlements.plist`
 
 | Entitlement | Value | Reason |
-|-------------|-------|--------|
+| ------------- | ------- | -------- |
 | `com.apple.security.automation.apple-events` | `true` | Required for osascript System Events automation (active window detection) under hardened runtime |
 
 ## Notarization
@@ -52,7 +52,7 @@ xcrun stapler validate BoBe.dmg                           # staple check
 ## Credentials (CI/CD)
 
 | Secret | Env Var | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | Apple ID | `APPLE_ID` | Developer account email |
 | Team ID | `APPLE_TEAM_ID` | 10-char team identifier |
 | App password | `APPLE_APP_PASSWORD` | Generated at appleid.apple.com |
@@ -65,5 +65,5 @@ xcrun notarytool store-credentials "BoBe-notarize" \
   --apple-id "your@apple.id" --team-id "TEAM_ID" --password "app-specific-password"
 
 # Then:
-xcrun notarytool submit BoBe.dmg --keychain-profile "BoBe-notarize" --wait
+xcrun notarytool submit BoBe.dmg --keychain-profile "BoBe-notarize" --w`ait
 ```

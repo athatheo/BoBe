@@ -7,7 +7,7 @@ Compiled from: Rust API Guidelines (official), Effective Rust, Clippy docs, Tor 
 ## Key Thresholds
 
 | Metric | Target | Smell |
-|--------|--------|-------|
+| -------- | -------- | ------- |
 | File size | 300-500 lines | >1,000: must split |
 | Function size | <50 lines logic | >100: must split |
 | Cognitive complexity | <15 | >25: Clippy default |
@@ -127,7 +127,7 @@ The compiler can't verify your algorithm. Tests are the only defense.
 
 Cloning to satisfy the borrow checker is an antipattern. Question every `.clone()` — can you borrow, move, or restructure?
 
-### Arc<Mutex<T>> Performance Trap
+### 'Arc<Mutex<T>> Performance Trap
 
 One production case: 78% of CPU in atomic operations from excessive `Arc` cloning. Use `Rc` in single-threaded contexts. Write `Arc::clone(&x)` (not `x.clone()`) to make refcount clones visible.
 
@@ -264,7 +264,7 @@ Everything `pub` defeats the visibility system. Start private, use `pub(crate)` 
 ## Enums vs Traits
 
 | Criterion | Enum | Trait |
-|-----------|------|-------|
+| ----------- | ------ | ------- |
 | Variant set | Closed, known at compile time | Open, extensible |
 | New variant by | Crate author | Anyone |
 | Pattern matching | Natural, exhaustive | N/A |
@@ -274,7 +274,7 @@ Everything `pub` defeats the visibility system. Start private, use `pub(crate)` 
 
 ## Handler/Service/Repository Layering (Axum)
 
-```
+```txt
 Handler (api/handlers/) — THIN: extract, delegate, respond. ~15-20 lines max.
     ↓
 Service (services/) — Business logic, orchestration, transaction boundaries
