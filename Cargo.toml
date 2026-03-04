@@ -86,7 +86,7 @@ sqlx = { version = "0.8.6", features = [
     "json",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.50.0", features = ["full"] }
 tokio-stream = "0.1.18"
 tower-http = { version = "0.6.8", features = ["cors", "timeout", "trace"] }
 tracing = "0.1.44"
@@ -104,7 +104,7 @@ mdns-sd = { version = "0.18.1", features = ["async"] }
 rustix = { version = "1.1.4", features = ["fs"] }
 dashmap = "6.1.0"
 scraper = "0.25.0"
-moka = { version = "0.12.13", features = ["future"] }
-secrecy = { version = "0.10", features = ["serde"] }
-tiktoken-rs = "0.6"
+moka = { version = "0.12.14", features = ["future"] }
+secrecy = { version = "0.10.3", features = ["serde"] }
+tiktoken-rs = "0.9.1"
 tower = { version = "0.5.3", features = ["timeout", "limit"] }
