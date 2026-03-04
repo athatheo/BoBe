@@ -73,6 +73,10 @@ final class BobeStore {
     private var appNapActivity: NSObjectProtocol?
     private var backendObserverTask: Task<Void, Never>?
     private var sleepWakeObservers: [NSObjectProtocol] = []
+    @ObservationIgnored
+    private lazy var toolExecutionController = ToolExecutionController { [weak self] mutation in
+        self?.updateState(mutation)
+    }
 
     private init() {}
 
@@ -89,10 +93,14 @@ final class BobeStore {
                     case .fatal:
                         self?.isBackendFatal = true
                         self?.isReconnecting = false
-                        self?.updateState { $0.daemonConnected = false }
+                        self?.updateState { ctx in
+                            ctx.daemonConnected = false
+                            ctx.daemonError = true
+                        }
                     case .ready:
                         self?.isBackendFatal = false
                         self?.isReconnecting = false
+                        self?.updateState { $0.daemonError = false }
                     case .crashed:
                         self?.isReconnecting = true
                     default:
@@ -142,7 +150,10 @@ final class BobeStore {
                 },
                 onConnectionChange: { [weak self] connected in
                     Task { @MainActor in
-                        self?.updateState { $0.daemonConnected = connected }
+                        self?.updateState { ctx in
+                            ctx.daemonConnected = connected
+                            if connected { ctx.daemonError = false }
+                        }
                         if connected {
                             self?.isReconnecting = false
                             self?.hasConnectedOnce = true
@@ -181,7 +192,10 @@ final class BobeStore {
     // MARK: - Actions
 
     func dismissError() {
-        self.updateState { $0.errorMessage = nil }
+        self.updateState { ctx in
+            ctx.errorMessage = nil
+            ctx.daemonError = false
+        }
     }
 
     func toggleCapture() async -> Bool {
@@ -224,13 +238,7 @@ final class BobeStore {
         } catch {
             logger.error("sendMessage failed: \(error.localizedDescription)")
             self.updateState { ctx in
-                ctx.messages = ctx.messages.map {
-                    $0.isPending
-                        ? ChatMessage(
-                            id: $0.id, sender: $0.sender, content: $0.content,
-                            timestamp: $0.timestamp, isStreaming: false, isPending: false
-                        ) : $0
-                }
+                Self.normalizePendingMessages(&ctx.messages)
             }
             return nil
         }
@@ -271,7 +279,10 @@ final class BobeStore {
             if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
                 logger.error("Daemon error: \(payload.message)")
                 if !payload.recoverable {
-                    self.updateState { $0.errorMessage = payload.message }
+                    self.updateState { ctx in
+                        ctx.errorMessage = payload.message
+                        ctx.daemonError = true
+                    }
                 }
             }
         case .endOfTurn:
@@ -315,7 +326,10 @@ final class BobeStore {
                 break
             }
             ctx.activeIndicator = activeIndicator
-            if indicator != .unknown { ctx.errorMessage = nil }
+            if indicator != .unknown {
+                ctx.errorMessage = nil
+                ctx.daemonError = false
+            }
         }
     }
 
@@ -340,7 +354,7 @@ final class BobeStore {
         // deltas just accumulate in streamingMessage until the timer fires.
         if self.textDeltaFlushTask == nil {
             self.textDeltaFlushTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(150))
+                try? await Task.sleep(for: .milliseconds(StoreTiming.textDeltaFlushMilliseconds))
                 guard let self, !Task.isCancelled else { return }
                 self.flushStreamingToUI(messageId: messageId)
             }
@@ -352,13 +366,7 @@ final class BobeStore {
         self.textDeltaFlushTask = nil
 
         self.updateState { ctx in
-            ctx.messages = ctx.messages.map {
-                $0.isPending
-                    ? ChatMessage(
-                        id: $0.id, sender: $0.sender, content: $0.content,
-                        timestamp: $0.timestamp, isStreaming: false, isPending: false
-                    ) : $0
-            }
+            Self.normalizePendingMessages(&ctx.messages)
 
             if let idx = ctx.messages.firstIndex(where: { $0.id == messageId && $0.isStreaming }) {
                 ctx.messages[idx].content = self.streamingMessage
@@ -407,7 +415,7 @@ final class BobeStore {
 
         self.lastMessageTimer?.cancel()
         self.lastMessageTimer = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(30))
+            try? await Task.sleep(for: .seconds(StoreTiming.lastMessageClearSeconds))
             if !Task.isCancelled {
                 self?.updateState { $0.lastMessage = nil }
             }
@@ -415,35 +423,7 @@ final class BobeStore {
     }
 
     private func handleToolCall(_ payload: AnyCodablePayload) {
-        if let start = try? payload.decode(as: ToolCallStartPayload.self), start.status == "start" {
-            let execution = ToolExecution(
-                toolName: start.toolName,
-                toolCallId: start.toolCallId,
-                status: .running,
-                startedAt: .now
-            )
-            self.updateState { $0.toolExecutions.append(execution) }
-        } else if let complete = try? payload.decode(as: ToolCallCompletePayload.self), complete.status == "complete" {
-            self.updateState { ctx in
-                ctx.toolExecutions = ctx.toolExecutions.map { t in
-                    guard t.toolCallId == complete.toolCallId else { return t }
-                    var updated = t
-                    updated.status = complete.success ? .success : .error
-                    updated.error = complete.error
-                    updated.durationMs = complete.durationMs
-                    updated.completedAt = .now
-                    return updated
-                }
-            }
-
-            let completedId = complete.toolCallId
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(5))
-                self?.updateState { ctx in
-                    ctx.toolExecutions.removeAll { $0.toolCallId == completedId && $0.status != .running }
-                }
-            }
-        }
+        self.toolExecutionController.process(payload)
     }
 
     private func handleConversationClosed(_ payload: ConversationClosedPayload) {
@@ -455,7 +435,7 @@ final class BobeStore {
             $0.toolExecutions = []
         }
         Task {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(StoreTiming.conversationClearSeconds))
             self.clearMessages()
         }
     }
@@ -487,7 +467,7 @@ final class BobeStore {
                     } catch {
                         logger.warning("Capture startup sync attempt \(attempt + 1) failed: \(error.localizedDescription)")
                         if attempt < 2 {
-                            try? await Task.sleep(for: .milliseconds(350 * (attempt + 1)))
+                            try? await Task.sleep(for: .milliseconds(StoreTiming.captureRetryBaseMilliseconds * (attempt + 1)))
                         }
                     }
                 }
@@ -513,6 +493,20 @@ final class BobeStore {
         text.unicodeScalars.contains(where: {
             !$0.properties.isWhitespace && !CharacterSet.controlCharacters.contains($0)
         })
+    }
+
+    private static func normalizePendingMessages(_ messages: inout [ChatMessage]) {
+        messages = messages.map { message in
+            guard message.isPending else { return message }
+            return ChatMessage(
+                id: message.id,
+                sender: message.sender,
+                content: message.content,
+                timestamp: message.timestamp,
+                isStreaming: false,
+                isPending: false
+            )
+        }
     }
 
     // MARK: - State Update Helper

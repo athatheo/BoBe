@@ -18,6 +18,41 @@ enum SetupMode {
     case online
 }
 
+enum ScreenPermissionStatus: String, Sendable {
+    case granted
+    case denied
+    case restricted
+    case notDetermined = "not-determined"
+}
+
+enum SetupStepStatus: String, Codable, Sendable {
+    case pending
+    case inProgress = "in_progress"
+    case succeeded
+    case failed
+    case skipped
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = SetupStepStatus(rawValue: raw) ?? .unknown
+    }
+}
+
+enum SetupJobStatus: String, Codable, Sendable {
+    case pending
+    case inProgress = "in_progress"
+    case succeeded
+    case failed
+    case canceled
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = SetupJobStatus(rawValue: raw) ?? .unknown
+    }
+}
+
 // MARK: - Backend-Driven Options (from GET /onboarding/options)
 
 struct LocalTier: Codable, Identifiable, Equatable {
@@ -70,7 +105,7 @@ struct OnboardingOptions: Codable {
 
 struct SetupJobStep: Codable, Identifiable {
     let id: String
-    let status: String
+    let status: SetupStepStatus
     let message: String?
     let progress: StepProgressInfo?
 }
@@ -89,7 +124,7 @@ struct StepProgressInfo: Codable {
 
 struct SetupJobState: Codable {
     let jobId: String
-    let status: String
+    let status: SetupJobStatus
     let currentStep: String?
     let steps: [SetupJobStep]
     let error: String?
@@ -102,14 +137,19 @@ struct SetupJobState: Codable {
     }
 
     var isTerminal: Bool {
-        ["succeeded", "failed", "canceled"].contains(self.status)
+        switch self.status {
+        case .succeeded, .failed, .canceled:
+            true
+        default:
+            false
+        }
     }
 
     var overallPercent: Double {
         let total = self.steps.count
         guard total > 0 else { return 0 }
-        let completed = self.steps.count(where: { $0.status == "succeeded" || $0.status == "skipped" })
-        let currentPct = Double(steps.first { $0.status == "in_progress" }?.progress?.percent ?? 0) / 100.0
+        let completed = self.steps.count(where: { $0.status == .succeeded || $0.status == .skipped })
+        let currentPct = Double(steps.first { $0.status == .inProgress }?.progress?.percent ?? 0) / 100.0
         return (Double(completed) + currentPct) / Double(total) * 100
     }
 }
@@ -126,18 +166,5 @@ struct SetupRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case mode, tier, provider, model, endpoint, deployment
         case apiKey = "api_key"
-    }
-}
-
-// MARK: - Errors
-
-enum SetupError: Error, LocalizedError {
-    case diskSpace(String)
-    case general(String)
-    var errorDescription: String? {
-        switch self {
-        case let .diskSpace(msg): msg
-        case let .general(msg): msg
-        }
     }
 }

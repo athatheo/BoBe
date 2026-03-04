@@ -6,6 +6,7 @@ mod binary_manager;
 mod bootstrap;
 mod config;
 mod config_manager;
+mod constants;
 mod db;
 mod error;
 mod llm;

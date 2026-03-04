@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
+use crate::constants::{MEMORY_CONTENT_MAX_LENGTH, MEMORY_CONTENT_MIN_LENGTH};
+use crate::db::MemoryRepository;
 use crate::error::AppError;
 use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
@@ -137,6 +139,33 @@ fn parse_memory_type(s: &str) -> Result<MemoryType, AppError> {
     }
 }
 
+async fn set_memory_enabled(
+    memory_repo: &Arc<dyn MemoryRepository>,
+    memory_id: Uuid,
+    enabled: bool,
+) -> Result<Json<MemoryActionResponse>, AppError> {
+    let updated = memory_repo
+        .update(memory_id, None, Some(enabled), None)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
+
+    if enabled {
+        tracing::info!(memory_id = %memory_id, "memory.enabled");
+    } else {
+        tracing::info!(memory_id = %memory_id, "memory.disabled");
+    }
+
+    Ok(Json(MemoryActionResponse {
+        id: updated.id.to_string(),
+        enabled: updated.enabled,
+        message: if enabled {
+            "Memory enabled".into()
+        } else {
+            "Memory disabled".into()
+        },
+    }))
+}
+
 // ── Handlers ────────────────────────────────────────────────────────────────
 
 /// GET /api/memories
@@ -185,10 +214,12 @@ pub async fn create_memory(
     State(state): State<Arc<AppState>>,
     Json(body): Json<MemoryCreateRequest>,
 ) -> Result<(StatusCode, Json<MemoryResponse>), AppError> {
-    if body.content.len() < 3 {
-        return Err(AppError::Validation(
-            "content must be at least 3 characters".into(),
-        ));
+    if body.content.len() < MEMORY_CONTENT_MIN_LENGTH
+        || body.content.len() > MEMORY_CONTENT_MAX_LENGTH
+    {
+        return Err(AppError::Validation(format!(
+            "content must be between {MEMORY_CONTENT_MIN_LENGTH} and {MEMORY_CONTENT_MAX_LENGTH} characters"
+        )));
     }
 
     let memory_type = parse_memory_type(&body.memory_type)?;
@@ -258,19 +289,7 @@ pub async fn enable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
-    let updated = state
-        .memory_repo
-        .update(memory_id, None, Some(true), None)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
-
-    tracing::info!(memory_id = %memory_id, "memory.enabled");
-
-    Ok(Json(MemoryActionResponse {
-        id: updated.id.to_string(),
-        enabled: updated.enabled,
-        message: "Memory enabled".into(),
-    }))
+    set_memory_enabled(&state.memory_repo, memory_id, true).await
 }
 
 /// POST /api/memories/:id/disable
@@ -278,19 +297,7 @@ pub async fn disable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
-    let updated = state
-        .memory_repo
-        .update(memory_id, None, Some(false), None)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Memory {memory_id} not found")))?;
-
-    tracing::info!(memory_id = %memory_id, "memory.disabled");
-
-    Ok(Json(MemoryActionResponse {
-        id: updated.id.to_string(),
-        enabled: updated.enabled,
-        message: "Memory disabled".into(),
-    }))
+    set_memory_enabled(&state.memory_repo, memory_id, false).await
 }
 
 /// POST /api/memories/search

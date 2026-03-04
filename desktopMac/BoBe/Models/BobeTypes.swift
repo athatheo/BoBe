@@ -136,12 +136,12 @@ enum WindowSizes {
     static let margin: CGFloat = 16
 }
 
-enum IndicatorTiming {
-    static let delayBeforeShow: TimeInterval = 0.3
-    static let minDisplayTime: TimeInterval = 0.6
-    static let thinkingMinTime: TimeInterval = 0.8
-    static let toolCompleteLinger: TimeInterval = 1.5
-    static let expandAnimation: TimeInterval = 0.2
+enum StoreTiming {
+    static let textDeltaFlushMilliseconds = 150
+    static let lastMessageClearSeconds: TimeInterval = 30
+    static let toolCompletionLingerSeconds: TimeInterval = 5
+    static let conversationClearSeconds: TimeInterval = 3
+    static let captureRetryBaseMilliseconds = 350
 }
 
 let inactivityTimeoutSeconds: TimeInterval = 10 * 60

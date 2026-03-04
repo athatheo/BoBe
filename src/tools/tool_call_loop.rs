@@ -9,6 +9,7 @@ use tracing::{debug, info, warn};
 
 use super::executor::ToolExecutor;
 use crate::config::Config;
+use crate::constants::MILLIS_PER_SECOND;
 use crate::error::AppError;
 use crate::llm::LlmProvider;
 use crate::llm::types::{AiMessage, StreamItem, ToolDefinition};
@@ -247,7 +248,7 @@ async fn execute_tools_with_notifications(
     // Emit completion notifications with per-tool duration
     for (i, result) in batch_results.iter().enumerate() {
         let duration_ms = if i < start_times.len() {
-            start_times[i].elapsed().as_secs_f64() * 1000.0
+            start_times[i].elapsed().as_secs_f64() * MILLIS_PER_SECOND
         } else {
             0.0
         };

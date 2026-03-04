@@ -89,20 +89,6 @@ struct SettingsRow<Content: View>: View {
     }
 }
 
-struct SettingsListRow<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        HStack(spacing: 10) {
-            self.content
-        }
-        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-    }
-}
-
 struct ThemedSplitPane<Left: View, Right: View>: View {
     let leftWidth: CGFloat
     @ViewBuilder let left: Left

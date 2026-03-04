@@ -84,7 +84,7 @@ pub trait ToolSource: Send + Sync {
     fn name(&self) -> &str;
 
     /// Get available tool definitions.
-    async fn get_tools(&self, include_disabled: bool) -> Result<Vec<ToolDefinition>, AppError>;
+    async fn get_tools(&self) -> Result<Vec<ToolDefinition>, AppError>;
 
     /// Execute a tool call.
     async fn execute(

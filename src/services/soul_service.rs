@@ -10,10 +10,9 @@ use std::sync::Arc;
 
 use tracing::{info, warn};
 
+use crate::constants::DEFAULT_SOUL_FALLBACK;
 use crate::db::SoulRepository;
 use crate::error::AppError;
-
-const DEFAULT_SOUL: &str = "You are BoBe, a helpful AI assistant.";
 
 pub struct SoulService {
     soul_file: Option<PathBuf>,
@@ -120,7 +119,7 @@ impl SoulService {
         }
 
         info!("soul_service.using_builtin_default");
-        DEFAULT_SOUL.to_owned()
+        DEFAULT_SOUL_FALLBACK.to_owned()
     }
 }
 

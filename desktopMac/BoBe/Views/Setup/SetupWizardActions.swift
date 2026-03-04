@@ -7,13 +7,13 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "SetupWizard")
 extension SetupWizard {
     func checkScreenPermission() {
         if CGPreflightScreenCaptureAccess() {
-            screenPermission = "granted"
+            screenPermission = .granted
         } else {
             if !hasRequestedCaptureAccess {
                 CGRequestScreenCaptureAccess()
                 hasRequestedCaptureAccess = true
             }
-            screenPermission = "not-determined"
+            screenPermission = .notDetermined
         }
     }
 
@@ -85,7 +85,7 @@ extension SetupWizard {
                     await MainActor.run {
                         setupJob = job
                         progressPercent = job.overallPercent
-                        if let current = job.steps.first(where: { $0.status == "in_progress" }) {
+                        if let current = job.steps.first(where: { $0.status == .inProgress }) {
                             progressMessage = current.message ?? "Working..."
                         }
                     }
@@ -113,13 +113,13 @@ extension SetupWizard {
         busy = false
         pollTask?.cancel()
         switch job.status {
-        case "succeeded":
+        case .succeeded:
             apiKey = ""
             step = .captureSetup
-        case "failed":
+        case .failed:
             errorMessage = job.error ?? "Setup failed"
             step = .error
-        case "canceled":
+        case .canceled:
             errorMessage = "Setup was canceled"
             step = .error
         default: break

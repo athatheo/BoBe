@@ -30,6 +30,15 @@ impl ToolExecutor {
         let start = Instant::now();
         let timeout = timeout.unwrap_or(self.default_timeout);
 
+        if let Some(false) = self.registry.is_tool_enabled(&tool_call.name) {
+            warn!(tool = %tool_call.name, "Attempted to execute disabled tool");
+            return ToolResult::err(
+                tool_call.id.clone(),
+                tool_call.name.clone(),
+                format!("Tool '{}' is disabled", tool_call.name),
+            );
+        }
+
         let Some(source) = self.registry.get_source_for_tool(&tool_call.name).await else {
             warn!(tool = %tool_call.name, "No source found for tool");
             return ToolResult::err(

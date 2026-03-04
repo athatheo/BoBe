@@ -5,6 +5,11 @@ use std::fmt::Write;
 use std::path::PathBuf;
 
 use super::base::NativeTool;
+use crate::constants::{
+    BROWSER_HISTORY_DEFAULT_DAYS, BROWSER_HISTORY_DEFAULT_RESULTS, BROWSER_HISTORY_MAX_DAYS,
+    BROWSER_HISTORY_MAX_RESULTS, BROWSER_HISTORY_MIN_DAYS, CHROME_EPOCH_OFFSET_US,
+    CORE_DATA_EPOCH_OFFSET_S, MICROS_PER_SECOND_I64,
+};
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
@@ -82,14 +87,14 @@ impl NativeTool for BrowserHistoryTool {
         let days = arguments
             .get("days")
             .and_then(Value::as_i64)
-            .unwrap_or(7)
-            .clamp(1, 365);
+            .unwrap_or(BROWSER_HISTORY_DEFAULT_DAYS)
+            .clamp(BROWSER_HISTORY_MIN_DAYS, BROWSER_HISTORY_MAX_DAYS);
 
         let max_results = arguments
             .get("max_results")
             .and_then(Value::as_u64)
-            .unwrap_or(50)
-            .min(200) as usize;
+            .unwrap_or(BROWSER_HISTORY_DEFAULT_RESULTS)
+            .min(BROWSER_HISTORY_MAX_RESULTS) as usize;
 
         let mut all_results: Vec<(String, String, String)> = Vec::new();
 
@@ -211,15 +216,14 @@ async fn search_chrome(
     days: i64,
     max_results: usize,
 ) -> Result<Vec<(String, String, String)>, AppError> {
-    // Chrome epoch offset: microseconds from 1601-01-01 to 1970-01-01
-    let chrome_epoch_offset: i64 = 11_644_473_600_000_000;
-    let cutoff_us = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000
-        + chrome_epoch_offset;
+    let cutoff_us = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp()
+        * MICROS_PER_SECOND_I64
+        + CHROME_EPOCH_OFFSET_US;
 
     let escaped = escape_sql_like(query);
     let sql = format!(
         "SELECT COALESCE(u.title, ''), u.url, \
-         datetime((v.visit_time - {chrome_epoch_offset}) / 1000000, 'unixepoch') \
+         datetime((v.visit_time - {CHROME_EPOCH_OFFSET_US}) / {MICROS_PER_SECOND_I64}, 'unixepoch') \
          FROM visits v JOIN urls u ON v.url = u.id \
          WHERE (u.url LIKE '%{escaped}%' ESCAPE '\\' OR u.title LIKE '%{escaped}%' ESCAPE '\\') \
          AND v.visit_time > {cutoff_us} \
@@ -236,15 +240,13 @@ async fn search_safari(
     days: i64,
     max_results: usize,
 ) -> Result<Vec<(String, String, String)>, AppError> {
-    // Safari uses Core Data epoch (seconds from Jan 1 2001)
-    let core_data_offset: f64 = 978_307_200.0;
-    let cutoff =
-        (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() as f64 - core_data_offset;
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() as f64
+        - CORE_DATA_EPOCH_OFFSET_S;
 
     let escaped = escape_sql_like(query);
     let sql = format!(
         "SELECT COALESCE(hv.title, ''), hi.url, \
-         datetime(hv.visit_time + {core_data_offset}, 'unixepoch') \
+         datetime(hv.visit_time + {CORE_DATA_EPOCH_OFFSET_S}, 'unixepoch') \
          FROM history_visits hv JOIN history_items hi ON hv.history_item = hi.id \
          WHERE (hi.url LIKE '%{escaped}%' ESCAPE '\\' OR hv.title LIKE '%{escaped}%' ESCAPE '\\') \
          AND hv.visit_time > {cutoff} \
@@ -283,13 +285,13 @@ async fn search_firefox(
         return Ok(Vec::new());
     };
 
-    // Firefox uses microseconds since Unix epoch
-    let cutoff_us = (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * 1_000_000;
+    let cutoff_us =
+        (chrono::Utc::now() - chrono::Duration::days(days)).timestamp() * MICROS_PER_SECOND_I64;
 
     let escaped = escape_sql_like(query);
     let sql = format!(
         "SELECT COALESCE(p.title, ''), p.url, \
-         datetime(v.visit_date / 1000000, 'unixepoch') \
+         datetime(v.visit_date / {MICROS_PER_SECOND_I64}, 'unixepoch') \
          FROM moz_historyvisits v JOIN moz_places p ON v.place_id = p.id \
          WHERE (p.url LIKE '%{escaped}%' ESCAPE '\\' OR p.title LIKE '%{escaped}%' ESCAPE '\\') \
          AND v.visit_date > {cutoff_us} \

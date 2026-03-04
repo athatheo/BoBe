@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
+use crate::db::UserProfileRepository;
 use crate::error::AppError;
 use crate::models::user_profile::UserProfile;
 
@@ -32,16 +33,11 @@ pub struct UserProfileListResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct UserProfileCreateRequest {
     pub name: String,
     pub content: String,
-    #[serde(default = "default_true")]
+    #[serde(default = "super::default_true")]
     pub enabled: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +72,34 @@ fn profile_to_response(profile: &UserProfile) -> UserProfileResponse {
         created_at: profile.created_at,
         updated_at: profile.updated_at,
     }
+}
+
+async fn set_profile_enabled(
+    user_profile_repo: &Arc<dyn UserProfileRepository>,
+    profile_id: Uuid,
+    enabled: bool,
+) -> Result<Json<UserProfileActionResponse>, AppError> {
+    let profile = user_profile_repo
+        .update(profile_id, None, Some(enabled))
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
+
+    if enabled {
+        tracing::info!(profile_id = %profile_id, "user_profile.enabled");
+    } else {
+        tracing::info!(profile_id = %profile_id, "user_profile.disabled");
+    }
+
+    Ok(Json(UserProfileActionResponse {
+        id: profile_id.to_string(),
+        name: profile.name,
+        enabled,
+        message: if enabled {
+            "User profile enabled".into()
+        } else {
+            "User profile disabled".into()
+        },
+    }))
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
@@ -126,7 +150,8 @@ pub async fn create_profile(
         )));
     }
 
-    let profile = UserProfile::new(body.name, body.content, false);
+    let mut profile = UserProfile::new(body.name, body.content, false);
+    profile.enabled = body.enabled;
     let saved = state.user_profile_repo.save(&profile).await?;
 
     tracing::info!(profile_id = %saved.id, name = %saved.name, "user_profile.created");
@@ -189,24 +214,7 @@ pub async fn enable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    let profile = state
-        .user_profile_repo
-        .get_by_id(profile_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
-
-    state
-        .user_profile_repo
-        .update(profile_id, None, Some(true))
-        .await?;
-    tracing::info!(profile_id = %profile_id, "user_profile.enabled");
-
-    Ok(Json(UserProfileActionResponse {
-        id: profile_id.to_string(),
-        name: profile.name,
-        enabled: true,
-        message: "User profile enabled".into(),
-    }))
+    set_profile_enabled(&state.user_profile_repo, profile_id, true).await
 }
 
 /// POST /api/user-profiles/:id/disable
@@ -214,24 +222,7 @@ pub async fn disable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    let profile = state
-        .user_profile_repo
-        .get_by_id(profile_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("User profile {profile_id} not found")))?;
-
-    state
-        .user_profile_repo
-        .update(profile_id, None, Some(false))
-        .await?;
-    tracing::info!(profile_id = %profile_id, "user_profile.disabled");
-
-    Ok(Json(UserProfileActionResponse {
-        id: profile_id.to_string(),
-        name: profile.name,
-        enabled: false,
-        message: "User profile disabled".into(),
-    }))
+    set_profile_enabled(&state.user_profile_repo, profile_id, false).await
 }
 
 /// DELETE /api/user-profiles/:id

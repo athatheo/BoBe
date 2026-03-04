@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::constants::{GOAL_CONTENT_MAX_LENGTH, GOAL_CONTENT_MIN_LENGTH};
 use crate::db::GoalRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
@@ -44,9 +45,13 @@ impl NativeTool for CreateGoalTool {
             "properties": {
                 "content": {
                     "type": "string",
-                    "description": "Goal description (5-500 chars)",
-                    "minLength": 5,
-                    "maxLength": 500
+                    "description": format!(
+                        "Goal description ({}-{} chars)",
+                        GOAL_CONTENT_MIN_LENGTH,
+                        GOAL_CONTENT_MAX_LENGTH
+                    ),
+                    "minLength": GOAL_CONTENT_MIN_LENGTH,
+                    "maxLength": GOAL_CONTENT_MAX_LENGTH
                 },
                 "priority": {
                     "type": "string",
@@ -69,10 +74,10 @@ impl NativeTool for CreateGoalTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'content' is required".into()))?;
 
-        if content.len() < 5 || content.len() > 500 {
-            return Err(AppError::Validation(
-                "Content must be between 5 and 500 characters".into(),
-            ));
+        if content.len() < GOAL_CONTENT_MIN_LENGTH || content.len() > GOAL_CONTENT_MAX_LENGTH {
+            return Err(AppError::Validation(format!(
+                "Content must be between {GOAL_CONTENT_MIN_LENGTH} and {GOAL_CONTENT_MAX_LENGTH} characters"
+            )));
         }
 
         let priority_str = arguments

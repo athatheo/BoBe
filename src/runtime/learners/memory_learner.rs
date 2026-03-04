@@ -10,6 +10,7 @@ use serde_json::Value;
 use tracing::{info, warn};
 
 use crate::config::Config;
+use crate::constants::VALID_MEMORY_CATEGORIES;
 use crate::db::MemoryRepository;
 use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
@@ -22,9 +23,6 @@ use crate::runtime::prompts::learning::memory_distillation::{
     ConversationMemoryPrompt, MemoryDistillationPrompt,
 };
 use crate::util::similarity::cosine_similarity;
-
-/// Valid values for memory categories.
-const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];
 
 /// Threshold for initial semantic search.
 const SIMILARITY_SEARCH_THRESHOLD: f64 = 0.5;
@@ -307,7 +305,7 @@ impl MemoryLearner {
             .and_then(|c| c.as_str())
             .unwrap_or("fact")
             .to_ascii_lowercase();
-        if !VALID_CATEGORIES.contains(&category.as_str()) {
+        if !VALID_MEMORY_CATEGORIES.contains(&category.as_str()) {
             category = "fact".into();
         }
 

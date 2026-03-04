@@ -58,13 +58,25 @@ struct AdvancedPanel: View {
             description: "Vector similarity thresholds for memory operations"
         ) {
             SettingsRow(label: "Deduplication") {
-                DebouncedDecimalInput(value: self.binding(\.similarityDeduplicationThreshold), range: 0 ... 1, step: 0.01)
+                DebouncedDecimalInput(
+                    value: self.binding(\.similarityDeduplicationThreshold, fallback: 0.85),
+                    range: 0 ... 1,
+                    step: 0.01
+                )
             }
             SettingsRow(label: "Search recall") {
-                DebouncedDecimalInput(value: self.binding(\.similaritySearchRecallThreshold), range: 0 ... 1, step: 0.01)
+                DebouncedDecimalInput(
+                    value: self.binding(\.similaritySearchRecallThreshold, fallback: 0.6),
+                    range: 0 ... 1,
+                    step: 0.01
+                )
             }
             SettingsRow(label: "Clustering") {
-                DebouncedDecimalInput(value: self.binding(\.similarityClusteringThreshold), range: 0 ... 1, step: 0.01)
+                DebouncedDecimalInput(
+                    value: self.binding(\.similarityClusteringThreshold, fallback: 0.8),
+                    range: 0 ... 1,
+                    step: 0.01
+                )
             }
         }
     }
@@ -94,7 +106,7 @@ struct AdvancedPanel: View {
         ) {
             SettingsRow(label: "Learning interval", description: "Minutes between learning cycles", suffix: "minutes") {
                 DebouncedNumberInput(
-                    value: self.binding(\.learningIntervalMinutes),
+                    value: self.binding(\.learningIntervalMinutes, fallback: 15),
                     range: 1 ... 1440
                 )
             }
@@ -108,7 +120,10 @@ struct AdvancedPanel: View {
             description: "Advanced conversation timing"
         ) {
             SettingsRow(label: "Inactivity timeout", description: "Seconds before allowing new proactive reachout", suffix: "seconds") {
-                DebouncedNumberInput(value: self.binding(\.conversationInactivityTimeoutSeconds), range: 5 ... 600)
+                DebouncedNumberInput(
+                    value: self.binding(\.conversationInactivityTimeoutSeconds, fallback: 300),
+                    range: 5 ... 600
+                )
             }
         }
     }
@@ -120,7 +135,10 @@ struct AdvancedPanel: View {
             description: "Default directory where BoBe creates project folders from goals"
         ) {
             HStack(spacing: 8) {
-                BobeTextField(placeholder: "/path/to/projects", text: self.binding(\.projectsDirectory))
+                BobeTextField(
+                    placeholder: "/path/to/projects",
+                    text: self.binding(\.projectsDirectory, fallback: "")
+                )
                 Button("Browse...") { self.browseDirectory() }
                     .bobeButton(.secondary, size: .small)
             }
@@ -134,18 +152,20 @@ struct AdvancedPanel: View {
             description: "Model Context Protocol server connections"
         ) {
             SettingsRow(label: "Enable MCP", description: "Connect to MCP servers for extended capabilities") {
-                BobeToggle(isOn: self.binding(\.mcpEnabled))
+                BobeToggle(isOn: self.binding(\.mcpEnabled, fallback: false))
             }
         }
     }
 
     // MARK: - Helpers
 
-    private func binding<V>(_ keyPath: WritableKeyPath<DaemonSettings, V>) -> Binding<V> {
+    private func binding<V>(
+        _ keyPath: WritableKeyPath<DaemonSettings, V>,
+        fallback: @autoclosure @escaping () -> V
+    ) -> Binding<V> {
         Binding(
             get: {
-                guard let settings else { fatalError("Binding accessed before settings loaded") }
-                return settings[keyPath: keyPath]
+                settings?[keyPath: keyPath] ?? fallback()
             },
             set: { newValue in
                 guard var current = settings else { return }

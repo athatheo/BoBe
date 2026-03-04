@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::error::AppError;
+use crate::tools::registry::ToolRegistry;
 
 #[derive(Debug, Serialize)]
 pub struct ToolResponse {
@@ -36,12 +37,40 @@ pub struct ToolUpdateRequest {
     pub enabled: bool,
 }
 
+async fn set_tool_enabled(
+    tool_registry: &Arc<ToolRegistry>,
+    tool_name: &str,
+    enabled: bool,
+) -> Result<Json<ToolUpdateResponse>, AppError> {
+    tool_registry.refresh_index().await?;
+    let success = if enabled {
+        tool_registry.enable_tool(tool_name)
+    } else {
+        tool_registry.disable_tool(tool_name)
+    };
+
+    if !success {
+        return Err(AppError::NotFound(format!("Tool '{tool_name}' not found")));
+    }
+
+    tracing::info!(tool_name = %tool_name, enabled, "tools.updated");
+
+    Ok(Json(ToolUpdateResponse {
+        name: tool_name.to_owned(),
+        enabled,
+        message: format!(
+            "Tool '{tool_name}' {}",
+            if enabled { "enabled" } else { "disabled" }
+        ),
+    }))
+}
+
 /// GET /api/tools
 pub async fn list_tools(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ToolListResponse>, AppError> {
     let cfg = state.config();
-    let _ = state.tool_registry.refresh_index().await;
+    state.tool_registry.refresh_index().await?;
     let mut defs = state.tool_registry.get_all_tools(true).await;
     defs.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -93,20 +122,7 @@ pub async fn enable_tool(
     State(state): State<Arc<AppState>>,
     Path(tool_name): Path<String>,
 ) -> Result<Json<ToolUpdateResponse>, AppError> {
-    let _ = state.tool_registry.refresh_index().await;
-    let success = state.tool_registry.enable_tool(&tool_name);
-
-    if !success {
-        return Err(AppError::NotFound(format!("Tool '{tool_name}' not found")));
-    }
-
-    tracing::info!(tool_name = %tool_name, "tools.enabled");
-
-    Ok(Json(ToolUpdateResponse {
-        name: tool_name.clone(),
-        enabled: true,
-        message: format!("Tool '{tool_name}' enabled"),
-    }))
+    set_tool_enabled(&state.tool_registry, &tool_name, true).await
 }
 
 /// POST /api/tools/:tool_name/disable
@@ -114,20 +130,7 @@ pub async fn disable_tool(
     State(state): State<Arc<AppState>>,
     Path(tool_name): Path<String>,
 ) -> Result<Json<ToolUpdateResponse>, AppError> {
-    let _ = state.tool_registry.refresh_index().await;
-    let success = state.tool_registry.disable_tool(&tool_name);
-
-    if !success {
-        return Err(AppError::NotFound(format!("Tool '{tool_name}' not found")));
-    }
-
-    tracing::info!(tool_name = %tool_name, "tools.disabled");
-
-    Ok(Json(ToolUpdateResponse {
-        name: tool_name.clone(),
-        enabled: false,
-        message: format!("Tool '{tool_name}' disabled"),
-    }))
+    set_tool_enabled(&state.tool_registry, &tool_name, false).await
 }
 
 /// PATCH /api/tools/:tool_name
@@ -136,26 +139,5 @@ pub async fn update_tool(
     Path(tool_name): Path<String>,
     Json(body): Json<ToolUpdateRequest>,
 ) -> Result<Json<ToolUpdateResponse>, AppError> {
-    let _ = state.tool_registry.refresh_index().await;
-
-    let success = if body.enabled {
-        state.tool_registry.enable_tool(&tool_name)
-    } else {
-        state.tool_registry.disable_tool(&tool_name)
-    };
-
-    if !success {
-        return Err(AppError::NotFound(format!("Tool '{tool_name}' not found")));
-    }
-
-    tracing::info!(tool_name = %tool_name, enabled = body.enabled, "tools.updated");
-
-    Ok(Json(ToolUpdateResponse {
-        name: tool_name.clone(),
-        enabled: body.enabled,
-        message: format!(
-            "Tool '{tool_name}' {}",
-            if body.enabled { "enabled" } else { "disabled" }
-        ),
-    }))
+    set_tool_enabled(&state.tool_registry, &tool_name, body.enabled).await
 }

@@ -5,6 +5,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::constants::{TOOL_LIMIT_MAX, TOOL_LIMIT_MIN};
 use crate::db::MemoryRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
@@ -69,7 +70,7 @@ impl NativeTool for SearchMemoriesTool {
             .get("limit")
             .and_then(Value::as_i64)
             .unwrap_or(5)
-            .clamp(1, 20);
+            .clamp(TOOL_LIMIT_MIN, TOOL_LIMIT_MAX);
 
         let embedding = self.embedding_provider.embed(query).await?;
         let results = self

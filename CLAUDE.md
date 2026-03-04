@@ -65,7 +65,7 @@ Swift 6.0, macOS 14+ (Sonoma), SPM.
 | `Services/` | BackendService (daemon lifecycle), DaemonClient (HTTP + SSE) |
 | `Stores/` | BobeStore (`@Observable` main state), ThemeStore |
 | `Views/Overlay/` | Transparent overlay: avatar, chat bubbles, message input, indicators |
-| `Views/Settings/` | Settings sidebar: AI model, appearance, behavior, tools, MCP, memories, goals, souls, profiles, advanced |
+| `Features/Settings/` | Settings sidebar: AI model, appearance, behavior, tools, MCP, memories, goals, souls, profiles, advanced |
 | `Views/Setup/` | Onboarding wizard (LLM choice → download → model pull → permissions) |
 
 **Patterns:** `@Observable`, NSPanel `.nonactivatingPanel`, `URLSession.bytes(for:)` for SSE, UserDefaults.

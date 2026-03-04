@@ -5,12 +5,13 @@ import SwiftUI
 /// System tray (menu bar) manager.
 @MainActor
 final class TrayManager: NSObject, NSMenuDelegate {
-    static let shared = TrayManager()
-
     private var statusItem: NSStatusItem?
-    private var store = BobeStore.shared
+    private let store: BobeStore
 
-    override private init() {}
+    init(store: BobeStore) {
+        self.store = store
+        super.init()
+    }
 
     func setup() {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)

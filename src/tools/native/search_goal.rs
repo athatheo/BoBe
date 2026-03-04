@@ -5,6 +5,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::constants::{TOOL_LIMIT_MAX, TOOL_LIMIT_MIN};
 use crate::db::GoalRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
@@ -79,7 +80,7 @@ impl NativeTool for SearchGoalTool {
             .get("limit")
             .and_then(Value::as_i64)
             .unwrap_or(5)
-            .clamp(1, 20);
+            .clamp(TOOL_LIMIT_MIN, TOOL_LIMIT_MAX);
 
         let include_completed = arguments
             .get("include_completed")

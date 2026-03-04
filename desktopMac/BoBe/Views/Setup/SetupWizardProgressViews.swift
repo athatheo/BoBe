@@ -57,11 +57,11 @@ extension SetupWizard {
             PermissionCard(title: "Screen Recording", badge: screenPermission) {
                 Text("Grants BoBe access to see what's on your screen.")
                     .font(.system(size: 12)).foregroundStyle(theme.colors.textMuted)
-                if screenPermission == "restricted" {
+                if screenPermission == .restricted {
                     Text("This permission is managed by your organization and cannot be changed.")
                         .font(.system(size: 12)).foregroundStyle(theme.colors.tertiary)
                 }
-                if screenPermission != "granted", screenPermission != "restricted" {
+                if screenPermission != .granted, screenPermission != .restricted {
                     Button("Open System Settings") {
                         if let url = URL(
                             string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
@@ -90,7 +90,7 @@ extension SetupWizard {
                 Spacer()
                 Button("Continue") { continueFromCapture() }
                     .bobeButton(.primary, size: .regular)
-                    .disabled(screenPermission != "granted")
+                    .disabled(screenPermission != .granted)
             }
         }
         .frame(maxWidth: 440)
@@ -150,7 +150,7 @@ struct JobStepRow: View {
             self.stepIcon
                 .frame(width: 16, height: 16)
             Text(self.step.message ?? self.step.id)
-                .font(.system(size: 14, weight: self.step.status == "in_progress" ? .semibold : .regular))
+                .font(.system(size: 14, weight: self.step.status == .inProgress ? .semibold : .regular))
                 .foregroundStyle(self.stepColor)
         }
         .padding(.vertical, 4)
@@ -159,13 +159,13 @@ struct JobStepRow: View {
     @ViewBuilder
     private var stepIcon: some View {
         switch self.step.status {
-        case "succeeded", "skipped":
+        case .succeeded, .skipped:
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(self.theme.colors.secondary)
-        case "in_progress":
+        case .inProgress:
             BobeSpinner(size: 14)
-        case "failed":
+        case .failed:
             Image(systemName: "xmark.circle.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(self.theme.colors.primary)
@@ -178,9 +178,9 @@ struct JobStepRow: View {
 
     private var stepColor: Color {
         switch self.step.status {
-        case "succeeded", "skipped": self.theme.colors.secondary
-        case "in_progress": self.theme.colors.text
-        case "failed": self.theme.colors.primary
+        case .succeeded, .skipped: self.theme.colors.secondary
+        case .inProgress: self.theme.colors.text
+        case .failed: self.theme.colors.primary
         default: self.theme.colors.textMuted
         }
     }

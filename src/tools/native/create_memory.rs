@@ -4,14 +4,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::constants::{
+    MEMORY_CONTENT_MAX_LENGTH, MEMORY_CONTENT_MIN_LENGTH, VALID_MEMORY_CATEGORIES,
+};
 use crate::db::MemoryRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
 use crate::tools::ToolExecutionContext;
-
-const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];
 
 pub struct CreateMemoryTool {
     memory_repo: Arc<dyn MemoryRepository>,
@@ -46,13 +47,17 @@ impl NativeTool for CreateMemoryTool {
             "properties": {
                 "content": {
                     "type": "string",
-                    "description": "The memory to store (5-1000 chars). Format as a clear statement.",
-                    "minLength": 5,
-                    "maxLength": 1000
+                    "description": format!(
+                        "The memory to store ({}-{} chars). Format as a clear statement.",
+                        MEMORY_CONTENT_MIN_LENGTH,
+                        MEMORY_CONTENT_MAX_LENGTH
+                    ),
+                    "minLength": MEMORY_CONTENT_MIN_LENGTH,
+                    "maxLength": MEMORY_CONTENT_MAX_LENGTH
                 },
                 "category": {
                     "type": "string",
-                    "enum": ["preference", "pattern", "fact", "interest"],
+                    "enum": VALID_MEMORY_CATEGORIES,
                     "description": "Memory category"
                 }
             },
@@ -70,10 +75,10 @@ impl NativeTool for CreateMemoryTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'content' is required".into()))?;
 
-        if content.len() < 5 || content.len() > 1000 {
-            return Err(AppError::Validation(
-                "Content must be between 5 and 1000 characters".into(),
-            ));
+        if content.len() < MEMORY_CONTENT_MIN_LENGTH || content.len() > MEMORY_CONTENT_MAX_LENGTH {
+            return Err(AppError::Validation(format!(
+                "Content must be between {MEMORY_CONTENT_MIN_LENGTH} and {MEMORY_CONTENT_MAX_LENGTH} characters"
+            )));
         }
 
         let cat = arguments
@@ -81,11 +86,11 @@ impl NativeTool for CreateMemoryTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'category' is required".into()))?;
 
-        if !VALID_CATEGORIES.contains(&cat) {
+        if !VALID_MEMORY_CATEGORIES.contains(&cat) {
             return Err(AppError::Validation(format!(
                 "Invalid category '{}'. Must be one of: {}",
                 cat,
-                VALID_CATEGORIES.join(", ")
+                VALID_MEMORY_CATEGORIES.join(", ")
             )));
         }
 

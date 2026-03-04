@@ -81,7 +81,7 @@ struct AIChoiceCard: View {
 // MARK: - Permission Badge
 
 struct PermissionBadge: View {
-    let status: String
+    let status: ScreenPermissionStatus
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -98,19 +98,19 @@ struct PermissionBadge: View {
 
     private var text: String {
         switch self.status {
-        case "granted": "✓ Granted"
-        case "denied": "Not Granted"
-        case "restricted": "Restricted"
-        default: "Not Set"
+        case .granted: "✓ Granted"
+        case .denied: "Not Granted"
+        case .restricted: "Restricted"
+        case .notDetermined: "Not Set"
         }
     }
 
     private var textColor: Color {
         switch self.status {
-        case "granted": self.theme.colors.secondary
-        case "denied": self.theme.colors.primary
-        case "restricted": self.theme.colors.tertiary
-        default: self.theme.colors.textMuted
+        case .granted: self.theme.colors.secondary
+        case .denied: self.theme.colors.primary
+        case .restricted: self.theme.colors.tertiary
+        case .notDetermined: self.theme.colors.textMuted
         }
     }
 }
@@ -119,7 +119,7 @@ struct PermissionBadge: View {
 
 struct PermissionCard<Content: View>: View {
     let title: String
-    let badge: String
+    let badge: ScreenPermissionStatus
     @ViewBuilder let content: () -> Content
     @Environment(\.theme) private var theme
 
@@ -167,17 +167,17 @@ struct PermissionCard<Content: View>: View {
 
 #Preview("Permission Badges") {
     HStack(spacing: 8) {
-        PermissionBadge(status: "granted")
-        PermissionBadge(status: "denied")
-        PermissionBadge(status: "restricted")
-        PermissionBadge(status: "not-determined")
+        PermissionBadge(status: .granted)
+        PermissionBadge(status: .denied)
+        PermissionBadge(status: .restricted)
+        PermissionBadge(status: .notDetermined)
     }
     .environment(\.theme, allThemes[0])
     .padding()
 }
 
 #Preview("Permission Card") {
-    PermissionCard(title: "Screen Recording", badge: "granted") {
+    PermissionCard(title: "Screen Recording", badge: .granted) {
         Text("Grants BoBe access to see what's on your screen.")
             .font(.system(size: 12))
             .foregroundStyle(allThemes[0].colors.textMuted)

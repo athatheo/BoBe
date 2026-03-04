@@ -5,6 +5,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use super::base::NativeTool;
+use crate::constants::{TOOL_LIMIT_MAX, TOOL_LIMIT_MIN};
 use crate::db::ObservationRepository;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
@@ -52,7 +53,7 @@ impl NativeTool for GetRecentContextTool {
             .get("limit")
             .and_then(Value::as_i64)
             .unwrap_or(5)
-            .clamp(1, 20);
+            .clamp(TOOL_LIMIT_MIN, TOOL_LIMIT_MAX);
 
         let observations = self.observation_repo.find_since(None, Some(limit)).await?;
 

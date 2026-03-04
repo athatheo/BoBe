@@ -37,7 +37,7 @@ impl ToolRegistry {
         let name = source.name().to_owned();
         debug!(source = %name, "Registering tool source");
 
-        if let Ok(tools) = source.get_tools(true).await {
+        if let Ok(tools) = source.get_tools().await {
             for tool in &tools {
                 self.tool_to_source.insert(tool.name.clone(), name.clone());
             }
@@ -53,8 +53,16 @@ impl ToolRegistry {
 
         let mut all = Vec::new();
         for source in &sources {
-            match source.get_tools(include_disabled).await {
-                Ok(tools) => all.extend(tools),
+            match source.get_tools().await {
+                Ok(tools) => {
+                    all.extend(tools.into_iter().filter(|tool| {
+                        include_disabled
+                            || self
+                                .enabled_overrides
+                                .get(&tool.name)
+                                .is_none_or(|enabled| *enabled.value())
+                    }));
+                }
                 Err(e) => warn!(source = %source.name(), error = %e, "Failed to get tools"),
             }
         }
@@ -63,10 +71,8 @@ impl ToolRegistry {
 
     /// Find the source that provides a given tool.
     pub async fn get_source_for_tool(&self, tool_name: &str) -> Option<Arc<dyn ToolSource>> {
-        let source_name = self.tool_to_source.get(tool_name)?;
-        self.sources
-            .get(source_name.value())
-            .map(|e| e.value().clone())
+        let source_name = self.tool_to_source.get(tool_name)?.value().clone();
+        self.sources.get(&source_name).map(|e| e.value().clone())
     }
 
     /// Rebuild the tool→source index from all registered sources.
@@ -79,12 +85,15 @@ impl ToolRegistry {
             .collect();
 
         for (source_name, source) in &sources {
-            if let Ok(tools) = source.get_tools(true).await {
+            if let Ok(tools) = source.get_tools().await {
                 for tool in tools {
                     self.tool_to_source.insert(tool.name, source_name.clone());
                 }
             }
         }
+
+        self.enabled_overrides
+            .retain(|tool_name, _| self.tool_to_source.contains_key(tool_name));
         Ok(())
     }
 

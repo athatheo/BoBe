@@ -18,7 +18,7 @@ struct SetupWizard: View {
     @State var errorMessage = ""
     @State var busy = false
     @State var isFinishingSetup = false
-    @State var screenPermission = "not-determined"
+    @State var screenPermission: ScreenPermissionStatus = .notDetermined
     @State var hasRequestedCaptureAccess = false
     @State var permissionPollTask: Task<Void, Never>?
     @Environment(\.theme) var theme

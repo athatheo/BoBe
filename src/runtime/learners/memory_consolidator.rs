@@ -10,6 +10,7 @@ use serde_json::Value;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::constants::VALID_MEMORY_CATEGORIES;
 use crate::db::MemoryRepository;
 use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
@@ -17,9 +18,6 @@ use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
 use crate::runtime::prompts::learning::memory_consolidation::MemoryConsolidationPrompt;
 use crate::util::similarity::cosine_similarity;
-
-/// Valid values for memory categories.
-const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];
 
 pub struct MemoryConsolidator {
     llm: Arc<dyn LlmProvider>,
@@ -258,7 +256,7 @@ impl MemoryConsolidator {
                 .get("category")
                 .and_then(|c| c.as_str())
                 .unwrap_or("fact");
-            if !VALID_CATEGORIES.contains(&category) {
+            if !VALID_MEMORY_CATEGORIES.contains(&category) {
                 category = "fact";
             }
 

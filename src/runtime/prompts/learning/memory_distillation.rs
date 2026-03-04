@@ -3,6 +3,7 @@
 use serde_json::json;
 use std::sync::LazyLock;
 
+use crate::constants::VALID_MEMORY_CATEGORIES;
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::PromptConfig;
 
@@ -23,7 +24,7 @@ pub static MEMORY_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new
                         },
                         "category": {
                             "type": "string",
-                            "enum": ["preference", "pattern", "fact", "interest"],
+                            "enum": VALID_MEMORY_CATEGORIES,
                             "description": "'preference' - user likes/dislikes something; 'pattern' - recurring behavior or habit; 'fact' - biographical or contextual info; 'interest' - topic the user is interested in"
                         },
                         "importance": {

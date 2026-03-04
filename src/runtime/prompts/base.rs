@@ -3,7 +3,7 @@
 use crate::llm::types::{ResponseFormat, ToolDefinition};
 
 /// Default soul fallback (used when no soul provider is available).
-pub const DEFAULT_SOUL: &str = "You are BoBe, a helpful AI assistant.";
+pub const DEFAULT_SOUL: &str = crate::constants::DEFAULT_SOUL_FALLBACK;
 
 /// LLM parameters for a prompt — declared once per prompt type.
 #[derive(Debug, Clone)]

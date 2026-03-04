@@ -11,6 +11,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::config::Config;
+use crate::constants::{GOAL_CONTENT_MAX_LENGTH, GOAL_CONTENT_MIN_LENGTH};
 use crate::db::GoalRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
@@ -127,6 +128,12 @@ impl GoalsService {
         goal_id: Uuid,
         content: &str,
     ) -> Result<Option<Goal>, AppError> {
+        if content.len() < GOAL_CONTENT_MIN_LENGTH || content.len() > GOAL_CONTENT_MAX_LENGTH {
+            return Err(AppError::Validation(format!(
+                "content must be between {GOAL_CONTENT_MIN_LENGTH} and {GOAL_CONTENT_MAX_LENGTH} characters"
+            )));
+        }
+
         let embedding_vec = self.embedding.embed(content).await?;
         let embedding_json = serde_json::to_string(&embedding_vec)?;
 

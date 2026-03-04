@@ -3,28 +3,22 @@ import SwiftUI
 /// Split-pane editor for User Profiles.
 struct UserProfilesEditor: View {
     @State private var profiles: [UserProfile] = []
-    @State private var selectedId: String?
+    @State private var editorState = SettingsEditorState<String>()
     @State private var editorContent = ""
-    @State private var isDirty = false
-    @State private var isLoading = false
-    @State private var isSaving = false
-    @State private var isCreating = false
     @State private var newName = ""
-    @State private var deleteConfirm = false
-    @State private var error: String?
     @Environment(\.theme) private var theme
 
     private var selectedProfile: UserProfile? {
-        self.profiles.first { $0.id == self.selectedId }
+        self.profiles.first { $0.id == self.editorState.selectedId }
     }
 
     var body: some View {
-        ThemedSplitPane(leftWidth: 300) {
+        SettingsEditorScaffold(hasSelection: self.selectedProfile != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "User Profiles") { self.isCreating.toggle() }
+                SettingsPaneHeader(title: "User Profiles") { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
-                if self.isCreating {
+                if self.editorState.isCreating {
                     HStack(spacing: 6) {
                         BobeTextField(placeholder: "profile-name", text: self.$newName) {
                             if !self.newName.isEmpty { self.createProfile() }
@@ -33,7 +27,7 @@ struct UserProfilesEditor: View {
                             .bobeButton(.primary, size: .small)
                             .disabled(self.newName.isEmpty)
                         Button {
-                            self.isCreating = false
+                            self.editorState.setCreating(false)
                             self.newName = ""
                         } label: {
                             Text("Cancel")
@@ -42,7 +36,7 @@ struct UserProfilesEditor: View {
                     }
                 }
 
-                if self.isLoading, self.profiles.isEmpty {
+                if self.editorState.isLoading, self.profiles.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text("Loading profiles...")
@@ -51,7 +45,7 @@ struct UserProfilesEditor: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 20)
-                } else if self.profiles.isEmpty, !self.isLoading {
+                } else if self.profiles.isEmpty, !self.editorState.isLoading {
                     VStack(spacing: 8) {
                         Image(systemName: "person.crop.circle")
                             .font(.system(size: 28))
@@ -71,8 +65,8 @@ struct UserProfilesEditor: View {
                         LazyVStack(spacing: 4) {
                             ForEach(self.profiles) { profile in
                                 BobeSelectableRow(
-                                    isSelected: self.selectedId == profile.id,
-                                    action: { self.selectedId = profile.id },
+                                    isSelected: self.editorState.selectedId == profile.id,
+                                    action: { self.editorState.select(profile.id) },
                                     content: {
                                         VStack(alignment: .leading) {
                                             HStack(spacing: 4) {
@@ -107,18 +101,14 @@ struct UserProfilesEditor: View {
                     .background(self.theme.colors.background)
                 }
             }
-            .frame(minWidth: 220, idealWidth: 300)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-            .padding(.top, BobeMetrics.paneTopPadding)
-        } right: {
-            if let profile = selectedProfile {
+        } detailPane: {
+            if let profile = self.selectedProfile {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text(profile.name)
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.text)
-                        if self.isDirty {
+                        if self.editorState.isDirty {
                             Text("unsaved")
                                 .bobeTextStyle(.badge)
                                 .foregroundStyle(self.theme.colors.tertiary)
@@ -137,22 +127,22 @@ struct UserProfilesEditor: View {
                         Spacer()
 
                         if !profile.isDefault {
-                            if self.deleteConfirm {
+                            if self.editorState.showDeleteConfirmation {
                                 HStack(spacing: 6) {
                                     Text("Delete?")
                                         .font(.system(size: 12))
                                         .foregroundStyle(self.theme.colors.primary)
                                     Button("Yes") {
                                         self.deleteProfile(profile)
-                                        self.deleteConfirm = false
+                                        self.editorState.dismissDeleteConfirmation()
                                     }
                                     .bobeButton(.destructive, size: .small)
-                                    Button("No") { self.deleteConfirm = false }
+                                    Button("No") { self.editorState.dismissDeleteConfirmation() }
                                         .bobeButton(.secondary, size: .small)
                                 }
                             } else {
                                 Button {
-                                    self.deleteConfirm = true
+                                    self.editorState.requestDeleteConfirmation()
                                 } label: {
                                     Image(systemName: "trash")
                                 }
@@ -160,13 +150,12 @@ struct UserProfilesEditor: View {
                             }
                         }
 
-                        if self.isDirty {
-                            Button("Discard") { self.discardChanges() }
-                                .bobeButton(.secondary, size: .small)
-                        }
-                        Button(self.isSaving ? "Saving..." : "Save") { self.saveProfile() }
-                            .bobeButton(.primary, size: .small)
-                            .disabled(!self.isDirty || self.isSaving)
+                        SettingsEditorSaveActions(
+                            isDirty: self.editorState.isDirty,
+                            isSaving: self.editorState.isSaving,
+                            onDiscard: self.discardChanges,
+                            onSave: self.saveProfile
+                        )
                     }
 
                     CodeEditor(text: self.$editorContent, theme: self.theme, fontSize: 13)
@@ -176,33 +165,31 @@ struct UserProfilesEditor: View {
                                 .stroke(self.theme.colors.border, lineWidth: 1)
                         )
                         .onChange(of: self.editorContent) { _, _ in
-                            self.isDirty = self.editorContent != self.selectedProfile?.content
+                            self.editorState.setDirty(self.editorContent != self.selectedProfile?.content)
                         }
 
-                    if let error {
-                        Text(error).font(.caption).foregroundStyle(self.theme.colors.primary)
+                    if let errorMessage = self.editorState.errorMessage {
+                        SettingsEditorErrorText(message: errorMessage)
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-                .padding(.top, BobeMetrics.paneTopPadding)
             } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 28))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                    Text("Select a profile to edit")
-                        .bobeTextStyle(.rowTitle)
-                        .foregroundStyle(self.theme.colors.textMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyView()
+            }
+        } emptyPane: {
+            VStack(spacing: 8) {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 28))
+                    .foregroundStyle(self.theme.colors.textMuted)
+                Text("Select a profile to edit")
+                    .bobeTextStyle(.rowTitle)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
         }
-        .onChange(of: self.selectedId) { _, newId in
-            if let profile = profiles.first(where: { $0.id == newId }) {
+        .onChange(of: self.editorState.selectedId) { _, newId in
+            if let profile = self.profiles.first(where: { $0.id == newId }) {
                 self.editorContent = profile.content
-                self.isDirty = false
-                self.deleteConfirm = false
+                self.editorState.setDirty(false)
+                self.editorState.dismissDeleteConfirmation()
             }
         }
         .task { await self.loadProfiles() }
@@ -211,13 +198,17 @@ struct UserProfilesEditor: View {
     // MARK: - Actions
 
     private func loadProfiles() async {
-        self.isLoading = true
-        defer { isLoading = false }
+        self.editorState.setLoading(true)
+        defer { self.editorState.setLoading(false) }
         do {
             let resp = try await DaemonClient.shared.listUserProfiles()
             self.profiles = resp.profiles
-            if self.selectedId == nil { self.selectedId = self.profiles.first?.id }
-        } catch { self.error = error.localizedDescription }
+            if self.editorState.selectedId == nil {
+                self.editorState.select(self.profiles.first?.id)
+            }
+        } catch {
+            self.editorState.setError(error)
+        }
     }
 
     private func createProfile() {
@@ -227,23 +218,29 @@ struct UserProfilesEditor: View {
                     UserProfileCreateRequest(name: self.newName.lowercased(), content: "# \(self.newName)\n\n")
                 )
                 self.profiles.append(profile)
-                self.selectedId = profile.id
+                self.editorState.select(profile.id)
                 self.newName = ""
-                self.isCreating = false
-            } catch { self.error = error.localizedDescription }
+                self.editorState.setCreating(false)
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
     private func saveProfile() {
-        guard let id = selectedId else { return }
-        self.isSaving = true
+        guard let id = self.editorState.selectedId else { return }
+        self.editorState.setSaving(true)
         Task {
-            defer { isSaving = false }
+            defer { self.editorState.setSaving(false) }
             do {
                 let updated = try await DaemonClient.shared.updateUserProfile(id, UserProfileUpdateRequest(content: self.editorContent))
-                if let idx = profiles.firstIndex(where: { $0.id == id }) { self.profiles[idx] = updated }
-                self.isDirty = false
-            } catch { self.error = error.localizedDescription }
+                if let idx = self.profiles.firstIndex(where: { $0.id == id }) {
+                    self.profiles[idx] = updated
+                }
+                self.editorState.setDirty(false)
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -252,8 +249,12 @@ struct UserProfilesEditor: View {
             do {
                 _ = try await DaemonClient.shared.deleteUserProfile(profile.id)
                 self.profiles.removeAll { $0.id == profile.id }
-                if self.selectedId == profile.id { self.selectedId = self.profiles.first?.id }
-            } catch { self.error = error.localizedDescription }
+                if self.editorState.selectedId == profile.id {
+                    self.editorState.select(self.profiles.first?.id)
+                }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -266,14 +267,16 @@ struct UserProfilesEditor: View {
                     _ = try await DaemonClient.shared.enableUserProfile(profile.id)
                 }
                 await self.loadProfiles()
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
     private func discardChanges() {
-        if let profile = selectedProfile {
+        if let profile = self.selectedProfile {
             self.editorContent = profile.content
-            self.isDirty = false
+            self.editorState.setDirty(false)
         }
     }
 }

@@ -21,6 +21,8 @@ struct BoBeApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let store: BobeStore
+    private let trayManager: TrayManager
     private var isQuitting = false
     private var isStartingUp = true
     private var setupWindow: NSWindow?
@@ -29,6 +31,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isTransitioningFromSetup = false
     private var setupCloseCount = 0
     var setupCompletedSuccessfully = false
+
+    override init() {
+        let store = BobeStore.shared
+        self.store = store
+        self.trayManager = TrayManager(store: store)
+        super.init()
+    }
 
     @MainActor
     func completeSetupAndCloseWizard() {
@@ -46,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             try? await Task.sleep(for: .milliseconds(150))
             self.showOverlay()
-            BobeStore.shared.connect()
+            self.store.connect()
             self.setupCompletedSuccessfully = false
             self.isTransitioningFromSetup = false
             logger.info("setup.complete_handoff.end")
@@ -97,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.setDockIcon()
         }
 
-        TrayManager.shared.setup()
+        self.trayManager.setup()
         UpdaterManager.shared.setup()
 
         Task { @MainActor in
@@ -115,11 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task {
-            BobeStore.shared.beginShutdown()
+            self.store.beginShutdown()
 
             try? await Task.sleep(for: .milliseconds(600))
 
-            BobeStore.shared.disconnect()
+            self.store.disconnect()
             await BackendService.shared.stop()
 
             await MainActor.run {
@@ -204,13 +213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.showOverlay()
-        BobeStore.shared.connect()
+        self.store.connect()
     }
 
     @MainActor
     private func showOverlay() {
         let theme = ThemeStore.shared.currentTheme
-        let overlayView = OverlayView()
+        let overlayView = OverlayView(store: self.store)
             .environment(\.theme, theme)
 
         OverlayWindowManager.shared.createPanel(with: overlayView)
@@ -283,7 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showSetupWizard()
             case .alertSecondButtonReturn:
                 self.showOverlay()
-                BobeStore.shared.connect()
+                self.store.connect()
                 SettingsWindowManager.shared.show()
             default:
                 NSApp.terminate(nil)

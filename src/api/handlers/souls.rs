@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
+use crate::db::SoulRepository;
 use crate::error::AppError;
 use crate::models::soul::Soul;
 
@@ -32,16 +33,11 @@ pub struct SoulListResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct SoulCreateRequest {
     pub name: String,
     pub content: String,
-    #[serde(default = "default_true")]
+    #[serde(default = "super::default_true")]
     pub enabled: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +72,34 @@ fn soul_to_response(soul: &Soul) -> SoulResponse {
         created_at: soul.created_at,
         updated_at: soul.updated_at,
     }
+}
+
+async fn set_soul_enabled(
+    soul_repo: &Arc<dyn SoulRepository>,
+    soul_id: Uuid,
+    enabled: bool,
+) -> Result<Json<SoulActionResponse>, AppError> {
+    let soul = soul_repo
+        .update(soul_id, None, Some(enabled), None, None)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
+
+    if enabled {
+        tracing::info!(soul_id = %soul_id, "soul.enabled");
+    } else {
+        tracing::info!(soul_id = %soul_id, "soul.disabled");
+    }
+
+    Ok(Json(SoulActionResponse {
+        id: soul_id.to_string(),
+        name: soul.name,
+        enabled,
+        message: if enabled {
+            "Soul enabled".into()
+        } else {
+            "Soul disabled".into()
+        },
+    }))
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
@@ -136,7 +160,8 @@ pub async fn create_soul(
         )));
     }
 
-    let soul = Soul::new(body.name, body.content, false);
+    let mut soul = Soul::new(body.name, body.content, false);
+    soul.enabled = body.enabled;
     let saved = state.soul_repo.save(&soul).await?;
 
     tracing::info!(soul_id = %saved.id, name = %saved.name, "soul.created");
@@ -229,24 +254,7 @@ pub async fn enable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let soul = state
-        .soul_repo
-        .get_by_id(soul_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-
-    state
-        .soul_repo
-        .update(soul_id, None, Some(true), None, None)
-        .await?;
-    tracing::info!(soul_id = %soul_id, "soul.enabled");
-
-    Ok(Json(SoulActionResponse {
-        id: soul_id.to_string(),
-        name: soul.name,
-        enabled: true,
-        message: "Soul enabled".into(),
-    }))
+    set_soul_enabled(&state.soul_repo, soul_id, true).await
 }
 
 /// POST /api/souls/:id/disable
@@ -254,24 +262,7 @@ pub async fn disable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let soul = state
-        .soul_repo
-        .get_by_id(soul_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-
-    state
-        .soul_repo
-        .update(soul_id, None, Some(false), None, None)
-        .await?;
-    tracing::info!(soul_id = %soul_id, "soul.disabled");
-
-    Ok(Json(SoulActionResponse {
-        id: soul_id.to_string(),
-        name: soul.name,
-        enabled: false,
-        message: "Soul disabled".into(),
-    }))
+    set_soul_enabled(&state.soul_repo, soul_id, false).await
 }
 
 /// DELETE /api/souls/:id

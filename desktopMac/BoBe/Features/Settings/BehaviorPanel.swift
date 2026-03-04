@@ -54,10 +54,10 @@ struct BehaviorPanel: View {
             title: "Screen Capture",
             icon: "camera.fill",
             description: "BoBe periodically captures your screen for context",
-            toggleBinding: self.binding(\.captureEnabled)
+            toggleBinding: self.binding(\.captureEnabled, fallback: false)
         ) {
             SettingsRow(label: "Capture interval", suffix: "seconds") {
-                DebouncedNumberInput(value: self.binding(\.captureIntervalSeconds), range: 1 ... 600)
+                DebouncedNumberInput(value: self.binding(\.captureIntervalSeconds, fallback: 60), range: 1 ... 600)
             }
 
             if !CGPreflightScreenCaptureAccess() {
@@ -84,7 +84,7 @@ struct BehaviorPanel: View {
             title: "Check-ins",
             icon: "clock.fill",
             description: "Scheduled proactive check-ins throughout the day",
-            toggleBinding: self.binding(\.checkinEnabled)
+            toggleBinding: self.binding(\.checkinEnabled, fallback: false)
         ) {
             SettingsRow(label: "Schedule") {
                 EmptyView()
@@ -119,7 +119,7 @@ struct BehaviorPanel: View {
             }
 
             SettingsRow(label: "Jitter", suffix: "minutes") {
-                DebouncedNumberInput(value: self.binding(\.checkinJitterMinutes), range: 0 ... 30)
+                DebouncedNumberInput(value: self.binding(\.checkinJitterMinutes, fallback: 0), range: 0 ... 30)
             }
         }
     }
@@ -129,13 +129,13 @@ struct BehaviorPanel: View {
             title: "Memory",
             icon: "brain.head.profile",
             description: "How long BoBe retains memories",
-            toggleBinding: self.binding(\.learningEnabled)
+            toggleBinding: self.binding(\.learningEnabled, fallback: true)
         ) {
             SettingsRow(label: "Short-term retention", suffix: "days") {
-                DebouncedNumberInput(value: self.binding(\.memoryShortTermRetentionDays), range: 1 ... 365)
+                DebouncedNumberInput(value: self.binding(\.memoryShortTermRetentionDays, fallback: 7), range: 1 ... 365)
             }
             SettingsRow(label: "Long-term retention", suffix: "days") {
-                DebouncedNumberInput(value: self.binding(\.memoryLongTermRetentionDays), range: 1 ... 3650)
+                DebouncedNumberInput(value: self.binding(\.memoryLongTermRetentionDays, fallback: 365), range: 1 ... 3650)
             }
         }
     }
@@ -147,10 +147,10 @@ struct BehaviorPanel: View {
             description: "How conversations are managed"
         ) {
             SettingsRow(label: "Auto-close after", suffix: "minutes") {
-                DebouncedNumberInput(value: self.binding(\.conversationAutoCloseMinutes), range: 1 ... 60)
+                DebouncedNumberInput(value: self.binding(\.conversationAutoCloseMinutes, fallback: 10), range: 1 ... 60)
             }
             SettingsRow(label: "Generate summaries") {
-                BobeToggle(isOn: self.binding(\.conversationSummaryEnabled))
+                BobeToggle(isOn: self.binding(\.conversationSummaryEnabled, fallback: true))
             }
         }
     }
@@ -160,21 +160,23 @@ struct BehaviorPanel: View {
             title: "Tools",
             icon: "wrench.fill",
             description: "Allow BoBe to execute actions on your behalf",
-            toggleBinding: self.binding(\.toolsEnabled)
+            toggleBinding: self.binding(\.toolsEnabled, fallback: true)
         ) {
             SettingsRow(label: "Max iterations", suffix: "rounds") {
-                DebouncedNumberInput(value: self.binding(\.toolsMaxIterations), range: 1 ... 20)
+                DebouncedNumberInput(value: self.binding(\.toolsMaxIterations, fallback: 8), range: 1 ... 20)
             }
         }
     }
 
     // MARK: - Helpers
 
-    private func binding<V>(_ keyPath: WritableKeyPath<DaemonSettings, V>) -> Binding<V> {
+    private func binding<V>(
+        _ keyPath: WritableKeyPath<DaemonSettings, V>,
+        fallback: @autoclosure @escaping () -> V
+    ) -> Binding<V> {
         Binding(
             get: {
-                guard let settings else { fatalError("Binding accessed before settings loaded") }
-                return settings[keyPath: keyPath]
+                settings?[keyPath: keyPath] ?? fallback()
             },
             set: { newValue in
                 guard var current = settings else { return }

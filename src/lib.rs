@@ -4,6 +4,7 @@ pub mod binary_manager;
 pub mod bootstrap;
 pub mod config;
 pub mod config_manager;
+pub mod constants;
 pub mod db;
 pub mod error;
 pub mod llm;

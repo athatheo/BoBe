@@ -3,28 +3,22 @@ import SwiftUI
 /// Split-pane editor for Souls (personality documents).
 struct SoulsEditor: View {
     @State private var souls: [Soul] = []
-    @State private var selectedId: String?
+    @State private var editorState = SettingsEditorState<String>()
     @State private var editorContent = ""
-    @State private var isDirty = false
-    @State private var isLoading = false
-    @State private var isSaving = false
     @State private var newName = ""
-    @State private var isCreating = false
-    @State private var deleteConfirm = false
-    @State private var error: String?
     @Environment(\.theme) private var theme
 
     private var selectedSoul: Soul? {
-        self.souls.first { $0.id == self.selectedId }
+        self.souls.first { $0.id == self.editorState.selectedId }
     }
 
     var body: some View {
-        ThemedSplitPane(leftWidth: 300) {
+        SettingsEditorScaffold(hasSelection: self.selectedSoul != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "Souls") { self.isCreating.toggle() }
+                SettingsPaneHeader(title: "Souls") { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
-                if self.isCreating {
+                if self.editorState.isCreating {
                     HStack(spacing: 6) {
                         BobeTextField(placeholder: "soul-name", text: self.$newName) {
                             if !self.newName.isEmpty { self.createSoul() }
@@ -33,7 +27,7 @@ struct SoulsEditor: View {
                             .bobeButton(.primary, size: .small)
                             .disabled(self.newName.isEmpty)
                         Button {
-                            self.isCreating = false
+                            self.editorState.setCreating(false)
                             self.newName = ""
                         } label: {
                             Text("Cancel")
@@ -42,7 +36,7 @@ struct SoulsEditor: View {
                     }
                 }
 
-                if self.isLoading, self.souls.isEmpty {
+                if self.editorState.isLoading, self.souls.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text("Loading souls...")
@@ -51,7 +45,7 @@ struct SoulsEditor: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 20)
-                } else if self.souls.isEmpty, !self.isLoading {
+                } else if self.souls.isEmpty, !self.editorState.isLoading {
                     VStack(spacing: 8) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 28))
@@ -70,8 +64,8 @@ struct SoulsEditor: View {
                         LazyVStack(spacing: 4) {
                             ForEach(self.souls) { soul in
                                 BobeSelectableRow(
-                                    isSelected: self.selectedId == soul.id,
-                                    action: { self.selectedId = soul.id },
+                                    isSelected: self.editorState.selectedId == soul.id,
+                                    action: { self.editorState.select(soul.id) },
                                     content: {
                                         VStack(alignment: .leading) {
                                             HStack(spacing: 4) {
@@ -106,18 +100,14 @@ struct SoulsEditor: View {
                     .background(self.theme.colors.background)
                 }
             }
-            .frame(minWidth: 220, idealWidth: 300)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-            .padding(.top, BobeMetrics.paneTopPadding)
-        } right: {
-            if let soul = selectedSoul {
+        } detailPane: {
+            if let soul = self.selectedSoul {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text(soul.name)
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.text)
-                        if self.isDirty {
+                        if self.editorState.isDirty {
                             Text("unsaved")
                                 .bobeTextStyle(.badge)
                                 .foregroundStyle(self.theme.colors.tertiary)
@@ -136,22 +126,22 @@ struct SoulsEditor: View {
                         Spacer()
 
                         if !soul.isDefault {
-                            if self.deleteConfirm {
+                            if self.editorState.showDeleteConfirmation {
                                 HStack(spacing: 6) {
                                     Text("Delete?")
                                         .font(.system(size: 12))
                                         .foregroundStyle(self.theme.colors.primary)
                                     Button("Yes") {
                                         self.deleteSoul(soul)
-                                        self.deleteConfirm = false
+                                        self.editorState.dismissDeleteConfirmation()
                                     }
                                     .bobeButton(.destructive, size: .small)
-                                    Button("No") { self.deleteConfirm = false }
+                                    Button("No") { self.editorState.dismissDeleteConfirmation() }
                                         .bobeButton(.secondary, size: .small)
                                 }
                             } else {
                                 Button {
-                                    self.deleteConfirm = true
+                                    self.editorState.requestDeleteConfirmation()
                                 } label: {
                                     Image(systemName: "trash")
                                 }
@@ -159,13 +149,12 @@ struct SoulsEditor: View {
                             }
                         }
 
-                        if self.isDirty {
-                            Button("Discard") { self.discardChanges() }
-                                .bobeButton(.secondary, size: .small)
-                        }
-                        Button(self.isSaving ? "Saving..." : "Save") { self.saveSoul() }
-                            .bobeButton(.primary, size: .small)
-                            .disabled(!self.isDirty || self.isSaving)
+                        SettingsEditorSaveActions(
+                            isDirty: self.editorState.isDirty,
+                            isSaving: self.editorState.isSaving,
+                            onDiscard: self.discardChanges,
+                            onSave: self.saveSoul
+                        )
                     }
 
                     CodeEditor(text: self.$editorContent, theme: self.theme, fontSize: 13)
@@ -175,33 +164,31 @@ struct SoulsEditor: View {
                                 .stroke(self.theme.colors.border, lineWidth: 1)
                         )
                         .onChange(of: self.editorContent) { _, _ in
-                            self.isDirty = self.editorContent != self.selectedSoul?.content
+                            self.editorState.setDirty(self.editorContent != self.selectedSoul?.content)
                         }
 
-                    if let error {
-                        Text(error).font(.caption).foregroundStyle(self.theme.colors.primary)
+                    if let errorMessage = self.editorState.errorMessage {
+                        SettingsEditorErrorText(message: errorMessage)
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-                .padding(.top, BobeMetrics.paneTopPadding)
             } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 28))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                    Text("Select a soul to edit")
-                        .bobeTextStyle(.rowTitle)
-                        .foregroundStyle(self.theme.colors.textMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyView()
+            }
+        } emptyPane: {
+            VStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 28))
+                    .foregroundStyle(self.theme.colors.textMuted)
+                Text("Select a soul to edit")
+                    .bobeTextStyle(.rowTitle)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
         }
-        .onChange(of: self.selectedId) { _, newId in
-            if let soul = souls.first(where: { $0.id == newId }) {
+        .onChange(of: self.editorState.selectedId) { _, newId in
+            if let soul = self.souls.first(where: { $0.id == newId }) {
                 self.editorContent = soul.content
-                self.isDirty = false
-                self.deleteConfirm = false
+                self.editorState.setDirty(false)
+                self.editorState.dismissDeleteConfirmation()
             }
         }
         .task { await self.loadSouls() }
@@ -210,14 +197,16 @@ struct SoulsEditor: View {
     // MARK: - Actions
 
     private func loadSouls() async {
-        self.isLoading = true
-        defer { isLoading = false }
+        self.editorState.setLoading(true)
+        defer { self.editorState.setLoading(false) }
         do {
             let resp = try await DaemonClient.shared.listSouls()
             self.souls = resp.souls
-            if self.selectedId == nil { self.selectedId = self.souls.first?.id }
+            if self.editorState.selectedId == nil {
+                self.editorState.select(self.souls.first?.id)
+            }
         } catch {
-            self.error = error.localizedDescription
+            self.editorState.setError(error)
         }
     }
 
@@ -228,28 +217,28 @@ struct SoulsEditor: View {
                     SoulCreateRequest(name: self.newName.lowercased(), content: "# \(self.newName)\n\n")
                 )
                 self.souls.append(soul)
-                self.selectedId = soul.id
+                self.editorState.select(soul.id)
                 self.newName = ""
-                self.isCreating = false
+                self.editorState.setCreating(false)
             } catch {
-                self.error = error.localizedDescription
+                self.editorState.setError(error)
             }
         }
     }
 
     private func saveSoul() {
-        guard let id = selectedId else { return }
-        self.isSaving = true
+        guard let id = self.editorState.selectedId else { return }
+        self.editorState.setSaving(true)
         Task {
-            defer { isSaving = false }
+            defer { self.editorState.setSaving(false) }
             do {
                 let updated = try await DaemonClient.shared.updateSoul(id, SoulUpdateRequest(content: self.editorContent))
-                if let idx = souls.firstIndex(where: { $0.id == id }) {
+                if let idx = self.souls.firstIndex(where: { $0.id == id }) {
                     self.souls[idx] = updated
                 }
-                self.isDirty = false
+                self.editorState.setDirty(false)
             } catch {
-                self.error = error.localizedDescription
+                self.editorState.setError(error)
             }
         }
     }
@@ -259,9 +248,11 @@ struct SoulsEditor: View {
             do {
                 _ = try await DaemonClient.shared.deleteSoul(soul.id)
                 self.souls.removeAll { $0.id == soul.id }
-                if self.selectedId == soul.id { self.selectedId = self.souls.first?.id }
+                if self.editorState.selectedId == soul.id {
+                    self.editorState.select(self.souls.first?.id)
+                }
             } catch {
-                self.error = error.localizedDescription
+                self.editorState.setError(error)
             }
         }
     }
@@ -276,15 +267,15 @@ struct SoulsEditor: View {
                 }
                 await self.loadSouls()
             } catch {
-                self.error = error.localizedDescription
+                self.editorState.setError(error)
             }
         }
     }
 
     private func discardChanges() {
-        if let soul = selectedSoul {
+        if let soul = self.selectedSoul {
             self.editorContent = soul.content
-            self.isDirty = false
+            self.editorState.setDirty(false)
         }
     }
 }

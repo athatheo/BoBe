@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
+use crate::constants::{GOAL_CONTENT_MAX_LENGTH, GOAL_CONTENT_MIN_LENGTH};
 use crate::error::AppError;
 use crate::models::goal::Goal;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
@@ -34,21 +35,16 @@ pub struct GoalListResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct GoalCreateRequest {
     pub content: String,
     #[serde(default = "default_priority")]
     pub priority: String,
-    #[serde(default = "default_true")]
+    #[serde(default = "super::default_true")]
     pub enabled: bool,
 }
 
 fn default_priority() -> String {
     "medium".into()
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -153,14 +149,16 @@ pub async fn create_goal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GoalCreateRequest>,
 ) -> Result<(StatusCode, Json<GoalResponse>), AppError> {
-    if body.content.len() < 3 {
-        return Err(AppError::Validation(
-            "content must be at least 3 characters".into(),
-        ));
+    if body.content.len() < GOAL_CONTENT_MIN_LENGTH || body.content.len() > GOAL_CONTENT_MAX_LENGTH
+    {
+        return Err(AppError::Validation(format!(
+            "content must be between {GOAL_CONTENT_MIN_LENGTH} and {GOAL_CONTENT_MAX_LENGTH} characters"
+        )));
     }
 
     let priority = parse_goal_priority(&body.priority)?;
-    let goal = Goal::new(body.content, GoalSource::User, priority);
+    let mut goal = Goal::new(body.content, GoalSource::User, priority);
+    goal.enabled = body.enabled;
 
     let saved = state.goal_repo.save(&goal).await?;
 
@@ -175,14 +173,14 @@ pub async fn update_goal(
     Path(goal_id): Path<Uuid>,
     Json(body): Json<GoalUpdateRequest>,
 ) -> Result<Json<GoalResponse>, AppError> {
-    state
+    let existing_goal = state
         .goal_repo
         .get_by_id(goal_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
     // Re-embed when content changes (generates new embedding vector)
-    let mut updated_goal = None;
+    let mut updated_goal = Some(existing_goal);
     if let Some(ref content) = body.content {
         updated_goal = state.goals_service.update_content(goal_id, content).await?;
         if updated_goal.is_none() {

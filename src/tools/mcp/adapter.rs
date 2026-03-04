@@ -157,7 +157,7 @@ impl ToolSource for McpToolAdapter {
         "mcp"
     }
 
-    async fn get_tools(&self, _include_disabled: bool) -> Result<Vec<ToolDefinition>, AppError> {
+    async fn get_tools(&self) -> Result<Vec<ToolDefinition>, AppError> {
         let mut all_defs = Vec::new();
 
         // Collect client refs outside the DashMap iterator to avoid !Send guards across awaits.

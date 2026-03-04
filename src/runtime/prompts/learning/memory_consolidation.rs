@@ -3,6 +3,7 @@
 use serde_json::json;
 use std::sync::LazyLock;
 
+use crate::constants::VALID_MEMORY_CATEGORIES;
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::PromptConfig;
 
@@ -23,7 +24,7 @@ pub static MEMORY_CONSOLIDATION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::
                         },
                         "category": {
                             "type": "string",
-                            "enum": ["preference", "pattern", "fact", "interest"],
+                            "enum": VALID_MEMORY_CATEGORIES,
                             "description": "Category of the consolidated memory"
                         },
                         "source_indices": {

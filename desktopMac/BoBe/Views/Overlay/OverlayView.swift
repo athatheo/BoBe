@@ -4,12 +4,17 @@ import SwiftUI
 /// Main overlay window content.
 /// Indicator bubble sits to the left of the avatar, vertically centered.
 struct OverlayView: View {
-    @State private var store = BobeStore.shared
-    @State private var themeStore = ThemeStore.shared
+    @State private var store: BobeStore
+    @State private var themeStore: ThemeStore
     @State private var showChat = false
     @State private var lastMessageActivity: Date = .now
     @State private var measuredContentSize: CGSize = .zero
     @State private var inactivityTimer: Task<Void, Never>?
+
+    init(store: BobeStore, themeStore: ThemeStore = .shared) {
+        self._store = State(initialValue: store)
+        self._themeStore = State(initialValue: themeStore)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,7 +62,7 @@ struct OverlayView: View {
                             .lineLimit(2)
                         Spacer()
                         Button {
-                            BobeStore.shared.dismissError()
+                            self.store.dismissError()
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 8, weight: .bold))

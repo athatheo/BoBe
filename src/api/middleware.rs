@@ -7,6 +7,8 @@ use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
+use crate::constants::MILLIS_PER_SECOND;
+
 /// Shared allowed-hosts set for the middleware layer.
 #[derive(Clone)]
 pub struct AllowedHosts {
@@ -82,7 +84,7 @@ pub async fn request_logging(req: Request<Body>, next: Next) -> Response {
 
     let response = next.run(req).await;
 
-    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let duration_ms = start.elapsed().as_secs_f64() * MILLIS_PER_SECOND;
     let status = response.status().as_u16();
 
     if status >= 500 {

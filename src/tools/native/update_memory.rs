@@ -5,11 +5,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::base::NativeTool;
+use crate::constants::VALID_MEMORY_CATEGORIES;
 use crate::db::MemoryRepository;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
-
-const VALID_CATEGORIES: &[&str] = &["preference", "pattern", "fact", "interest"];
 
 pub struct UpdateMemoryTool {
     memory_repo: Arc<dyn MemoryRepository>,
@@ -45,7 +44,7 @@ impl NativeTool for UpdateMemoryTool {
                 },
                 "category": {
                     "type": "string",
-                    "enum": ["preference", "pattern", "fact", "interest"],
+                    "enum": VALID_MEMORY_CATEGORIES,
                     "description": "New category for the memory"
                 }
             },
@@ -76,12 +75,12 @@ impl NativeTool for UpdateMemoryTool {
         }
 
         if let Some(cat) = new_cat
-            && !VALID_CATEGORIES.contains(&cat)
+            && !VALID_MEMORY_CATEGORIES.contains(&cat)
         {
             return Err(AppError::Validation(format!(
                 "Invalid category '{}'. Must be one of: {}",
                 cat,
-                VALID_CATEGORIES.join(", ")
+                VALID_MEMORY_CATEGORIES.join(", ")
             )));
         }
 

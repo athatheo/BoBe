@@ -3,22 +3,16 @@ import SwiftUI
 /// Split-pane editor for Memories with category/type filters.
 struct MemoriesEditor: View {
     @State private var memories: [Memory] = []
-    @State private var selectedId: String?
+    @State private var editorState = SettingsEditorState<String>()
     @State private var editorContent = ""
     @State private var selectedCategory: MemoryCategory = .general
-    @State private var isDirty = false
-    @State private var isLoading = false
-    @State private var isSaving = false
-    @State private var isCreating = false
     @State private var newContent = ""
     @State private var filterCategory: MemoryCategory?
     @State private var filterType: MemoryType?
-    @State private var deleteConfirm = false
-    @State private var error: String?
     @Environment(\.theme) private var theme
 
     private var selectedMemory: Memory? {
-        self.memories.first { $0.id == self.selectedId }
+        self.memories.first { $0.id == self.editorState.selectedId }
     }
 
     private var filteredMemories: [Memory] {
@@ -37,9 +31,9 @@ struct MemoriesEditor: View {
     ]
 
     var body: some View {
-        ThemedSplitPane(leftWidth: 300) {
+        SettingsEditorScaffold(hasSelection: self.selectedMemory != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "Memories") { self.isCreating.toggle() }
+                SettingsPaneHeader(title: "Memories") { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
                 HStack(spacing: 6) {
@@ -76,12 +70,12 @@ struct MemoriesEditor: View {
                         .foregroundStyle(self.theme.colors.textMuted)
                 }
 
-                if let error {
+                if let errorMessage = self.editorState.errorMessage {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.circle.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(self.theme.colors.primary)
-                        Text(error)
+                        Text(errorMessage)
                             .bobeTextStyle(.badge)
                             .foregroundStyle(self.theme.colors.primary)
                             .lineLimit(1)
@@ -91,7 +85,7 @@ struct MemoriesEditor: View {
                     }
                 }
 
-                if self.isCreating {
+                if self.editorState.isCreating {
                     VStack(spacing: 6) {
                         CodeEditor(text: self.$newContent, theme: self.theme, fontSize: 12)
                             .frame(height: 50)
@@ -103,9 +97,9 @@ struct MemoriesEditor: View {
                         HStack(spacing: 6) {
                             Button("Create") { self.createMemory() }
                                 .bobeButton(.primary, size: .small)
-                                .disabled(self.newContent.isEmpty)
+                            .disabled(self.newContent.isEmpty)
                             Button("Cancel") {
-                                self.isCreating = false
+                                self.editorState.setCreating(false)
                                 self.newContent = ""
                             }
                             .bobeButton(.secondary, size: .small)
@@ -114,7 +108,7 @@ struct MemoriesEditor: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
-                if self.isLoading, self.memories.isEmpty {
+                if self.editorState.isLoading, self.memories.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text("Loading memories...")
@@ -123,7 +117,7 @@ struct MemoriesEditor: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 20)
-                } else if self.filteredMemories.isEmpty, !self.isLoading {
+                } else if self.filteredMemories.isEmpty, !self.editorState.isLoading {
                     VStack(spacing: 8) {
                         Image(systemName: "brain.head.profile")
                             .font(.system(size: 28))
@@ -139,8 +133,8 @@ struct MemoriesEditor: View {
                         LazyVStack(spacing: 4) {
                             ForEach(self.filteredMemories) { memory in
                                 BobeSelectableRow(
-                                    isSelected: self.selectedId == memory.id,
-                                    action: { self.selectedId = memory.id },
+                                    isSelected: self.editorState.selectedId == memory.id,
+                                    action: { self.editorState.select(memory.id) },
                                     content: {
                                         HStack {
                                             VStack(alignment: .leading, spacing: 3) {
@@ -170,12 +164,8 @@ struct MemoriesEditor: View {
                     .background(self.theme.colors.background)
                 }
             }
-            .frame(minWidth: 220, idealWidth: 300)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-            .padding(.top, BobeMetrics.paneTopPadding)
-        } right: {
-            if let memory = selectedMemory {
+        } detailPane: {
+            if let memory = self.selectedMemory {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         Text("Memory")
@@ -184,7 +174,7 @@ struct MemoriesEditor: View {
                             .padding(.vertical, 2)
                             .background(Capsule().fill(self.theme.colors.border.opacity(0.4)))
 
-                        if self.isDirty {
+                        if self.editorState.isDirty {
                             Text("unsaved")
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(self.theme.colors.tertiary)
@@ -216,7 +206,9 @@ struct MemoriesEditor: View {
                             width: 130,
                             size: .small
                         )
-                        .onChange(of: self.selectedCategory) { _, _ in self.isDirty = true }
+                        .onChange(of: self.selectedCategory) { _, _ in
+                            self.editorState.setDirty()
+                        }
 
                         Text(memory.createdAt.prefix(10))
                             .bobeTextStyle(.badge)
@@ -230,65 +222,61 @@ struct MemoriesEditor: View {
                                 .stroke(self.theme.colors.border, lineWidth: 1)
                         )
                         .onChange(of: self.editorContent) { _, _ in
-                            self.isDirty = self.editorContent != self.selectedMemory?.content || self.selectedCategory != self.selectedMemory?
-                                .category
+                            self.editorState.setDirty(
+                                self.editorContent != self.selectedMemory?.content || self.selectedCategory != self.selectedMemory?.category
+                            )
                         }
 
-                    HStack(spacing: 8) {
-                        if self.deleteConfirm {
+                    SettingsEditorActionRow {
+                        if self.editorState.showDeleteConfirmation {
                             HStack(spacing: 6) {
                                 Text("Delete?")
                                     .font(.system(size: 12))
                                     .foregroundStyle(self.theme.colors.primary)
                                 Button("Yes") {
                                     self.deleteMemory(memory)
-                                    self.deleteConfirm = false
+                                    self.editorState.dismissDeleteConfirmation()
                                 }
                                 .bobeButton(.destructive, size: .small)
-                                Button("No") { self.deleteConfirm = false }
+                                Button("No") { self.editorState.dismissDeleteConfirmation() }
                                     .bobeButton(.secondary, size: .small)
                             }
                         } else {
                             Button {
-                                self.deleteConfirm = true
+                                self.editorState.requestDeleteConfirmation()
                             } label: {
                                 Image(systemName: "trash")
                             }
                             .bobeButton(.destructive, size: .small)
                         }
-
-                        Spacer()
-
-                        if self.isDirty {
-                            Button("Discard") { self.discardChanges() }
-                                .bobeButton(.secondary, size: .small)
-                        }
-                        Button(self.isSaving ? "Saving..." : "Save") { self.saveMemory() }
-                            .bobeButton(.primary, size: .small)
-                            .disabled(!self.isDirty || self.isSaving)
+                    } trailing: {
+                        SettingsEditorSaveActions(
+                            isDirty: self.editorState.isDirty,
+                            isSaving: self.editorState.isSaving,
+                            onDiscard: self.discardChanges,
+                            onSave: self.saveMemory
+                        )
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-                .padding(.top, BobeMetrics.paneTopPadding)
             } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "brain.head.profile")
-                        .font(.system(size: 28))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                    Text("Select a memory to edit")
-                        .bobeTextStyle(.rowTitle)
-                        .foregroundStyle(self.theme.colors.textMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyView()
+            }
+        } emptyPane: {
+            VStack(spacing: 8) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 28))
+                    .foregroundStyle(self.theme.colors.textMuted)
+                Text("Select a memory to edit")
+                    .bobeTextStyle(.rowTitle)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
         }
-        .onChange(of: self.selectedId) { _, newId in
-            if let memory = memories.first(where: { $0.id == newId }) {
+        .onChange(of: self.editorState.selectedId) { _, newId in
+            if let memory = self.memories.first(where: { $0.id == newId }) {
                 self.editorContent = memory.content
                 self.selectedCategory = memory.category
-                self.isDirty = false
-                self.deleteConfirm = false
+                self.editorState.setDirty(false)
+                self.editorState.dismissDeleteConfirmation()
             }
         }
         .task { await self.loadMemories() }
@@ -297,14 +285,18 @@ struct MemoriesEditor: View {
     // MARK: - Actions
 
     private func loadMemories() async {
-        self.isLoading = true
-        defer { isLoading = false }
+        self.editorState.setLoading(true)
+        defer { self.editorState.setLoading(false) }
         do {
             let resp = try await DaemonClient.shared.listMemories()
             self.memories = resp.memories
-            if self.selectedId == nil { self.selectedId = self.memories.first?.id }
-            self.error = nil
-        } catch { self.error = error.localizedDescription }
+            if self.editorState.selectedId == nil {
+                self.editorState.select(self.memories.first?.id)
+            }
+            self.editorState.clearError()
+        } catch {
+            self.editorState.setError(error)
+        }
     }
 
     private func createMemory() {
@@ -312,26 +304,32 @@ struct MemoriesEditor: View {
             do {
                 let memory = try await DaemonClient.shared.createMemory(MemoryCreateRequest(content: self.newContent))
                 self.memories.append(memory)
-                self.selectedId = memory.id
+                self.editorState.select(memory.id)
                 self.newContent = ""
-                self.isCreating = false
-            } catch { self.error = error.localizedDescription }
+                self.editorState.setCreating(false)
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
     private func saveMemory() {
-        guard let id = selectedId else { return }
-        self.isSaving = true
+        guard let id = self.editorState.selectedId else { return }
+        self.editorState.setSaving(true)
         Task {
-            defer { isSaving = false }
+            defer { self.editorState.setSaving(false) }
             do {
                 let updated = try await DaemonClient.shared.updateMemory(
                     id,
                     MemoryUpdateRequest(content: self.editorContent, category: self.selectedCategory)
                 )
-                if let idx = memories.firstIndex(where: { $0.id == id }) { self.memories[idx] = updated }
-                self.isDirty = false
-            } catch { self.error = error.localizedDescription }
+                if let idx = self.memories.firstIndex(where: { $0.id == id }) {
+                    self.memories[idx] = updated
+                }
+                self.editorState.setDirty(false)
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -340,8 +338,12 @@ struct MemoriesEditor: View {
             do {
                 _ = try await DaemonClient.shared.deleteMemory(memory.id)
                 self.memories.removeAll { $0.id == memory.id }
-                if self.selectedId == memory.id { self.selectedId = self.memories.first?.id }
-            } catch { self.error = error.localizedDescription }
+                if self.editorState.selectedId == memory.id {
+                    self.editorState.select(self.memories.first?.id)
+                }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -354,15 +356,17 @@ struct MemoriesEditor: View {
                     _ = try await DaemonClient.shared.enableMemory(memory.id)
                 }
                 await self.loadMemories()
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
     private func discardChanges() {
-        if let memory = selectedMemory {
+        if let memory = self.selectedMemory {
             self.editorContent = memory.content
             self.selectedCategory = memory.category
-            self.isDirty = false
+            self.editorState.setDirty(false)
         }
     }
 }

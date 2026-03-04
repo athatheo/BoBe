@@ -10,6 +10,7 @@ use serde_json::Value;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::constants::MILLIS_PER_SECOND;
 use crate::db::ObservationRepository;
 use crate::llm::LlmProvider;
 use crate::runtime::prompts::decision::DecisionPrompt;
@@ -320,7 +321,7 @@ impl DecisionEngine {
                 .await
             {
                 Ok(results) => {
-                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let duration_ms = start.elapsed().as_secs_f64() * MILLIS_PER_SECOND;
                     if results.is_empty() {
                         debug!(
                             duration_ms = format!("{duration_ms:.1}"),

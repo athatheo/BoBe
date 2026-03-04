@@ -11,7 +11,6 @@ use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 /// Aggregates all BoBe native tools as a single ToolSource.
 pub struct NativeToolAdapter {
     tools: HashMap<String, Arc<dyn NativeTool>>,
-    disabled_tools: std::sync::RwLock<std::collections::HashSet<String>>,
 }
 
 impl NativeToolAdapter {
@@ -22,10 +21,7 @@ impl NativeToolAdapter {
             map.insert(tool.name().to_owned(), tool);
         }
 
-        Self {
-            tools: map,
-            disabled_tools: std::sync::RwLock::new(std::collections::HashSet::new()),
-        }
+        Self { tools: map }
     }
 
     pub fn tool_names(&self) -> Vec<String> {
@@ -39,12 +35,10 @@ impl ToolSource for NativeToolAdapter {
         "bobe"
     }
 
-    async fn get_tools(&self, include_disabled: bool) -> Result<Vec<ToolDefinition>, AppError> {
-        let disabled = read_lock_or_recover(&self.disabled_tools, "native_tool.disabled_tools");
+    async fn get_tools(&self) -> Result<Vec<ToolDefinition>, AppError> {
         let defs: Vec<ToolDefinition> = self
             .tools
             .values()
-            .filter(|t| include_disabled || !disabled.contains(t.name()))
             .map(|t| ToolDefinition {
                 name: t.name().to_owned(),
                 description: t.description().to_owned(),
@@ -68,18 +62,6 @@ impl ToolSource for NativeToolAdapter {
             );
         };
 
-        // Check if disabled
-        {
-            let disabled = read_lock_or_recover(&self.disabled_tools, "native_tool.disabled_tools");
-            if disabled.contains(&tool_call.name) {
-                return ToolResult::err(
-                    tool_call.id.clone(),
-                    tool_call.name.clone(),
-                    format!("Tool '{}' is disabled", tool_call.name),
-                );
-            }
-        }
-
         debug!(tool = %tool_call.name, "Executing native tool");
 
         match tool.execute(tool_call.arguments.clone(), context).await {
@@ -88,19 +70,6 @@ impl ToolSource for NativeToolAdapter {
                 warn!(tool = %tool_call.name, error = %e, "Native tool execution failed");
                 ToolResult::err(tool_call.id.clone(), tool_call.name.clone(), e.to_string())
             }
-        }
-    }
-}
-
-fn read_lock_or_recover<'a, T>(
-    lock: &'a std::sync::RwLock<T>,
-    lock_name: &'static str,
-) -> std::sync::RwLockReadGuard<'a, T> {
-    match lock.read() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!(lock = lock_name, "rwlock poisoned on read, recovering");
-            poisoned.into_inner()
         }
     }
 }

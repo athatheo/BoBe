@@ -98,8 +98,10 @@ impl MessageHandler {
         let existing = self.conversation.get_pending_or_active().await.ok()?;
 
         if let Some(conv) = existing {
-            if conv.is_pending() {
-                self.conversation.activate(conv.id).await.ok();
+            if conv.is_pending()
+                && let Err(e) = self.conversation.activate(conv.id).await
+            {
+                warn!(error = %e, conversation_id = %conv.id, "message_handler.activate_failed");
             }
 
             match self
@@ -320,7 +322,7 @@ impl MessageHandler {
             return Vec::new();
         };
 
-        let all_tools = registry.get_all_tools(true).await;
+        let all_tools = registry.get_all_tools(false).await;
         if all_tools.is_empty() {
             return Vec::new();
         }

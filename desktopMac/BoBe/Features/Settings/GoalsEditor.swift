@@ -3,29 +3,23 @@ import SwiftUI
 /// Split-pane editor for Goals with priority colors, status badges, and delete confirmation.
 struct GoalsEditor: View {
     @State private var goals: [Goal] = []
-    @State private var selectedId: String?
+    @State private var editorState = SettingsEditorState<String>()
     @State private var editorContent = ""
     @State private var selectedPriority: GoalPriority = .medium
-    @State private var isDirty = false
-    @State private var isLoading = false
-    @State private var isSaving = false
-    @State private var isCreating = false
     @State private var newContent = ""
-    @State private var deleteConfirm = false
-    @State private var error: String?
     @Environment(\.theme) private var theme
 
     private var selectedGoal: Goal? {
-        self.goals.first { $0.id == self.selectedId }
+        self.goals.first { $0.id == self.editorState.selectedId }
     }
 
     var body: some View {
-        ThemedSplitPane(leftWidth: 300) {
+        SettingsEditorScaffold(hasSelection: self.selectedGoal != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "Goals") { self.isCreating.toggle() }
+                SettingsPaneHeader(title: "Goals") { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
-                if self.isCreating {
+                if self.editorState.isCreating {
                     VStack(spacing: 6) {
                         BobeTextField(placeholder: "What's the goal?", text: self.$newContent) {
                             if !self.newContent.isEmpty { self.createGoal() }
@@ -33,9 +27,9 @@ struct GoalsEditor: View {
                         HStack(spacing: 6) {
                             Button("Create") { self.createGoal() }
                                 .bobeButton(.primary, size: .small)
-                                .disabled(self.newContent.isEmpty)
+                            .disabled(self.newContent.isEmpty)
                             Button("Cancel") {
-                                self.isCreating = false
+                                self.editorState.setCreating(false)
                                 self.newContent = ""
                             }
                             .bobeButton(.secondary, size: .small)
@@ -43,7 +37,7 @@ struct GoalsEditor: View {
                     }
                 }
 
-                if self.isLoading, self.goals.isEmpty {
+                if self.editorState.isLoading, self.goals.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text("Loading goals...")
@@ -52,7 +46,7 @@ struct GoalsEditor: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 20)
-                } else if self.goals.isEmpty, !self.isLoading {
+                } else if self.goals.isEmpty, !self.editorState.isLoading {
                     VStack(spacing: 8) {
                         Image(systemName: "target")
                             .font(.system(size: 28))
@@ -71,8 +65,8 @@ struct GoalsEditor: View {
                         LazyVStack(spacing: 4) {
                             ForEach(self.goals) { goal in
                                 BobeSelectableRow(
-                                    isSelected: self.selectedId == goal.id,
-                                    action: { self.selectedId = goal.id },
+                                    isSelected: self.editorState.selectedId == goal.id,
+                                    action: { self.editorState.select(goal.id) },
                                     content: {
                                         HStack(spacing: 8) {
                                             Circle()
@@ -110,12 +104,8 @@ struct GoalsEditor: View {
                     .background(self.theme.colors.background)
                 }
             }
-            .frame(minWidth: 220, idealWidth: 300)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-            .padding(.top, BobeMetrics.paneTopPadding)
-        } right: {
-            if let goal = selectedGoal {
+        } detailPane: {
+            if let goal = self.selectedGoal {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         Text("Goal")
@@ -124,7 +114,7 @@ struct GoalsEditor: View {
                             .padding(.vertical, 2)
                             .background(Capsule().fill(self.theme.colors.border.opacity(0.4)))
 
-                        if self.isDirty {
+                        if self.editorState.isDirty {
                             Text("unsaved")
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(self.theme.colors.tertiary)
@@ -164,7 +154,9 @@ struct GoalsEditor: View {
                             },
                             width: 180
                         )
-                        .onChange(of: self.selectedPriority) { _, _ in self.isDirty = true }
+                        .onChange(of: self.selectedPriority) { _, _ in
+                            self.editorState.setDirty()
+                        }
 
                         Spacer()
 
@@ -198,68 +190,65 @@ struct GoalsEditor: View {
                                 .stroke(self.theme.colors.border, lineWidth: 1)
                         )
                         .onChange(of: self.editorContent) { _, _ in
-                            self.isDirty = self.editorContent != self.selectedGoal?.content || self.selectedPriority != self.selectedGoal?.priority
+                            self.editorState.setDirty(
+                                self.editorContent != self.selectedGoal?.content || self.selectedPriority != self.selectedGoal?.priority
+                            )
                         }
 
-                    HStack(spacing: 8) {
-                        if self.deleteConfirm {
+                    SettingsEditorActionRow {
+                        if self.editorState.showDeleteConfirmation {
                             HStack(spacing: 6) {
                                 Text("Delete?")
                                     .font(.system(size: 12))
                                     .foregroundStyle(self.theme.colors.primary)
                                 Button("Yes") {
                                     self.deleteGoal(goal)
-                                    self.deleteConfirm = false
+                                    self.editorState.dismissDeleteConfirmation()
                                 }
                                 .bobeButton(.destructive, size: .small)
-                                Button("No") { self.deleteConfirm = false }
+                                Button("No") { self.editorState.dismissDeleteConfirmation() }
                                     .bobeButton(.secondary, size: .small)
                             }
                         } else {
                             Button {
-                                self.deleteConfirm = true
+                                self.editorState.requestDeleteConfirmation()
                             } label: {
                                 Image(systemName: "trash")
                             }
                             .bobeButton(.destructive, size: .small)
                         }
-
-                        Spacer()
-
-                        if self.isDirty {
-                            Button("Discard") { self.discardChanges() }
-                                .bobeButton(.secondary, size: .small)
-                        }
-                        Button(self.isSaving ? "Saving..." : "Save") { self.saveGoal() }
-                            .bobeButton(.primary, size: .small)
-                            .disabled(!self.isDirty || self.isSaving)
+                    } trailing: {
+                        SettingsEditorSaveActions(
+                            isDirty: self.editorState.isDirty,
+                            isSaving: self.editorState.isSaving,
+                            onDiscard: self.discardChanges,
+                            onSave: self.saveGoal
+                        )
                     }
 
-                    if let error {
-                        Text(error).font(.caption).foregroundStyle(self.theme.colors.primary)
+                    if let errorMessage = self.editorState.errorMessage {
+                        SettingsEditorErrorText(message: errorMessage)
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
-                .padding(.top, BobeMetrics.paneTopPadding)
             } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "target")
-                        .font(.system(size: 28))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                    Text("Select a goal to edit")
-                        .bobeTextStyle(.rowTitle)
-                        .foregroundStyle(self.theme.colors.textMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyView()
+            }
+        } emptyPane: {
+            VStack(spacing: 8) {
+                Image(systemName: "target")
+                    .font(.system(size: 28))
+                    .foregroundStyle(self.theme.colors.textMuted)
+                Text("Select a goal to edit")
+                    .bobeTextStyle(.rowTitle)
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
         }
-        .onChange(of: self.selectedId) { _, newId in
-            if let goal = goals.first(where: { $0.id == newId }) {
+        .onChange(of: self.editorState.selectedId) { _, newId in
+            if let goal = self.goals.first(where: { $0.id == newId }) {
                 self.editorContent = goal.content
                 self.selectedPriority = goal.priority
-                self.isDirty = false
-                self.deleteConfirm = false
+                self.editorState.setDirty(false)
+                self.editorState.dismissDeleteConfirmation()
             }
         }
         .task { await self.loadGoals() }
@@ -289,14 +278,16 @@ struct GoalsEditor: View {
     // MARK: - Actions
 
     private func loadGoals() async {
-        self.isLoading = true
-        defer { isLoading = false }
+        self.editorState.setLoading(true)
+        defer { self.editorState.setLoading(false) }
         do {
             let resp = try await DaemonClient.shared.listGoals()
             self.goals = resp.goals
-            if self.selectedId == nil { self.selectedId = self.goals.first?.id }
+            if self.editorState.selectedId == nil {
+                self.editorState.select(self.goals.first?.id)
+            }
         } catch {
-            self.error = error.localizedDescription
+            self.editorState.setError(error)
         }
     }
 
@@ -305,26 +296,30 @@ struct GoalsEditor: View {
             do {
                 let goal = try await DaemonClient.shared.createGoal(GoalCreateRequest(content: self.newContent))
                 self.goals.append(goal)
-                self.selectedId = goal.id
+                self.editorState.select(goal.id)
                 self.newContent = ""
-                self.isCreating = false
-            } catch { self.error = error.localizedDescription }
+                self.editorState.setCreating(false)
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
     private func saveGoal() {
-        guard let id = selectedId else { return }
-        self.isSaving = true
+        guard let id = self.editorState.selectedId else { return }
+        self.editorState.setSaving(true)
         Task {
-            defer { isSaving = false }
+            defer { self.editorState.setSaving(false) }
             do {
                 let updated = try await DaemonClient.shared.updateGoal(
                     id,
                     GoalUpdateRequest(content: self.editorContent, priority: self.selectedPriority)
                 )
-                if let idx = goals.firstIndex(where: { $0.id == id }) { self.goals[idx] = updated }
-                self.isDirty = false
-            } catch { self.error = error.localizedDescription }
+                if let idx = self.goals.firstIndex(where: { $0.id == id }) { self.goals[idx] = updated }
+                self.editorState.setDirty(false)
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -333,8 +328,12 @@ struct GoalsEditor: View {
             do {
                 _ = try await DaemonClient.shared.deleteGoal(goal.id)
                 self.goals.removeAll { $0.id == goal.id }
-                if self.selectedId == goal.id { self.selectedId = self.goals.first?.id }
-            } catch { self.error = error.localizedDescription }
+                if self.editorState.selectedId == goal.id {
+                    self.editorState.select(self.goals.first?.id)
+                }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -343,7 +342,9 @@ struct GoalsEditor: View {
             do {
                 _ = try await DaemonClient.shared.completeGoal(goal.id)
                 await self.loadGoals()
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -352,7 +353,9 @@ struct GoalsEditor: View {
             do {
                 _ = try await DaemonClient.shared.archiveGoal(goal.id)
                 await self.loadGoals()
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
@@ -362,15 +365,17 @@ struct GoalsEditor: View {
                 let req = GoalUpdateRequest(enabled: !goal.enabled)
                 _ = try await DaemonClient.shared.updateGoal(goal.id, req)
                 await self.loadGoals()
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                self.editorState.setError(error)
+            }
         }
     }
 
     private func discardChanges() {
-        if let goal = selectedGoal {
+        if let goal = self.selectedGoal {
             self.editorContent = goal.content
             self.selectedPriority = goal.priority
-            self.isDirty = false
+            self.editorState.setDirty(false)
         }
     }
 }

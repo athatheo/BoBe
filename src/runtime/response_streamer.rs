@@ -8,6 +8,7 @@ use futures::StreamExt;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
+use crate::constants::MILLIS_PER_SECOND;
 use crate::error::AppError;
 use crate::llm::types::{StreamChunk, StreamItem};
 use crate::util::sse::event_queue::EventQueue;
@@ -78,8 +79,9 @@ pub async fn stream_response(
 
     push_done_event(&msg_id, sequence, event_queue);
 
-    let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-    let first_token_ms = first_token_time.map(|t| (t - start_time).as_secs_f64() * 1000.0);
+    let duration_ms = start_time.elapsed().as_secs_f64() * MILLIS_PER_SECOND;
+    let first_token_ms =
+        first_token_time.map(|t| (t - start_time).as_secs_f64() * MILLIS_PER_SECOND);
 
     StreamResult {
         full_response,
@@ -135,8 +137,9 @@ pub async fn stream_llm_response(
 
     push_done_event(&msg_id, sequence, event_queue);
 
-    let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-    let first_token_ms = first_token_time.map(|t| (t - start_time).as_secs_f64() * 1000.0);
+    let duration_ms = start_time.elapsed().as_secs_f64() * MILLIS_PER_SECOND;
+    let first_token_ms =
+        first_token_time.map(|t| (t - start_time).as_secs_f64() * MILLIS_PER_SECOND);
 
     StreamResult {
         full_response,
