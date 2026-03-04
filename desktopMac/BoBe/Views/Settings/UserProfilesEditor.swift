@@ -67,43 +67,47 @@ struct UserProfilesEditor: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 4) {
-                            ForEach(self.profiles) { profile in
-                                BobeSelectableRow(
-                                    isSelected: self.selectedId == profile.id,
-                                    action: { self.selectedId = profile.id },
-                                    content: {
-                                        VStack(alignment: .leading) {
-                                            HStack(spacing: 4) {
-                                                Text(profile.name)
-                                                    .bobeTextStyle(.rowTitle)
-                                                if profile.isDefault {
-                                                    Text("default")
-                                                        .bobeTextStyle(.badge)
-                                                        .padding(.horizontal, 4)
-                                                        .padding(.vertical, 1)
-                                                        .background(Capsule().fill(self.theme.colors.primary.opacity(0.2)))
-                                                        .foregroundStyle(self.theme.colors.primary)
-                                                }
+                    List {
+                        ForEach(self.profiles) { profile in
+                            BobeSelectableRow(
+                                isSelected: self.selectedId == profile.id,
+                                content: {
+                                    VStack(alignment: .leading) {
+                                        HStack(spacing: 4) {
+                                            Text(profile.name)
+                                                .bobeTextStyle(.rowTitle)
+                                            if profile.isDefault {
+                                                Text("default")
+                                                    .bobeTextStyle(.badge)
+                                                    .padding(.horizontal, 4)
+                                                    .padding(.vertical, 1)
+                                                    .background(Capsule().fill(self.theme.colors.primary.opacity(0.2)))
+                                                    .foregroundStyle(self.theme.colors.primary)
                                             }
-                                            Text(String(profile.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
-                                                .bobeTextStyle(.rowMeta)
-                                                .foregroundStyle(self.theme.colors.textMuted)
-                                                .lineLimit(1)
                                         }
-                                        Spacer()
-                                        BobeToggle(
-                                            isOn: Binding(
-                                                get: { profile.enabled },
-                                                set: { _ in self.toggleProfile(profile) }
-                                            )
-                                        )
+                                        Text(String(profile.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
+                                            .bobeTextStyle(.rowMeta)
+                                            .foregroundStyle(self.theme.colors.textMuted)
+                                            .lineLimit(1)
                                     }
-                                )
-                            }
+                                    Spacer()
+                                    BobeToggle(
+                                        isOn: Binding(
+                                            get: { profile.enabled },
+                                            set: { _ in self.toggleProfile(profile) }
+                                        ),
+                                        accessibilityLabel: "Enable profile \(profile.name)"
+                                    )
+                                }
+                            )
+                            .onTapGesture { self.selectedId = profile.id }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .background(self.theme.colors.background)
                 }
             }
@@ -156,6 +160,7 @@ struct UserProfilesEditor: View {
                                 } label: {
                                     Image(systemName: "trash")
                                 }
+                                .accessibilityLabel("Delete profile")
                                 .bobeButton(.destructive, size: .small)
                             }
                         }

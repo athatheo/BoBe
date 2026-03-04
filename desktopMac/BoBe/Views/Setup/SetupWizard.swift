@@ -119,6 +119,7 @@ struct SetupWizard: View {
 
             if self.options == nil {
                 ProgressView()
+                    .tint(self.theme.colors.primary)
                     .scaleEffect(0.7)
                     .padding(.top, 8)
             }

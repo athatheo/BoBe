@@ -28,19 +28,24 @@ extension SetupWizard {
     }
 
     func handleCloudSetup() {
-        guard !busy, !apiKey.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let trimmedApiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDeployment = deployment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !busy, !trimmedApiKey.isEmpty else { return }
         let provider = options?.cloudProviders.first { $0.id == selectedProvider }
-        if provider?.needsEndpoint == true, endpoint.trimmingCharacters(in: .whitespaces).isEmpty { return }
-        if provider?.needsDeployment == true, deployment.trimmingCharacters(in: .whitespaces).isEmpty { return }
+        if provider?.needsEndpoint == true, trimmedEndpoint.isEmpty { return }
+        if provider?.needsDeployment == true, trimmedDeployment.isEmpty { return }
 
         busy = true
         setupMode = .online
         var request = SetupRequest(mode: "cloud")
         request.provider = selectedProvider
-        request.apiKey = apiKey
-        request.model = selectedModel.isEmpty ? nil : selectedModel
-        if provider?.needsEndpoint == true { request.endpoint = endpoint }
-        if provider?.needsDeployment == true { request.deployment = deployment }
+        request.apiKey = trimmedApiKey
+        request.model = trimmedModel.isEmpty ? nil : trimmedModel
+        if provider?.needsEndpoint == true { request.endpoint = trimmedEndpoint }
+        if provider?.needsDeployment == true { request.deployment = trimmedDeployment }
         self.startSetupJob(request)
     }
 

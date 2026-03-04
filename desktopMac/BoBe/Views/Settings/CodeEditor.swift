@@ -61,6 +61,7 @@ struct CodeEditor: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        scrollView.backgroundColor = NSColor(self.theme.colors.surface)
         guard let textView = scrollView.documentView as? NSTextView else { return }
         if textView.string != self.text {
             let ranges = textView.selectedRanges
