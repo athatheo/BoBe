@@ -153,9 +153,8 @@ impl MessageHandler {
         let (context_summary, soul) = assembled.to_context_string();
         let prompt_config = UserResponsePrompt::config();
 
-        let system_tokens = count_tokens(&context_summary)
-            + count_tokens(soul.as_deref().unwrap_or(""))
-            + 50; // template framing
+        let system_tokens =
+            count_tokens(&context_summary) + count_tokens(soul.as_deref().unwrap_or("")) + 50; // template framing
         let user_msg_tokens = count_tokens(user_content) + 4;
         let overhead = system_tokens + user_msg_tokens + prompt_config.max_tokens as usize;
         let history_budget = (cfg.llm.context_window as usize).saturating_sub(overhead);
@@ -412,7 +411,12 @@ mod tests {
     #[test]
     fn trim_drops_oldest_turns_first() {
         let mut history: Vec<(String, String)> = (0..10)
-            .map(|i| ("user".into(), format!("Message number {i} with some content")))
+            .map(|i| {
+                (
+                    "user".into(),
+                    format!("Message number {i} with some content"),
+                )
+            })
             .collect();
         trim_history_to_budget(&mut history, 50);
         assert!(history.len() < 10, "should have trimmed some turns");
