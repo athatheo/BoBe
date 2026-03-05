@@ -176,6 +176,7 @@ impl LearningLoop {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use crate::models::memory::Memory;
     use crate::models::types::{MemorySource, MemoryType};

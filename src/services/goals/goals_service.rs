@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
-use uuid::Uuid;
 
 use crate::config::Config;
 use crate::constants::{GOAL_CONTENT_MAX_LENGTH, GOAL_CONTENT_MIN_LENGTH};
@@ -16,6 +15,7 @@ use crate::db::GoalRepository;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 use crate::models::goal::Goal;
+use crate::models::ids::GoalId;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 
 use super::goals_file_parser::parse_goals_file;
@@ -118,7 +118,7 @@ impl GoalsService {
 
     pub(crate) async fn update_content(
         &self,
-        goal_id: Uuid,
+        goal_id: GoalId,
         content: &str,
     ) -> Result<Option<Goal>, AppError> {
         if content.len() < GOAL_CONTENT_MIN_LENGTH || content.len() > GOAL_CONTENT_MAX_LENGTH {

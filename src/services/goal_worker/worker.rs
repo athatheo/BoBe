@@ -8,12 +8,12 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 use crate::config::Config;
 use crate::db::{GoalPlanRepository, GoalRepository};
 use crate::error::AppError;
 use crate::models::goal::Goal;
+use crate::models::ids::GoalPlanId;
 use crate::models::types::{GoalPlanStatus, GoalPlanStepStatus, GoalStatus, TurnRole};
 use crate::runtime::response_streamer::stream_simple_message;
 use crate::services::conversation_service::ConversationService;
@@ -76,10 +76,11 @@ impl GoalWorker {
                     "goal_worker.error"
                 );
                 // Reset goal to active so it can be retried
-                let _ = self
-                    .goal_repo
-                    .update_status(goal_id, Some(GoalStatus::Active), None)
-                    .await;
+                drop(
+                    self.goal_repo
+                        .update_status(goal_id, Some(GoalStatus::Active), None)
+                        .await,
+                );
                 false
             }
         }
@@ -139,7 +140,7 @@ impl GoalWorker {
     pub(crate) async fn execute_approved_plan(
         &self,
         goal: &Goal,
-        plan_id: Uuid,
+        plan_id: GoalPlanId,
     ) -> Result<bool, AppError> {
         let plan = self.plan_repo.get_plan(plan_id).await?;
         let Some(plan) = plan else {
@@ -196,10 +197,11 @@ impl GoalWorker {
             } else {
                 result.error.as_deref()
             };
-            let _ = self
-                .plan_repo
-                .update_step_status(step.id, final_status, step_result, step_error)
-                .await;
+            drop(
+                self.plan_repo
+                    .update_step_status(step.id, final_status, step_result, step_error)
+                    .await,
+            );
         }
 
         if result.success {

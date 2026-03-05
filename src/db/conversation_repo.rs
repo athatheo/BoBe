@@ -1,13 +1,12 @@
+use crate::db::ConversationRepository;
+use crate::error::AppError;
+use crate::models::conversation::{Conversation, ConversationTurn};
+use crate::models::ids::ConversationId;
+use crate::models::types::{ConversationState, TurnRole};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
-use uuid::Uuid;
-
-use crate::db::ConversationRepository;
-use crate::error::AppError;
-use crate::models::conversation::{Conversation, ConversationTurn};
-use crate::models::types::{ConversationState, TurnRole};
 
 pub(crate) struct SqliteConversationRepo {
     pool: SqlitePool,
@@ -45,7 +44,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(conversation.clone())
     }
 
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<Conversation>, AppError> {
+    async fn get_by_id(&self, id: ConversationId) -> Result<Option<Conversation>, AppError> {
         let row = sqlx::query_as::<_, Conversation>("SELECT * FROM conversations WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -105,7 +104,7 @@ impl ConversationRepository for SqliteConversationRepo {
 
     async fn update_state(
         &self,
-        id: Uuid,
+        id: ConversationId,
         state: ConversationState,
         summary: Option<String>,
     ) -> Result<Option<Conversation>, AppError> {
@@ -207,7 +206,7 @@ impl ConversationRepository for SqliteConversationRepo {
 
     async fn get_turns(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
         limit: i64,
     ) -> Result<Vec<ConversationTurn>, AppError> {
         let rows = sqlx::query_as::<_, ConversationTurn>(
@@ -237,7 +236,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(rows.into_iter().map(|(c,)| c).collect())
     }
 
-    async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
+    async fn delete(&self, id: ConversationId) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM conversations WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)

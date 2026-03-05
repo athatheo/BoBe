@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use super::base::NativeTool;
 use crate::error::AppError;
+use crate::models::ids::ConversationId;
 use crate::services::agent_job_manager::AgentJobManager;
 use crate::tools::ToolExecutionContext;
 
@@ -78,9 +79,9 @@ impl NativeTool for LaunchCodingAgentTool {
             .as_ref()
             .ok_or_else(|| AppError::Validation("Coding agents are disabled".into()))?;
 
-        let conversation_uuid = uuid::Uuid::parse_str(conversation_id).ok();
+        let conversation_id = conversation_id.parse::<ConversationId>().ok();
         let job = manager
-            .launch(profile, task, Some(working_dir), conversation_uuid)
+            .launch(profile, task, Some(working_dir), conversation_id)
             .await?;
 
         Ok(format!(

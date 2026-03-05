@@ -121,7 +121,7 @@ impl BinaryManager {
             .ok();
 
         extract::extract_ollama_archive(&archive_path, &target_path)?;
-        let _ = std::fs::remove_file(&archive_path);
+        let _ignored = std::fs::remove_file(&archive_path);
 
         progress_tx
             .send(DownloadProgress {

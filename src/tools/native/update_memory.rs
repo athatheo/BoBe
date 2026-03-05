@@ -1,14 +1,13 @@
-use async_trait::async_trait;
-use serde_json::{Value, json};
-use std::collections::HashMap;
-use std::sync::Arc;
-use uuid::Uuid;
-
 use super::base::NativeTool;
 use crate::constants::VALID_MEMORY_CATEGORIES;
 use crate::db::MemoryRepository;
 use crate::error::AppError;
+use crate::models::ids::MemoryId;
 use crate::tools::ToolExecutionContext;
+use async_trait::async_trait;
+use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub(crate) struct UpdateMemoryTool {
     memory_repo: Arc<dyn MemoryRepository>,
@@ -62,7 +61,8 @@ impl NativeTool for UpdateMemoryTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'memory_id' is required".into()))?;
 
-        let memory_id = Uuid::parse_str(memory_id_str)
+        let memory_id: MemoryId = memory_id_str
+            .parse()
             .map_err(|_| AppError::Validation(format!("Invalid UUID: {memory_id_str}")))?;
 
         let enabled = arguments.get("enabled").and_then(Value::as_bool);

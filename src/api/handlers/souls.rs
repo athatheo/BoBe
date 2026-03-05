@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
+use crate::app_state::AppState;
+use crate::db::SoulRepository;
+use crate::error::AppError;
+use crate::models::ids::SoulId;
+use crate::models::soul::Soul;
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-use crate::app_state::AppState;
-use crate::db::SoulRepository;
-use crate::error::AppError;
-use crate::models::soul::Soul;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct SoulResponse {
@@ -72,7 +71,7 @@ fn soul_to_response(soul: &Soul) -> SoulResponse {
 
 async fn set_soul_enabled(
     soul_repo: &Arc<dyn SoulRepository>,
-    soul_id: Uuid,
+    soul_id: SoulId,
     enabled: bool,
 ) -> Result<Json<SoulActionResponse>, AppError> {
     let soul = soul_repo
@@ -119,7 +118,7 @@ pub(crate) async fn list_souls(
 
 pub(crate) async fn get_soul(
     State(state): State<Arc<AppState>>,
-    Path(soul_id): Path<Uuid>,
+    Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulResponse>, AppError> {
     let soul = state
         .soul_repo
@@ -162,7 +161,7 @@ pub(crate) async fn create_soul(
 /// Copy-on-write: editing a default soul preserves the original as a disabled copy.
 pub(crate) async fn update_soul(
     State(state): State<Arc<AppState>>,
-    Path(soul_id): Path<Uuid>,
+    Path(soul_id): Path<SoulId>,
     Json(body): Json<SoulUpdateRequest>,
 ) -> Result<Json<SoulResponse>, AppError> {
     let soul = state
@@ -190,7 +189,7 @@ pub(crate) async fn update_soul(
             .await?;
 
         let default_copy = Soul {
-            id: Uuid::new_v4(),
+            id: SoulId::new(),
             name: original_name,
             content: original_content,
             enabled: false,
@@ -235,21 +234,21 @@ pub(crate) async fn get_soul_by_name(
 
 pub(crate) async fn enable_soul(
     State(state): State<Arc<AppState>>,
-    Path(soul_id): Path<Uuid>,
+    Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
     set_soul_enabled(&state.soul_repo, soul_id, true).await
 }
 
 pub(crate) async fn disable_soul(
     State(state): State<Arc<AppState>>,
-    Path(soul_id): Path<Uuid>,
+    Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
     set_soul_enabled(&state.soul_repo, soul_id, false).await
 }
 
 pub(crate) async fn delete_soul(
     State(state): State<Arc<AppState>>,
-    Path(soul_id): Path<Uuid>,
+    Path(soul_id): Path<SoulId>,
 ) -> Result<StatusCode, AppError> {
     let soul = state
         .soul_repo

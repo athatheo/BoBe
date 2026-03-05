@@ -15,6 +15,7 @@ use crate::db::MemoryRepository;
 use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
 use crate::models::goal::Goal;
+use crate::models::ids::MemoryId;
 use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::types::{MemorySource, MemoryType};
@@ -373,7 +374,7 @@ impl MemoryLearner {
         existing_embeddings: &[(&Memory, Vec<f32>)],
     ) -> bool {
         // Find similar existing memories
-        let mut similar: Vec<(&uuid::Uuid, &str, &str, f64)> = Vec::new();
+        let mut similar: Vec<(&MemoryId, &str, &str, f64)> = Vec::new();
         for (mem, existing_vec) in existing_embeddings {
             let sim = cosine_similarity(embedding, existing_vec);
             if sim >= SIMILARITY_SEARCH_THRESHOLD {
@@ -445,6 +446,7 @@ impl MemoryLearner {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use serde_json::json;
 

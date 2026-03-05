@@ -27,6 +27,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+#[allow(clippy::expect_used)]
 static CHECKBOX_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^-\s*\[([ xX])\]\s*(.+)$").expect("valid checkbox regex"));
 
@@ -101,6 +102,7 @@ pub(crate) fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

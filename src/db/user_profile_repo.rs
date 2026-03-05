@@ -1,11 +1,10 @@
+use crate::db::UserProfileRepository;
+use crate::error::AppError;
+use crate::models::ids::UserProfileId;
+use crate::models::user_profile::UserProfile;
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
-use uuid::Uuid;
-
-use crate::db::UserProfileRepository;
-use crate::error::AppError;
-use crate::models::user_profile::UserProfile;
 
 pub(crate) struct SqliteUserProfileRepo {
     pool: SqlitePool,
@@ -45,7 +44,7 @@ impl UserProfileRepository for SqliteUserProfileRepo {
         Ok(profile.clone())
     }
 
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<UserProfile>, AppError> {
+    async fn get_by_id(&self, id: UserProfileId) -> Result<Option<UserProfile>, AppError> {
         sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -84,7 +83,7 @@ impl UserProfileRepository for SqliteUserProfileRepo {
 
     async fn update(
         &self,
-        id: Uuid,
+        id: UserProfileId,
         content: Option<&str>,
         enabled: Option<bool>,
     ) -> Result<Option<UserProfile>, AppError> {
@@ -123,7 +122,7 @@ impl UserProfileRepository for SqliteUserProfileRepo {
         self.get_by_id(id).await
     }
 
-    async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
+    async fn delete(&self, id: UserProfileId) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM user_profiles WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)

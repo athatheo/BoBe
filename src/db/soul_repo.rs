@@ -1,11 +1,10 @@
+use crate::db::SoulRepository;
+use crate::error::AppError;
+use crate::models::ids::SoulId;
+use crate::models::soul::Soul;
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
-use uuid::Uuid;
-
-use crate::db::SoulRepository;
-use crate::error::AppError;
-use crate::models::soul::Soul;
 
 pub(crate) struct SqliteSoulRepo {
     pool: SqlitePool,
@@ -45,7 +44,7 @@ impl SoulRepository for SqliteSoulRepo {
         Ok(soul.clone())
     }
 
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<Soul>, AppError> {
+    async fn get_by_id(&self, id: SoulId) -> Result<Option<Soul>, AppError> {
         sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -84,7 +83,7 @@ impl SoulRepository for SqliteSoulRepo {
 
     async fn update(
         &self,
-        id: Uuid,
+        id: SoulId,
         content: Option<&str>,
         enabled: Option<bool>,
         is_default: Option<bool>,
@@ -137,7 +136,7 @@ impl SoulRepository for SqliteSoulRepo {
         self.get_by_id(id).await
     }
 
-    async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
+    async fn delete(&self, id: SoulId) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM souls WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)

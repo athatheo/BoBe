@@ -15,11 +15,11 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::goal::Goal;
 use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
+use crate::models::ids::GoalId;
 
 // ─── Shared types ───────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ pub(crate) struct GoalExecutionResult {
 
 #[async_trait]
 pub(crate) trait GoalExecutorProvider: Send + Sync {
-    fn create_work_dir(&self, goal_id: Uuid, goal_title: &str) -> PathBuf;
+    fn create_work_dir(&self, goal_id: GoalId, goal_title: &str) -> PathBuf;
 
     async fn generate_plan(
         &self,

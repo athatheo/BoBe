@@ -1,13 +1,12 @@
-use async_trait::async_trait;
-use sqlx::SqlitePool;
-use tracing::{debug, info, warn};
-use uuid::Uuid;
-
 use crate::db::GoalRepository;
 use crate::error::AppError;
 use crate::models::goal::Goal;
+use crate::models::ids::GoalId;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 use crate::util::similarity::cosine_similarity;
+use async_trait::async_trait;
+use sqlx::SqlitePool;
+use tracing::{debug, info, warn};
 
 pub(crate) struct SqliteGoalRepo {
     pool: SqlitePool,
@@ -59,7 +58,7 @@ impl GoalRepository for SqliteGoalRepo {
         Ok(goal.clone())
     }
 
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<Goal>, AppError> {
+    async fn get_by_id(&self, id: GoalId) -> Result<Option<Goal>, AppError> {
         sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -137,7 +136,7 @@ impl GoalRepository for SqliteGoalRepo {
 
     async fn update_status(
         &self,
-        id: Uuid,
+        id: GoalId,
         status: Option<GoalStatus>,
         enabled: Option<bool>,
     ) -> Result<Option<Goal>, AppError> {
@@ -173,7 +172,7 @@ impl GoalRepository for SqliteGoalRepo {
 
     async fn update_fields(
         &self,
-        id: Uuid,
+        id: GoalId,
         content: Option<&str>,
         status: Option<GoalStatus>,
         priority: Option<GoalPriority>,
@@ -228,7 +227,7 @@ impl GoalRepository for SqliteGoalRepo {
         self.get_by_id(id).await
     }
 
-    async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
+    async fn delete(&self, id: GoalId) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM goals WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)
@@ -297,7 +296,7 @@ impl GoalRepository for SqliteGoalRepo {
         .map_err(AppError::Database)
     }
 
-    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError> {
+    async fn update_embedding(&self, id: GoalId, embedding: &[f32]) -> Result<(), AppError> {
         let json = serde_json::to_string(embedding)
             .map_err(|e| AppError::Internal(format!("Failed to serialize embedding: {e}")))?;
         sqlx::query("UPDATE goals SET embedding = ?1, updated_at = ?2 WHERE id = ?3")
@@ -312,7 +311,7 @@ impl GoalRepository for SqliteGoalRepo {
 
     async fn bulk_update_status(
         &self,
-        goal_ids: &[Uuid],
+        goal_ids: &[GoalId],
         status: GoalStatus,
     ) -> Result<u64, AppError> {
         if goal_ids.is_empty() {

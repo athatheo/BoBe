@@ -1,18 +1,17 @@
 use std::sync::Arc;
 
+use crate::app_state::AppState;
+use crate::constants::{MEMORY_CONTENT_MAX_LENGTH, MEMORY_CONTENT_MIN_LENGTH};
+use crate::db::MemoryRepository;
+use crate::error::AppError;
+use crate::models::ids::MemoryId;
+use crate::models::memory::Memory;
+use crate::models::types::{MemorySource, MemoryType};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-use crate::app_state::AppState;
-use crate::constants::{MEMORY_CONTENT_MAX_LENGTH, MEMORY_CONTENT_MIN_LENGTH};
-use crate::db::MemoryRepository;
-use crate::error::AppError;
-use crate::models::memory::Memory;
-use crate::models::types::{MemorySource, MemoryType};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct MemoryResponse {
@@ -66,9 +65,9 @@ pub(crate) struct MemoryActionResponse {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct MemoryListQuery {
-    pub(crate) memory_type: Option<String>,
+    pub(crate) memory_type: Option<MemoryType>,
     pub(crate) category: Option<String>,
-    pub(crate) source: Option<String>,
+    pub(crate) source: Option<MemorySource>,
     #[serde(default)]
     pub(crate) enabled_only: bool,
     #[serde(default = "default_limit")]
@@ -137,7 +136,7 @@ fn parse_memory_type(s: &str) -> Result<MemoryType, AppError> {
 
 async fn set_memory_enabled(
     memory_repo: &Arc<dyn MemoryRepository>,
-    memory_id: Uuid,
+    memory_id: MemoryId,
     enabled: bool,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
     let updated = memory_repo
@@ -172,9 +171,9 @@ pub(crate) async fn list_memories(
     let (memories, total) = state
         .memory_repo
         .find_all(
-            params.memory_type.as_deref(),
+            params.memory_type,
             params.category.as_deref(),
-            params.source.as_deref(),
+            params.source,
             params.enabled_only,
             limit,
             offset,
@@ -190,7 +189,7 @@ pub(crate) async fn list_memories(
 
 pub(crate) async fn get_memory(
     State(state): State<Arc<AppState>>,
-    Path(memory_id): Path<Uuid>,
+    Path(memory_id): Path<MemoryId>,
 ) -> Result<Json<MemoryResponse>, AppError> {
     let memory = state
         .memory_repo
@@ -235,7 +234,7 @@ pub(crate) async fn create_memory(
 
 pub(crate) async fn update_memory(
     State(state): State<Arc<AppState>>,
-    Path(memory_id): Path<Uuid>,
+    Path(memory_id): Path<MemoryId>,
     Json(body): Json<MemoryUpdateRequest>,
 ) -> Result<Json<MemoryResponse>, AppError> {
     state
@@ -261,7 +260,7 @@ pub(crate) async fn update_memory(
 
 pub(crate) async fn delete_memory(
     State(state): State<Arc<AppState>>,
-    Path(memory_id): Path<Uuid>,
+    Path(memory_id): Path<MemoryId>,
 ) -> Result<StatusCode, AppError> {
     if !state.memory_repo.delete(memory_id).await? {
         return Err(AppError::NotFound(format!("Memory {memory_id} not found")));
@@ -274,14 +273,14 @@ pub(crate) async fn delete_memory(
 
 pub(crate) async fn enable_memory(
     State(state): State<Arc<AppState>>,
-    Path(memory_id): Path<Uuid>,
+    Path(memory_id): Path<MemoryId>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
     set_memory_enabled(&state.memory_repo, memory_id, true).await
 }
 
 pub(crate) async fn disable_memory(
     State(state): State<Arc<AppState>>,
-    Path(memory_id): Path<Uuid>,
+    Path(memory_id): Path<MemoryId>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
     set_memory_enabled(&state.memory_repo, memory_id, false).await
 }

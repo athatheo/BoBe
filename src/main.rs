@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
             );
 
             let (state, goal_worker_manager) = bootstrap::run(config.clone()).await?;
-            let app = api::router::build_router(state.clone());
+            let app = api::router::build_router(std::sync::Arc::clone(&state));
 
             let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);
             let handles = spawn_background_tasks(&state, goal_worker_manager, &shutdown_tx);
@@ -112,7 +112,7 @@ fn spawn_background_tasks(
     shutdown_tx: &tokio::sync::broadcast::Sender<()>,
 ) -> BackgroundHandles {
     let heartbeat = {
-        let eq = state.event_queue.clone();
+        let eq = std::sync::Arc::clone(&state.event_queue);
         let mut shutdown_rx = shutdown_tx.subscribe();
         tokio::spawn(async move {
             loop {
@@ -128,7 +128,7 @@ fn spawn_background_tasks(
     };
 
     let runtime = {
-        let session = state.runtime_session.clone();
+        let session = std::sync::Arc::clone(&state.runtime_session);
         let mut shutdown_rx = shutdown_tx.subscribe();
         tokio::spawn(async move {
             tokio::select! {
@@ -142,7 +142,7 @@ fn spawn_background_tasks(
     };
 
     let learning = state.learning_loop.as_ref().map(|ll| {
-        let ll = ll.clone();
+        let ll = std::sync::Arc::clone(ll);
         let mut shutdown_rx = shutdown_tx.subscribe();
         tokio::spawn(async move {
             tokio::select! {
@@ -213,14 +213,16 @@ async fn run_graceful_shutdown(
             &config.vision.ollama_model,
             &config.embedding.model,
         ] {
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                unload_client
-                    .post(format!("{}/api/generate", config.ollama.url))
-                    .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
-                    .send(),
-            )
-            .await;
+            drop(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    unload_client
+                        .post(format!("{}/api/generate", config.ollama.url))
+                        .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
+                        .send(),
+                )
+                .await,
+            );
         }
         tracing::debug!("ollama.models_unloaded");
 

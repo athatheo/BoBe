@@ -48,7 +48,7 @@ impl Infrastructure {
 
         let llm_factory = Arc::new(LlmProviderFactory::new(
             http_client.clone(),
-            config_arc.clone(),
+            Arc::clone(&config_arc),
         ));
         let (swappable, llm_swap_handle) = match llm_factory.create(config.llm.backend) {
             Ok(p) => SwappableLlmProvider::new(p),
@@ -80,8 +80,11 @@ impl Infrastructure {
         let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(swappable_embed);
 
         let event_queue = Arc::new(EventQueue::new(100));
-        let connection_manager =
-            Arc::new(SseConnectionManager::new(event_queue.clone(), None, None));
+        let connection_manager = Arc::new(SseConnectionManager::new(
+            Arc::clone(&event_queue),
+            None,
+            None,
+        ));
 
         let ollama_manager = Arc::new(OllamaManager::new(
             http_client.clone(),

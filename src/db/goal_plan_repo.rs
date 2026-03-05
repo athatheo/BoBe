@@ -1,13 +1,12 @@
+use crate::db::GoalPlanRepository;
+use crate::error::AppError;
+use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
+use crate::models::ids::{GoalId, GoalPlanId, GoalPlanStepId};
+use crate::models::types::{GoalPlanStatus, GoalPlanStepStatus};
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
-use uuid::Uuid;
-
-use crate::db::GoalPlanRepository;
-use crate::error::AppError;
-use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
-use crate::models::types::{GoalPlanStatus, GoalPlanStepStatus};
 
 pub(crate) struct SqliteGoalPlanRepo {
     pool: SqlitePool,
@@ -23,11 +22,11 @@ impl SqliteGoalPlanRepo {
 impl GoalPlanRepository for SqliteGoalPlanRepo {
     async fn create_plan(
         &self,
-        goal_id: Uuid,
+        goal_id: GoalId,
         summary: &str,
         status: GoalPlanStatus,
     ) -> Result<GoalPlan, AppError> {
-        let id = Uuid::new_v4();
+        let id = GoalPlanId::new();
         let now = Utc::now();
 
         sqlx::query(
@@ -58,7 +57,7 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
         })
     }
 
-    async fn get_plan(&self, plan_id: Uuid) -> Result<Option<GoalPlan>, AppError> {
+    async fn get_plan(&self, plan_id: GoalPlanId) -> Result<Option<GoalPlan>, AppError> {
         sqlx::query_as::<_, GoalPlan>("SELECT * FROM goal_plans WHERE id = ?1")
             .bind(plan_id)
             .fetch_optional(&self.pool)
@@ -66,7 +65,7 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
             .map_err(AppError::Database)
     }
 
-    async fn get_plans_for_goal(&self, goal_id: Uuid) -> Result<Vec<GoalPlan>, AppError> {
+    async fn get_plans_for_goal(&self, goal_id: GoalId) -> Result<Vec<GoalPlan>, AppError> {
         sqlx::query_as::<_, GoalPlan>(
             "SELECT * FROM goal_plans WHERE goal_id = ?1 ORDER BY created_at DESC",
         )
@@ -76,7 +75,10 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
         .map_err(AppError::Database)
     }
 
-    async fn get_active_plan_for_goal(&self, goal_id: Uuid) -> Result<Option<GoalPlan>, AppError> {
+    async fn get_active_plan_for_goal(
+        &self,
+        goal_id: GoalId,
+    ) -> Result<Option<GoalPlan>, AppError> {
         sqlx::query_as::<_, GoalPlan>(
             "SELECT * FROM goal_plans WHERE goal_id = ?1 AND status IN ('approved', 'auto_approved', 'in_progress') ORDER BY created_at DESC LIMIT 1",
         )
@@ -88,7 +90,7 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
 
     async fn update_plan_status(
         &self,
-        plan_id: Uuid,
+        plan_id: GoalPlanId,
         status: GoalPlanStatus,
         error: Option<&str>,
     ) -> Result<Option<GoalPlan>, AppError> {
@@ -148,11 +150,11 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
 
     async fn create_step(
         &self,
-        plan_id: Uuid,
+        plan_id: GoalPlanId,
         step_order: i32,
         content: &str,
     ) -> Result<GoalPlanStep, AppError> {
-        let id = Uuid::new_v4();
+        let id = GoalPlanStepId::new();
         let now = Utc::now();
 
         sqlx::query(
@@ -187,7 +189,7 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
 
     async fn update_step_status(
         &self,
-        step_id: Uuid,
+        step_id: GoalPlanStepId,
         status: GoalPlanStepStatus,
         result: Option<&str>,
         error: Option<&str>,
@@ -238,7 +240,7 @@ impl GoalPlanRepository for SqliteGoalPlanRepo {
             .map_err(AppError::Database)
     }
 
-    async fn get_steps_for_plan(&self, plan_id: Uuid) -> Result<Vec<GoalPlanStep>, AppError> {
+    async fn get_steps_for_plan(&self, plan_id: GoalPlanId) -> Result<Vec<GoalPlanStep>, AppError> {
         sqlx::query_as::<_, GoalPlanStep>(
             "SELECT * FROM goal_plan_steps WHERE plan_id = ?1 ORDER BY step_order ASC",
         )

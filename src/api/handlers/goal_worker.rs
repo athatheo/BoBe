@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::AppState;
 use crate::error::AppError;
 use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
+use crate::models::ids::{GoalId, GoalPlanId};
 use crate::models::types::{GoalPlanStatus, GoalStatus};
 use crate::services::goal_worker::manager::GoalWorkerStatus;
 
@@ -96,7 +97,7 @@ pub(crate) async fn list_goal_plans(
 ) -> Result<Json<GoalPlanListResponse>, AppError> {
     let plans = if let Some(ref goal_id_str) = params.goal_id {
         let goal_id = goal_id_str
-            .parse::<uuid::Uuid>()
+            .parse::<GoalId>()
             .map_err(|_| AppError::Validation(format!("Invalid goal_id: {goal_id_str}")))?;
         state.goal_plan_repo.get_plans_for_goal(goal_id).await?
     } else {
@@ -115,34 +116,26 @@ pub(crate) async fn list_goal_plans(
 
 pub(crate) async fn get_goal_plan(
     State(state): State<Arc<AppState>>,
-    Path(plan_id): Path<String>,
+    Path(plan_id): Path<GoalPlanId>,
 ) -> Result<Json<GoalPlanResponse>, AppError> {
-    let plan_uuid = plan_id
-        .parse::<uuid::Uuid>()
-        .map_err(|_| AppError::Validation(format!("Invalid plan_id: {plan_id}")))?;
-
     let plan = state
         .goal_plan_repo
-        .get_plan(plan_uuid)
+        .get_plan(plan_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Plan {plan_id} not found")))?;
 
-    let steps = state.goal_plan_repo.get_steps_for_plan(plan_uuid).await?;
+    let steps = state.goal_plan_repo.get_steps_for_plan(plan_id).await?;
 
     Ok(Json(plan_to_response(&plan, Some(steps))))
 }
 
 pub(crate) async fn approve_goal_plan(
     State(state): State<Arc<AppState>>,
-    Path(plan_id): Path<String>,
+    Path(plan_id): Path<GoalPlanId>,
 ) -> Result<Json<PlanActionResponse>, AppError> {
-    let plan_uuid = plan_id
-        .parse::<uuid::Uuid>()
-        .map_err(|_| AppError::Validation(format!("Invalid plan_id: {plan_id}")))?;
-
     let plan = state
         .goal_plan_repo
-        .get_plan(plan_uuid)
+        .get_plan(plan_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Plan {plan_id} not found")))?;
 
@@ -155,11 +148,11 @@ pub(crate) async fn approve_goal_plan(
 
     state
         .goal_plan_repo
-        .update_plan_status(plan_uuid, GoalPlanStatus::Approved, None)
+        .update_plan_status(plan_id, GoalPlanStatus::Approved, None)
         .await?;
 
     Ok(Json(PlanActionResponse {
-        id: plan_id,
+        id: plan_id.to_string(),
         status: "approved".to_string(),
         message: "Plan approved and queued for execution".to_string(),
     }))
@@ -167,15 +160,11 @@ pub(crate) async fn approve_goal_plan(
 
 pub(crate) async fn reject_goal_plan(
     State(state): State<Arc<AppState>>,
-    Path(plan_id): Path<String>,
+    Path(plan_id): Path<GoalPlanId>,
 ) -> Result<Json<PlanActionResponse>, AppError> {
-    let plan_uuid = plan_id
-        .parse::<uuid::Uuid>()
-        .map_err(|_| AppError::Validation(format!("Invalid plan_id: {plan_id}")))?;
-
     let plan = state
         .goal_plan_repo
-        .get_plan(plan_uuid)
+        .get_plan(plan_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Plan {plan_id} not found")))?;
 
@@ -188,7 +177,7 @@ pub(crate) async fn reject_goal_plan(
 
     state
         .goal_plan_repo
-        .update_plan_status(plan_uuid, GoalPlanStatus::Rejected, None)
+        .update_plan_status(plan_id, GoalPlanStatus::Rejected, None)
         .await?;
 
     state
@@ -197,7 +186,7 @@ pub(crate) async fn reject_goal_plan(
         .await?;
 
     Ok(Json(PlanActionResponse {
-        id: plan_id,
+        id: plan_id.to_string(),
         status: "rejected".to_string(),
         message: "Plan rejected; goal returned to active".to_string(),
     }))
@@ -209,7 +198,7 @@ pub(crate) async fn pause_goal(
 ) -> Result<Json<PlanActionResponse>, AppError> {
     let goal_id = body
         .goal_id
-        .parse::<uuid::Uuid>()
+        .parse::<GoalId>()
         .map_err(|_| AppError::Validation(format!("Invalid goal_id: {}", body.goal_id)))?;
 
     let goal = state
@@ -243,7 +232,7 @@ pub(crate) async fn resume_goal(
 ) -> Result<Json<PlanActionResponse>, AppError> {
     let goal_id = body
         .goal_id
-        .parse::<uuid::Uuid>()
+        .parse::<GoalId>()
         .map_err(|_| AppError::Validation(format!("Invalid goal_id: {}", body.goal_id)))?;
 
     let goal = state

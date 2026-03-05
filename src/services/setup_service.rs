@@ -225,7 +225,7 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         }
     };
     drop(progress_tx);
-    let _ = progress_relay.await;
+    drop(progress_relay.await);
 
     if is_canceled().await {
         finish_job(JobStatus::Canceled, None).await;

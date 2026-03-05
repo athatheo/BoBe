@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
+use crate::app_state::AppState;
+use crate::constants::{GOAL_CONTENT_MAX_LENGTH, GOAL_CONTENT_MIN_LENGTH};
+use crate::error::AppError;
+use crate::models::goal::Goal;
+use crate::models::ids::GoalId;
+use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-use crate::app_state::AppState;
-use crate::constants::{GOAL_CONTENT_MAX_LENGTH, GOAL_CONTENT_MIN_LENGTH};
-use crate::error::AppError;
-use crate::models::goal::Goal;
-use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GoalResponse {
@@ -125,7 +124,7 @@ pub(crate) async fn list_goals(
 
 pub(crate) async fn get_goal(
     State(state): State<Arc<AppState>>,
-    Path(goal_id): Path<Uuid>,
+    Path(goal_id): Path<GoalId>,
 ) -> Result<Json<GoalResponse>, AppError> {
     let goal = state
         .goal_repo
@@ -160,7 +159,7 @@ pub(crate) async fn create_goal(
 
 pub(crate) async fn update_goal(
     State(state): State<Arc<AppState>>,
-    Path(goal_id): Path<Uuid>,
+    Path(goal_id): Path<GoalId>,
     Json(body): Json<GoalUpdateRequest>,
 ) -> Result<Json<GoalResponse>, AppError> {
     let existing_goal = state
@@ -207,7 +206,7 @@ pub(crate) async fn update_goal(
 
 pub(crate) async fn complete_goal(
     State(state): State<Arc<AppState>>,
-    Path(goal_id): Path<Uuid>,
+    Path(goal_id): Path<GoalId>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
     state
         .goal_repo
@@ -232,7 +231,7 @@ pub(crate) async fn complete_goal(
 
 pub(crate) async fn archive_goal(
     State(state): State<Arc<AppState>>,
-    Path(goal_id): Path<Uuid>,
+    Path(goal_id): Path<GoalId>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
     state
         .goal_repo
@@ -257,7 +256,7 @@ pub(crate) async fn archive_goal(
 
 pub(crate) async fn delete_goal(
     State(state): State<Arc<AppState>>,
-    Path(goal_id): Path<Uuid>,
+    Path(goal_id): Path<GoalId>,
 ) -> Result<StatusCode, AppError> {
     if !state.goal_repo.delete(goal_id).await? {
         return Err(AppError::NotFound(format!("Goal {goal_id} not found")));

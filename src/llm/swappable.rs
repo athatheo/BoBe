@@ -45,7 +45,7 @@ impl SwappableLlmProvider {
     ) -> (Self, Arc<ArcSwapOption<Arc<dyn LlmProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::from(Some(Arc::new(initial))));
         let provider = Self {
-            inner: swappable.clone(),
+            inner: Arc::clone(&swappable),
         };
         (provider, swappable)
     }
@@ -58,7 +58,7 @@ impl SwappableLlmProvider {
     pub(crate) fn new_empty() -> (Self, Arc<ArcSwapOption<Arc<dyn LlmProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::empty());
         let provider = Self {
-            inner: swappable.clone(),
+            inner: Arc::clone(&swappable),
         };
         (provider, swappable)
     }
@@ -138,7 +138,7 @@ impl SwappableEmbeddingProvider {
     ) -> (Self, Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::from(Some(Arc::new(initial))));
         let provider = Self {
-            inner: swappable.clone(),
+            inner: Arc::clone(&swappable),
         };
         (provider, swappable)
     }
@@ -150,7 +150,7 @@ impl SwappableEmbeddingProvider {
     pub(crate) fn new_empty() -> (Self, Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::empty());
         let provider = Self {
-            inner: swappable.clone(),
+            inner: Arc::clone(&swappable),
         };
         (provider, swappable)
     }
@@ -179,6 +179,7 @@ impl EmbeddingProvider for SwappableEmbeddingProvider {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

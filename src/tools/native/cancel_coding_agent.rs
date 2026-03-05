@@ -1,13 +1,12 @@
+use super::base::NativeTool;
+use crate::db::AgentJobRepository;
+use crate::error::AppError;
+use crate::models::ids::AgentJobId;
+use crate::tools::ToolExecutionContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
-use uuid::Uuid;
-
-use super::base::NativeTool;
-use crate::db::AgentJobRepository;
-use crate::error::AppError;
-use crate::tools::ToolExecutionContext;
 
 pub(crate) struct CancelCodingAgentTool {
     agent_job_repo: Arc<dyn AgentJobRepository>,
@@ -52,7 +51,8 @@ impl NativeTool for CancelCodingAgentTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'job_id' is required".into()))?;
 
-        let job_id = Uuid::parse_str(job_id_str)
+        let job_id: AgentJobId = job_id_str
+            .parse()
             .map_err(|_| AppError::Validation(format!("Invalid UUID: {job_id_str}")))?;
 
         let job = self
@@ -69,9 +69,11 @@ impl NativeTool for CancelCodingAgentTool {
         }
 
         if let Some(pid) = job.pid {
-            let _ = std::process::Command::new("kill")
-                .arg(pid.to_string())
-                .status();
+            drop(
+                std::process::Command::new("kill")
+                    .arg(pid.to_string())
+                    .status(),
+            );
         }
 
         let mut cancelled = job;

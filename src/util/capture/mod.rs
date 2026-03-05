@@ -52,7 +52,7 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
         .output()?;
 
     if !output.status.success() {
-        let _ = std::fs::remove_file(&capture_path);
+        let _ignored = std::fs::remove_file(&capture_path);
         return Err(std::io::Error::other(format!(
             "screencapture exited with {}: {}",
             output.status,

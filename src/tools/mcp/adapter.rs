@@ -58,7 +58,7 @@ impl McpToolAdapter {
         let snapshot: Vec<(String, Arc<McpClient>)> = self
             .clients
             .iter()
-            .map(|e| (e.key().clone(), e.value().clone()))
+            .map(|e| (e.key().clone(), Arc::clone(e.value())))
             .collect();
 
         for (name, client) in &snapshot {
@@ -156,7 +156,7 @@ impl ToolSource for McpToolAdapter {
         let snapshot: Vec<(String, Arc<McpClient>)> = self
             .clients
             .iter()
-            .map(|e| (e.key().clone(), e.value().clone()))
+            .map(|e| (e.key().clone(), Arc::clone(e.value())))
             .collect();
 
         for (server_name, client) in &snapshot {
@@ -202,7 +202,7 @@ impl ToolSource for McpToolAdapter {
         };
 
         let client = match self.clients.get(&server_name) {
-            Some(e) => e.value().clone(),
+            Some(e) => Arc::clone(e.value()),
             None => {
                 return ToolResult::err(
                     tool_call.id.clone(),

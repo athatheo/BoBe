@@ -1,18 +1,18 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
+use super::ids::{AgentJobId, ConversationId};
 use super::types::AgentJobStatus;
 
 /// Coding agent subprocess. States: PENDING → RUNNING → COMPLETED | FAILED | CANCELLED.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct AgentJob {
-    pub(crate) id: Uuid,
+    pub(crate) id: AgentJobId,
     pub(crate) profile_name: String,
     pub(crate) command: String,
     pub(crate) user_intent: String,
     pub(crate) status: AgentJobStatus,
     pub(crate) working_directory: String,
-    pub(crate) conversation_id: Option<Uuid>,
+    pub(crate) conversation_id: Option<ConversationId>,
     pub(crate) pid: Option<i64>,
     pub(crate) exit_code: Option<i32>,
     pub(crate) result_summary: Option<String>,
@@ -38,7 +38,7 @@ impl AgentJob {
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: AgentJobId::new(),
             profile_name,
             command,
             user_intent,

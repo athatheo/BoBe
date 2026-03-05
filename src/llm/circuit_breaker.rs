@@ -227,8 +227,8 @@ impl LlmProvider for CircuitBreakerLlmWrapper {
         temperature: f32,
         max_tokens: u32,
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, AppError>> + Send + '_>> {
-        let breaker = self.breaker.clone();
-        let provider = self.provider.clone();
+        let breaker = Arc::clone(&self.breaker);
+        let provider = Arc::clone(&self.provider);
 
         Box::pin(async_stream::stream! {
             if let Err(e) = breaker.allow_request().await {

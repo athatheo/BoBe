@@ -1,5 +1,8 @@
-use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+
+use chrono::{DateTime, Utc};
+
+use crate::models::ids::ObservationId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LearnerObservationSource {
@@ -82,5 +85,5 @@ impl From<crate::error::AppError> for LearnerError {
 
 #[derive(Debug)]
 pub(crate) enum LearnerResult {
-    Stored { observation_id: uuid::Uuid },
+    Stored { observation_id: ObservationId },
 }

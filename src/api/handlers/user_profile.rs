@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
+use crate::app_state::AppState;
+use crate::db::UserProfileRepository;
+use crate::error::AppError;
+use crate::models::ids::UserProfileId;
+use crate::models::user_profile::UserProfile;
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-use crate::app_state::AppState;
-use crate::db::UserProfileRepository;
-use crate::error::AppError;
-use crate::models::user_profile::UserProfile;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct UserProfileResponse {
@@ -72,7 +71,7 @@ fn profile_to_response(profile: &UserProfile) -> UserProfileResponse {
 
 async fn set_profile_enabled(
     user_profile_repo: &Arc<dyn UserProfileRepository>,
-    profile_id: Uuid,
+    profile_id: UserProfileId,
     enabled: bool,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
     let profile = user_profile_repo
@@ -153,7 +152,7 @@ pub(crate) async fn create_profile(
 
 pub(crate) async fn get_profile(
     State(state): State<Arc<AppState>>,
-    Path(profile_id): Path<Uuid>,
+    Path(profile_id): Path<UserProfileId>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
     let profile = state
         .user_profile_repo
@@ -179,7 +178,7 @@ pub(crate) async fn get_profile_by_name(
 
 pub(crate) async fn update_profile(
     State(state): State<Arc<AppState>>,
-    Path(profile_id): Path<Uuid>,
+    Path(profile_id): Path<UserProfileId>,
     Json(body): Json<UserProfileUpdateRequest>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
     state
@@ -200,21 +199,21 @@ pub(crate) async fn update_profile(
 
 pub(crate) async fn enable_profile(
     State(state): State<Arc<AppState>>,
-    Path(profile_id): Path<Uuid>,
+    Path(profile_id): Path<UserProfileId>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
     set_profile_enabled(&state.user_profile_repo, profile_id, true).await
 }
 
 pub(crate) async fn disable_profile(
     State(state): State<Arc<AppState>>,
-    Path(profile_id): Path<Uuid>,
+    Path(profile_id): Path<UserProfileId>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
     set_profile_enabled(&state.user_profile_repo, profile_id, false).await
 }
 
 pub(crate) async fn delete_profile(
     State(state): State<Arc<AppState>>,
-    Path(profile_id): Path<Uuid>,
+    Path(profile_id): Path<UserProfileId>,
 ) -> Result<StatusCode, AppError> {
     let profile = state
         .user_profile_repo

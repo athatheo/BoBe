@@ -66,7 +66,7 @@ pub(crate) struct Wired {
 impl Wired {
     pub(crate) async fn register_tools(&self, config: &Config, _event_queue: &Arc<EventQueue>) {
         self.tool_registry
-            .register(self.native_adapter.clone() as Arc<dyn ToolSource>)
+            .register(Arc::clone(&self.native_adapter) as Arc<dyn ToolSource>)
             .await;
         info!(
             tools = self.native_adapter.tool_names().len(),
@@ -77,7 +77,7 @@ impl Wired {
             match self.mcp_adapter.initialize().await {
                 Ok(()) => {
                     self.tool_registry
-                        .register(self.mcp_adapter.clone() as Arc<dyn ToolSource>)
+                        .register(Arc::clone(&self.mcp_adapter) as Arc<dyn ToolSource>)
                         .await;
                     info!("bootstrap.mcp_tools_registered");
                 }
@@ -92,16 +92,16 @@ impl Wired {
 
     pub(crate) async fn wire_sse_callbacks(&self, cm: &Arc<SseConnectionManager>) {
         let on_connect = {
-            let rs = self.runtime_session.clone();
+            let rs = Arc::clone(&self.runtime_session);
             Box::new(move || {
-                let rs = rs.clone();
+                let rs = Arc::clone(&rs);
                 tokio::spawn(async move { rs.on_connection().await });
             })
         };
         let on_disconnect = {
-            let rs = self.runtime_session.clone();
+            let rs = Arc::clone(&self.runtime_session);
             Box::new(move || {
-                let rs = rs.clone();
+                let rs = Arc::clone(&rs);
                 tokio::spawn(async move { rs.on_disconnection().await });
             })
         };
@@ -115,27 +115,29 @@ impl Wired {
 pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories) -> Wired {
     let config_arc = &infra.config_arc;
 
-    let conversation_service = Arc::new(ConversationService::new(repos.conversation_repo.clone()));
+    let conversation_service = Arc::new(ConversationService::new(Arc::clone(
+        &repos.conversation_repo,
+    )));
 
     let soul_service = Arc::new(SoulService::new(
         config.soul_file.as_ref().map(PathBuf::from),
-        Some(repos.soul_repo.clone()),
+        Some(Arc::clone(&repos.soul_repo)),
     ));
 
     let context_assembler = Arc::new(ContextAssembler::new(
-        repos.soul_repo.clone(),
-        repos.goal_repo.clone(),
-        repos.memory_repo.clone(),
-        repos.observation_repo.clone(),
-        repos.user_profile_repo.clone(),
-        infra.embedding_provider.clone(),
+        Arc::clone(&repos.soul_repo),
+        Arc::clone(&repos.goal_repo),
+        Arc::clone(&repos.memory_repo),
+        Arc::clone(&repos.observation_repo),
+        Arc::clone(&repos.user_profile_repo),
+        Arc::clone(&infra.embedding_provider),
         Some(soul_service),
     ));
 
     let goals_service = Arc::new(GoalsService::new(
-        repos.goal_repo.clone(),
-        infra.embedding_provider.clone(),
-        config_arc.clone(),
+        Arc::clone(&repos.goal_repo),
+        Arc::clone(&infra.embedding_provider),
+        Arc::clone(config_arc),
     ));
 
     let agent_job_manager = config.coding_agent.enabled.then(|| {
@@ -151,7 +153,7 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
             }
         };
         Arc::new(AgentJobManager::new(
-            repos.agent_job_repo.clone(),
+            Arc::clone(&repos.agent_job_repo),
             profiles,
             PathBuf::from(&config.coding_agent.output_dir),
             config.coding_agent.max_concurrent as usize, // safe: u32→usize on 64-bit
@@ -181,84 +183,84 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
     ));
 
     let message_learner = Arc::new(MessageLearner::new(
-        infra.embedding_provider.clone(),
-        repos.observation_repo.clone(),
+        Arc::clone(&infra.embedding_provider),
+        Arc::clone(&repos.observation_repo),
     ));
 
     let capture_learner = Arc::new(CaptureLearner::new(
-        infra.llm_provider.clone(),
-        infra.embedding_provider.clone(),
-        repos.observation_repo.clone(),
-        repos.memory_repo.clone(),
+        Arc::clone(&infra.llm_provider),
+        Arc::clone(&infra.embedding_provider),
+        Arc::clone(&repos.observation_repo),
+        Arc::clone(&repos.memory_repo),
         infra.vision_llm_provider.clone(),
-        config_arc.clone(),
+        Arc::clone(config_arc),
     ));
 
     let memory_learner = Arc::new(MemoryLearner::new(
-        infra.llm_provider.clone(),
-        infra.embedding_provider.clone(),
-        repos.memory_repo.clone(),
-        config_arc.clone(),
+        Arc::clone(&infra.llm_provider),
+        Arc::clone(&infra.embedding_provider),
+        Arc::clone(&repos.memory_repo),
+        Arc::clone(config_arc),
     ));
 
     let goal_learner = Arc::new(GoalLearner::new(
-        infra.llm_provider.clone(),
-        infra.embedding_provider.clone(),
-        goals_service.clone(),
-        config_arc.clone(),
+        Arc::clone(&infra.llm_provider),
+        Arc::clone(&infra.embedding_provider),
+        Arc::clone(&goals_service),
+        Arc::clone(config_arc),
     ));
 
     let memory_consolidator = Arc::new(MemoryConsolidator::new(
-        infra.llm_provider.clone(),
-        infra.embedding_provider.clone(),
-        repos.memory_repo.clone(),
-        config_arc.clone(),
+        Arc::clone(&infra.llm_provider),
+        Arc::clone(&infra.embedding_provider),
+        Arc::clone(&repos.memory_repo),
+        Arc::clone(config_arc),
     ));
 
     let decision_engine = Arc::new(DecisionEngine::new(
-        infra.llm_provider.clone(),
-        repos.observation_repo.clone(),
-        conversation_service.clone(),
-        config_arc.clone(),
-        Some(context_assembler.clone()),
+        Arc::clone(&infra.llm_provider),
+        Arc::clone(&repos.observation_repo),
+        Arc::clone(&conversation_service),
+        Arc::clone(config_arc),
+        Some(Arc::clone(&context_assembler)),
     ));
 
     let tool_executor = Arc::new(ToolExecutor::new(
-        tool_registry.clone(),
+        Arc::clone(&tool_registry),
         config.tools.timeout_seconds,
     ));
     let tool_preselector = Arc::new(ToolPreselector::new(
-        infra.llm_provider.clone(),
-        config_arc.clone(),
+        Arc::clone(&infra.llm_provider),
+        Arc::clone(config_arc),
     ));
     let tool_call_loop = Arc::new(ToolCallLoop::new(
-        infra.llm_provider.clone(),
+        Arc::clone(&infra.llm_provider),
         tool_executor,
-        config_arc.clone(),
+        Arc::clone(config_arc),
     ));
 
     let proactive_generator = Arc::new(ProactiveGenerator::new(
-        infra.llm_provider.clone(),
-        context_assembler.clone(),
-        conversation_service.clone(),
-        infra.event_queue.clone(),
-        config_arc.clone(),
-        Some(repos.cooldown_repo.clone()),
-        Some(tool_registry.clone()),
-        Some(tool_call_loop.clone()),
+        Arc::clone(&infra.llm_provider),
+        Arc::clone(&context_assembler),
+        Arc::clone(&conversation_service),
+        Arc::clone(&infra.event_queue),
+        Arc::clone(config_arc),
+        Some(Arc::clone(&repos.cooldown_repo)),
+        Some(Arc::clone(&tool_registry)),
+        Some(Arc::clone(&tool_call_loop)),
     ));
 
     let screen_capture = Arc::new(ScreenCapture::new());
 
     let capture_trigger = CaptureTrigger::new(
-        screen_capture.clone(),
+        Arc::clone(&screen_capture),
         capture_learner,
-        decision_engine.clone(),
-        proactive_generator.clone(),
-        Some(repos.cooldown_repo.clone()),
-        repos.observation_repo.clone(),
-        infra.event_queue.clone(),
-        config_arc.clone(),
+        Arc::clone(&decision_engine),
+        Arc::clone(&proactive_generator),
+        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&repos.observation_repo),
+        Arc::clone(&infra.event_queue),
+        Arc::clone(config_arc),
     );
 
     let checkin_trigger = CheckinTrigger::new(
@@ -268,28 +270,28 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
             config.checkin.jitter_minutes,
             config.checkin.enabled,
         ),
-        proactive_generator.clone(),
-        conversation_service.clone(),
-        Some(repos.cooldown_repo.clone()),
-        config_arc.clone(),
+        Arc::clone(&proactive_generator),
+        Arc::clone(&conversation_service),
+        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(config_arc),
     );
 
     let goal_trigger = Arc::new(GoalTrigger::new(
-        repos.goal_repo.clone(),
+        Arc::clone(&repos.goal_repo),
         decision_engine,
-        proactive_generator.clone(),
-        Some(repos.cooldown_repo.clone()),
-        infra.event_queue.clone(),
-        config_arc.clone(),
+        Arc::clone(&proactive_generator),
+        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&infra.event_queue),
+        Arc::clone(config_arc),
     ));
 
     let agent_job_trigger = agent_job_manager.as_ref().map(|mgr| {
         Arc::new(AgentJobTrigger::new(
-            mgr.clone(),
-            repos.agent_job_repo.clone(),
-            proactive_generator.clone(),
-            config_arc.clone(),
-            Some(infra.llm_provider.clone()),
+            Arc::clone(mgr),
+            Arc::clone(&repos.agent_job_repo),
+            Arc::clone(&proactive_generator),
+            Arc::clone(config_arc),
+            Some(Arc::clone(&infra.llm_provider)),
         ))
     });
 
@@ -298,70 +300,70 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
         goal_trigger,
         capture_trigger,
         Arc::new(MessageHandler::new(
-            infra.llm_provider.clone(),
-            context_assembler.clone(),
-            conversation_service.clone(),
+            Arc::clone(&infra.llm_provider),
+            Arc::clone(&context_assembler),
+            Arc::clone(&conversation_service),
             message_learner,
-            Some(repos.cooldown_repo.clone()),
-            infra.event_queue.clone(),
-            config_arc.clone(),
-            Some(tool_registry.clone()),
+            Some(Arc::clone(&repos.cooldown_repo)),
+            Arc::clone(&infra.event_queue),
+            Arc::clone(config_arc),
+            Some(Arc::clone(&tool_registry)),
             Some(tool_preselector),
             Some(tool_call_loop),
         )),
-        conversation_service.clone(),
-        Some(repos.cooldown_repo.clone()),
-        infra.event_queue.clone(),
-        config_arc.clone(),
+        Arc::clone(&conversation_service),
+        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&infra.event_queue),
+        Arc::clone(config_arc),
         agent_job_trigger.clone(),
     ));
 
     let learning_loop = config.learning.enabled.then(|| {
         Arc::new(LearningLoop::new(
-            conversation_service.clone(),
-            goals_service.clone(),
+            Arc::clone(&conversation_service),
+            Arc::clone(&goals_service),
             memory_learner,
             goal_learner,
             memory_consolidator,
-            repos.memory_repo.clone(),
-            repos.observation_repo.clone(),
-            repos.goal_repo.clone(),
-            repos.learning_state_repo.clone(),
-            infra.embedding_provider.clone(),
-            config_arc.clone(),
+            Arc::clone(&repos.memory_repo),
+            Arc::clone(&repos.observation_repo),
+            Arc::clone(&repos.goal_repo),
+            Arc::clone(&repos.learning_state_repo),
+            Arc::clone(&infra.embedding_provider),
+            Arc::clone(config_arc),
         ))
     });
 
     let goal_worker = Arc::new(GoalWorker::new(
-        config_arc.clone(),
+        Arc::clone(config_arc),
         Arc::new(ClaudeAgentProvider::new(
-            config_arc.clone(),
+            Arc::clone(config_arc),
             infra.http_client.clone(),
         )),
         Arc::new(DefaultGoalContextProvider::new(
-            repos.memory_repo.clone(),
-            repos.goal_repo.clone(),
-            repos.soul_repo.clone(),
-            infra.embedding_provider.clone(),
+            Arc::clone(&repos.memory_repo),
+            Arc::clone(&repos.goal_repo),
+            Arc::clone(&repos.soul_repo),
+            Arc::clone(&infra.embedding_provider),
         )),
-        repos.goal_repo.clone(),
-        repos.goal_plan_repo.clone(),
-        infra.event_queue.clone(),
-        conversation_service.clone(),
+        Arc::clone(&repos.goal_repo),
+        Arc::clone(&repos.goal_plan_repo),
+        Arc::clone(&infra.event_queue),
+        Arc::clone(&conversation_service),
     ));
 
     let goal_worker_manager = GoalWorkerManager::new(
-        config_arc.clone(),
+        Arc::clone(config_arc),
         goal_worker,
-        repos.goal_repo.clone(),
-        repos.goal_plan_repo.clone(),
+        Arc::clone(&repos.goal_repo),
+        Arc::clone(&repos.goal_plan_repo),
     );
 
     let config_manager = Arc::new(ConfigManager::new(
-        config_arc.clone(),
-        infra.llm_swap_handle.clone(),
-        infra.embedding_swap_handle.clone(),
-        Some(infra.llm_factory.clone()),
+        Arc::clone(config_arc),
+        Arc::clone(&infra.llm_swap_handle),
+        Arc::clone(&infra.embedding_swap_handle),
+        Some(Arc::clone(&infra.llm_factory)),
     ));
 
     Wired {
@@ -397,46 +399,52 @@ fn build_native_tools(
 
     vec![
         Arc::new(search_memories::SearchMemoriesTool::new(
-            repos.memory_repo.clone(),
-            embed.clone(),
+            Arc::clone(&repos.memory_repo),
+            Arc::clone(embed),
         )),
         Arc::new(search_context::SearchContextTool::new(
-            repos.memory_repo.clone(),
-            embed.clone(),
+            Arc::clone(&repos.memory_repo),
+            Arc::clone(embed),
         )),
         Arc::new(search_goal::SearchGoalTool::new(
-            repos.goal_repo.clone(),
-            embed.clone(),
+            Arc::clone(&repos.goal_repo),
+            Arc::clone(embed),
         )),
-        Arc::new(get_goals::GetGoalsTool::new(repos.goal_repo.clone())),
-        Arc::new(get_souls::GetSoulsTool::new(repos.soul_repo.clone())),
-        Arc::new(get_recent_context::GetRecentContextTool::new(
-            repos.observation_repo.clone(),
-        )),
+        Arc::new(get_goals::GetGoalsTool::new(Arc::clone(&repos.goal_repo))),
+        Arc::new(get_souls::GetSoulsTool::new(Arc::clone(&repos.soul_repo))),
+        Arc::new(get_recent_context::GetRecentContextTool::new(Arc::clone(
+            &repos.observation_repo,
+        ))),
         Arc::new(create_memory::CreateMemoryTool::new(
-            repos.memory_repo.clone(),
-            embed.clone(),
+            Arc::clone(&repos.memory_repo),
+            Arc::clone(embed),
         )),
-        Arc::new(update_memory::UpdateMemoryTool::new(
-            repos.memory_repo.clone(),
-        )),
+        Arc::new(update_memory::UpdateMemoryTool::new(Arc::clone(
+            &repos.memory_repo,
+        ))),
         Arc::new(create_goal::CreateGoalTool::new(
-            repos.goal_repo.clone(),
-            embed.clone(),
+            Arc::clone(&repos.goal_repo),
+            Arc::clone(embed),
         )),
-        Arc::new(update_goal::UpdateGoalTool::new(repos.goal_repo.clone())),
-        Arc::new(complete_goal::CompleteGoalTool::new(
-            repos.goal_repo.clone(),
-        )),
-        Arc::new(archive_goal::ArchiveGoalTool::new(repos.goal_repo.clone())),
-        Arc::new(pause_goal::PauseGoalTool::new(repos.goal_repo.clone())),
-        Arc::new(resume_goal::ResumeGoalTool::new(repos.goal_repo.clone())),
-        Arc::new(approve_plan::ApprovePlanTool::new(
-            repos.goal_plan_repo.clone(),
-        )),
-        Arc::new(reject_plan::RejectPlanTool::new(
-            repos.goal_plan_repo.clone(),
-        )),
+        Arc::new(update_goal::UpdateGoalTool::new(Arc::clone(
+            &repos.goal_repo,
+        ))),
+        Arc::new(complete_goal::CompleteGoalTool::new(Arc::clone(
+            &repos.goal_repo,
+        ))),
+        Arc::new(archive_goal::ArchiveGoalTool::new(Arc::clone(
+            &repos.goal_repo,
+        ))),
+        Arc::new(pause_goal::PauseGoalTool::new(Arc::clone(&repos.goal_repo))),
+        Arc::new(resume_goal::ResumeGoalTool::new(Arc::clone(
+            &repos.goal_repo,
+        ))),
+        Arc::new(approve_plan::ApprovePlanTool::new(Arc::clone(
+            &repos.goal_plan_repo,
+        ))),
+        Arc::new(reject_plan::RejectPlanTool::new(Arc::clone(
+            &repos.goal_plan_repo,
+        ))),
         Arc::new(file_reader::FileReaderTool::new()),
         Arc::new(list_directory::ListDirectoryTool::new()),
         Arc::new(search_files::SearchFilesTool::new()),
@@ -447,14 +455,14 @@ fn build_native_tools(
         Arc::new(launch_coding_agent::LaunchCodingAgentTool::new(
             agent_mgr.cloned(),
         )),
-        Arc::new(check_coding_agent::CheckCodingAgentTool::new(
-            repos.agent_job_repo.clone(),
-        )),
-        Arc::new(cancel_coding_agent::CancelCodingAgentTool::new(
-            repos.agent_job_repo.clone(),
-        )),
-        Arc::new(list_coding_agents::ListCodingAgentsTool::new(
-            repos.agent_job_repo.clone(),
-        )),
+        Arc::new(check_coding_agent::CheckCodingAgentTool::new(Arc::clone(
+            &repos.agent_job_repo,
+        ))),
+        Arc::new(cancel_coding_agent::CancelCodingAgentTool::new(Arc::clone(
+            &repos.agent_job_repo,
+        ))),
+        Arc::new(list_coding_agents::ListCodingAgentsTool::new(Arc::clone(
+            &repos.agent_job_repo,
+        ))),
     ]
 }

@@ -101,8 +101,8 @@ impl McpClient {
             AppError::Mcp(format!("No stdout for MCP server '{}'", self.config.name))
         })?;
         if let Err(e) = set_nonblocking_stdout(&stdout) {
-            let _ = child.kill();
-            let _ = child.wait();
+            drop(child.kill());
+            drop(child.wait());
             return Err(e);
         }
 
@@ -132,9 +132,10 @@ impl McpClient {
 
         match init_result {
             Ok(_) => {
-                let _ = self
-                    .send_notification("notifications/initialized", None)
-                    .await;
+                drop(
+                    self.send_notification("notifications/initialized", None)
+                        .await,
+                );
                 self.connected.store(true, Ordering::Release);
                 info!(server = %self.config.name, "MCP server connected");
                 Ok(())
@@ -150,16 +151,18 @@ impl McpClient {
     pub(crate) async fn disconnect(&self) {
         let mut proc = self.process.lock().await;
         if let Some(mut p) = proc.take() {
-            let _ = p.child.kill();
-            let _ = tokio::task::spawn_blocking(move || {
-                for _ in 0..30 {
-                    if let Ok(Some(_)) = p.child.try_wait() {
-                        return;
+            drop(p.child.kill());
+            drop(
+                tokio::task::spawn_blocking(move || {
+                    for _ in 0..30 {
+                        if let Ok(Some(_)) = p.child.try_wait() {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
                     }
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-            })
-            .await;
+                })
+                .await,
+            );
         }
         self.connected.store(false, Ordering::Release);
         debug!(server = %self.config.name, "MCP server disconnected");
@@ -369,7 +372,7 @@ impl Drop for McpClient {
         if let Ok(mut proc) = self.process.try_lock()
             && let Some(mut p) = proc.take()
         {
-            let _ = p.child.kill();
+            drop(p.child.kill());
             std::thread::spawn(move || {
                 for _ in 0..30 {
                     if let Ok(Some(_)) = p.child.try_wait() {

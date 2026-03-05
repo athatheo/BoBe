@@ -69,7 +69,7 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
 
     let state = Arc::new(AppState {
         db: pool,
-        config: infra.config_arc.clone(),
+        config: Arc::clone(&infra.config_arc),
         http_client: infra.http_client,
         event_queue: infra.event_queue,
         connection_manager: infra.connection_manager,

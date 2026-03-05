@@ -6,6 +6,7 @@ use tiktoken_rs::CoreBPE;
 ///
 /// The BPE data is compiled into the binary by tiktoken-rs; `o200k_base()` can
 /// only fail on a corrupt binary, making this logically impossible at runtime.
+#[allow(clippy::expect_used)]
 static O200K: LazyLock<CoreBPE> =
     LazyLock::new(|| tiktoken_rs::o200k_base().expect("o200k_base data compiled into binary"));
 
@@ -37,6 +38,7 @@ pub(crate) fn clamp_max_tokens(context_window: u32, prompt_tokens: usize, reques
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

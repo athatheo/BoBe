@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
+
+use super::ids::SoulId;
 
 /// Personality document injected into LLM prompts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Soul {
-    pub(crate) id: Uuid,
+    pub(crate) id: SoulId,
     pub(crate) name: String,
     pub(crate) content: String,
     pub(crate) enabled: bool,
@@ -17,7 +18,7 @@ impl Soul {
     pub(crate) fn new(name: String, content: String, is_default: bool) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: SoulId::new(),
             name,
             content,
             enabled: true,

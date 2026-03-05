@@ -1,12 +1,12 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
+use super::ids::GoalId;
 use super::types::{GoalPriority, GoalSource, GoalStatus};
 
 /// User intention with semantic search capability.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Goal {
-    pub(crate) id: Uuid,
+    pub(crate) id: GoalId,
     pub(crate) content: String,
     pub(crate) priority: GoalPriority,
     pub(crate) source: GoalSource,
@@ -23,7 +23,7 @@ impl Goal {
     pub(crate) fn new(content: String, source: GoalSource, priority: GoalPriority) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: GoalId::new(),
             content,
             priority,
             source,

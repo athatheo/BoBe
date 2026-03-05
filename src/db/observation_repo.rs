@@ -1,13 +1,12 @@
+use crate::db::ObservationRepository;
+use crate::error::AppError;
+use crate::models::ids::ObservationId;
+use crate::models::observation::Observation;
+use crate::util::similarity::cosine_similarity;
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
 use tracing::{debug, info};
-use uuid::Uuid;
-
-use crate::db::ObservationRepository;
-use crate::error::AppError;
-use crate::models::observation::Observation;
-use crate::util::similarity::cosine_similarity;
 
 pub(crate) struct SqliteObservationRepo {
     pool: SqlitePool,
@@ -52,7 +51,7 @@ impl ObservationRepository for SqliteObservationRepo {
         Ok(observation.clone())
     }
 
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<Observation>, AppError> {
+    async fn get_by_id(&self, id: ObservationId) -> Result<Option<Observation>, AppError> {
         sqlx::query_as::<_, Observation>("SELECT * FROM observations WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -167,7 +166,7 @@ impl ObservationRepository for SqliteObservationRepo {
         Ok(count)
     }
 
-    async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
+    async fn delete(&self, id: ObservationId) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM observations WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)
@@ -192,7 +191,7 @@ impl ObservationRepository for SqliteObservationRepo {
         .map_err(AppError::Database)
     }
 
-    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError> {
+    async fn update_embedding(&self, id: ObservationId, embedding: &[f32]) -> Result<(), AppError> {
         let json = serde_json::to_string(embedding)
             .map_err(|e| AppError::Internal(format!("Failed to serialize embedding: {e}")))?;
         sqlx::query("UPDATE observations SET embedding = ?1, updated_at = ?2 WHERE id = ?3")

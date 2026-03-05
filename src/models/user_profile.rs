@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
+
+use super::ids::UserProfileId;
 
 /// Markdown document describing the user, injected into LLM prompts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct UserProfile {
-    pub(crate) id: Uuid,
+    pub(crate) id: UserProfileId,
     pub(crate) name: String,
     pub(crate) content: String,
     pub(crate) enabled: bool,
@@ -17,7 +18,7 @@ impl UserProfile {
     pub(crate) fn new(name: String, content: String, is_default: bool) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: UserProfileId::new(),
             name,
             content,
             enabled: true,

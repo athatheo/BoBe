@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
+use super::ids::{GoalId, GoalPlanId, GoalPlanStepId};
 use super::types::{GoalPlanStatus, GoalPlanStepStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub(crate) struct GoalPlan {
-    pub(crate) id: Uuid,
-    pub(crate) goal_id: Uuid,
+    pub(crate) id: GoalPlanId,
+    pub(crate) goal_id: GoalId,
     pub(crate) summary: String,
     pub(crate) status: GoalPlanStatus,
     pub(crate) failure_count: i32,
@@ -18,8 +18,8 @@ pub(crate) struct GoalPlan {
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub(crate) struct GoalPlanStep {
-    pub(crate) id: Uuid,
-    pub(crate) plan_id: Uuid,
+    pub(crate) id: GoalPlanStepId,
+    pub(crate) plan_id: GoalPlanId,
     pub(crate) step_order: i32,
     pub(crate) content: String,
     pub(crate) status: GoalPlanStepStatus,

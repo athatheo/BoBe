@@ -24,6 +24,7 @@ pub(crate) struct OllamaProvider {
 impl OllamaProvider {
     /// # Panics
     /// Panics if the hardcoded think-tag regex fails to compile (should never happen).
+    #[allow(clippy::expect_used)]
     pub(crate) fn new(
         client: Client,
         base_url: impl Into<String>,

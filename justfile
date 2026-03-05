@@ -185,11 +185,13 @@ format-swift:
 check-swift-format:
     cd desktopMac && swiftformat --lint BoBe
 
-# fmt + clippy + test + swiftlint + swift build
+# fmt + clippy + test + deny + machete + swiftlint + swift build
 check:
     cargo fmt --check
     cargo clippy -q
     cargo test -q
+    cargo deny check
+    cargo machete
     cd desktopMac && swiftlint lint --quiet
     cd desktopMac && swift build -c debug
 

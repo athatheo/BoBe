@@ -1,14 +1,13 @@
+use super::base::NativeTool;
+use crate::db::GoalPlanRepository;
+use crate::error::AppError;
+use crate::models::ids::GoalPlanId;
+use crate::models::types::GoalPlanStatus;
+use crate::tools::ToolExecutionContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
-use uuid::Uuid;
-
-use super::base::NativeTool;
-use crate::db::GoalPlanRepository;
-use crate::error::AppError;
-use crate::models::types::GoalPlanStatus;
-use crate::tools::ToolExecutionContext;
 
 pub(crate) struct ApprovePlanTool {
     goal_plan_repo: Arc<dyn GoalPlanRepository>,
@@ -53,7 +52,8 @@ impl NativeTool for ApprovePlanTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'plan_id' is required".into()))?;
 
-        let plan_id = Uuid::parse_str(plan_id_str)
+        let plan_id: GoalPlanId = plan_id_str
+            .parse()
             .map_err(|_| AppError::Validation(format!("Invalid UUID: {plan_id_str}")))?;
 
         let plan = self

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
+use super::ids::{ConversationId, MemoryId, ObservationId};
 use super::types::{MemorySource, MemoryType};
 
 /// Distilled knowledge with semantic search.
@@ -8,7 +8,7 @@ use super::types::{MemorySource, MemoryType};
 /// Retention: short_term=30d, long_term=90d, explicit=forever.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Memory {
-    pub(crate) id: Uuid,
+    pub(crate) id: MemoryId,
     pub(crate) content: String,
     pub(crate) memory_type: MemoryType,
     pub(crate) enabled: bool,
@@ -16,8 +16,8 @@ pub(crate) struct Memory {
     pub(crate) source: MemorySource,
     /// JSON-encoded embedding vector.
     pub(crate) embedding: Option<String>,
-    pub(crate) source_observation_id: Option<Uuid>,
-    pub(crate) source_conversation_id: Option<Uuid>,
+    pub(crate) source_observation_id: Option<ObservationId>,
+    pub(crate) source_conversation_id: Option<ConversationId>,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
 }
@@ -31,7 +31,7 @@ impl Memory {
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: MemoryId::new(),
             content,
             memory_type,
             enabled: true,

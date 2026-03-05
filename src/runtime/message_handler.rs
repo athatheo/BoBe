@@ -5,11 +5,11 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use chrono::Utc;
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 use crate::config::Config;
 use crate::db::CooldownRepository;
 use crate::llm::LlmProvider;
+use crate::models::ids::ConversationId;
 use crate::models::types::TurnRole;
 use crate::runtime::learners::MessageLearner;
 use crate::runtime::learners::types::LearnerObservation;
@@ -87,7 +87,7 @@ impl MessageHandler {
             .await;
     }
 
-    async fn ensure_active_conversation(&self, user_content: &str) -> Option<Uuid> {
+    async fn ensure_active_conversation(&self, user_content: &str) -> Option<ConversationId> {
         let existing = self.conversation.get_pending_or_active().await.ok()?;
 
         if let Some(conv) = existing {
@@ -122,7 +122,12 @@ impl MessageHandler {
         }
     }
 
-    async fn respond_to_message(&self, msg_id: &str, user_content: &str, conversation_id: Uuid) {
+    async fn respond_to_message(
+        &self,
+        msg_id: &str,
+        user_content: &str,
+        conversation_id: ConversationId,
+    ) {
         let cfg = self.config.load();
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
@@ -231,7 +236,7 @@ impl MessageHandler {
 
     async fn build_conversation_history(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
         token_budget: usize,
     ) -> Vec<(String, String)> {
         let mut history: Vec<(String, String)> = Vec::new();
@@ -277,7 +282,7 @@ impl MessageHandler {
     async fn persist_response(
         &self,
         result: &crate::runtime::response_streamer::StreamResult,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
     ) {
         if !result.success || result.full_response.is_empty() {
             return;
@@ -384,6 +389,7 @@ fn trim_history_to_budget(history: &mut Vec<(String, String)>, budget: usize) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

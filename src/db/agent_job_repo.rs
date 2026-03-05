@@ -1,12 +1,11 @@
-use async_trait::async_trait;
-use sqlx::SqlitePool;
-use tracing::{debug, info};
-use uuid::Uuid;
-
 use crate::db::AgentJobRepository;
 use crate::error::AppError;
 use crate::models::agent_job::AgentJob;
+use crate::models::ids::AgentJobId;
 use crate::models::types::AgentJobStatus;
+use async_trait::async_trait;
+use sqlx::SqlitePool;
+use tracing::{debug, info};
 
 pub(crate) struct SqliteAgentJobRepo {
     pool: SqlitePool,
@@ -72,7 +71,7 @@ impl AgentJobRepository for SqliteAgentJobRepo {
         Ok(job.clone())
     }
 
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<AgentJob>, AppError> {
+    async fn get_by_id(&self, id: AgentJobId) -> Result<Option<AgentJob>, AppError> {
         sqlx::query_as::<_, AgentJob>("SELECT * FROM agent_jobs WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -99,7 +98,7 @@ impl AgentJobRepository for SqliteAgentJobRepo {
         .map_err(AppError::Database)
     }
 
-    async fn mark_reported(&self, id: Uuid) -> Result<(), AppError> {
+    async fn mark_reported(&self, id: AgentJobId) -> Result<(), AppError> {
         sqlx::query("UPDATE agent_jobs SET reported = 1 WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)

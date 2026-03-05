@@ -26,7 +26,7 @@ pub(crate) async fn send_message(
         return Err(AppError::Validation("content must not be empty".into()));
     }
 
-    let session = state.runtime_session.clone();
+    let session = Arc::clone(&state.runtime_session);
     let content = body.content.clone();
 
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());

@@ -1,5 +1,7 @@
 //! Learning loop maintenance: consolidation, pruning, and re-embedding.
 
+use std::sync::Arc;
+
 use chrono::{Duration, Timelike, Utc};
 use tracing::{debug, info, warn};
 
@@ -194,13 +196,13 @@ pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
             records.into_iter().map(|o| (o.id, o.content)).collect(),
             &*deps.embedding,
             |id, emb| {
-                let repo = deps.observation_repo.clone();
+                let repo = Arc::clone(&deps.observation_repo);
                 Box::pin(async move { repo.update_embedding(id, &emb).await })
             },
             |id| {
-                let repo = deps.observation_repo.clone();
+                let repo = Arc::clone(&deps.observation_repo);
                 Box::pin(async move {
-                    let _ = repo.delete(id).await;
+                    drop(repo.delete(id).await);
                 })
             },
         )
@@ -215,13 +217,13 @@ pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
             records.into_iter().map(|m| (m.id, m.content)).collect(),
             &*deps.embedding,
             |id, emb| {
-                let repo = deps.memory_repo.clone();
+                let repo = Arc::clone(&deps.memory_repo);
                 Box::pin(async move { repo.update_embedding(id, &emb).await })
             },
             |id| {
-                let repo = deps.memory_repo.clone();
+                let repo = Arc::clone(&deps.memory_repo);
                 Box::pin(async move {
-                    let _ = repo.delete(id).await;
+                    drop(repo.delete(id).await);
                 })
             },
         )
@@ -236,13 +238,13 @@ pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
             records.into_iter().map(|g| (g.id, g.content)).collect(),
             &*deps.embedding,
             |id, emb| {
-                let repo = deps.goal_repo.clone();
+                let repo = Arc::clone(&deps.goal_repo);
                 Box::pin(async move { repo.update_embedding(id, &emb).await })
             },
             |id| {
-                let repo = deps.goal_repo.clone();
+                let repo = Arc::clone(&deps.goal_repo);
                 Box::pin(async move {
-                    let _ = repo.delete(id).await;
+                    drop(repo.delete(id).await);
                 })
             },
         )
@@ -265,11 +267,11 @@ pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
 }
 
 /// Returns `(re_embedded, deleted, skipped)`.
-async fn re_embed_batch<U, D>(
-    records: Vec<(uuid::Uuid, String)>,
+async fn re_embed_batch<Id: Copy, U, D>(
+    records: Vec<(Id, String)>,
     embedding: &dyn EmbeddingProvider,
-    on_update: impl Fn(uuid::Uuid, Vec<f32>) -> U,
-    on_delete: impl Fn(uuid::Uuid) -> D,
+    on_update: impl Fn(Id, Vec<f32>) -> U,
+    on_delete: impl Fn(Id) -> D,
 ) -> (usize, usize, usize)
 where
     U: std::future::Future<Output = Result<(), AppError>>,

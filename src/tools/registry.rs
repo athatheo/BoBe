@@ -47,7 +47,7 @@ impl ToolRegistry {
 
     pub(crate) async fn get_all_tools(&self, include_disabled: bool) -> Vec<ToolDefinition> {
         let sources: Vec<Arc<dyn ToolSource>> =
-            self.sources.iter().map(|e| e.value().clone()).collect();
+            self.sources.iter().map(|e| Arc::clone(e.value())).collect();
 
         let mut all = Vec::new();
         for source in &sources {
@@ -78,7 +78,9 @@ impl ToolRegistry {
 
     pub(crate) async fn get_source_for_tool(&self, tool_name: &str) -> Option<Arc<dyn ToolSource>> {
         let source_name = self.tool_to_source.get(tool_name)?.value().clone();
-        self.sources.get(&source_name).map(|e| e.value().clone())
+        self.sources
+            .get(&source_name)
+            .map(|e| Arc::clone(e.value()))
     }
 
     pub(crate) async fn refresh_index(&self) -> Result<(), AppError> {
@@ -86,7 +88,7 @@ impl ToolRegistry {
         let sources: Vec<(String, Arc<dyn ToolSource>)> = self
             .sources
             .iter()
-            .map(|e| (e.key().clone(), e.value().clone()))
+            .map(|e| (e.key().clone(), Arc::clone(e.value())))
             .collect();
 
         for (source_name, source) in &sources {

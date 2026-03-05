@@ -1,12 +1,12 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
+use super::ids::ObservationId;
 use super::types::ObservationSource;
 
 /// Raw captured data with semantic search. Retention: 7 days.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Observation {
-    pub(crate) id: Uuid,
+    pub(crate) id: ObservationId,
     pub(crate) source: ObservationSource,
     pub(crate) content: String,
     pub(crate) category: String,
@@ -22,7 +22,7 @@ impl Observation {
     pub(crate) fn new(source: ObservationSource, content: String, category: String) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: ObservationId::new(),
             source,
             content,
             category,

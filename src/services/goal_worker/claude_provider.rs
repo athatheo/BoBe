@@ -7,18 +7,17 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
-use async_trait::async_trait;
-use secrecy::ExposeSecret;
-use tracing::{info, warn};
-use uuid::Uuid;
-
 use crate::config::Config;
 use crate::error::AppError;
 use crate::models::goal::Goal;
 use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
+use crate::models::ids::GoalId;
 use crate::runtime::prompts::goal_worker::{GoalExecutionPrompt, GoalPlanningPrompt};
 use crate::util::slugify::slugify;
+use arc_swap::ArcSwap;
+use async_trait::async_trait;
+use secrecy::ExposeSecret;
+use tracing::{info, warn};
 
 use super::{GoalExecutionResult, GoalExecutorProvider, PlanStep};
 
@@ -42,7 +41,7 @@ impl ClaudeAgentProvider {
 
 #[async_trait]
 impl GoalExecutorProvider for ClaudeAgentProvider {
-    fn create_work_dir(&self, goal_id: Uuid, goal_title: &str) -> PathBuf {
+    fn create_work_dir(&self, goal_id: GoalId, goal_title: &str) -> PathBuf {
         let cfg = self.cfg();
         let base = cfg.resolved_projects_dir();
 
@@ -62,7 +61,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
                 "claude_provider.work_dir_creation_failed, falling back to UUID"
             );
             let fallback = base.join(goal_id.to_string());
-            let _ = std::fs::create_dir_all(&fallback);
+            let _ignored = std::fs::create_dir_all(&fallback);
             return fallback;
         }
         work_dir
@@ -223,7 +222,7 @@ async fn execute_via_cli(
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        let _ = stdin.write_all(prompt.as_bytes()).await;
+        drop(stdin.write_all(prompt.as_bytes()).await);
         drop(stdin);
     }
 

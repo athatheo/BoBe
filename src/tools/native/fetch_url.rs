@@ -209,7 +209,7 @@ fn extract_visible_text(html: &str) -> String {
 
 const HIDDEN_TAGS: &[&str] = &["script", "style", "noscript", "svg", "template"];
 
-fn collect_visible_text(node: &scraper::ElementRef, out: &mut String) {
+fn collect_visible_text(node: &scraper::ElementRef<'_>, out: &mut String) {
     let tag = node.value().name();
     if HIDDEN_TAGS.contains(&tag) {
         return;

@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use tracing::{debug, info, warn};
-use uuid::Uuid;
 
 use crate::db::ConversationRepository;
 use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
+use crate::models::ids::ConversationId;
 use crate::models::types::{ConversationState, TurnRole};
 
 pub(crate) struct ConversationService {
@@ -54,7 +54,7 @@ impl ConversationService {
 
     pub(crate) async fn activate(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
     ) -> Result<Option<Conversation>, AppError> {
         let conversation = self.repo.get_by_id(conversation_id).await?;
         let Some(conversation) = conversation else {
@@ -78,7 +78,7 @@ impl ConversationService {
 
     pub(crate) async fn close(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
     ) -> Result<Option<Conversation>, AppError> {
         let conversation = self.repo.get_by_id(conversation_id).await?;
         let Some(conversation) = conversation else {
@@ -103,7 +103,7 @@ impl ConversationService {
 
     pub(crate) async fn close_and_start_new(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
         summary: Option<String>,
     ) -> Result<Conversation, AppError> {
         self.repo
@@ -125,7 +125,7 @@ impl ConversationService {
 
     pub(crate) async fn add_turn(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
         role: TurnRole,
         content: &str,
     ) -> Result<Option<ConversationTurn>, AppError> {
@@ -161,14 +161,14 @@ impl ConversationService {
 
     pub(crate) async fn get_conversation(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
     ) -> Result<Option<Conversation>, AppError> {
         self.repo.get_by_id(conversation_id).await
     }
 
     pub(crate) async fn get_conversation_turns(
         &self,
-        conversation_id: Uuid,
+        conversation_id: ConversationId,
         limit: i64,
     ) -> Result<Vec<ConversationTurn>, AppError> {
         self.repo.get_turns(conversation_id, limit).await

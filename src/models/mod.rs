@@ -3,6 +3,7 @@ pub(crate) mod conversation;
 pub(crate) mod cooldown;
 pub(crate) mod goal;
 pub(crate) mod goal_plan;
+pub(crate) mod ids;
 pub(crate) mod learning_state;
 pub(crate) mod memory;
 pub(crate) mod observation;

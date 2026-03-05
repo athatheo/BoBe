@@ -226,7 +226,7 @@ pub(crate) async fn create_setup_job(
         new_job
     };
 
-    let state_clone = state.clone();
+    let state_clone = Arc::clone(&state);
     tokio::spawn(async move {
         match body.mode.as_str() {
             "local" => run_local_setup(state_clone, body).await,

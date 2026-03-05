@@ -392,9 +392,9 @@ impl CaptureLearner {
         let memories = self
             .memory_repo
             .find_all(
-                Some(MemoryType::ShortTerm.as_str()),
+                Some(MemoryType::ShortTerm),
                 Some("observation"),
-                Some(MemorySource::VisualDiary.as_str()),
+                Some(MemorySource::VisualDiary),
                 false,
                 5,
                 0,

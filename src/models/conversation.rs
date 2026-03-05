@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
+use super::ids::{ConversationId, ConversationTurnId};
 use super::types::{ConversationState, TurnRole};
 
 /// Dialogue session. States: PENDING → ACTIVE → CLOSED.
@@ -8,7 +8,7 @@ use super::types::{ConversationState, TurnRole};
 /// Invariant: only one conversation can be ACTIVE at a time.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Conversation {
-    pub(crate) id: Uuid,
+    pub(crate) id: ConversationId,
     pub(crate) state: ConversationState,
     pub(crate) closed_at: Option<DateTime<Utc>>,
     pub(crate) summary: Option<String>,
@@ -20,7 +20,7 @@ impl Conversation {
     pub(crate) fn new_pending() -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: ConversationId::new(),
             state: ConversationState::Pending,
             closed_at: None,
             summary: None,
@@ -32,7 +32,7 @@ impl Conversation {
     pub(crate) fn new_active() -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: ConversationId::new(),
             state: ConversationState::Active,
             closed_at: None,
             summary: None,
@@ -67,19 +67,19 @@ impl Conversation {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct ConversationTurn {
-    pub(crate) id: Uuid,
+    pub(crate) id: ConversationTurnId,
     pub(crate) role: TurnRole,
     pub(crate) content: String,
-    pub(crate) conversation_id: Uuid,
+    pub(crate) conversation_id: ConversationId,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl ConversationTurn {
-    pub(crate) fn new(conversation_id: Uuid, role: TurnRole, content: String) -> Self {
+    pub(crate) fn new(conversation_id: ConversationId, role: TurnRole, content: String) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: ConversationTurnId::new(),
             role,
             content,
             conversation_id,

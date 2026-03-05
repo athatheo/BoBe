@@ -13,9 +13,9 @@ use crate::app_state::AppState;
 pub(crate) async fn stream_events(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let connection_manager = state.connection_manager.clone();
-    let queue = state.event_queue.clone();
-    let runtime_session = state.runtime_session.clone();
+    let connection_manager = Arc::clone(&state.connection_manager);
+    let queue = Arc::clone(&state.event_queue);
+    let runtime_session = Arc::clone(&state.runtime_session);
 
     let conn_id = connection_manager.connect().await;
     tracing::info!(connection_id = %conn_id, "sse.connected");
@@ -23,8 +23,8 @@ pub(crate) async fn stream_events(
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
 
     let conn_id_inner = conn_id.clone();
-    let cm = connection_manager.clone();
-    let rs = runtime_session.clone();
+    let cm = Arc::clone(&connection_manager);
+    let rs = Arc::clone(&runtime_session);
     tokio::spawn(async move {
         loop {
             if !cm.is_active_connection(&conn_id_inner).await {

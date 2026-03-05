@@ -1,5 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
-use uuid::Uuid;
+
+use super::ids::CooldownId;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -16,7 +17,7 @@ pub(crate) struct CooldownInfo {
 /// Survives server restarts (ADR-0003).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Cooldown {
-    pub(crate) id: Uuid,
+    pub(crate) id: CooldownId,
     pub(crate) last_engagement: Option<DateTime<Utc>>,
     pub(crate) last_user_response: Option<DateTime<Utc>>,
     pub(crate) created_at: DateTime<Utc>,
@@ -27,7 +28,7 @@ impl Cooldown {
     pub(crate) fn new() -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4(),
+            id: CooldownId::new(),
             last_engagement: None,
             last_user_response: None,
             created_at: now,

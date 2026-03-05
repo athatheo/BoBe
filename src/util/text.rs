@@ -10,6 +10,7 @@ pub(crate) fn truncate_str(s: &str, max_bytes: usize) -> &str {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::truncate_str;
 

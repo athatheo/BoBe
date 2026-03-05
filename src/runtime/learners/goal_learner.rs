@@ -7,13 +7,13 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use serde_json::Value;
 use tracing::{debug, info, warn};
-use uuid::Uuid;
 
 use crate::config::Config;
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
 use crate::models::goal::Goal;
+use crate::models::ids::GoalId;
 use crate::models::types::{GoalPriority, GoalSource};
 use crate::runtime::prompts::learning::deduplication_decision::GoalDeduplicationPrompt;
 use crate::runtime::prompts::learning::goal_extraction::GoalExtractionPrompt;
@@ -32,7 +32,7 @@ const MAX_GOAL_CONTENT_LENGTH: usize = 10_000;
 enum DeduplicationDecision {
     Create,
     Update {
-        existing_goal_id: Uuid,
+        existing_goal_id: GoalId,
         updated_content: String,
     },
     Skip,
@@ -335,7 +335,7 @@ impl GoalLearner {
                 let updated_content = data.get("updated_content").and_then(|v| v.as_str());
 
                 match (raw_id, updated_content) {
-                    (Some(id_str), Some(uc)) => match Uuid::parse_str(id_str) {
+                    (Some(id_str), Some(uc)) => match id_str.parse::<GoalId>() {
                         Ok(goal_id) => {
                             let valid_ids: Vec<String> =
                                 existing_data.iter().map(|(id, _, _)| id.clone()).collect();
@@ -426,7 +426,7 @@ impl GoalLearner {
         out
     }
 
-    async fn update_existing_goal(&self, goal_id: Uuid, content: &str) -> Result<(), AppError> {
+    async fn update_existing_goal(&self, goal_id: GoalId, content: &str) -> Result<(), AppError> {
         self.goals.update_content(goal_id, content).await?;
         Ok(())
     }

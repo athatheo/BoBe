@@ -1,14 +1,13 @@
+use crate::db::MemoryRepository;
+use crate::error::AppError;
+use crate::models::ids::MemoryId;
+use crate::models::memory::Memory;
+use crate::models::types::{MemorySource, MemoryType};
+use crate::util::similarity::cosine_similarity;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
-use uuid::Uuid;
-
-use crate::db::MemoryRepository;
-use crate::error::AppError;
-use crate::models::memory::Memory;
-use crate::models::types::MemoryType;
-use crate::util::similarity::cosine_similarity;
 
 pub(crate) struct SqliteMemoryRepo {
     pool: SqlitePool,
@@ -61,7 +60,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         Ok(memory.clone())
     }
 
-    async fn get_by_id(&self, id: Uuid) -> Result<Option<Memory>, AppError> {
+    async fn get_by_id(&self, id: MemoryId) -> Result<Option<Memory>, AppError> {
         sqlx::query_as::<_, Memory>("SELECT * FROM memories WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -119,9 +118,9 @@ impl MemoryRepository for SqliteMemoryRepo {
 
     async fn find_all(
         &self,
-        memory_type: Option<&str>,
+        memory_type: Option<MemoryType>,
         category: Option<&str>,
-        source: Option<&str>,
+        source: Option<MemorySource>,
         enabled_only: bool,
         limit: i64,
         offset: i64,
@@ -149,13 +148,13 @@ impl MemoryRepository for SqliteMemoryRepo {
         let count_sql = format!("SELECT COUNT(*) as cnt FROM memories{where_clause}");
         let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
         if let Some(mt) = memory_type {
-            count_q = count_q.bind(mt);
+            count_q = count_q.bind(mt.as_str());
         }
         if let Some(cat) = category {
             count_q = count_q.bind(cat);
         }
         if let Some(src) = source {
-            count_q = count_q.bind(src);
+            count_q = count_q.bind(src.as_str());
         }
         let total = count_q
             .fetch_one(&self.pool)
@@ -170,13 +169,13 @@ impl MemoryRepository for SqliteMemoryRepo {
         );
         let mut data_q = sqlx::query_as::<_, Memory>(&data_sql);
         if let Some(mt) = memory_type {
-            data_q = data_q.bind(mt);
+            data_q = data_q.bind(mt.as_str());
         }
         if let Some(cat) = category {
             data_q = data_q.bind(cat);
         }
         if let Some(src) = source {
-            data_q = data_q.bind(src);
+            data_q = data_q.bind(src.as_str());
         }
         data_q = data_q.bind(limit).bind(offset);
 
@@ -236,7 +235,7 @@ impl MemoryRepository for SqliteMemoryRepo {
 
     async fn update(
         &self,
-        id: Uuid,
+        id: MemoryId,
         content: Option<&str>,
         enabled: Option<bool>,
         category: Option<&str>,
@@ -306,7 +305,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         Ok(count)
     }
 
-    async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
+    async fn delete(&self, id: MemoryId) -> Result<bool, AppError> {
         let result = sqlx::query("DELETE FROM memories WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)
@@ -331,7 +330,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         .map_err(AppError::Database)
     }
 
-    async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError> {
+    async fn update_embedding(&self, id: MemoryId, embedding: &[f32]) -> Result<(), AppError> {
         let json = serde_json::to_string(embedding)
             .map_err(|e| AppError::Internal(format!("Failed to serialize embedding: {e}")))?;
         sqlx::query("UPDATE memories SET embedding = ?1, updated_at = ?2 WHERE id = ?3")

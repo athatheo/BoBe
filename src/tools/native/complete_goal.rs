@@ -1,14 +1,13 @@
+use super::base::NativeTool;
+use crate::db::GoalRepository;
+use crate::error::AppError;
+use crate::models::ids::GoalId;
+use crate::models::types::GoalStatus;
+use crate::tools::ToolExecutionContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
-use uuid::Uuid;
-
-use super::base::NativeTool;
-use crate::db::GoalRepository;
-use crate::error::AppError;
-use crate::models::types::GoalStatus;
-use crate::tools::ToolExecutionContext;
 
 pub(crate) struct CompleteGoalTool {
     goal_repo: Arc<dyn GoalRepository>,
@@ -53,7 +52,8 @@ impl NativeTool for CompleteGoalTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'goal_id' is required".into()))?;
 
-        let goal_id = Uuid::parse_str(goal_id_str)
+        let goal_id: GoalId = goal_id_str
+            .parse()
             .map_err(|_| AppError::Validation(format!("Invalid UUID: {goal_id_str}")))?;
 
         let goal = self

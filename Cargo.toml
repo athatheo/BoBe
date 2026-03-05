@@ -3,10 +3,14 @@ name = "bobe"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.93"
+license = "MIT"
+publish = false
 
 [lints.rust]
 unsafe_code = "deny"
 unreachable_pub = "warn"
+elided_lifetimes_in_paths = "warn"
+let_underscore_drop = "warn"           # Catch silent drops of values with Drop impls
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -17,6 +21,14 @@ dbg_macro = "warn"
 todo = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
+
+# --- Restriction lints: cherry-picked for safety ---
+clone_on_ref_ptr = "warn"              # Arc::clone(&x) over x.clone()
+unwrap_used = "warn"                   # No .unwrap() in production
+expect_used = "warn"                   # No .expect() in production
+undocumented_unsafe_blocks = "warn"    # SAFETY comments required on unsafe
+multiple_unsafe_ops_per_block = "warn" # One unsafe op per block, independently justified
+exit = "warn"                          # No process::exit() in daemon
 
 # --- Justified allows: architecture-driven (see CLAUDE.md for rationale) ---
 
@@ -75,7 +87,6 @@ figment = { version = "0.10.19", features = ["toml", "env"] }
 toml_edit = "0.25.3"
 flate2 = "1.1.9"
 tar = "0.4.44"
-security-framework = "3.7.0"
 security-framework-sys = "2.17.0"
 core-foundation = "0.10.1"
 core-foundation-sys = "0.8.7"

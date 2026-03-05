@@ -14,6 +14,9 @@ use security_framework_sys::item::{
 use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
 
 // Not always in security_framework_sys — declare it ourselves.
+// SAFETY: kSecUseDataProtectionKeychain is a well-known Security framework symbol
+// available on macOS 10.15+. We declare it as an extern static because some versions
+// of security_framework_sys do not export it.
 unsafe extern "C" {
     static kSecUseDataProtectionKeychain: core_foundation_sys::string::CFStringRef;
 }
@@ -31,16 +34,30 @@ pub(crate) static SECRET_FIELDS: &[&str] = &[
 fn base_query(account: &str) -> CFMutableDictionary {
     let mut query = CFMutableDictionary::new();
 
+    // SAFETY: kSecClass and kSecClassGenericPassword are valid CoreFoundation constants
+    // provided by the Security framework; casting to CFTypeRef is required by CFMutableDictionary.
     unsafe {
         query.set(kSecClass.cast(), kSecClassGenericPassword.cast());
+    }
+    // SAFETY: kSecAttrService is a valid Security framework key; the CFString value
+    // lives long enough for the dictionary to retain it.
+    unsafe {
         query.set(
             kSecAttrService.cast(),
             CFString::new(SERVICE_NAME).as_CFTypeRef(),
         );
+    }
+    // SAFETY: kSecAttrAccount is a valid Security framework key; the CFString value
+    // lives long enough for the dictionary to retain it.
+    unsafe {
         query.set(
             kSecAttrAccount.cast(),
             CFString::new(account).as_CFTypeRef(),
         );
+    }
+    // SAFETY: kSecUseDataProtectionKeychain is declared as an extern static CFStringRef
+    // and is available on macOS 10.15+; casting to CFTypeRef is required by the dictionary API.
+    unsafe {
         query.set(
             kSecUseDataProtectionKeychain.cast(),
             CFBoolean::true_value().as_CFTypeRef(),
@@ -53,19 +70,23 @@ fn base_query(account: &str) -> CFMutableDictionary {
 /// Store a secret, replacing any existing entry.
 pub(crate) fn store_secret(account: &str, value: &str) -> Result<(), String> {
     if value.is_empty() {
-        let _ = delete_secret(account);
+        let _ignored = delete_secret(account);
         return Ok(());
     }
 
-    let _ = delete_secret(account);
+    let _ignored = delete_secret(account);
 
     let mut query = base_query(account);
     let value_data = CFData::from_buffer(value.as_bytes());
 
+    // SAFETY: kSecValueData is a valid Security framework key; the CFData value
+    // lives long enough for the dictionary to retain it.
     unsafe {
         query.set(kSecValueData.cast(), value_data.as_CFTypeRef());
     }
 
+    // SAFETY: SecItemAdd is called with a valid query dictionary; the null second
+    // parameter indicates we do not need the persistent reference back.
     let status = unsafe { SecItemAdd(query.as_concrete_TypeRef(), std::ptr::null_mut()) };
 
     if status == 0 {
@@ -81,6 +102,8 @@ pub(crate) fn store_secret(account: &str, value: &str) -> Result<(), String> {
 pub(crate) fn read_secret(account: &str) -> Option<String> {
     let mut query = base_query(account);
 
+    // SAFETY: kSecReturnData is a valid Security framework key; the CFBoolean value
+    // is a singleton that outlives the dictionary.
     unsafe {
         query.set(
             kSecReturnData.cast(),
@@ -89,6 +112,8 @@ pub(crate) fn read_secret(account: &str) -> Option<String> {
     }
 
     let mut result: core_foundation::base::CFTypeRef = std::ptr::null();
+    // SAFETY: SecItemCopyMatching is called with a valid query dictionary and a pointer
+    // to a local CFTypeRef that will receive the matched data.
     let status =
         unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), std::ptr::addr_of_mut!(result)) };
 
@@ -105,6 +130,9 @@ pub(crate) fn read_secret(account: &str) -> Option<String> {
         return None;
     }
 
+    // SAFETY: SecItemCopyMatching returned errSecSuccess and a non-null result,
+    // which follows the Create Rule — we own the reference and must release it.
+    // Casting to CFDataRef is valid because we requested kSecReturnData.
     let data = unsafe { CFData::wrap_under_create_rule(result.cast()) };
     String::from_utf8(data.bytes().to_vec()).ok()
 }
@@ -112,6 +140,7 @@ pub(crate) fn read_secret(account: &str) -> Option<String> {
 pub(crate) fn delete_secret(account: &str) -> Result<(), String> {
     let query = base_query(account);
 
+    // SAFETY: SecItemDelete is called with a valid query dictionary built by base_query.
     let status = unsafe { SecItemDelete(query.as_concrete_TypeRef()) };
 
     if status == 0 || status == -25300 {

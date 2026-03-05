@@ -177,7 +177,7 @@ async fn query_sqlite(db_path: &PathBuf, temp_name: &str, sql: &str) -> Result<S
         .await
         .map_err(|e| AppError::Tool(format!("sqlite3 command failed: {e}")))?;
 
-    let _ = tokio::fs::remove_file(&temp).await;
+    let _ignored = tokio::fs::remove_file(&temp).await;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

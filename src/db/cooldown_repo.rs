@@ -1,13 +1,12 @@
+use crate::db::CooldownRepository;
+use crate::error::AppError;
+use crate::models::cooldown::{Cooldown, CooldownInfo};
+use crate::models::ids::CooldownId;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
-use uuid::Uuid;
-
-use crate::db::CooldownRepository;
-use crate::error::AppError;
-use crate::models::cooldown::{Cooldown, CooldownInfo};
 
 /// Single-row cooldown_state table with in-memory cache.
 /// Uses `tokio::sync::Mutex` since the guard is held across `.await`.
@@ -24,7 +23,7 @@ impl SqliteCooldownRepo {
         }
     }
 
-    async fn ensure_loaded(&self) -> Result<Uuid, AppError> {
+    async fn ensure_loaded(&self) -> Result<CooldownId, AppError> {
         let guard = self.state.lock().await;
         if let Some(s) = guard.as_ref() {
             return Ok(s.id);
@@ -32,7 +31,7 @@ impl SqliteCooldownRepo {
         drop(guard);
         self.load_or_create().await?;
         let guard = self.state.lock().await;
-        Ok(guard.as_ref().map_or_else(Uuid::new_v4, |s| s.id))
+        Ok(guard.as_ref().map_or_else(CooldownId::new, |s| s.id))
     }
 }
 

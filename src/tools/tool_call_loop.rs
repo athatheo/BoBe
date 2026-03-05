@@ -45,8 +45,8 @@ impl ToolCallLoop {
     ) -> Pin<Box<dyn Stream<Item = Result<StreamItem, AppError>> + Send>> {
         let (tx, rx) = mpsc::channel::<Result<StreamItem, AppError>>(64);
 
-        let llm = self.llm.clone();
-        let executor = self.executor.clone();
+        let llm = Arc::clone(&self.llm);
+        let executor = Arc::clone(&self.executor);
         let cfg = self.config.load();
         let max_iterations = cfg.tools.max_iterations as usize;
 
@@ -67,7 +67,7 @@ impl ToolCallLoop {
             )
             .await
             {
-                let _ = tx.send(Err(e)).await;
+                drop(tx.send(Err(e)).await);
             }
         });
 
@@ -130,7 +130,7 @@ async fn run_streaming_loop(
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(Err(e)).await;
+                    drop(tx.send(Err(e)).await);
                     return Ok(());
                 }
             }
@@ -190,7 +190,7 @@ async fn run_streaming_loop(
                 }
             }
             Err(e) => {
-                let _ = tx.send(Err(e)).await;
+                drop(tx.send(Err(e)).await);
                 return Ok(());
             }
         }

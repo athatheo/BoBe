@@ -13,11 +13,11 @@ use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 use crate::db::AgentJobRepository;
 use crate::error::AppError;
 use crate::models::agent_job::AgentJob;
+use crate::models::ids::{AgentJobId, ConversationId};
 
 use super::agent_output_parsers::{AgentJobResult, parse_claude_ndjson, parse_text_output};
 
@@ -60,7 +60,7 @@ pub(crate) struct AgentJobManager {
     output_dir: PathBuf,
     max_concurrent: usize,
     max_runtime_seconds: u64,
-    running_jobs: Mutex<HashSet<Uuid>>,
+    running_jobs: Mutex<HashSet<AgentJobId>>,
     on_job_complete: Mutex<
         Option<Arc<dyn Fn(AgentJob) -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
     >,
@@ -100,7 +100,7 @@ impl AgentJobManager {
         profile_name: &str,
         user_intent: &str,
         working_directory: Option<&str>,
-        conversation_id: Option<Uuid>,
+        conversation_id: Option<ConversationId>,
     ) -> Result<AgentJob, AppError> {
         let profile = self.profiles.get(profile_name).ok_or_else(|| {
             AppError::Validation(format!("Unknown agent profile: {profile_name}"))
@@ -215,7 +215,7 @@ impl AgentJobManager {
 
     async fn watch_process(
         &self,
-        job_id: Uuid,
+        job_id: AgentJobId,
         mut child: tokio::process::Child,
         output_path: PathBuf,
         output_format: &str,
@@ -275,7 +275,7 @@ impl AgentJobManager {
                 && !job.is_terminal()
             {
                 job.mark_failed(format!("Watcher error: {e}"), None);
-                let _ = self.repo.save(&job).await;
+                drop(self.repo.save(&job).await);
             }
             return;
         }
@@ -294,7 +294,7 @@ impl AgentJobManager {
 
     async fn finalize_job(
         &self,
-        job_id: Uuid,
+        job_id: AgentJobId,
         exit_code: i32,
         output_path: &Path,
         output_format: &str,
@@ -325,7 +325,7 @@ impl AgentJobManager {
                 job.files_changed_json = serde_json::to_string(&parsed.files_changed).ok();
             }
 
-            let _ = self.repo.save(&job).await;
+            drop(self.repo.save(&job).await);
 
             info!(
                 job_id = %job_id,

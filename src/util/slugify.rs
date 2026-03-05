@@ -34,6 +34,7 @@ pub(crate) fn slugify(text: &str, max_len: usize) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

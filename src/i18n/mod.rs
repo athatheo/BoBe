@@ -98,6 +98,7 @@ fn normalize_locale_tag(raw_locale: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::{FALLBACK_LOCALE, resolve_supported_locale, t};
 
