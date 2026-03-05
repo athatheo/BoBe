@@ -1,15 +1,15 @@
 "setup.window.title" = "BoBe 设置";
 "setup.welcome.title" = "欢迎使用 BoBe";
-"setup.welcome.subtitle" = "你在 Mac 上的主动式 AI 伙伴";
+"setup.welcome.subtitle" = "Mac 上的主动式 AI 伙伴";
 "setup.welcome.concept.souls.title" = "BoBe Souls";
-"setup.welcome.concept.souls.description" = "BoBe 的人格设定，决定它的沟通风格。";
+"setup.welcome.concept.souls.description" = "BoBe 的人格设定，塑造它的沟通风格。";
 "setup.welcome.concept.goals.title" = "目标";
 "setup.welcome.concept.goals.description" = "BoBe 会跟踪你正在努力的方向，并帮助你持续推进。";
 "setup.welcome.concept.memories.title" = "记忆";
 "setup.welcome.concept.memories.description" = "BoBe 会记住你的偏好、项目和上下文。";
 "setup.welcome.get_started" = "开始使用";
 "setup.choose_mode.title" = "选择你的 AI";
-"setup.choose_mode.subtitle" = "BoBe 需要一个 AI 模型来进行思考。";
+"setup.choose_mode.subtitle" = "BoBe 需要一个 AI 模型来思考。";
 "setup.choose_mode.cloud.title" = "云端模型";
 "setup.choose_mode.cloud.subtitle" = "推荐——设置最快";
 "setup.choose_mode.local.title" = "本地模型";
@@ -49,7 +49,7 @@
 "setup.capture.skip" = "跳过——禁用屏幕捕获";
 "setup.complete.title" = "设置完成！";
 "setup.complete.subtitle" = "你之后随时都可以修改这些设置。";
-"setup.complete.details" = "点击菜单栏中的 BoBe 图标 → BoBe Tuning，即可管理 AI 模型、Souls、Goals、屏幕捕获及全部偏好设置。";
+"setup.complete.details" = "点击菜单栏中的 BoBe 图标 → BoBe Tuning，即可管理 AI 模型、Souls、目标、屏幕捕获及全部偏好设置。";
 "setup.complete.finishing" = "即将完成...";
 "setup.complete.get_started" = "开始使用";
 "setup.permission_status.granted" = "✓ 已授予";
@@ -60,7 +60,7 @@
 "settings.localization.description" = "AI 提示模板与引导文本所使用的语言";
 "settings.localization.language" = "语言";
 "settings.localization.effective_locale" = "生效语言环境";
-"settings.localization.effective_locale.description" = "系统/覆盖回退后解析出的最终语言环境";
+"settings.localization.effective_locale.description" = "经系统/自定义回退后实际生效的语言环境";
 "settings.localization.system_default" = "系统默认";
 "settings.shared.toggle.enabled" = "已启用";
 "settings.shared.action.add_new" = "新增 +";
@@ -134,7 +134,7 @@
 "overlay.input.send.accessibility" = "发送消息";
 "overlay.input.waiting" = "等待中...";
 "overlay.reconnecting" = "正在重连...";
-"overlay.status.capture_permission_needed" = "捕获需要权限";
+"overlay.status.capture_permission_needed" = "需要屏幕录制权限";
 "overlay.status.capturing" = "捕获中";
 "overlay.status.loading" = "加载中";
 "overlay.status.offline" = "离线";
@@ -146,7 +146,7 @@
 "overlay.status.wants_to_speak" = "嘿";
 "settings.advanced.conversation.description" = "高级对话时序设置";
 "settings.advanced.conversation.inactivity_timeout" = "空闲超时";
-"settings.advanced.conversation.inactivity_timeout.description" = "允许发起新的主动触达前需等待的秒数";
+"settings.advanced.conversation.inactivity_timeout.description" = "再次主动联系前需等待的秒数";
 "settings.advanced.conversation.title" = "对话";
 "settings.advanced.goals.check_interval" = "检查间隔";
 "settings.advanced.goals.check_interval.description" = "目标相关性检查之间的秒数间隔";
@@ -339,8 +339,8 @@
 "settings.privacy.danger.status.partial_format" = "删除完成，但有问题：%@%@";
 "settings.privacy.danger.status.success" = "所有本地数据已删除。";
 "settings.privacy.danger.title" = "危险区域";
-"settings.privacy.storage.description" = "BoBe 会将数据存储在这台 Mac 本地。Souls、goals、memories、用户档案与运行时设置都会留在设备上。";
-"settings.privacy.storage.included.list" = "• Souls 和 goals\\n• Memories 和 observations\\n• 用户档案与设置\\n• 本地模型元数据";
+"settings.privacy.storage.description" = "BoBe 的数据存储在这台 Mac 本地。Souls、目标、记忆、用户档案与运行时设置都保存在设备上。";
+"settings.privacy.storage.included.list" = "• Souls 与目标\\n• 记忆与观察记录\\n• 用户档案与设置\\n• 本地模型元数据";
 "settings.privacy.storage.included.title" = "本地状态包含";
 "settings.privacy.storage.title" = "本地存储";
 "settings.souls.delete.accessibility" = "删除 soul";
@@ -384,7 +384,7 @@
 "settings.window.overview.card.sounds.heading" = "BoBe 的说话风格";
 "settings.window.overview.card.speaks.body" = "配置问候频率、主动消息和通知偏好。";
 "settings.window.overview.card.speaks.heading" = "BoBe 何时发声";
-"settings.window.overview.description" = "BoBe 会结合人格（Soul）、你的目标与记忆来提供有上下文的主动协助。你可以在这里自定义体验。";
+"settings.window.overview.description" = "BoBe 结合人格（Soul）、你的目标与记忆，提供基于上下文的主动帮助。你可以在这里自定义体验。";
 "settings.window.overview.footer" = "使用侧边栏探索全部设置。一切都在你的 Mac 本地运行。";
 "settings.window.overview.title" = "如何调整 BoBe";
 "settings.window.sidebar_title" = "BOBE TUNING";
