@@ -83,13 +83,13 @@ prompt-capture-visual-memory-user =
 
     返回完整更新后的日记。
 
-prompt-agent-job-evaluation-system = 你正在评估一个编码代理是否完成了分配任务。用户向代理提出了要求。代理已完成并产出结果。请根据结果摘要判断目标是否达成。
+prompt-agent-job-evaluation-system = 你正在评估一个 coding agent 是否完成了分配任务。用户向 agent 提出了要求。Agent 已完成并产出结果。请根据结果摘要判断目标是否达成。
 prompt-agent-job-evaluation-original-task = 原始任务：{ $user_intent }
-prompt-agent-job-evaluation-agent-result = 代理结果：{ $result_summary }
+prompt-agent-job-evaluation-agent-result = Agent 结果：{ $result_summary }
 prompt-agent-job-evaluation-no-summary = 没有可用摘要。
-prompt-agent-job-evaluation-agent-error = 代理错误：{ $error }
-prompt-agent-job-evaluation-continuation-count = 该代理已被重试 { $count } 次。
-prompt-agent-job-evaluation-final-directive = 代理是否达成了原始任务？请只回复一个词：DONE 或 CONTINUE。若任务看起来已完成，或出现代理无法自行修复的错误（例如：依赖缺失、项目错误），请回复 DONE。仅当代理已有部分进展且合理预期再试一次可完成时，才回复 CONTINUE。
+prompt-agent-job-evaluation-agent-error = Agent 错误：{ $error }
+prompt-agent-job-evaluation-continuation-count = 该 agent 已被继续执行 { $count } 次。
+prompt-agent-job-evaluation-final-directive = Agent 是否达成了原始任务？请只回复一个词：DONE 或 CONTINUE。若任务看起来已完成，或出现 agent 无法自行修复的错误（例如：依赖缺失、项目错误），请回复 DONE。仅当 agent 已有部分进展且合理预期再试一次可完成时，才回复 CONTINUE。
 
 prompt-goal-worker-planning-system =
     你是一名规划助手。给定目标与上下文后，请创建一个具体、可执行的编号计划。
@@ -109,7 +109,7 @@ prompt-goal-worker-planning-user =
     创建一个可执行计划来达成该目标。
 
 prompt-goal-worker-execution-system =
-    你是一个为用户执行计划的自治代理。
+    你是一个为用户执行计划的自主 agent。
 
     重要规则：
     - 仅在这个目录中工作：{ $work_dir }

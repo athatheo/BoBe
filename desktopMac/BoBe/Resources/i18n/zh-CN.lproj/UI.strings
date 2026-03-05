@@ -60,7 +60,7 @@
 "settings.localization.description" = "AI 提示模板与引导文本所使用的语言";
 "settings.localization.language" = "语言";
 "settings.localization.effective_locale" = "生效语言环境";
-"settings.localization.effective_locale.description" = "经系统/自定义回退后实际生效的语言环境";
+"settings.localization.effective_locale.description" = "经系统默认/手动指定回退后实际生效的语言环境";
 "settings.localization.system_default" = "系统默认";
 "settings.shared.toggle.enabled" = "已启用";
 "settings.shared.action.add_new" = "新增 +";
@@ -144,7 +144,7 @@
 "overlay.status.thinking" = "思考中";
 "overlay.status.using_tool_format" = "正在使用 %@...";
 "overlay.status.wants_to_speak" = "嘿";
-"settings.advanced.conversation.description" = "高级对话时序设置";
+"settings.advanced.conversation.description" = "高级对话时间设置";
 "settings.advanced.conversation.inactivity_timeout" = "空闲超时";
 "settings.advanced.conversation.inactivity_timeout.description" = "再次主动联系前需等待的秒数";
 "settings.advanced.conversation.title" = "对话";
@@ -152,7 +152,7 @@
 "settings.advanced.goals.check_interval.description" = "目标相关性检查之间的秒数间隔";
 "settings.advanced.goals.description" = "目标跟踪时间间隔";
 "settings.advanced.goals.title" = "目标";
-"settings.advanced.learning.description" = "后台学习循环时序";
+"settings.advanced.learning.description" = "后台学习循环频率";
 "settings.advanced.learning.interval" = "学习间隔";
 "settings.advanced.learning.interval.description" = "学习循环之间的分钟间隔";
 "settings.advanced.learning.title" = "学习";
@@ -214,7 +214,7 @@
 "settings.behavior.checkins.schedule" = "计划";
 "settings.behavior.checkins.time_placeholder" = "HH:MM";
 "settings.behavior.checkins.title" = "例行问候";
-"settings.behavior.conversation.auto_close_after" = "自动关闭于";
+"settings.behavior.conversation.auto_close_after" = "自动关闭延迟";
 "settings.behavior.conversation.description" = "对话管理方式";
 "settings.behavior.conversation.generate_summaries" = "生成摘要";
 "settings.behavior.conversation.title" = "对话";
@@ -317,7 +317,7 @@
 "settings.memories.loading" = "正在加载记忆...";
 "settings.memories.title" = "记忆";
 "settings.memories.toggle.enable_accessibility" = "启用记忆";
-"settings.memories.type.explicit" = "显式";
+"settings.memories.type.explicit" = "手动";
 "settings.memories.type.long" = "长期";
 "settings.memories.type.long_term" = "长期";
 "settings.memories.type.short" = "短期";
