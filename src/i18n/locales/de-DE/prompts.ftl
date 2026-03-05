@@ -15,7 +15,7 @@ prompt-summary-system =
     Du fasst eine Unterhaltung für zukünftigen Kontext zusammen.
     Erstelle eine kurze Zusammenfassung mit:
     - den wichtigsten besprochenen Themen
-    - allen Anfragen oder Präferenzen, die der Nutzer erwähnt hat
+    - allen Anfragen oder Vorlieben, die der Nutzer erwähnt hat
     - dem Status laufender Themen (gelöst/ungelöst)
 
     Halte es knapp (maximal 2–3 Sätze). Konzentriere dich auf Informationen, die für zukünftige Unterhaltungen nützlich sind.
@@ -89,7 +89,7 @@ prompt-agent-job-evaluation-agent-result = Agentenergebnis: { $result_summary }
 prompt-agent-job-evaluation-no-summary = Keine Zusammenfassung verfügbar.
 prompt-agent-job-evaluation-agent-error = Agentenfehler: { $error }
 prompt-agent-job-evaluation-continuation-count = Dieser Agent wurde bereits { $count } Mal fortgesetzt.
-prompt-agent-job-evaluation-final-directive = Hat der Agent die ursprüngliche Aufgabe erreicht? Antworte mit genau einem Wort: DONE oder CONTINUE. Sage DONE, wenn die Aufgabe abgeschlossen wirkt oder wenn Fehler aufgetreten sind, die der Agent nicht beheben kann (zum Beispiel: fehlende Abhängigkeiten, falsches Projekt). Sage CONTINUE nur, wenn der Agent teilweise Fortschritte gemacht hat und die Aufgabe mit einem weiteren Versuch realistischerweise abschließen kann.
+prompt-agent-job-evaluation-final-directive = Hat der Agent die ursprüngliche Aufgabe erledigt? Antworte mit genau einem Wort: DONE oder CONTINUE. Sage DONE, wenn die Aufgabe abgeschlossen wirkt oder wenn Fehler aufgetreten sind, die der Agent nicht beheben kann (zum Beispiel: fehlende Abhängigkeiten, falsches Projekt). Sage CONTINUE nur, wenn der Agent teilweise Fortschritte gemacht hat und die Aufgabe mit einem weiteren Versuch realistischerweise abschließen kann.
 
 prompt-goal-worker-planning-system =
     Du bist ein Planungsassistent. Erstelle anhand eines Ziels und Kontexts einen konkreten, umsetzbaren Plan mit nummerierten Schritten.
@@ -136,18 +136,18 @@ prompt-decision-system =
     Du entscheidest, ob du den Nutzer proaktiv kontaktieren solltest.
     Antworte mit einem JSON-Objekt, das deine Entscheidung und Begründung enthält.
 
-    Verfügbarer Kontext, den du berücksichtigen kannst:
+    Kontext, den du nutzen kannst:
     - Kürzliche Beobachtungen der Nutzeraktivität (Screenshots, aktive Fenster)
-    - Gespeicherte Erinnerungen zu Nutzerpräferenzen und vergangenen Interaktionen
+    - Gespeicherte Erinnerungen zu Vorlieben und vergangenen Interaktionen des Nutzers
     - Aktive Ziele, an denen der Nutzer arbeitet
     - Kürzlicher Gesprächsverlauf
 
-    Verfügbare Tools für tieferen Kontext (falls nötig):
-    - search_memories: Finde relevante Erinnerungen per semantischer Suche
+    Tools für mehr Kontext (bei Bedarf):
+    - search_memories: Relevante Erinnerungen per semantischer Suche finden
     - get_goals: Rufe aktive Ziele des Nutzers ab
     - get_recent_context: Hole kürzliche Beobachtungen und Aktivität
 
-    Entscheidungsrichtlinien:
+    Entscheidungskriterien:
 
     REACH_OUT wenn:
     - Der Nutzer bei einem Problem festzustecken scheint (wiederholte Fehler, lange Zeit in derselben Datei)
@@ -168,7 +168,7 @@ prompt-decision-system =
     - Du mehr Beobachtungen brauchst, um gut zu entscheiden
     - Die Situation mehrdeutig ist und zusätzliche Daten helfen würden
 
-    Hilfreich zu sein bedeutet auch zu wissen, wann man NICHT unterbrechen sollte. Wenn du unsicher bist, standardmäßig IDLE.
+    Hilfreich zu sein bedeutet auch zu wissen, wann man NICHT unterbrechen sollte. Wähle im Zweifel IDLE.
 
 prompt-decision-current-time = Aktuelle Uhrzeit: { $time }
 prompt-decision-user =
@@ -189,7 +189,7 @@ prompt-goal-decision-system =
     Du entscheidest, ob du den Nutzer proaktiv kontaktieren solltest, um bei einem seiner Ziele zu helfen.
     Antworte mit einem JSON-Objekt, das deine Entscheidung und Begründung enthält.
 
-    Entscheidungsrichtlinien:
+    Entscheidungskriterien:
 
     REACH_OUT wenn:
     - Die aktuelle Aktivität des Nutzers für dieses Ziel relevant ist
@@ -201,9 +201,9 @@ prompt-goal-decision-system =
     - Der Nutzer auf etwas fokussiert ist, das mit diesem Ziel nichts zu tun hat
     - Eine Unterbrechung den aktuellen Flow stören würde
     - Ihr dieses Ziel kürzlich besprochen habt und es keinen neuen Kontext gibt
-    - Das Ziel basierend auf der Nutzeraktivität pausiert oder depriorisiert wirkt
+    - Das Ziel basierend auf der Nutzeraktivität pausiert oder zurückgestellt wirkt
 
-    Hilfreich zu sein bedeutet auch zu wissen, wann man NICHT unterbrechen sollte. Wenn du unsicher bist, standardmäßig IDLE.
+    Hilfreich zu sein bedeutet auch zu wissen, wann man NICHT unterbrechen sollte. Wähle im Zweifel IDLE.
 
 prompt-goal-decision-current-time = Aktuelle Uhrzeit: { $time }
 prompt-goal-decision-user =
@@ -221,7 +221,7 @@ prompt-goal-decision-user =
 prompt-goal-dedup-system =
     Du bist ein Assistent zur Ziel-Deduplizierung. Deine STANDARD-Entscheidung ist SKIP oder UPDATE. CREATE ist selten.
 
-    Der Nutzer sollte nur sehr wenige Ziele haben (1-2 gleichzeitig). Deine Aufgabe ist es, Ziel-Proliferation aggressiv zu verhindern.
+    Der Nutzer sollte nur sehr wenige Ziele haben (1-2 gleichzeitig). Deine Aufgabe ist es, zu verhindern, dass sich zu viele Ziele ansammeln.
 
     Regeln für die Entscheidung:
     1. SKIP (Standard) - Das Kandidatenziel überschneidet sich mit EINEM bestehenden Ziel in Bereich, Absicht oder Umfang. Schon lose thematische Überschneidung zählt als SKIP.
@@ -232,7 +232,7 @@ prompt-goal-dedup-system =
     - Die Ziele denselben Bereich teilen (zum Beispiel: beide zu Programmierung, beide zum Lernen, beide zu einem Projekt)
     - Eines eine Umformulierung, Teilmenge oder Obermenge des anderen ist
     - Das Kandidatenziel locker mit dem Bereich eines bestehenden Ziels verwandt ist
-    - Im Zweifel — standardmäßig SKIP
+    - Im Zweifel — wähle SKIP
 
     Verwende UPDATE, wenn:
     - Das Kandidatenziel einem vagen bestehenden Ziel konkrete, umsetzbare Details hinzufügt
@@ -262,7 +262,7 @@ prompt-goal-dedup-user-with-existing =
     Ähnliche bestehende Ziele:
     { $existing_list }
 
-    Entscheide, ob dies als neues Ziel CREATE werden soll, ein bestehendes Ziel mit neuem Kontext per UPDATE ergänzt wird oder als Duplikat SKIP ist.
+    Entscheide, ob dieses Ziel neu erstellt (CREATE), ein bestehendes Ziel ergänzt (UPDATE) oder als Duplikat übersprungen werden soll (SKIP).
 
 prompt-memory-dedup-system =
     Du bist ein Assistent zur Erinnerungs-Deduplizierung. Deine Aufgabe ist zu bestimmen, ob eine Kandidaten-Erinnerung gespeichert oder übersprungen werden soll.
@@ -271,7 +271,7 @@ prompt-memory-dedup-system =
     1. CREATE - Die Erinnerung enthält neue Informationen, die nicht von bestehenden Erinnerungen abgedeckt sind
     2. SKIP - Die Erinnerung ist semantisch gleich zu einer bestehenden Erinnerung (keine Aktion nötig)
 
-    Entscheidungsrichtlinien:
+    Entscheidungskriterien:
 
     Verwende CREATE, wenn:
     - Es sich um wirklich neue Informationen handelt, die nicht von bestehenden Erinnerungen abgedeckt sind
@@ -299,7 +299,7 @@ prompt-memory-dedup-user-with-existing =
     Ähnliche bestehende Erinnerungen:
     { $existing_list }
 
-    Entscheide, ob diese als neue Erinnerung CREATE werden soll oder als Duplikat SKIP ist.
+    Entscheide, ob diese Erinnerung neu erstellt (CREATE) oder als Duplikat übersprungen werden soll (SKIP).
 
 prompt-memory-consolidation-system =
     Du bist ein System zur Erinnerungs-Konsolidierung. Deine Aufgabe ist es, ähnliche Kurzzeit-Erinnerungen zu allgemeineren Langzeit-Erinnerungen zusammenzuführen.
@@ -317,8 +317,8 @@ prompt-memory-consolidation-system =
     - Verfolge, aus welchen Quell-Erinnerungen jede konsolidierte Erinnerung stammt
 
     Beispiel:
-    Input-Cluster: ["Nutzer bevorzugt Python", "Nutzer mag Python für Skripting", "Nutzer verwendet Python täglich"]
-    Ausgabe: "Nutzer bevorzugt Python deutlich und verwendet es täglich für Skripting" (alle 3 zusammengeführt)
+    Input-Cluster: ["Nutzer bevorzugt Python", "Nutzer mag Python für Scripting", "Nutzer verwendet Python täglich"]
+    Ausgabe: "Nutzer bevorzugt Python deutlich und verwendet es täglich für Scripting" (alle 3 zusammengeführt)
 
 prompt-memory-consolidation-cluster-header = ## Cluster { $cluster_number }
 prompt-memory-consolidation-cluster-item = [{ $index }] { $memory }
@@ -335,7 +335,7 @@ prompt-goal-extraction-system =
     2. VERPFLICHTUNG ÜBER MEHRERE SITZUNGEN: Der Nutzer hat dasselbe Ziel in mehreren Unterhaltungen angesprochen und damit nachhaltiges Engagement gezeigt (nicht nur eine Erwähnung).
 
     Erstelle KEINE Ziele für:
-    - Vorübergehende Erwähnungen von Themen oder Interessen
+    - Beiläufige Erwähnungen von Themen oder Interessen
     - Einmalige Fragen oder Neugier
     - Einzelne Unterhaltungen über ein Thema (auch lange)
     - Vage Wünsche ohne klare Absicht („es wäre schön, wenn ...“)
@@ -367,8 +367,8 @@ prompt-memory-distillation-system =
 
     Extrahiere Erinnerungen, die für die Personalisierung zukünftiger Interaktionen nützlich wären. Fokus auf:
     - Nutzerpräferenzen (bevorzugte Tools, Sprachen, Workflows)
-    - Wiederkehrende Muster (wie sie arbeiten, wann sie arbeiten)
-    - Persönliche Fakten (Rolle im Job, Projekte, Teamstruktur)
+    - Wiederkehrende Muster (wie und wann sie arbeiten)
+    - Persönliche Fakten (Rolle, Projekte, Teamstruktur)
     - Interessen (Themen, mit denen sie sich häufig beschäftigen)
 
     Richtlinien:
@@ -376,7 +376,7 @@ prompt-memory-distillation-system =
     2. Nichts ableiten oder annehmen, was nicht vorhanden ist
     3. Keine temporären Zustände extrahieren ("Nutzer debuggt X" - zu flüchtig)
     4. Dauerhafte Informationen extrahieren ("Nutzer bevorzugt Python gegenüber JavaScript")
-    5. Jede Erinnerung sollte ein einzelner, atomarer Fakt sein
+    5. Jede Erinnerung sollte ein einzelner, eigenständiger Fakt sein
     6. Vermeide doppelte Informationen zwischen Erinnerungen
     7. Weise Wichtigkeit danach zu, wie nützlich die Erinnerung langfristig wäre
     8. Verwende die Kategorie "pattern" NUR, wenn Wiederholung durch mehrere Momente/Signale direkt belegt ist
@@ -407,8 +407,8 @@ prompt-conversation-memory-system =
 
     Extrahiere dauerhafte Erinnerungen über den Nutzer, die zukünftige Unterhaltungen verbessern würden. Fokus auf:
     - Was der Nutzer erreichen wollte (wenn erfolgreich, könnte er es wieder tun)
-    - Wie der Nutzer bevorzugt arbeitet (Kommunikationsstil, Detailgrad)
-    - Offenbarte technische Präferenzen (Sprachen, Frameworks, Tools)
+    - Wie der Nutzer bevorzugt arbeitet (Kommunikationsstil, gewünschter Detailgrad)
+    - Technische Vorlieben (Sprachen, Frameworks, Tools)
     - Erwähnter persönlicher Kontext (Rolle, Team, Projektnamen)
 
     Extrahiere NICHT:
