@@ -147,8 +147,6 @@ final class FocusAwareTextView: NSTextView {
     }
 }
 
-// MARK: - Previews
-
 #if !SPM_BUILD
 #Preview("Code Editor") {
     @Previewable @State var text = """

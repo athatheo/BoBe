@@ -1,14 +1,10 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Progress, Capture & Complete Views
-
 extension SetupWizard {
-    // MARK: - Setup Progress (job polling)
-
     var setupProgressView: some View {
         VStack(spacing: 16) {
-            Text("Setting up BoBe")
+            Text(L10n.tr("setup.progress.title"))
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(theme.colors.text)
 
@@ -36,33 +32,25 @@ extension SetupWizard {
         .frame(maxWidth: 420)
     }
 
-    // MARK: - Capture Setup
-
     var captureSetupView: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Screen Awareness")
+            Text(L10n.tr("setup.capture.title"))
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(theme.colors.text)
 
-            Text(
-                """
-                BoBe glances at your screen periodically so it can offer \
-                relevant help, track your goals, and remember what you're \
-                working on — without you having to explain everything.
-                """
-            )
+            Text(L10n.tr("setup.capture.description"))
             .font(.system(size: 14)).foregroundStyle(theme.colors.textMuted)
             .lineSpacing(2)
 
-            PermissionCard(title: "Screen Recording", badge: screenPermission) {
-                Text("Grants BoBe access to see what's on your screen.")
+            PermissionCard(title: L10n.tr("setup.capture.permission.title"), badge: screenPermission) {
+                Text(L10n.tr("setup.capture.permission.description"))
                     .font(.system(size: 12)).foregroundStyle(theme.colors.textMuted)
                 if screenPermission == .restricted {
-                    Text("This permission is managed by your organization and cannot be changed.")
+                    Text(L10n.tr("setup.capture.permission.restricted"))
                         .font(.system(size: 12)).foregroundStyle(theme.colors.tertiary)
                 }
                 if screenPermission != .granted, screenPermission != .restricted {
-                    Button("Open System Settings") {
+                    Button(L10n.tr("setup.capture.permission.open_settings")) {
                         if let url = URL(
                             string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
                         ) {
@@ -71,24 +59,24 @@ extension SetupWizard {
                     }
                     .font(.system(size: 13, weight: .medium)).foregroundStyle(theme.colors.primary)
                     .bobeButton(.ghost, size: .small)
-                    Text("Grant permission to continue.")
+                    Text(L10n.tr("setup.capture.permission.grant_to_continue"))
                         .font(.system(size: 12)).foregroundStyle(theme.colors.textMuted)
                 }
             }
 
             Text(
                 setupMode == .local
-                    ? "Screenshots never leave your machine — all analysis happens locally."
-                    : "Screenshots are sent to the cloud provider you selected for analysis."
+                    ? L10n.tr("setup.capture.privacy.local")
+                    : L10n.tr("setup.capture.privacy.cloud")
             )
             .font(.system(size: 12)).foregroundStyle(theme.colors.textMuted).italic()
 
             HStack(spacing: 10) {
-                Button("Skip — disable screen capture") { skipCapture() }
+                Button(L10n.tr("setup.capture.skip")) { skipCapture() }
                     .bobeButton(.secondary, size: .regular)
                     .foregroundStyle(theme.colors.textMuted)
                 Spacer()
-                Button("Continue") { continueFromCapture() }
+                Button(L10n.tr("setup.common.continue")) { continueFromCapture() }
                     .bobeButton(.primary, size: .regular)
                     .disabled(screenPermission != .granted)
             }
@@ -96,29 +84,21 @@ extension SetupWizard {
         .frame(maxWidth: 440)
     }
 
-    // MARK: - Complete
-
     var completeView: some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
                 .foregroundStyle(theme.colors.secondary)
 
-            Text("Setup Complete!")
+            Text(L10n.tr("setup.complete.title"))
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(theme.colors.text)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("You can always change these settings later.")
+                Text(L10n.tr("setup.complete.subtitle"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(theme.colors.text)
-                Text(
-                    """
-                    Click the BoBe icon in your menu bar \u{2192} BoBe Tuning to \
-                    manage your AI model, Souls, Goals, screen capture, and \
-                    all preferences.
-                    """
-                )
+                Text(L10n.tr("setup.complete.details"))
                 .font(.system(size: 14))
                 .foregroundStyle(theme.colors.textMuted).lineSpacing(2)
             }
@@ -130,7 +110,7 @@ extension SetupWizard {
                     .stroke(theme.colors.border, lineWidth: 1)
             )
 
-            Button(isFinishingSetup ? "Finishing..." : "Get Started") { completeSetup() }
+            Button(isFinishingSetup ? L10n.tr("setup.complete.finishing") : L10n.tr("setup.complete.get_started")) { completeSetup() }
                 .bobeButton(.primary, size: .regular)
                 .disabled(isFinishingSetup)
                 .padding(.top, 4)
@@ -138,8 +118,6 @@ extension SetupWizard {
         .frame(maxWidth: 440)
     }
 }
-
-// MARK: - Job Step Row
 
 struct JobStepRow: View {
     let step: SetupJobStep

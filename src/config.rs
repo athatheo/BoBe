@@ -5,7 +5,6 @@ use figment::providers::{Env, Format, Serialized, Toml};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
-/// Supported LLM backend providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LlmBackend {
@@ -16,7 +15,7 @@ pub enum LlmBackend {
     AzureOpenai,
     #[serde(rename = "llamacpp")]
     LlamaCpp,
-    /// Vision/voice disabled — no LLM provider needed.
+    /// Disabled — no LLM provider needed.
     #[serde(rename = "none")]
     None,
 }
@@ -32,8 +31,6 @@ impl std::fmt::Display for LlmBackend {
         }
     }
 }
-
-// ── Sub-structs ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -83,8 +80,7 @@ pub struct LlmConfig {
     pub azure_openai_deployment: String,
     #[serde(skip_serializing)]
     pub anthropic_api_key: SecretString,
-    /// Context window size in tokens. Auto-detected for Ollama at startup;
-    /// manual override via `BOBE_LLM__CONTEXT_WINDOW` takes precedence.
+    /// Context window in tokens. Auto-detected for Ollama; env override takes precedence.
     pub context_window: u32,
 }
 
@@ -486,18 +482,14 @@ impl Default for GoalWorkerConfig {
     }
 }
 
-// ── Root Config ─────────────────────────────────────────────────────────────
-
-/// Application configuration loaded from config.toml + env var overrides.
-///
-/// Layered loading: defaults → config.toml → BOBE_* env vars.
+/// Application configuration. Layered: defaults → config.toml → BOBE_* env vars.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
-    /// Version of the config schema for future migrations.
+    /// Schema version for future migrations.
     pub config_version: u32,
 
-    /// Base data directory (default: ~/.bobe).
+    /// Base data directory (default: `~/.bobe`).
     pub data_dir: String,
 
     pub server: ServerConfig,
@@ -522,15 +514,14 @@ pub struct Config {
 
     pub soul_file: Option<String>,
     pub seed_default_documents: bool,
+    pub locale_override: Option<String>,
 
-    /// Set to true after successful setup completion. Prevents re-triggering
-    /// the onboarding wizard when the LLM backend is temporarily unreachable.
+    /// Prevents re-triggering onboarding when LLM is temporarily unreachable.
     #[serde(default)]
     pub setup_completed: bool,
 }
 
 impl Config {
-    /// Load configuration: defaults → config.toml → BOBE_* env vars.
     pub fn load() -> Result<Self, crate::error::AppError> {
         let data_dir = resolve_data_dir();
         let config_path = PathBuf::from(&data_dir).join("config.toml");
@@ -547,12 +538,10 @@ impl Config {
             .extract()
             .map_err(|e| crate::error::AppError::Config(e.to_string()))?;
 
-        // Expand ~ in database URL
         if config.database.url.contains('~') {
             config.database.url = expand_tilde(&config.database.url);
         }
 
-        // Load secrets from macOS Keychain (env vars override Keychain)
         let secrets = crate::secrets::load_secrets();
         for (key, value) in &secrets {
             match key.as_str() {
@@ -572,7 +561,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Resolved goals file path, defaulting to <data_dir>/GOALS.md.
+    /// Goals file path, defaulting to `<data_dir>/GOALS.md`.
     pub fn resolved_goals_file_path(&self) -> PathBuf {
         if let Some(ref path) = self.goals.file {
             PathBuf::from(path)
@@ -581,7 +570,6 @@ impl Config {
         }
     }
 
-    /// Resolved projects directory for goal worker.
     pub fn resolved_projects_dir(&self) -> PathBuf {
         let raw = if self.goal_worker.projects_dir.is_empty() {
             format!("{}/goal-work", self.resolved_data_dir().display())
@@ -591,14 +579,27 @@ impl Config {
         PathBuf::from(expand_tilde(&raw))
     }
 
-    /// Resolved data directory (expands ~).
     pub fn resolved_data_dir(&self) -> PathBuf {
         PathBuf::from(expand_tilde(&self.data_dir))
     }
 
-    // ── Compat accessors ────────────────────────────────────────────────
-    // These provide flat-style access for code that hasn't migrated yet.
-    // They will be removed as code is updated to use nested fields directly.
+    /// Effective locale: config override → system locale → `en-US`.
+    pub fn effective_locale(&self) -> String {
+        if let Some(locale) = self
+            .locale_override
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return crate::i18n::resolve_supported_locale(locale);
+        }
+
+        if let Some(system_locale) = sys_locale::get_locale() {
+            return crate::i18n::resolve_supported_locale(&system_locale);
+        }
+
+        crate::i18n::FALLBACK_LOCALE.to_string()
+    }
 
     pub fn checkin_times_vec(&self) -> &[String] {
         &self.checkin.times
@@ -616,8 +617,6 @@ impl Config {
         &self.server.cors_origins
     }
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn resolve_data_dir() -> String {
     std::env::var("BOBE_DATA_DIR").unwrap_or_else(|_| {

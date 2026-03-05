@@ -1,16 +1,10 @@
-//! Response generation prompts.
-
+use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::AiMessage;
 use crate::runtime::prompts::base::{DEFAULT_SOUL, PromptConfig};
 
-/// Prompt for generating proactive suggestions to the user.
 pub struct ProactiveResponsePrompt;
 
 impl ProactiveResponsePrompt {
-    const SYSTEM_TEMPLATE: &str = "{soul}\n\n\
-        You are offering a proactive suggestion based on what you've observed.\n\
-        Be brief, helpful, and specific. Don't be intrusive or obvious.";
-
     pub fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.7,
@@ -24,34 +18,42 @@ impl ProactiveResponsePrompt {
         soul: Option<&str>,
         previous_conversation_summary: Option<&str>,
         current_time: Option<&str>,
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
-        let system_content = Self::SYSTEM_TEMPLATE.replace("{soul}", soul.unwrap_or(DEFAULT_SOUL));
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
+        let system_content = format!(
+            "{}\n\n{}",
+            soul.unwrap_or(DEFAULT_SOUL),
+            t(locale, "response-proactive-system")
+        );
 
         let mut user_content_parts: Vec<String> = Vec::new();
 
         if let Some(time) = current_time {
-            user_content_parts.push(format!("Current time: {time}\n"));
+            user_content_parts.push(t_vars(
+                locale,
+                "response-proactive-current-time",
+                &[("time", time.to_owned())],
+            ));
         }
 
         if let Some(summary) = previous_conversation_summary {
-            user_content_parts.push(format!("Earlier conversation summary:\n{summary}\n"));
+            user_content_parts.push(format!(
+                "{}\n{summary}",
+                t(locale, "response-proactive-previous-summary")
+            ));
         }
 
-        user_content_parts.push(format!("Recent activity:\n{context}"));
+        user_content_parts.push(format!(
+            "{}\n{context}",
+            t(locale, "response-proactive-recent-activity")
+        ));
 
         if previous_conversation_summary.is_some() {
-            user_content_parts.push(
-                "\nYou may naturally reference the previous conversation if relevant.".into(),
-            );
+            user_content_parts.push(t(locale, "response-proactive-reference-previous"));
         }
 
-        user_content_parts.push(
-            "\nRespond directly with your message (no preamble). \
-             Be concise for casual check-ins. \
-             For structured reviews or briefings per your soul instructions, \
-             be thorough and well-formatted."
-                .into(),
-        );
+        user_content_parts.push(t(locale, "response-proactive-final-directive"));
 
         let user_content = user_content_parts.join("\n");
 
@@ -62,15 +64,9 @@ impl ProactiveResponsePrompt {
     }
 }
 
-/// Prompt for responding to user messages.
 pub struct UserResponsePrompt;
 
 impl UserResponsePrompt {
-    const SYSTEM_TEMPLATE: &str = "{soul}\n\n\
-        Recent activity context:\n\
-        {context}\n\n\
-        Use this context to provide relevant, helpful responses.";
-
     pub fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.7,
@@ -79,24 +75,27 @@ impl UserResponsePrompt {
         }
     }
 
-    /// Build messages for user response.
-    ///
-    /// `conversation_history` is a list of `(role, content)` tuples for previous turns.
     pub fn messages(
         user_message: &str,
         context: &str,
         conversation_history: Option<&[(&str, &str)]>,
         soul: Option<&str>,
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let effective_context = if context.is_empty() {
-            "No recent context"
+            t(locale, "response-user-no-recent-context")
         } else {
-            context
+            context.to_owned()
         };
 
-        let system_content = Self::SYSTEM_TEMPLATE
-            .replace("{soul}", soul.unwrap_or(DEFAULT_SOUL))
-            .replace("{context}", effective_context);
+        let system_content = format!(
+            "{}\n\n{}\n{}\n\n{}",
+            soul.unwrap_or(DEFAULT_SOUL),
+            t(locale, "response-user-context-header"),
+            effective_context,
+            t(locale, "response-user-context-suffix")
+        );
 
         let mut msgs: Vec<AiMessage> = vec![AiMessage::system(system_content)];
 

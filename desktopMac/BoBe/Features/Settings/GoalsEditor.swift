@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Split-pane editor for Goals with priority colors, status badges, and delete confirmation.
 struct GoalsEditor: View {
     @State private var goals: [Goal] = []
     @State private var editorState = SettingsEditorState<String>()
@@ -16,19 +15,19 @@ struct GoalsEditor: View {
     var body: some View {
         SettingsEditorScaffold(hasSelection: self.selectedGoal != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "Goals") { self.editorState.isCreating.toggle() }
+                SettingsPaneHeader(title: L10n.tr("settings.goals.title")) { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
                 if self.editorState.isCreating {
                     VStack(spacing: 6) {
-                        BobeTextField(placeholder: "What's the goal?", text: self.$newContent) {
+                        BobeTextField(placeholder: L10n.tr("settings.goals.new.placeholder"), text: self.$newContent) {
                             if !self.newContent.isEmpty { self.createGoal() }
                         }
                         HStack(spacing: 6) {
-                            Button("Create") { self.createGoal() }
+                            Button(L10n.tr("settings.editor.action.create")) { self.createGoal() }
                                 .bobeButton(.primary, size: .small)
                             .disabled(self.newContent.isEmpty)
-                            Button("Cancel") {
+                            Button(L10n.tr("settings.editor.action.cancel")) {
                                 self.editorState.setCreating(false)
                                 self.newContent = ""
                             }
@@ -40,7 +39,7 @@ struct GoalsEditor: View {
                 if self.editorState.isLoading, self.goals.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Loading goals...")
+                        Text(L10n.tr("settings.goals.loading"))
                             .bobeTextStyle(.body)
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -51,10 +50,10 @@ struct GoalsEditor: View {
                         Image(systemName: "target")
                             .font(.system(size: 28))
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("No goals yet")
+                        Text(L10n.tr("settings.goals.empty.title"))
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("Create goals for BoBe to work towards")
+                        Text(L10n.tr("settings.goals.empty.description"))
                             .bobeTextStyle(.helper)
                             .foregroundStyle(self.theme.colors.textMuted.opacity(0.7))
                     }
@@ -77,11 +76,11 @@ struct GoalsEditor: View {
                                                     .bobeTextStyle(.rowTitle)
                                                     .lineLimit(1)
                                                 HStack(spacing: 4) {
-                                                    Text(goal.status.rawValue)
+                                                    Text(self.goalStatusLabel(goal.status))
                                                     Text("•")
-                                                    Text(goal.priority.rawValue)
+                                                    Text(self.goalPriorityLabel(goal.priority))
                                                     Text("•")
-                                                    Text(goal.source.rawValue)
+                                                    Text(self.goalSourceLabel(goal.source))
                                                 }
                                                 .bobeTextStyle(.rowMeta)
                                                 .foregroundStyle(self.theme.colors.textMuted)
@@ -91,9 +90,9 @@ struct GoalsEditor: View {
                                             BobeToggle(
                                                 isOn: Binding(
                                                     get: { goal.enabled },
-                                                    set: { _ in self.toggleGoal(goal) }
-                                                ),
-                                                accessibilityLabel: "Enable goal"
+                                                set: { _ in self.toggleGoal(goal) }
+                                            ),
+                                                accessibilityLabel: L10n.tr("settings.goals.toggle.enable_accessibility")
                                             )
                                         }
                                     }
@@ -109,14 +108,14 @@ struct GoalsEditor: View {
             if let goal = self.selectedGoal {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
-                        Text("Goal")
+                        Text(L10n.tr("settings.goals.badge.goal"))
                             .font(.system(size: 11, weight: .medium))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(self.theme.colors.border.opacity(0.4)))
 
                         if self.editorState.isDirty {
-                            Text("unsaved")
+                            Text(L10n.tr("settings.editor.badge.unsaved"))
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(self.theme.colors.tertiary)
                                 .padding(.horizontal, 6)
@@ -124,14 +123,14 @@ struct GoalsEditor: View {
                                 .background(Capsule().fill(self.theme.colors.tertiary.opacity(0.15)))
                         }
 
-                        Text(goal.priority.rawValue)
+                        Text(self.goalPriorityLabel(goal.priority))
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(self.priorityColor(goal.priority))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(self.priorityColor(goal.priority).opacity(0.15)))
 
-                        Text(goal.status.rawValue.uppercased())
+                        Text(self.goalStatusLabel(goal.status).uppercased())
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(self.statusColor(goal.status))
                             .padding(.horizontal, 6)
@@ -147,15 +146,15 @@ struct GoalsEditor: View {
                             options: [GoalPriority.high, .medium, .low],
                             label: { priority in
                                 switch priority {
-                                case .high: "High Priority"
-                                case .medium: "Medium Priority"
-                                case .low: "Low Priority"
-                                case .unknown: "Unknown"
+                                case .high: L10n.tr("settings.goals.priority.high")
+                                case .medium: L10n.tr("settings.goals.priority.medium")
+                                case .low: L10n.tr("settings.goals.priority.low")
+                                case .unknown: L10n.tr("settings.common.unknown")
                                 }
                             },
                             width: 180
                         )
-                        .accessibilityLabel("Goal priority")
+                        .accessibilityLabel(L10n.tr("settings.goals.priority.accessibility"))
                         .onChange(of: self.selectedPriority) { _, _ in
                             self.editorState.setDirty()
                         }
@@ -168,7 +167,7 @@ struct GoalsEditor: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "checkmark")
-                                    Text("Complete")
+                                    Text(L10n.tr("settings.goals.action.complete"))
                                 }
                             }
                             .bobeButton(.secondary, size: .small)
@@ -178,7 +177,7 @@ struct GoalsEditor: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "archivebox")
-                                    Text("Archive")
+                                    Text(L10n.tr("settings.goals.action.archive"))
                                 }
                             }
                             .bobeButton(.secondary, size: .small)
@@ -200,15 +199,15 @@ struct GoalsEditor: View {
                     SettingsEditorActionRow {
                         if self.editorState.showDeleteConfirmation {
                             HStack(spacing: 6) {
-                                Text("Delete?")
+                                Text(L10n.tr("settings.editor.delete.confirm"))
                                     .font(.system(size: 12))
                                     .foregroundStyle(self.theme.colors.primary)
-                                Button("Yes") {
+                                Button(L10n.tr("settings.editor.delete.yes")) {
                                     self.deleteGoal(goal)
                                     self.editorState.dismissDeleteConfirmation()
                                 }
                                 .bobeButton(.destructive, size: .small)
-                                Button("No") { self.editorState.dismissDeleteConfirmation() }
+                                Button(L10n.tr("settings.editor.delete.no")) { self.editorState.dismissDeleteConfirmation() }
                                     .bobeButton(.secondary, size: .small)
                             }
                         } else {
@@ -217,7 +216,7 @@ struct GoalsEditor: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
-                            .accessibilityLabel("Delete goal")
+                            .accessibilityLabel(L10n.tr("settings.goals.delete.accessibility"))
                             .bobeButton(.destructive, size: .small)
                         }
                     } trailing: {
@@ -241,7 +240,7 @@ struct GoalsEditor: View {
                 Image(systemName: "target")
                     .font(.system(size: 28))
                     .foregroundStyle(self.theme.colors.textMuted)
-                Text("Select a goal to edit")
+                Text(L10n.tr("settings.goals.empty.select"))
                     .bobeTextStyle(.rowTitle)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
@@ -256,8 +255,6 @@ struct GoalsEditor: View {
         }
         .task { await self.loadGoals() }
     }
-
-    // MARK: - Helpers
 
     private func priorityColor(_ priority: GoalPriority) -> Color {
         switch priority {
@@ -278,7 +275,32 @@ struct GoalsEditor: View {
         }
     }
 
-    // MARK: - Actions
+    private func goalStatusLabel(_ status: GoalStatus) -> String {
+        switch status {
+        case .active: L10n.tr("settings.goals.status.active")
+        case .paused: L10n.tr("settings.goals.status.paused")
+        case .completed: L10n.tr("settings.goals.status.completed")
+        case .archived: L10n.tr("settings.goals.status.archived")
+        case .unknown: L10n.tr("settings.common.unknown")
+        }
+    }
+
+    private func goalPriorityLabel(_ priority: GoalPriority) -> String {
+        switch priority {
+        case .high: L10n.tr("settings.goals.priority.high_short")
+        case .medium: L10n.tr("settings.goals.priority.medium_short")
+        case .low: L10n.tr("settings.goals.priority.low_short")
+        case .unknown: L10n.tr("settings.common.unknown")
+        }
+    }
+
+    private func goalSourceLabel(_ source: GoalSource) -> String {
+        switch source {
+        case .user: L10n.tr("settings.goals.source.user")
+        case .inferred: L10n.tr("settings.goals.source.inferred")
+        case .unknown: L10n.tr("settings.common.unknown")
+        }
+    }
 
     private func loadGoals() async {
         self.editorState.setLoading(true)

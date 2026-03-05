@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - Custom Toggle Switch
-
 struct BobeToggle: View {
     @Binding var isOn: Bool
     var accessibilityLabel: String?
@@ -18,14 +16,12 @@ struct BobeToggle: View {
             .toggleStyle(.switch)
             .tint(self.theme.colors.secondary)
             .controlSize(.small)
-            .accessibilityLabel(Text(self.accessibilityLabel ?? "Enabled"))
+            .accessibilityLabel(Text(self.accessibilityLabel ?? L10n.tr("settings.shared.toggle.enabled")))
     }
 }
 
-// MARK: - Shared Settings Actions
-
 struct AccentAddButton: View {
-    var title = "Add New +"
+    var title = L10n.tr("settings.shared.action.add_new")
     let action: () -> Void
 
     var body: some View {
@@ -36,7 +32,7 @@ struct AccentAddButton: View {
 
 struct SettingsPaneHeader: View {
     let title: String
-    var actionTitle = "Add New +"
+    var actionTitle = L10n.tr("settings.shared.action.add_new")
     let action: () -> Void
     @Environment(\.theme) private var theme
 
@@ -50,8 +46,6 @@ struct SettingsPaneHeader: View {
         }
     }
 }
-
-// MARK: - Settings Row (label + control)
 
 struct SettingsRow<Content: View>: View {
     let label: String
@@ -102,8 +96,6 @@ struct ThemedSplitPane<Left: View, Right: View>: View {
     }
 }
 
-// MARK: - Debounced Number Input
-
 struct DebouncedNumberInput: View {
     @Binding var value: Int
     var range: ClosedRange<Int> = 0 ... 9999
@@ -151,8 +143,6 @@ struct DebouncedNumberInput: View {
     }
 }
 
-// MARK: - Debounced Decimal Input (for similarity thresholds)
-
 struct DebouncedDecimalInput: View {
     @Binding var value: Double
     var range: ClosedRange<Double> = 0 ... 1
@@ -194,8 +184,6 @@ struct DebouncedDecimalInput: View {
             }
     }
 }
-
-// MARK: - Collapsible Settings Section
 
 struct CollapsibleSection<Content: View>: View {
     let title: String
@@ -242,7 +230,10 @@ struct CollapsibleSection<Content: View>: View {
                 Spacer()
 
                 if let toggleBinding {
-                    BobeToggle(isOn: toggleBinding, accessibilityLabel: "\(self.title) enabled")
+                    BobeToggle(
+                        isOn: toggleBinding,
+                        accessibilityLabel: L10n.tr("settings.shared.section.enabled_format", self.title)
+                    )
                 }
             }
             .padding(.vertical, 8)
@@ -257,18 +248,14 @@ struct CollapsibleSection<Content: View>: View {
     }
 }
 
-// MARK: - Format Helpers
-
 func formatBytes(_ bytes: Int) -> String {
     let gb = Double(bytes) / 1_073_741_824
-    if gb >= 1 { return String(format: "%.1f GB", gb) }
+    if gb >= 1 { return L10n.tr("settings.shared.bytes.gb_format", gb) }
     let mb = Double(bytes) / 1_048_576
-    if mb >= 1 { return String(format: "%.0f MB", mb) }
+    if mb >= 1 { return L10n.tr("settings.shared.bytes.mb_format", mb) }
     let kb = Double(bytes) / 1024
-    return String(format: "%.0f KB", kb)
+    return L10n.tr("settings.shared.bytes.kb_format", kb)
 }
-
-// MARK: - Previews
 
 #if !SPM_BUILD
 #Preview("BobeToggle") {

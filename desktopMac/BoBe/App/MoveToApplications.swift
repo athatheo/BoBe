@@ -3,8 +3,6 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "MoveToApplications")
 
-/// Prompts the user to move the app to /Applications if it's running from
-/// a read-only volume (DMG), ~/Downloads, or /tmp.
 @MainActor
 func moveToApplicationsIfNeeded() {
     let bundlePath = Bundle.main.bundlePath
@@ -25,11 +23,11 @@ func moveToApplicationsIfNeeded() {
     logger.info("App running from \(bundlePath) — prompting to move to Applications")
 
     let alert = NSAlert()
-    alert.messageText = "BoBe works best from the Applications folder."
-    alert.informativeText = "Would you like to move BoBe there now?"
+    alert.messageText = L10n.tr("app.move_to_applications.title")
+    alert.informativeText = L10n.tr("app.move_to_applications.message")
     alert.alertStyle = .informational
-    alert.addButton(withTitle: "Move to Applications")
-    alert.addButton(withTitle: "Not Now")
+    alert.addButton(withTitle: L10n.tr("app.move_to_applications.confirm"))
+    alert.addButton(withTitle: L10n.tr("app.move_to_applications.cancel"))
 
     let response = alert.runModal()
     guard response == .alertFirstButtonReturn else { return }
@@ -46,7 +44,7 @@ func moveToApplicationsIfNeeded() {
     } catch {
         logger.error("Failed to copy app to Applications: \(error.localizedDescription)")
         let errAlert = NSAlert()
-        errAlert.messageText = "Couldn't move BoBe"
+        errAlert.messageText = L10n.tr("app.move_to_applications.error_title")
         errAlert.informativeText = error.localizedDescription
         errAlert.alertStyle = .warning
         errAlert.runModal()
@@ -65,7 +63,6 @@ func moveToApplicationsIfNeeded() {
     NSApp.terminate(nil)
 }
 
-/// Returns true if the path resides on a read-only filesystem (e.g. a mounted DMG).
 private func isReadOnlyVolume(_ path: String) -> Bool {
     var stat = statfs()
     guard statfs(path, &stat) == 0 else { return false }

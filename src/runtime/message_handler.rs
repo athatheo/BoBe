@@ -1,6 +1,4 @@
-//! Message handler — handles incoming user messages.
-//!
-//! Creates/activates conversation, runs LLM with tools, streams response.
+//! Handles incoming user messages: conversation lifecycle, LLM with tools, streaming.
 
 use std::sync::Arc;
 
@@ -67,29 +65,24 @@ impl MessageHandler {
         }
     }
 
-    /// Handle a user message. Returns message ID for tracking.
     pub async fn handle_message(&self, content: &str, message_id: &str) {
-        // 1. Record user activity for cooldown
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Err(e) = cooldown_repo.update_last_user_response(Utc::now()).await
         {
             warn!(error = %e, "message_handler.cooldown_update_failed");
         }
 
-        // 2. Conversation lifecycle
         let conversation_id = self.ensure_active_conversation(content).await;
         let Some(conversation_id) = conversation_id else {
             error!("message_handler.conversation_failed");
             return;
         };
 
-        // 3. Learning - store message with embedding (fire-and-forget)
         let observation = LearnerObservation::message(content.to_owned());
         if let Err(e) = self.message_learner.learn(&observation).await {
             warn!(error = %e, "message_handler.learning_failed");
         }
 
-        // 4. Generate response
         self.respond_to_message(message_id, content, conversation_id)
             .await;
     }
@@ -133,7 +126,6 @@ impl MessageHandler {
         let cfg = self.config.load();
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
-        // Build context and conversation history
         let assembled = self
             .context_assembler
             .build_context(
@@ -154,7 +146,7 @@ impl MessageHandler {
         let prompt_config = UserResponsePrompt::config();
 
         let system_tokens =
-            count_tokens(&context_summary) + count_tokens(soul.as_deref().unwrap_or("")) + 50; // template framing
+            count_tokens(&context_summary) + count_tokens(soul.as_deref().unwrap_or("")) + 50;
         let user_msg_tokens = count_tokens(user_content) + 4;
         let overhead = system_tokens + user_msg_tokens + prompt_config.max_tokens as usize;
         let history_budget = (cfg.llm.context_window as usize).saturating_sub(overhead);
@@ -167,6 +159,7 @@ impl MessageHandler {
             .iter()
             .map(|(r, c)| (r.as_str(), c.as_str()))
             .collect();
+        let locale = cfg.effective_locale();
 
         let messages = UserResponsePrompt::messages(
             user_content,
@@ -177,16 +170,15 @@ impl MessageHandler {
                 Some(&history_refs)
             },
             soul.as_deref(),
+            Some(&locale),
         );
 
-        // Get tools if enabled
         let tools = if cfg.tools.enabled {
             self.get_tools(&messages).await
         } else {
             Vec::new()
         };
 
-        // Clamp max_tokens so prompt + response fits within context window
         let prompt_tokens = count_message_tokens(&messages);
         let context_window = cfg.llm.context_window;
         let max_tokens = clamp_max_tokens(context_window, prompt_tokens, prompt_config.max_tokens);
@@ -213,7 +205,6 @@ impl MessageHandler {
             conversation_id: Some(conversation_id.to_string()),
         };
 
-        // Stream with or without tools
         let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
             let stream = tcl.stream(
                 messages,
@@ -328,7 +319,6 @@ impl MessageHandler {
         }
     }
 
-    /// Get available tools, optionally preselected based on conversation context.
     async fn get_tools(
         &self,
         messages: &[crate::llm::types::AiMessage],

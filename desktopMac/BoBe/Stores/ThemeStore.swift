@@ -1,7 +1,6 @@
 import Observation
 import SwiftUI
 
-/// Manages the active theme with UserDefaults persistence
 @MainActor
 @Observable
 final class ThemeStore {

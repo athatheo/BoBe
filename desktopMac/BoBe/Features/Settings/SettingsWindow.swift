@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Settings category for sidebar navigation
 enum SettingsCategory: String, CaseIterable, Identifiable {
     case souls, goals, memories
     case userProfiles = "user-profiles"
@@ -18,18 +17,18 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .souls: "Souls"
-        case .goals: "Goals"
-        case .memories: "Memories"
-        case .userProfiles: "User Profiles"
-        case .tools: "Tools"
-        case .mcpServers: "MCP Servers"
-        case .appearance: "Appearance"
-        case .aiModel: "AI Model"
-        case .behavior: "Behavior"
-        case .privacy: "Privacy"
-        case .goalWorker: "Goal Worker"
-        case .advanced: "For Nerds"
+        case .souls: L10n.tr("settings.category.souls")
+        case .goals: L10n.tr("settings.category.goals")
+        case .memories: L10n.tr("settings.category.memories")
+        case .userProfiles: L10n.tr("settings.category.user_profiles")
+        case .tools: L10n.tr("settings.category.tools")
+        case .mcpServers: L10n.tr("settings.category.mcp_servers")
+        case .appearance: L10n.tr("settings.category.appearance")
+        case .aiModel: L10n.tr("settings.category.ai_model")
+        case .behavior: L10n.tr("settings.category.behavior")
+        case .privacy: L10n.tr("settings.category.privacy")
+        case .goalWorker: L10n.tr("settings.category.goal_worker")
+        case .advanced: L10n.tr("settings.category.advanced")
         }
     }
 
@@ -49,7 +48,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .advanced: "terminal.fill"
         }
     }
-
 }
 
 enum SettingsCategoryGroup: String, CaseIterable {
@@ -70,9 +68,17 @@ enum SettingsCategoryGroup: String, CaseIterable {
             [.advanced]
         }
     }
+
+    var label: String {
+        switch self {
+        case .context: L10n.tr("settings.group.context")
+        case .integrations: L10n.tr("settings.group.integrations")
+        case .preferences: L10n.tr("settings.group.preferences")
+        case .advanced: L10n.tr("settings.group.advanced")
+        }
+    }
 }
 
-/// Main settings window view with sidebar + content
 struct SettingsWindow: View {
     @State private var selectedCategory: SettingsCategory?
     @State private var themeStore = ThemeStore.shared
@@ -109,12 +115,10 @@ struct SettingsWindow: View {
         .toolbar(removing: .sidebarToggle)
     }
 
-    // MARK: - Sidebar
-
     private var settingsSidebar: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("BOBE TUNING")
+                Text(L10n.tr("settings.window.sidebar_title"))
                     .bobeTextStyle(.sectionLabel)
                     .tracking(1.2)
                     .foregroundStyle(self.theme.colors.primary)
@@ -142,7 +146,7 @@ struct SettingsWindow: View {
                                 .listRowBackground(Color.clear)
                         }
                     } header: {
-                        Text(group.rawValue)
+                        Text(group.label)
                             .bobeTextStyle(.sectionLabel)
                             .tracking(0.8)
                             .foregroundStyle(self.theme.colors.textMuted)
@@ -190,7 +194,7 @@ struct SettingsWindow: View {
                 .bobeTextStyle(.windowTitle)
                 .foregroundStyle(self.theme.colors.text)
             Spacer()
-            Button("Check for Updates...") {
+            Button(L10n.tr("settings.window.check_updates")) {
                 UpdaterManager.shared.checkForUpdates()
             }
             .buttonStyle(.bordered)
@@ -206,8 +210,6 @@ struct SettingsWindow: View {
                 .frame(height: 1)
         }
     }
-
-    // MARK: - Content
 
     @ViewBuilder
     private var settingsContent: some View {
@@ -242,8 +244,6 @@ struct SettingsWindow: View {
     }
 }
 
-// MARK: - Settings Overview Page
-
 struct SettingsOverview: View {
     var onNavigate: (SettingsCategory) -> Void
     @Environment(\.theme) private var theme
@@ -252,14 +252,11 @@ struct SettingsOverview: View {
         ScrollView {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
-                    Text("How to change BoBe")
+                    Text(L10n.tr("settings.window.overview.title"))
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(self.theme.colors.text)
 
-                    Text(
-                        "BoBe uses a personality (Soul), your goals, and memories to provide contextual, "
-                            + "proactive assistance. Here's how to customize your experience."
-                    )
+                    Text(L10n.tr("settings.window.overview.description"))
                     .font(.system(size: 14))
                     .foregroundStyle(self.theme.colors.textMuted)
                     .multilineTextAlignment(.center)
@@ -276,42 +273,42 @@ struct SettingsOverview: View {
                     self.overviewCard(
                         icon: "eye.fill",
                         color: self.theme.colors.primary,
-                        heading: "What BoBe sees",
-                        body: "Control screen capture, context window, and what information BoBe has access to.",
+                        heading: L10n.tr("settings.window.overview.card.sees.heading"),
+                        body: L10n.tr("settings.window.overview.card.sees.body"),
                         target: .behavior
                     )
                     self.overviewCard(
                         icon: "brain.head.profile",
                         color: self.theme.colors.secondary,
-                        heading: "What BoBe remembers",
-                        body: "Manage memories, conversation history, and how BoBe learns from interactions.",
+                        heading: L10n.tr("settings.window.overview.card.remembers.heading"),
+                        body: L10n.tr("settings.window.overview.card.remembers.body"),
                         target: .memories
                     )
                     self.overviewCard(
                         icon: "message.fill",
                         color: self.theme.colors.tertiary,
-                        heading: "When BoBe speaks up",
-                        body: "Configure check-in frequency, proactive messages, and notification preferences.",
+                        heading: L10n.tr("settings.window.overview.card.speaks.heading"),
+                        body: L10n.tr("settings.window.overview.card.speaks.body"),
                         target: .behavior
                     )
                     self.overviewCard(
                         icon: "paintbrush.fill",
                         color: self.theme.colors.primary.opacity(0.7),
-                        heading: "How BoBe sounds",
-                        body: "Choose and customize personality templates that shape BoBe's communication style.",
+                        heading: L10n.tr("settings.window.overview.card.sounds.heading"),
+                        body: L10n.tr("settings.window.overview.card.sounds.body"),
                         target: .souls
                     )
                     self.overviewCard(
                         icon: "bolt.fill",
                         color: self.theme.colors.secondary,
-                        heading: "What BoBe can do",
-                        body: "Enable tools, connect MCP servers, and extend BoBe's capabilities.",
+                        heading: L10n.tr("settings.window.overview.card.can_do.heading"),
+                        body: L10n.tr("settings.window.overview.card.can_do.body"),
                         target: .tools
                     )
                 }
                 .padding(.horizontal, 24)
 
-                Text("Use the sidebar to explore all settings. Everything runs locally on your Mac.")
+                Text(L10n.tr("settings.window.overview.footer"))
                     .font(.system(size: 12))
                     .foregroundStyle(self.theme.colors.textMuted)
                     .padding(.bottom, 24)

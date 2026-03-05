@@ -227,7 +227,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func showSetupWizard() {
-        // Close any existing overlay — only one UI path should be active
         OverlayWindowManager.shared.close()
 
         self.unregisterSetupCloseObserver(for: self.setupWindow)
@@ -243,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "BoBe Setup"
+        window.title = L10n.tr("setup.window.title")
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.animationBehavior = .none
@@ -278,12 +277,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("setup.wizard_closed_3x_showing_escape")
             self.isShowingSetupAlert = true
             let alert = NSAlert()
-            alert.messageText = "Setup incomplete"
-            alert.informativeText = "BoBe needs to be configured before it can work."
+            alert.messageText = L10n.tr("app.setup_incomplete.title")
+            alert.informativeText = L10n.tr("app.setup_incomplete.message")
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "Retry Setup")
-            alert.addButton(withTitle: "Open Settings")
-            alert.addButton(withTitle: "Quit")
+            alert.addButton(withTitle: L10n.tr("app.setup_incomplete.retry"))
+            alert.addButton(withTitle: L10n.tr("app.setup_incomplete.open_settings"))
+            alert.addButton(withTitle: L10n.tr("app.common.quit"))
             let response = alert.runModal()
             self.isShowingSetupAlert = false
             switch response {
@@ -325,31 +324,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private func showServiceErrorDialog(error: Error) async -> Bool {
         var detail =
-            "The backend service failed to start after multiple attempts.\n\n"
+            L10n.tr("app.service_error.detail_prefix")
                 + "\(error.localizedDescription)\n\n"
         if let stderr = await BackendService.shared.lastError {
-            detail += "Backend output:\n\(stderr)\n\n"
+            detail += L10n.tr("app.service_error.backend_output_prefix") + "\(stderr)\n\n"
         }
-        detail += "Logs are in ~/.bobe/logs/"
+        detail += L10n.tr("app.service_error.logs_hint")
 
         let alert = NSAlert()
-        alert.messageText = "BoBe couldn't start"
+        alert.messageText = L10n.tr("app.service_error.title")
         alert.informativeText = detail
         alert.alertStyle = .critical
-        alert.addButton(withTitle: "Retry")
-        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: L10n.tr("app.common.retry"))
+        alert.addButton(withTitle: L10n.tr("app.common.quit"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
     @MainActor
     private func showBackendErrorDialog(message: String) async -> Bool {
         let alert = NSAlert()
-        alert.messageText = "BoBe backend error"
+        alert.messageText = L10n.tr("app.backend_error.title")
         alert.informativeText =
-            "BoBe could not verify backend readiness.\n\n\(message)\n\nRetry or quit."
+            L10n.tr("app.backend_error.message_format", message)
         alert.alertStyle = .critical
-        alert.addButton(withTitle: "Retry")
-        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: L10n.tr("app.common.retry"))
+        alert.addButton(withTitle: L10n.tr("app.common.quit"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 

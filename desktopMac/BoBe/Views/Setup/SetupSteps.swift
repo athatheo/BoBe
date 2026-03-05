@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - Concept Card (welcome screen)
-
 struct ConceptCard: View {
     let icon: String
     let title: String
@@ -34,8 +32,6 @@ struct ConceptCard: View {
         )
     }
 }
-
-// MARK: - AI Choice Card
 
 struct AIChoiceCard: View {
     let icon: String
@@ -78,8 +74,6 @@ struct AIChoiceCard: View {
     }
 }
 
-// MARK: - Permission Badge
-
 struct PermissionBadge: View {
     let status: ScreenPermissionStatus
     @Environment(\.theme) private var theme
@@ -98,10 +92,10 @@ struct PermissionBadge: View {
 
     private var text: String {
         switch self.status {
-        case .granted: "✓ Granted"
-        case .denied: "Not Granted"
-        case .restricted: "Restricted"
-        case .notDetermined: "Not Set"
+        case .granted: L10n.tr("setup.permission_status.granted")
+        case .denied: L10n.tr("setup.permission_status.denied")
+        case .restricted: L10n.tr("setup.permission_status.restricted")
+        case .notDetermined: L10n.tr("setup.permission_status.not_set")
         }
     }
 
@@ -114,8 +108,6 @@ struct PermissionBadge: View {
         }
     }
 }
-
-// MARK: - Permission Card (capture setup)
 
 struct PermissionCard<Content: View>: View {
     let title: String
@@ -142,8 +134,6 @@ struct PermissionCard<Content: View>: View {
         )
     }
 }
-
-// MARK: - Previews
 
 #if !SPM_BUILD
 #Preview("Concept Card") {

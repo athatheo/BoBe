@@ -2,8 +2,7 @@ import Foundation
 
 // MARK: - Core State Types
 
-/// UI state type derived from daemon connection + activity flags.
-/// Priority order: loading > speaking > thinking > wants_to_speak > capturing > idle
+/// Priority: loading > speaking > thinking > wants_to_speak > capturing > idle
 enum BobeStateType: String, Sendable, Equatable {
     case loading
     case error
@@ -15,7 +14,7 @@ enum BobeStateType: String, Sendable, Equatable {
     case shuttingDown = "shutting_down"
 }
 
-/// Indicator types from daemon SSE events — matches Rust SCREAMING_SNAKE_CASE
+/// Matches Rust SCREAMING_SNAKE_CASE indicator variants.
 enum IndicatorType: String, Codable, Sendable, Equatable {
     case idle = "IDLE"
     case screenCapture = "SCREEN_CAPTURE"
@@ -30,13 +29,11 @@ enum IndicatorType: String, Codable, Sendable, Equatable {
     }
 }
 
-/// Chat message sender
 enum MessageSender: String, Sendable {
     case user
     case bobe
 }
 
-/// A single chat message in the stacking bubble system
 struct ChatMessage: Identifiable, Sendable {
     let id: String
     let sender: MessageSender
@@ -62,7 +59,6 @@ struct ChatMessage: Identifiable, Sendable {
     }
 }
 
-/// Tool execution tracking for indicator display
 struct ToolExecution: Identifiable, Sendable {
     var id: String {
         self.toolCallId
@@ -83,7 +79,6 @@ enum ToolExecutionStatus: String, Sendable {
     case error
 }
 
-/// Full application state context
 struct BobeContext: Sendable {
     var daemonConnected = false
     var daemonError = false
@@ -103,7 +98,6 @@ struct BobeContext: Sendable {
     var stateType: BobeStateType = .loading
 }
 
-/// Derive UI state type from context flags
 func deriveStateType(from context: BobeContext) -> BobeStateType {
     if context.shuttingDown { return .shuttingDown }
     if context.daemonError { return .error }

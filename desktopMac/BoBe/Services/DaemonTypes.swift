@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Errors
-
 enum DaemonError: Error, LocalizedError {
     case invalidResponse
     case httpError(statusCode: Int, message: String)
@@ -16,8 +14,6 @@ enum DaemonError: Error, LocalizedError {
     }
 }
 
-// MARK: - Type-Erased Encodable
-
 struct AnyEncodable: Encodable {
     private let encode: (Encoder) throws -> Void
 
@@ -29,8 +25,6 @@ struct AnyEncodable: Encodable {
         try self.encode(encoder)
     }
 }
-
-// MARK: - DaemonClient Tools, MCP, Settings, Models & Onboarding
 
 extension DaemonClient {
     // MARK: Tools

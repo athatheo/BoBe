@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Step Flow
-
 enum SetupStep {
     case welcome
     case chooseMode
@@ -53,8 +51,6 @@ enum SetupJobStatus: String, Codable, Sendable {
     }
 }
 
-// MARK: - Backend-Driven Options (from GET /onboarding/options)
-
 struct LocalTier: Codable, Identifiable, Equatable {
     let id: String
     let label: String
@@ -67,7 +63,7 @@ struct LocalTier: Codable, Identifiable, Equatable {
     }
 
     var diskLabel: String {
-        String(format: "~%.0f GB", Double(self.diskEstimateBytes) / 1_000_000_000)
+        L10n.tr("setup.local.disk_estimate_format", Double(self.diskEstimateBytes) / 1_000_000_000)
     }
 }
 
@@ -100,8 +96,6 @@ struct OnboardingOptions: Codable {
         case cloudProviders = "cloud_providers"
     }
 }
-
-// MARK: - Setup Job Types (from POST/GET /onboarding/setup)
 
 struct SetupJobStep: Codable, Identifiable {
     let id: String

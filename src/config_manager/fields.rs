@@ -1,10 +1,5 @@
-//! Mechanical field-name → Config-field mapping for runtime updates.
-//!
-//! Keys use dotted notation matching the nested TOML structure:
-//! `"server.host"`, `"llm.backend"`, `"capture.enabled"`, etc.
-//!
-//! For backward compatibility, flat keys (e.g. `"llm_backend"`) are also
-//! accepted and mapped to their nested equivalents.
+//! Field-name → Config-field mapping for runtime updates.
+//! Accepts both dotted keys (`"llm.backend"`) and flat legacy keys (`"llm_backend"`).
 
 use std::collections::HashMap;
 
@@ -12,9 +7,6 @@ use tracing::warn;
 
 use crate::config::Config;
 
-/// Apply a set of key→JSON changes to a mutable `Config`.
-///
-/// Accepts both dotted keys (`"llm.backend"`) and flat legacy keys (`"llm_backend"`).
 pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) {
     macro_rules! set_parsed {
         ($field:expr, $value:expr, $key:expr) => {
@@ -26,7 +18,6 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
     }
 
     for (key, value) in changes {
-        // Normalize flat keys to dotted keys
         let dotted = normalize_key(key);
         let k = dotted.as_str();
 
@@ -251,28 +242,23 @@ pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) 
             "soul_file" => set_parsed!(config.soul_file, value, k),
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
             "setup_completed" => set_parsed!(config.setup_completed, value, k),
+            "locale_override" => set_parsed!(config.locale_override, value, k),
 
             _ => {} // Unknown — already warned during classification
         }
     }
 }
 
-/// Normalize flat legacy keys to dotted notation.
 pub(crate) fn normalize_key_pub(key: &str) -> String {
     normalize_key(key)
 }
 
-/// Normalize flat legacy keys to dotted notation.
-///
-/// E.g. `"llm_backend"` → `"llm.backend"`, `"capture_enabled"` → `"capture.enabled"`.
-/// Already-dotted keys pass through unchanged.
+/// Normalize flat legacy keys to dotted notation. Already-dotted keys pass through.
 fn normalize_key(key: &str) -> String {
-    // Already dotted? Pass through.
     if key.contains('.') {
         return key.to_string();
     }
 
-    // Map flat keys to dotted equivalents
     match key {
         "host" => "server.host",
         "port" => "server.port",
@@ -366,6 +352,7 @@ fn normalize_key(key: &str) -> String {
         "goal_worker_max_failure_retries" => "goal_worker.max_failure_retries",
         "goal_worker_claude_model" => "goal_worker.claude_model",
         "projects_dir" => "goal_worker.projects_dir",
+        "locale_override" => "locale_override",
         other => other,
     }
     .to_string()

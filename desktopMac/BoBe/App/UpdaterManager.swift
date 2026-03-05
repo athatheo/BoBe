@@ -5,7 +5,6 @@ import Sparkle
 
 private let updaterLogger = Logger(subsystem: "com.bobe.app", category: "Updater")
 
-/// Wraps Sparkle updater lifecycle and exposes update actions to the UI.
 @MainActor
 final class UpdaterManager: NSObject, SPUUpdaterDelegate {
     static let shared = UpdaterManager()

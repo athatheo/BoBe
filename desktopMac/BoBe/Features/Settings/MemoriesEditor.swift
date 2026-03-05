@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Split-pane editor for Memories with category/type filters.
 struct MemoriesEditor: View {
     @State private var memories: [Memory] = []
     @State private var editorState = SettingsEditorState<String>()
@@ -22,18 +21,26 @@ struct MemoriesEditor: View {
     }
 
     private let categoryLabels: [MemoryCategory: String] = [
-        .general: "General", .preference: "Preference", .pattern: "Pattern",
-        .fact: "Fact", .interest: "Interest", .observation: "Observation",
+        .general: L10n.tr("settings.memories.category.general"),
+        .preference: L10n.tr("settings.memories.category.preference"),
+        .pattern: L10n.tr("settings.memories.category.pattern"),
+        .fact: L10n.tr("settings.memories.category.fact"),
+        .interest: L10n.tr("settings.memories.category.interest"),
+        .observation: L10n.tr("settings.memories.category.observation"),
+        .unknown: L10n.tr("settings.common.unknown"),
     ]
 
     private let typeLabels: [MemoryType: String] = [
-        .shortTerm: "Short-term", .longTerm: "Long-term", .explicit: "Explicit",
+        .shortTerm: L10n.tr("settings.memories.type.short_term"),
+        .longTerm: L10n.tr("settings.memories.type.long_term"),
+        .explicit: L10n.tr("settings.memories.type.explicit"),
+        .unknown: L10n.tr("settings.common.unknown"),
     ]
 
     var body: some View {
         SettingsEditorScaffold(hasSelection: self.selectedMemory != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "Memories") { self.editorState.isCreating.toggle() }
+                SettingsPaneHeader(title: L10n.tr("settings.memories.title")) { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
                 HStack(spacing: 6) {
@@ -41,29 +48,29 @@ struct MemoriesEditor: View {
                         selection: self.$filterCategory,
                         options: [MemoryCategory?.none] + MemoryCategory.allCases.map { .some($0) },
                         label: { selected in
-                            if let selected { return selected.rawValue.capitalized }
-                            return "All"
+                            if let selected { return self.categoryLabels[selected] ?? L10n.tr("settings.common.unknown") }
+                            return L10n.tr("settings.common.all")
                         },
                         width: 110,
                         size: .small
                     )
-                    .accessibilityLabel("Filter memories by category")
+                    .accessibilityLabel(L10n.tr("settings.memories.filter.category.accessibility"))
 
                     BobeMenuPicker(
                         selection: self.$filterType,
                         options: [MemoryType?.none, .some(.shortTerm), .some(.longTerm), .some(.explicit)],
                         label: { selected in
                             switch selected {
-                            case .shortTerm?: "Short"
-                            case .longTerm?: "Long"
-                            case .explicit?: "Explicit"
-                            default: "All"
+                            case .shortTerm?: L10n.tr("settings.memories.type.short")
+                            case .longTerm?: L10n.tr("settings.memories.type.long")
+                            case .explicit?: L10n.tr("settings.memories.type.explicit")
+                            default: L10n.tr("settings.common.all")
                             }
                         },
                         width: 90,
                         size: .small
                     )
-                    .accessibilityLabel("Filter memories by type")
+                    .accessibilityLabel(L10n.tr("settings.memories.filter.type.accessibility"))
 
                     Spacer()
 
@@ -82,7 +89,7 @@ struct MemoriesEditor: View {
                             .foregroundStyle(self.theme.colors.primary)
                             .lineLimit(1)
                         Spacer()
-                        Button("Retry") { Task { await self.loadMemories() } }
+                        Button(L10n.tr("app.common.retry")) { Task { await self.loadMemories() } }
                             .bobeButton(.secondary, size: .mini)
                     }
                 }
@@ -97,10 +104,10 @@ struct MemoriesEditor: View {
                                     .stroke(self.theme.colors.border, lineWidth: 1)
                             )
                         HStack(spacing: 6) {
-                            Button("Create") { self.createMemory() }
+                            Button(L10n.tr("settings.editor.action.create")) { self.createMemory() }
                                 .bobeButton(.primary, size: .small)
                             .disabled(self.newContent.isEmpty)
-                            Button("Cancel") {
+                            Button(L10n.tr("settings.editor.action.cancel")) {
                                 self.editorState.setCreating(false)
                                 self.newContent = ""
                             }
@@ -113,7 +120,7 @@ struct MemoriesEditor: View {
                 if self.editorState.isLoading, self.memories.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Loading memories...")
+                        Text(L10n.tr("settings.memories.loading"))
                             .bobeTextStyle(.body)
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -124,7 +131,7 @@ struct MemoriesEditor: View {
                         Image(systemName: "brain.head.profile")
                             .font(.system(size: 28))
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("No memories")
+                        Text(L10n.tr("settings.memories.empty.title"))
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -155,7 +162,7 @@ struct MemoriesEditor: View {
                                                     get: { memory.enabled },
                                                     set: { _ in self.toggleMemory(memory) }
                                                 ),
-                                                accessibilityLabel: "Enable memory"
+                                                accessibilityLabel: L10n.tr("settings.memories.toggle.enable_accessibility")
                                             )
                                         }
                                     }
@@ -171,14 +178,14 @@ struct MemoriesEditor: View {
             if let memory = self.selectedMemory {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
-                        Text("Memory")
+                        Text(L10n.tr("settings.memories.badge.memory"))
                             .font(.system(size: 11, weight: .medium))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(self.theme.colors.border.opacity(0.4)))
 
                         if self.editorState.isDirty {
-                            Text("unsaved")
+                            Text(L10n.tr("settings.editor.badge.unsaved"))
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(self.theme.colors.tertiary)
                                 .padding(.horizontal, 6)
@@ -205,11 +212,11 @@ struct MemoriesEditor: View {
                         BobeMenuPicker(
                             selection: self.$selectedCategory,
                             options: MemoryCategory.allCases,
-                            label: { $0.rawValue.capitalized },
+                            label: { self.categoryLabels[$0] ?? L10n.tr("settings.common.unknown") },
                             width: 130,
                             size: .small
                         )
-                        .accessibilityLabel("Memory category")
+                        .accessibilityLabel(L10n.tr("settings.memories.category.accessibility"))
                         .onChange(of: self.selectedCategory) { _, _ in
                             self.editorState.setDirty()
                         }
@@ -234,15 +241,15 @@ struct MemoriesEditor: View {
                     SettingsEditorActionRow {
                         if self.editorState.showDeleteConfirmation {
                             HStack(spacing: 6) {
-                                Text("Delete?")
+                                Text(L10n.tr("settings.editor.delete.confirm"))
                                     .font(.system(size: 12))
                                     .foregroundStyle(self.theme.colors.primary)
-                                Button("Yes") {
+                                Button(L10n.tr("settings.editor.delete.yes")) {
                                     self.deleteMemory(memory)
                                     self.editorState.dismissDeleteConfirmation()
                                 }
                                 .bobeButton(.destructive, size: .small)
-                                Button("No") { self.editorState.dismissDeleteConfirmation() }
+                                Button(L10n.tr("settings.editor.delete.no")) { self.editorState.dismissDeleteConfirmation() }
                                     .bobeButton(.secondary, size: .small)
                             }
                         } else {
@@ -251,7 +258,7 @@ struct MemoriesEditor: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
-                            .accessibilityLabel("Delete memory")
+                            .accessibilityLabel(L10n.tr("settings.memories.delete.accessibility"))
                             .bobeButton(.destructive, size: .small)
                         }
                     } trailing: {
@@ -271,7 +278,7 @@ struct MemoriesEditor: View {
                 Image(systemName: "brain.head.profile")
                     .font(.system(size: 28))
                     .foregroundStyle(self.theme.colors.textMuted)
-                Text("Select a memory to edit")
+                Text(L10n.tr("settings.memories.empty.select"))
                     .bobeTextStyle(.rowTitle)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
@@ -286,8 +293,6 @@ struct MemoriesEditor: View {
         }
         .task { await self.loadMemories() }
     }
-
-    // MARK: - Actions
 
     private func loadMemories() async {
         self.editorState.setLoading(true)

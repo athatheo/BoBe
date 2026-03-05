@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Tools list panel — grouped by provider with expandable descriptions and toggle.
 struct ToolsPanel: View {
     @State private var tools: [ToolInfo] = []
     @State private var isLoading = false
@@ -20,12 +19,12 @@ struct ToolsPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text("Tools")
+                    Text(L10n.tr("settings.tools.title"))
                         .font(.title2.bold())
                         .foregroundStyle(self.theme.colors.text)
                     Spacer()
 
-                    Text("\(self.enabledCount) of \(self.tools.count) enabled")
+                    Text(L10n.tr("settings.tools.enabled_count_format", self.enabledCount, self.tools.count))
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.textMuted)
 
@@ -34,7 +33,7 @@ struct ToolsPanel: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
-                    .accessibilityLabel("Reload tools")
+                    .accessibilityLabel(L10n.tr("settings.tools.reload.accessibility"))
                     .bobeButton(.secondary, size: .small)
                 }
 
@@ -54,7 +53,7 @@ struct ToolsPanel: View {
                 if self.isLoading, self.tools.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Loading tools...")
+                        Text(L10n.tr("settings.tools.loading"))
                             .font(.system(size: 13))
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -65,10 +64,10 @@ struct ToolsPanel: View {
                         Image(systemName: "wrench.and.screwdriver")
                             .font(.system(size: 28))
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("No tools available")
+                        Text(L10n.tr("settings.tools.empty.title"))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("Tools become available when the daemon is running")
+                        Text(L10n.tr("settings.tools.empty.description"))
                             .font(.system(size: 11))
                             .foregroundStyle(self.theme.colors.textMuted.opacity(0.7))
                     }
@@ -140,7 +139,7 @@ struct ToolsPanel: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(tool.description.count <= 80)
-                                .accessibilityLabel("Expand \(tool.name) description")
+                                .accessibilityLabel(L10n.tr("settings.tools.expand_description.accessibility_format", tool.name))
                             }
                         }
 
@@ -151,7 +150,7 @@ struct ToolsPanel: View {
                                 get: { tool.enabled },
                                 set: { _ in self.toggleTool(tool) }
                             ),
-                            accessibilityLabel: "Enable tool \(tool.name)"
+                            accessibilityLabel: L10n.tr("settings.tools.toggle.enable_accessibility_format", tool.name)
                         )
                     }
                     .padding(.vertical, 6)
@@ -173,14 +172,14 @@ struct ToolsPanel: View {
                                 }
                             } label: {
                                 HStack(spacing: 4) {
-                                    Text("collapse")
+                                    Text(L10n.tr("settings.tools.action.collapse"))
                                         .font(.system(size: 10))
                                     Image(systemName: "chevron.up")
                                         .font(.system(size: 8))
                                 }
                                 .foregroundStyle(self.theme.colors.textMuted)
                             }
-                            .accessibilityLabel("Collapse \(tool.name) description")
+                            .accessibilityLabel(L10n.tr("settings.tools.collapse_description.accessibility_format", tool.name))
                             .bobeButton(.ghost, size: .mini)
                         }
                         .padding(.horizontal, 4)

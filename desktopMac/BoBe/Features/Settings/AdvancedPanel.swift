@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Advanced settings panel — similarity thresholds, intervals, MCP toggle.
 struct AdvancedPanel: View {
+    private static let systemLocaleOption = "__system__"
+
     @State private var settings: DaemonSettings?
     @State private var isLoading = false
     @State private var error: String?
@@ -11,7 +12,7 @@ struct AdvancedPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("For Nerds")
+                Text(L10n.tr("settings.advanced.title"))
                     .font(.title2.bold())
                     .foregroundStyle(self.theme.colors.text)
 
@@ -33,12 +34,13 @@ struct AdvancedPanel: View {
                     self.goalsSection
                     self.learningSection
                     self.conversationSection
+                    self.localizationSection
                     self.projectsSection
                     self.mcpSection
                 } else if self.isLoading {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Loading daemon settings...")
+                        Text(L10n.tr("settings.advanced.loading"))
                             .font(.system(size: 13))
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -53,25 +55,25 @@ struct AdvancedPanel: View {
 
     private var similaritySection: some View {
         CollapsibleSection(
-            title: "Similarity Thresholds",
+            title: L10n.tr("settings.advanced.similarity.title"),
             icon: "square.3.layers.3d",
-            description: "Vector similarity thresholds for memory operations"
+            description: L10n.tr("settings.advanced.similarity.description")
         ) {
-            SettingsRow(label: "Deduplication") {
+            SettingsRow(label: L10n.tr("settings.advanced.similarity.deduplication")) {
                 DebouncedDecimalInput(
                     value: self.binding(\.similarityDeduplicationThreshold, fallback: 0.85),
                     range: 0 ... 1,
                     step: 0.01
                 )
             }
-            SettingsRow(label: "Search recall") {
+            SettingsRow(label: L10n.tr("settings.advanced.similarity.search_recall")) {
                 DebouncedDecimalInput(
                     value: self.binding(\.similaritySearchRecallThreshold, fallback: 0.6),
                     range: 0 ... 1,
                     step: 0.01
                 )
             }
-            SettingsRow(label: "Clustering") {
+            SettingsRow(label: L10n.tr("settings.advanced.similarity.clustering")) {
                 DebouncedDecimalInput(
                     value: self.binding(\.similarityClusteringThreshold, fallback: 0.8),
                     range: 0 ... 1,
@@ -83,11 +85,15 @@ struct AdvancedPanel: View {
 
     private var goalsSection: some View {
         CollapsibleSection(
-            title: "Goals",
+            title: L10n.tr("settings.advanced.goals.title"),
             icon: "target",
-            description: "Goal tracking intervals"
+            description: L10n.tr("settings.advanced.goals.description")
         ) {
-            SettingsRow(label: "Check interval", description: "Seconds between goal relevance checks", suffix: "seconds") {
+            SettingsRow(
+                label: L10n.tr("settings.advanced.goals.check_interval"),
+                description: L10n.tr("settings.advanced.goals.check_interval.description"),
+                suffix: L10n.tr("settings.units.seconds")
+            ) {
                 DebouncedNumberInput(
                     value: Binding(
                         get: { Int(self.settings?.goalCheckIntervalSeconds ?? 300) },
@@ -100,11 +106,15 @@ struct AdvancedPanel: View {
 
     private var learningSection: some View {
         CollapsibleSection(
-            title: "Learning",
+            title: L10n.tr("settings.advanced.learning.title"),
             icon: "brain.head.profile",
-            description: "Background learning cycle timing"
+            description: L10n.tr("settings.advanced.learning.description")
         ) {
-            SettingsRow(label: "Learning interval", description: "Minutes between learning cycles", suffix: "minutes") {
+            SettingsRow(
+                label: L10n.tr("settings.advanced.learning.interval"),
+                description: L10n.tr("settings.advanced.learning.interval.description"),
+                suffix: L10n.tr("settings.units.minutes")
+            ) {
                 DebouncedNumberInput(
                     value: self.binding(\.learningIntervalMinutes, fallback: 15),
                     range: 1 ... 1440
@@ -115,11 +125,15 @@ struct AdvancedPanel: View {
 
     private var conversationSection: some View {
         CollapsibleSection(
-            title: "Conversation",
+            title: L10n.tr("settings.advanced.conversation.title"),
             icon: "message.fill",
-            description: "Advanced conversation timing"
+            description: L10n.tr("settings.advanced.conversation.description")
         ) {
-            SettingsRow(label: "Inactivity timeout", description: "Seconds before allowing new proactive reachout", suffix: "seconds") {
+            SettingsRow(
+                label: L10n.tr("settings.advanced.conversation.inactivity_timeout"),
+                description: L10n.tr("settings.advanced.conversation.inactivity_timeout.description"),
+                suffix: L10n.tr("settings.units.seconds")
+            ) {
                 DebouncedNumberInput(
                     value: self.binding(\.conversationInactivityTimeoutSeconds, fallback: 300),
                     range: 5 ... 600
@@ -130,34 +144,61 @@ struct AdvancedPanel: View {
 
     private var projectsSection: some View {
         CollapsibleSection(
-            title: "Projects",
+            title: L10n.tr("settings.advanced.projects.title"),
             icon: "folder.fill",
-            description: "Default directory where BoBe creates project folders from goals"
+            description: L10n.tr("settings.advanced.projects.description")
         ) {
             HStack(spacing: 8) {
                 BobeTextField(
-                    placeholder: "/path/to/projects",
+                    placeholder: L10n.tr("settings.advanced.projects.path_placeholder"),
                     text: self.binding(\.projectsDirectory, fallback: "")
                 )
-                Button("Browse...") { self.browseDirectory() }
+                Button(L10n.tr("settings.advanced.projects.action.browse")) { self.browseDirectory() }
                     .bobeButton(.secondary, size: .small)
+            }
+        }
+    }
+
+    private var localizationSection: some View {
+        CollapsibleSection(
+            title: L10n.tr("settings.localization.title"),
+            icon: "globe",
+            description: L10n.tr("settings.localization.description")
+        ) {
+            SettingsRow(label: L10n.tr("settings.localization.language")) {
+                BobeMenuPicker(
+                    selection: self.localeSelectionBinding,
+                    options: self.localeOptions,
+                    label: self.localeLabel,
+                    width: 240
+                )
+            }
+
+            SettingsRow(
+                label: L10n.tr("settings.localization.effective_locale"),
+                description: L10n.tr("settings.localization.effective_locale.description")
+            ) {
+                Text(self.settings?.effectiveLocale ?? "en-US")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
         }
     }
 
     private var mcpSection: some View {
         CollapsibleSection(
-            title: "MCP Protocol",
+            title: L10n.tr("settings.advanced.mcp.title"),
             icon: "server.rack",
-            description: "Model Context Protocol server connections"
+            description: L10n.tr("settings.advanced.mcp.description")
         ) {
-            SettingsRow(label: "Enable MCP", description: "Connect to MCP servers for extended capabilities") {
+            SettingsRow(
+                label: L10n.tr("settings.advanced.mcp.enable"),
+                description: L10n.tr("settings.advanced.mcp.enable.description")
+            ) {
                 BobeToggle(isOn: self.binding(\.mcpEnabled, fallback: false))
             }
         }
     }
-
-    // MARK: - Helpers
 
     private func binding<V>(
         _ keyPath: WritableKeyPath<DaemonSettings, V>,
@@ -191,12 +232,47 @@ struct AdvancedPanel: View {
                 req.conversationInactivityTimeoutSeconds = settings.conversationInactivityTimeoutSeconds
                 req.projectsDirectory = settings.projectsDirectory
                 req.mcpEnabled = settings.mcpEnabled
+                req.localeOverride = settings.localeOverride
                 _ = try await DaemonClient.shared.updateSettings(req)
                 self.error = nil
             } catch {
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    private var localeOptions: [String] {
+        [Self.systemLocaleOption] + (self.settings?.supportedLocales ?? ["en-US"])
+    }
+
+    private var localeSelectionBinding: Binding<String> {
+        Binding(
+            get: {
+                if let override = self.settings?.localeOverride,
+                   !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return override
+                }
+                return Self.systemLocaleOption
+            },
+            set: { selected in
+                guard var current = self.settings else { return }
+                current.localeOverride = selected == Self.systemLocaleOption ? "" : selected
+                self.settings = current
+                self.debounceSave()
+            }
+        )
+    }
+
+    private func localeLabel(_ localeId: String) -> String {
+        if localeId == Self.systemLocaleOption {
+            return L10n.tr("settings.localization.system_default")
+        }
+
+        if let localized = Locale.current.localizedString(forIdentifier: localeId) {
+            return "\(localized) (\(localeId))"
+        }
+
+        return localeId
     }
 
     private func browseDirectory() {

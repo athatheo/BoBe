@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Split-pane editor for User Profiles.
 struct UserProfilesEditor: View {
     @State private var profiles: [UserProfile] = []
     @State private var editorState = SettingsEditorState<String>()
@@ -15,22 +14,22 @@ struct UserProfilesEditor: View {
     var body: some View {
         SettingsEditorScaffold(hasSelection: self.selectedProfile != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "User Profiles") { self.editorState.isCreating.toggle() }
+                SettingsPaneHeader(title: L10n.tr("settings.user_profiles.title")) { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
                 if self.editorState.isCreating {
                     HStack(spacing: 6) {
-                        BobeTextField(placeholder: "profile-name", text: self.$newName) {
+                        BobeTextField(placeholder: L10n.tr("settings.user_profiles.new.placeholder"), text: self.$newName) {
                             if !self.newName.isEmpty { self.createProfile() }
                         }
-                        Button("Create") { self.createProfile() }
+                        Button(L10n.tr("settings.editor.action.create")) { self.createProfile() }
                             .bobeButton(.primary, size: .small)
                             .disabled(self.newName.isEmpty)
                         Button {
                             self.editorState.setCreating(false)
                             self.newName = ""
                         } label: {
-                            Text("Cancel")
+                            Text(L10n.tr("settings.editor.action.cancel"))
                         }
                         .bobeButton(.secondary, size: .small)
                     }
@@ -39,7 +38,7 @@ struct UserProfilesEditor: View {
                 if self.editorState.isLoading, self.profiles.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Loading profiles...")
+                        Text(L10n.tr("settings.user_profiles.loading"))
                             .bobeTextStyle(.body)
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -50,10 +49,10 @@ struct UserProfilesEditor: View {
                         Image(systemName: "person.crop.circle")
                             .font(.system(size: 28))
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("No profiles yet")
+                        Text(L10n.tr("settings.user_profiles.empty.title"))
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("Profiles tell BoBe about your background and preferences")
+                        Text(L10n.tr("settings.user_profiles.empty.description"))
                             .bobeTextStyle(.helper)
                             .foregroundStyle(self.theme.colors.textMuted.opacity(0.7))
                             .multilineTextAlignment(.center)
@@ -72,7 +71,7 @@ struct UserProfilesEditor: View {
                                                 Text(profile.name)
                                                     .bobeTextStyle(.rowTitle)
                                                 if profile.isDefault {
-                                                    Text("default")
+                                                    Text(L10n.tr("settings.editor.badge.default"))
                                                         .bobeTextStyle(.badge)
                                                         .padding(.horizontal, 4)
                                                         .padding(.vertical, 1)
@@ -91,7 +90,7 @@ struct UserProfilesEditor: View {
                                                 get: { profile.enabled },
                                                 set: { _ in self.toggleProfile(profile) }
                                             ),
-                                            accessibilityLabel: "Enable profile"
+                                            accessibilityLabel: L10n.tr("settings.user_profiles.toggle.enable_accessibility")
                                         )
                                     }
                                 )
@@ -110,7 +109,7 @@ struct UserProfilesEditor: View {
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.text)
                         if self.editorState.isDirty {
-                            Text("unsaved")
+                            Text(L10n.tr("settings.editor.badge.unsaved"))
                                 .bobeTextStyle(.badge)
                                 .foregroundStyle(self.theme.colors.tertiary)
                                 .padding(.horizontal, 6)
@@ -118,7 +117,7 @@ struct UserProfilesEditor: View {
                                 .background(Capsule().fill(self.theme.colors.tertiary.opacity(0.15)))
                         }
                         if profile.isDefault {
-                            Text("default")
+                            Text(L10n.tr("settings.editor.badge.default"))
                                 .bobeTextStyle(.badge)
                                 .foregroundStyle(self.theme.colors.primary)
                                 .padding(.horizontal, 6)
@@ -130,15 +129,15 @@ struct UserProfilesEditor: View {
                         if !profile.isDefault {
                             if self.editorState.showDeleteConfirmation {
                                 HStack(spacing: 6) {
-                                    Text("Delete?")
+                                    Text(L10n.tr("settings.editor.delete.confirm"))
                                         .font(.system(size: 12))
                                         .foregroundStyle(self.theme.colors.primary)
-                                    Button("Yes") {
+                                    Button(L10n.tr("settings.editor.delete.yes")) {
                                         self.deleteProfile(profile)
                                         self.editorState.dismissDeleteConfirmation()
                                     }
                                     .bobeButton(.destructive, size: .small)
-                                    Button("No") { self.editorState.dismissDeleteConfirmation() }
+                                    Button(L10n.tr("settings.editor.delete.no")) { self.editorState.dismissDeleteConfirmation() }
                                         .bobeButton(.secondary, size: .small)
                                 }
                             } else {
@@ -147,7 +146,7 @@ struct UserProfilesEditor: View {
                                 } label: {
                                     Image(systemName: "trash")
                                 }
-                                .accessibilityLabel("Delete profile")
+                                .accessibilityLabel(L10n.tr("settings.user_profiles.delete.accessibility"))
                                 .bobeButton(.destructive, size: .small)
                             }
                         }
@@ -182,7 +181,7 @@ struct UserProfilesEditor: View {
                 Image(systemName: "person.crop.circle")
                     .font(.system(size: 28))
                     .foregroundStyle(self.theme.colors.textMuted)
-                Text("Select a profile to edit")
+                Text(L10n.tr("settings.user_profiles.empty.select"))
                     .bobeTextStyle(.rowTitle)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
@@ -196,8 +195,6 @@ struct UserProfilesEditor: View {
         }
         .task { await self.loadProfiles() }
     }
-
-    // MARK: - Actions
 
     private func loadProfiles() async {
         self.editorState.setLoading(true)

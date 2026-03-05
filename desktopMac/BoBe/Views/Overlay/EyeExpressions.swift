@@ -1,8 +1,8 @@
 import SwiftUI
 
-// MARK: - Reusable Eye Unit
+// MARK: - Eye Unit
 
-/// Single eye composed of outline + sclera + iris + pupil + optional highlight.
+/// Single eye: outline, sclera, iris, pupil, optional highlight.
 struct EyeUnit: View {
     let theme: ThemeColors
     var irisOffset: CGPoint = .zero
@@ -208,22 +208,18 @@ private struct ViewfinderCorners: View {
             let style = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
 
             Path { p in
-                // top-left
                 p.move(to: CGPoint(x: 0, y: corner))
                 p.addLine(to: CGPoint(x: 0, y: 0))
                 p.addLine(to: CGPoint(x: corner, y: 0))
 
-                // top-right
                 p.move(to: CGPoint(x: width - corner, y: 0))
                 p.addLine(to: CGPoint(x: width, y: 0))
                 p.addLine(to: CGPoint(x: width, y: corner))
 
-                // bottom-left
                 p.move(to: CGPoint(x: 0, y: height - corner))
                 p.addLine(to: CGPoint(x: 0, y: height))
                 p.addLine(to: CGPoint(x: corner, y: height))
 
-                // bottom-right
                 p.move(to: CGPoint(x: width - corner, y: height))
                 p.addLine(to: CGPoint(x: width, y: height))
                 p.addLine(to: CGPoint(x: width, y: height - corner))

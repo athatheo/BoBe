@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Manages the settings window (separate from overlay).
 @MainActor
 final class SettingsWindowManager: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowManager()
@@ -26,7 +25,7 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "BoBe Settings"
+        window.title = L10n.tr("settings.window.title")
         window.center()
         window.minSize = NSSize(width: 800, height: 550)
         window.titlebarAppearsTransparent = true

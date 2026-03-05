@@ -1,7 +1,4 @@
-//! Proactive generator — generates proactive responses and check-in messages.
-//!
-//! Owns the complete proactive response lifecycle:
-//! conversation setup, LLM generation, engagement recording.
+//! Generates proactive responses: conversation setup, LLM generation, engagement recording.
 
 use std::sync::Arc;
 
@@ -61,7 +58,6 @@ impl ProactiveGenerator {
         }
     }
 
-    /// Complete proactive flow: conversation setup → generate → record engagement.
     pub async fn generate_proactive_response(
         &self,
         auto_close_minutes: i64,
@@ -90,7 +86,6 @@ impl ProactiveGenerator {
                 let old_id = conv.id.to_string();
                 let old_turn_count = turns.len() as u32;
                 let (new_conv, summary) = self.transition_conversation(conv).await;
-                // Notify clients that the old conversation was closed
                 self.event_queue.push(conversation_closed_event(
                     &old_id,
                     "inactivity_timeout",
@@ -119,7 +114,6 @@ impl ProactiveGenerator {
     ) {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
-        // Build context
         let query = context_summary.as_deref().unwrap_or("");
 
         let assembled = self
@@ -146,17 +140,18 @@ impl ProactiveGenerator {
 
         let msg_id = format!("msg_{}", Uuid::new_v4().simple());
         let current_time = Utc::now().format("%A, %B %d %Y %H:%M").to_string();
+        let cfg = self.config.load();
+        let locale = cfg.effective_locale();
 
         let messages = ProactiveResponsePrompt::messages(
             &final_context,
             soul.as_deref(),
             previous_summary.as_deref(),
             Some(&current_time),
+            Some(&locale),
         );
         let prompt_config = ProactiveResponsePrompt::config();
 
-        // Clamp max_tokens so prompt + response fits within context window
-        let cfg = self.config.load();
         let prompt_tokens = count_message_tokens(&messages);
         let max_tokens = clamp_max_tokens(
             cfg.llm.context_window,
@@ -173,14 +168,12 @@ impl ProactiveGenerator {
             );
         }
 
-        // Load tools if registry available
         let tools = if let Some(ref registry) = self.tool_registry {
             registry.get_all_tools(false).await
         } else {
             vec![]
         };
 
-        // Use tool call loop if tools are available, otherwise plain LLM stream
         let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
             let tool_stream =
                 tcl.stream(messages, tools, prompt_config.temperature, max_tokens, None);
@@ -307,7 +300,6 @@ impl ProactiveGenerator {
             }
             Err(e) => {
                 error!(error = %e, "proactive_generator.transition_failed");
-                // Return a new pending conversation as fallback
                 let fallback = Conversation::new_pending();
                 (fallback, None)
             }

@@ -1,7 +1,6 @@
 import CoreGraphics
 import SwiftUI
 
-/// Behavior settings panel — capture, check-ins, memory, conversation, tools.
 struct BehaviorPanel: View {
     @State private var settings: DaemonSettings?
     @State private var isLoading = false
@@ -36,7 +35,7 @@ struct BehaviorPanel: View {
                 } else if self.isLoading {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Loading behavior settings...")
+                        Text(L10n.tr("settings.behavior.loading"))
                             .font(.system(size: 13))
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -51,12 +50,12 @@ struct BehaviorPanel: View {
 
     private var captureSection: some View {
         CollapsibleSection(
-            title: "Screen Capture",
+            title: L10n.tr("settings.behavior.capture.title"),
             icon: "camera.fill",
-            description: "BoBe periodically captures your screen for context",
+            description: L10n.tr("settings.behavior.capture.description"),
             toggleBinding: self.binding(\.captureEnabled, fallback: false)
         ) {
-            SettingsRow(label: "Capture interval", suffix: "seconds") {
+            SettingsRow(label: L10n.tr("settings.behavior.capture.interval"), suffix: L10n.tr("settings.units.seconds")) {
                 DebouncedNumberInput(value: self.binding(\.captureIntervalSeconds, fallback: 60), range: 1 ... 600)
             }
 
@@ -64,10 +63,10 @@ struct BehaviorPanel: View {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(self.theme.colors.tertiary)
-                    Text("Screen Recording permission not granted.")
+                    Text(L10n.tr("settings.behavior.capture.permission_missing"))
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.tertiary)
-                    Button("Open Settings") {
+                    Button(L10n.tr("setup.capture.permission.open_settings")) {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                             NSWorkspace.shared.open(url)
                         }
@@ -81,12 +80,12 @@ struct BehaviorPanel: View {
 
     private var checkinSection: some View {
         CollapsibleSection(
-            title: "Check-ins",
+            title: L10n.tr("settings.behavior.checkins.title"),
             icon: "clock.fill",
-            description: "Scheduled proactive check-ins throughout the day",
+            description: L10n.tr("settings.behavior.checkins.description"),
             toggleBinding: self.binding(\.checkinEnabled, fallback: false)
         ) {
-            SettingsRow(label: "Schedule") {
+            SettingsRow(label: L10n.tr("settings.behavior.checkins.schedule")) {
                 EmptyView()
             }
             FlowLayout(spacing: 6) {
@@ -110,15 +109,15 @@ struct BehaviorPanel: View {
             }
 
             HStack(spacing: 6) {
-                BobeTextField(placeholder: "HH:MM", text: self.$newCheckinTime, width: 80) {
+                BobeTextField(placeholder: L10n.tr("settings.behavior.checkins.time_placeholder"), text: self.$newCheckinTime, width: 80) {
                     self.addCheckinTime()
                 }
-                Button("Add") { self.addCheckinTime() }
+                Button(L10n.tr("settings.behavior.checkins.action.add")) { self.addCheckinTime() }
                     .bobeButton(.secondary, size: .small)
                     .disabled(self.newCheckinTime.isEmpty)
             }
 
-            SettingsRow(label: "Jitter", suffix: "minutes") {
+            SettingsRow(label: L10n.tr("settings.behavior.checkins.jitter"), suffix: L10n.tr("settings.units.minutes")) {
                 DebouncedNumberInput(value: self.binding(\.checkinJitterMinutes, fallback: 0), range: 0 ... 30)
             }
         }
@@ -126,15 +125,15 @@ struct BehaviorPanel: View {
 
     private var memorySection: some View {
         CollapsibleSection(
-            title: "Memory",
+            title: L10n.tr("settings.behavior.memory.title"),
             icon: "brain.head.profile",
-            description: "How long BoBe retains memories",
+            description: L10n.tr("settings.behavior.memory.description"),
             toggleBinding: self.binding(\.learningEnabled, fallback: true)
         ) {
-            SettingsRow(label: "Short-term retention", suffix: "days") {
+            SettingsRow(label: L10n.tr("settings.behavior.memory.short_term_retention"), suffix: L10n.tr("settings.units.days")) {
                 DebouncedNumberInput(value: self.binding(\.memoryShortTermRetentionDays, fallback: 7), range: 1 ... 365)
             }
-            SettingsRow(label: "Long-term retention", suffix: "days") {
+            SettingsRow(label: L10n.tr("settings.behavior.memory.long_term_retention"), suffix: L10n.tr("settings.units.days")) {
                 DebouncedNumberInput(value: self.binding(\.memoryLongTermRetentionDays, fallback: 365), range: 1 ... 3650)
             }
         }
@@ -142,14 +141,14 @@ struct BehaviorPanel: View {
 
     private var conversationSection: some View {
         CollapsibleSection(
-            title: "Conversation",
+            title: L10n.tr("settings.behavior.conversation.title"),
             icon: "message.fill",
-            description: "How conversations are managed"
+            description: L10n.tr("settings.behavior.conversation.description")
         ) {
-            SettingsRow(label: "Auto-close after", suffix: "minutes") {
+            SettingsRow(label: L10n.tr("settings.behavior.conversation.auto_close_after"), suffix: L10n.tr("settings.units.minutes")) {
                 DebouncedNumberInput(value: self.binding(\.conversationAutoCloseMinutes, fallback: 10), range: 1 ... 60)
             }
-            SettingsRow(label: "Generate summaries") {
+            SettingsRow(label: L10n.tr("settings.behavior.conversation.generate_summaries")) {
                 BobeToggle(isOn: self.binding(\.conversationSummaryEnabled, fallback: true))
             }
         }
@@ -157,18 +156,16 @@ struct BehaviorPanel: View {
 
     private var toolsSection: some View {
         CollapsibleSection(
-            title: "Tools",
+            title: L10n.tr("settings.behavior.tools.title"),
             icon: "wrench.fill",
-            description: "Allow BoBe to execute actions on your behalf",
+            description: L10n.tr("settings.behavior.tools.description"),
             toggleBinding: self.binding(\.toolsEnabled, fallback: true)
         ) {
-            SettingsRow(label: "Max iterations", suffix: "rounds") {
+            SettingsRow(label: L10n.tr("settings.behavior.tools.max_iterations"), suffix: L10n.tr("settings.units.rounds")) {
                 DebouncedNumberInput(value: self.binding(\.toolsMaxIterations, fallback: 8), range: 1 ... 20)
             }
         }
     }
-
-    // MARK: - Helpers
 
     private func binding<V>(
         _ keyPath: WritableKeyPath<DaemonSettings, V>,

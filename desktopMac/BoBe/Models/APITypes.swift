@@ -2,7 +2,6 @@ import Foundation
 
 // MARK: - SSE Event Stream Types
 
-/// SSE event types from GET /events
 enum EventType: String, Codable, Sendable {
     case indicator
     case textDelta = "text_delta"
@@ -21,7 +20,6 @@ enum EventType: String, Codable, Sendable {
     }
 }
 
-/// All SSE events wrapped in this envelope
 struct StreamBundle: Codable, Sendable {
     let type: EventType
     let payload: AnyCodablePayload
@@ -38,21 +36,18 @@ struct StreamBundle: Codable, Sendable {
     }
 }
 
-/// Indicator event payload
 struct IndicatorPayload: Codable, Sendable {
     let indicator: IndicatorType
     let message: String?
     let progress: Double?
 }
 
-/// Text delta payload for streaming responses
 struct TextDeltaPayload: Codable, Sendable {
     let delta: String
     let sequence: Int
     let done: Bool
 }
 
-/// Tool call start payload
 struct ToolCallStartPayload: Codable, Sendable {
     let status: String
     let toolName: String
@@ -65,7 +60,6 @@ struct ToolCallStartPayload: Codable, Sendable {
     }
 }
 
-/// Tool call complete payload
 struct ToolCallCompletePayload: Codable, Sendable {
     let status: String
     let toolName: String
@@ -84,7 +78,6 @@ struct ToolCallCompletePayload: Codable, Sendable {
     }
 }
 
-/// Error event payload
 struct ErrorPayload: Codable, Sendable {
     let code: String
     let message: String
@@ -92,7 +85,6 @@ struct ErrorPayload: Codable, Sendable {
     let details: [String: AnyCodableValue]?
 }
 
-/// Conversation closed payload
 struct ConversationClosedPayload: Codable, Sendable {
     let conversationId: String
     let reason: String
@@ -107,7 +99,7 @@ struct ConversationClosedPayload: Codable, Sendable {
 
 // MARK: - Flexible JSON Payload Handling
 
-/// A type-erased Codable wrapper for SSE payloads (decoded lazily by type)
+/// Type-erased Codable wrapper for SSE payloads, decoded lazily by type.
 struct AnyCodablePayload: Codable, Sendable {
     let data: Data
 
@@ -130,7 +122,6 @@ struct AnyCodablePayload: Codable, Sendable {
     }
 }
 
-/// Type-erased JSON value for flexible payload handling
 enum AnyCodableValue: Codable, Sendable {
     case string(String)
     case int(Int)

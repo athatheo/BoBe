@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Shared state for split-pane settings editors so each CRUD screen can adopt a common model incrementally.
+/// Shared state for split-pane CRUD settings editors.
 struct SettingsEditorState<SelectionID: Hashable>: Equatable {
     var selectedId: SelectionID?
     var isDirty = false
@@ -65,7 +65,6 @@ struct SettingsEditorState<SelectionID: Hashable>: Equatable {
     }
 }
 
-/// Scaffold for split-pane CRUD settings editors with shared list/detail pane layout.
 struct SettingsEditorScaffold<ListPane: View, DetailPane: View, EmptyPane: View>: View {
     private let leftWidth: CGFloat
     private let hasSelection: Bool
@@ -105,7 +104,6 @@ struct SettingsEditorScaffold<ListPane: View, DetailPane: View, EmptyPane: View>
     }
 }
 
-/// Shared list pane sizing and padding.
 struct SettingsEditorListPane<Content: View>: View {
     private let minWidth: CGFloat
     private let idealWidth: CGFloat
@@ -130,7 +128,6 @@ struct SettingsEditorListPane<Content: View>: View {
     }
 }
 
-/// Shared detail pane sizing and padding.
 struct SettingsEditorDetailPane<Content: View>: View {
     private let content: Content
 
@@ -146,7 +143,6 @@ struct SettingsEditorDetailPane<Content: View>: View {
     }
 }
 
-/// Common leading/trailing action row used in editor headers and footers.
 struct SettingsEditorActionRow<Leading: View, Trailing: View>: View {
     private let spacing: CGFloat
     private let leading: Leading
@@ -171,7 +167,6 @@ struct SettingsEditorActionRow<Leading: View, Trailing: View>: View {
     }
 }
 
-/// Reusable discard/save button group used by CRUD editors.
 struct SettingsEditorSaveActions: View {
     let isDirty: Bool
     let isSaving: Bool
@@ -181,17 +176,21 @@ struct SettingsEditorSaveActions: View {
     var body: some View {
         HStack(spacing: 8) {
             if self.isDirty {
-                Button("Discard", action: self.onDiscard)
+                Button(L10n.tr("settings.shared.action.discard"), action: self.onDiscard)
                     .bobeButton(.secondary, size: .small)
             }
-            Button(self.isSaving ? "Saving..." : "Save", action: self.onSave)
+            Button(
+                self.isSaving
+                    ? L10n.tr("settings.shared.action.saving")
+                    : L10n.tr("settings.shared.action.save"),
+                action: self.onSave
+            )
                 .bobeButton(.primary, size: .small)
                 .disabled(!self.isDirty || self.isSaving)
         }
     }
 }
 
-/// Shared inline error text styling for editor panes.
 struct SettingsEditorErrorText: View {
     let message: String
     @Environment(\.theme) private var theme

@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - ThemedControls Previews
-
 #if !SPM_BUILD
 #Preview("Button Variants") {
     VStack(spacing: 12) {

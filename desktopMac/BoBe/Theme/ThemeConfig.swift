@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - Theme Configuration
-
 enum ThemeId: String, CaseIterable, Sendable {
     case bauhaus
     case bauhausPastel = "bauhaus-pastel"
@@ -39,8 +37,6 @@ struct ThemeConfig: Identifiable, Sendable {
     let isDark: Bool
     let colors: ThemeColors
 }
-
-// MARK: - All Themes
 
 let allThemes: [ThemeConfig] = [
     ThemeConfig(
@@ -191,8 +187,6 @@ extension EnvironmentValues {
         set { self[ThemeKey.self] = newValue }
     }
 }
-
-// MARK: - Color Hex Extension
 
 extension Color {
     init(hex: String) {

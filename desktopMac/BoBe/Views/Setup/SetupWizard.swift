@@ -32,11 +32,11 @@ struct SetupWizard: View {
                         .resizable()
                         .frame(width: 28, height: 28)
                 } else {
-                    Text("BoBe Setup")
+                    Text(L10n.tr("setup.window.title"))
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(self.theme.colors.primary)
                 }
-                Text("BoBe")
+                Text(L10n.tr("app.brand_name"))
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(self.theme.colors.primary)
             }
@@ -75,8 +75,6 @@ struct SetupWizard: View {
         .task { await self.loadOptions() }
     }
 
-    // MARK: - Welcome
-
     private var welcomeView: some View {
         VStack(spacing: 0) {
             if let logoURL = Bundle.main.url(forResource: "logo-128", withExtension: "png"),
@@ -87,33 +85,33 @@ struct SetupWizard: View {
                     .padding(.bottom, 12)
             }
 
-            Text("Welcome to BoBe")
+            Text(L10n.tr("setup.welcome.title"))
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(self.theme.colors.text)
                 .padding(.bottom, 4)
 
-            Text("Your proactive AI companion for Mac")
+            Text(L10n.tr("setup.welcome.subtitle"))
                 .font(.system(size: 15))
                 .foregroundStyle(self.theme.colors.textMuted)
                 .padding(.bottom, 24)
 
             VStack(spacing: 12) {
                 ConceptCard(
-                    icon: "person.fill", title: "BoBe Souls",
-                    description: "BoBe's personality that shapes how it communicates."
+                    icon: "person.fill", title: L10n.tr("setup.welcome.concept.souls.title"),
+                    description: L10n.tr("setup.welcome.concept.souls.description")
                 )
                 ConceptCard(
-                    icon: "target", title: "Goals",
-                    description: "BoBe tracks what you're working toward and helps you make progress."
+                    icon: "target", title: L10n.tr("setup.welcome.concept.goals.title"),
+                    description: L10n.tr("setup.welcome.concept.goals.description")
                 )
                 ConceptCard(
-                    icon: "brain.head.profile", title: "Memories",
-                    description: "BoBe remembers your preferences, projects, and context."
+                    icon: "brain.head.profile", title: L10n.tr("setup.welcome.concept.memories.title"),
+                    description: L10n.tr("setup.welcome.concept.memories.description")
                 )
             }
             .padding(.bottom, 24)
 
-            Button("Get Started") { self.step = .chooseMode }
+            Button(L10n.tr("setup.welcome.get_started")) { self.step = .chooseMode }
                 .bobeButton(.primary, size: .regular)
                 .disabled(self.options == nil)
 
@@ -127,26 +125,32 @@ struct SetupWizard: View {
         .frame(maxWidth: 440)
     }
 
-    // MARK: - Choose Mode
-
     private var chooseModeView: some View {
         VStack(spacing: 0) {
-            Text("Choose your AI")
+            Text(L10n.tr("setup.choose_mode.title"))
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(self.theme.colors.text)
                 .padding(.bottom, 4)
 
-            Text("BoBe needs an AI model to think with.")
+            Text(L10n.tr("setup.choose_mode.subtitle"))
                 .font(.system(size: 15))
                 .foregroundStyle(self.theme.colors.textMuted)
                 .padding(.bottom, 24)
 
             HStack(spacing: 16) {
-                AIChoiceCard(icon: "cloud.fill", title: "Cloud Models", subtitle: "Recommended — fastest setup") {
+                AIChoiceCard(
+                    icon: "cloud.fill",
+                    title: L10n.tr("setup.choose_mode.cloud.title"),
+                    subtitle: L10n.tr("setup.choose_mode.cloud.subtitle")
+                ) {
                     self.setupMode = .online
                     self.step = .cloudConfig
                 }
-                AIChoiceCard(icon: "desktopcomputer", title: "Local Models", subtitle: "Runs entirely on your Mac") {
+                AIChoiceCard(
+                    icon: "desktopcomputer",
+                    title: L10n.tr("setup.choose_mode.local.title"),
+                    subtitle: L10n.tr("setup.choose_mode.local.subtitle")
+                ) {
                     self.setupMode = .local
                     self.step = .localConfig
                 }
@@ -155,19 +159,17 @@ struct SetupWizard: View {
         .frame(maxWidth: 440)
     }
 
-    // MARK: - Error
-
     private var errorView: some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 40)).foregroundStyle(self.theme.colors.primary)
-            Text("Setup failed")
+            Text(L10n.tr("setup.error.title"))
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(self.theme.colors.text)
             Text(self.errorMessage)
                 .font(.system(size: 14)).foregroundStyle(self.theme.colors.textMuted)
                 .multilineTextAlignment(.center)
-            Button("Retry") {
+            Button(L10n.tr("setup.error.retry")) {
                 self.step = .chooseMode
                 self.errorMessage = ""
                 self.progressPercent = 0
@@ -193,7 +195,7 @@ struct SetupWizard: View {
                 }
             }
         }
-        self.errorMessage = "Could not connect to the backend. Please restart BoBe."
+        self.errorMessage = L10n.tr("setup.error.backend_unreachable")
         self.step = .error
     }
 }

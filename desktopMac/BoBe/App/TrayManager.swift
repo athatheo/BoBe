@@ -2,7 +2,6 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// System tray (menu bar) manager.
 @MainActor
 final class TrayManager: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
@@ -22,7 +21,10 @@ final class TrayManager: NSObject, NSMenuDelegate {
                 trayIcon.size = NSSize(width: 18, height: 18)
                 button.image = trayIcon
             } else {
-                button.image = NSImage(systemSymbolName: "brain.head.profile", accessibilityDescription: "BoBe")
+                button.image = NSImage(
+                    systemSymbolName: "brain.head.profile",
+                    accessibilityDescription: L10n.tr("app.brand_name")
+                )
                 button.image?.size = NSSize(width: 18, height: 18)
                 button.image?.isTemplate = true
             }
@@ -35,39 +37,43 @@ final class TrayManager: NSObject, NSMenuDelegate {
         let menu = NSMenu()
 
         let statusText = switch self.store.stateType {
-        case .loading: "Connecting..."
-        case .idle: "Idle"
-        case .capturing: "Looking..."
-        case .thinking: "Thinking..."
-        case .speaking: "Speaking"
-        case .wantsToSpeak: "Has something to say"
-        case .error: "Error"
-        case .shuttingDown: "Shutting down..."
+        case .loading: L10n.tr("tray.state.connecting")
+        case .idle: L10n.tr("tray.state.idle")
+        case .capturing: L10n.tr("tray.state.capturing")
+        case .thinking: L10n.tr("tray.state.thinking")
+        case .speaking: L10n.tr("tray.state.speaking")
+        case .wantsToSpeak: L10n.tr("tray.state.wants_to_speak")
+        case .error: L10n.tr("tray.state.error")
+        case .shuttingDown: L10n.tr("tray.state.shutting_down")
         }
-        let statusItem = NSMenuItem(title: "Status: \(statusText)", action: nil, keyEquivalent: "")
+        let statusItem = NSMenuItem(
+            title: L10n.tr("tray.status_format", statusText),
+            action: nil,
+            keyEquivalent: ""
+        )
         statusItem.isEnabled = false
         menu.addItem(statusItem)
 
         menu.addItem(.separator())
 
         let overlayVisible = OverlayWindowManager.shared.isVisible
-        let showHideTitle = overlayVisible ? "Hide BoBe" : "Show BoBe"
+        let showHideTitle = overlayVisible ? L10n.tr("tray.hide") : L10n.tr("tray.show")
         let showHideItem = NSMenuItem(title: showHideTitle, action: #selector(toggleOverlay), keyEquivalent: "b")
         showHideItem.target = self
         menu.addItem(showHideItem)
 
-        let captureTitle = self.store.isCapturing ? "Stop Capture" : "Start Capture"
+        let captureTitle = self.store.isCapturing ? L10n.tr("tray.capture.stop") : L10n.tr("tray.capture.start")
         let captureItem = NSMenuItem(title: captureTitle, action: #selector(toggleCapture), keyEquivalent: "")
         captureItem.target = self
         captureItem.state = self.store.isCapturing ? .on : .off
         menu.addItem(captureItem)
 
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: L10n.tr("tray.settings"), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         let checkUpdatesItem = NSMenuItem(
-            title: "Check for Updates...",
+            title: L10n.tr("tray.check_updates"),
             action: #selector(checkForUpdates),
             keyEquivalent: ""
         )
@@ -78,14 +84,14 @@ final class TrayManager: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         let aboutItem = NSMenuItem(
-            title: "About BoBe",
+            title: L10n.tr("tray.about"),
             action: #selector(showAbout),
             keyEquivalent: ""
         )
         aboutItem.target = self
         menu.addItem(aboutItem)
 
-        let quitItem = NSMenuItem(title: "Quit BoBe", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L10n.tr("tray.quit"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -93,7 +99,6 @@ final class TrayManager: NSObject, NSMenuDelegate {
         menu.delegate = self
     }
 
-    /// Rebuild menu every time it opens — always shows fresh state
     nonisolated func menuWillOpen(_ menu: NSMenu) {
         Task { @MainActor in
             self.updateMenu()

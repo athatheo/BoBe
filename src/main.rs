@@ -9,6 +9,7 @@ mod config_manager;
 mod constants;
 mod db;
 mod error;
+mod i18n;
 mod llm;
 mod models;
 mod runtime;
@@ -27,19 +28,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start the BoBe server
     Serve {
-        /// Host to bind to
         #[arg(short = 'H', long, default_value = "127.0.0.1")]
         host: String,
-        /// Port to bind to
         #[arg(short, long, default_value_t = 8766)]
         port: u16,
-        /// Log level
         #[arg(short, long, default_value = "INFO")]
         log_level: String,
     },
-    /// Show version information
     Version,
 }
 
@@ -58,7 +54,6 @@ async fn main() -> anyhow::Result<()> {
             config.server.port = port;
             config.logging.level = log_level;
 
-            // Initialize tracing
             util::logging::init_tracing(&config);
 
             tracing::info!(
@@ -67,15 +62,12 @@ async fn main() -> anyhow::Result<()> {
                 config.server.port
             );
 
-            // Bootstrap: create pool, run migrations, seed, wire deps, build state
             let (state, goal_worker_manager) = bootstrap::run(config.clone()).await?;
             let app = api::router::build_router(state.clone());
 
-            // ── Background tasks ────────────────────────────────────────
             let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);
             let handles = spawn_background_tasks(&state, goal_worker_manager, &shutdown_tx);
 
-            // ── Serve with graceful shutdown ────────────────────────────
             let listener = tokio::net::TcpListener::bind(format!(
                 "{}:{}",
                 config.server.host, config.server.port
@@ -98,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
             drain_background_tasks(handles).await;
             run_graceful_shutdown(&state, &config).await;
         }
+        #[allow(clippy::print_stdout)]
         Commands::Version => {
             println!("BoBe v{}", env!("CARGO_PKG_VERSION"));
         }

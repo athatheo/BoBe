@@ -1,7 +1,4 @@
-//! Setup handler — HTTP endpoints for the onboarding setup flow.
-//!
-//! DTOs and route handlers live here. The multi-step provisioning logic
-//! is in `services::setup_service`.
+//! Setup handler — onboarding setup flow. Provisioning logic in `services::setup_service`.
 
 use std::sync::Arc;
 
@@ -11,11 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::error::AppError;
+use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::services::setup_service::{
     job_state, run_cloud_setup, run_local_setup, tier_disk_estimate,
 };
-
-// ── Onboarding options ─────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub struct LocalTier {
@@ -45,69 +41,76 @@ pub struct OnboardingOptions {
     pub cloud_providers: Vec<CloudProvider>,
 }
 
-// ── Cloud model definitions ─────────────────────────────────────────────
-// Single source of truth for cloud model choices.
-// The frontend reads these via GET /api/onboarding/options and
-// displays labels directly — no client-side mapping needed.
-// First model in each list is the default selection.
-// To add/remove/rename models, only edit this list.
-
-/// GET /api/onboarding/options
 pub async fn get_options(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<OnboardingOptions>, AppError> {
+    let cfg = state.config();
+    let locale = cfg.effective_locale();
+    let locale = if locale.trim().is_empty() {
+        FALLBACK_LOCALE.to_owned()
+    } else {
+        locale
+    };
+
     Ok(Json(OnboardingOptions {
         local_tiers: vec![
             LocalTier {
                 id: "small".into(),
-                label: "Small (4B)".into(),
-                description: "Fast, low resource usage. Good for quick interactions.".into(),
+                label: t(&locale, "onboarding-local-tier-small-label"),
+                description: t(&locale, "onboarding-local-tier-small-description"),
                 disk_estimate_bytes: tier_disk_estimate("small"),
             },
             LocalTier {
                 id: "medium".into(),
-                label: "Medium (8B)".into(),
-                description: "Balanced performance and quality.".into(),
+                label: t(&locale, "onboarding-local-tier-medium-label"),
+                description: t(&locale, "onboarding-local-tier-medium-description"),
                 disk_estimate_bytes: tier_disk_estimate("medium"),
             },
             LocalTier {
                 id: "large".into(),
-                label: "Large (14B)".into(),
-                description: "Best quality, requires more resources.".into(),
+                label: t(&locale, "onboarding-local-tier-large-label"),
+                description: t(&locale, "onboarding-local-tier-large-description"),
                 disk_estimate_bytes: tier_disk_estimate("large"),
             },
         ],
         cloud_providers: vec![
             CloudProvider {
                 id: "openai".into(),
-                label: "OpenAI".into(),
+                label: t(&locale, "onboarding-cloud-provider-openai-label"),
                 requires: vec!["api_key".into()],
                 models: vec![
                     ModelChoice {
                         id: "gpt-5-mini".into(),
-                        label: "GPT-5 Mini".into(),
+                        label: t(
+                            &locale,
+                            "onboarding-cloud-provider-openai-model-gpt-5-mini-label",
+                        ),
                     },
                     ModelChoice {
                         id: "gpt-5-nano".into(),
-                        label: "GPT-5 Nano".into(),
+                        label: t(
+                            &locale,
+                            "onboarding-cloud-provider-openai-model-gpt-5-nano-label",
+                        ),
                     },
                     ModelChoice {
                         id: "gpt-5.2".into(),
-                        label: "GPT-5.2".into(),
+                        label: t(
+                            &locale,
+                            "onboarding-cloud-provider-openai-model-gpt-5-2-label",
+                        ),
                     },
                 ],
             },
             CloudProvider {
                 id: "azure_openai".into(),
-                label: "Azure OpenAI".into(),
+                label: t(&locale, "onboarding-cloud-provider-azure-openai-label"),
                 requires: vec!["api_key".into(), "endpoint".into(), "deployment".into()],
                 models: vec![],
             },
         ],
     }))
 }
-
-// ── Setup job types ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -177,14 +180,13 @@ pub struct SetupRequest {
     pub deployment: Option<String>,
 }
 
-// ── Handlers ───────────────────────────────────────────────────────────────
-
-/// POST /api/onboarding/setup — 202 Accepted, spawns background job.
+/// 202 Accepted; spawns background setup job.
 pub async fn create_setup_job(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SetupRequest>,
 ) -> Result<(axum::http::StatusCode, Json<SetupJobState>), AppError> {
-    // Validate mode before taking the lock.
+    let locale = effective_locale(&state);
+
     let steps = match body.mode.as_str() {
         "local" => vec![
             step("validate"),
@@ -197,11 +199,15 @@ pub async fn create_setup_job(
         ],
         "cloud" => vec![step("validate"), step("embedding_warmup"), step("persist")],
         other => {
-            return Err(AppError::Validation(format!("Unknown mode: {other}")));
+            return Err(AppError::Validation(t_vars(
+                &locale,
+                "setup-error-unknown-mode",
+                &[("mode", other.to_owned())],
+            )));
         }
     };
 
-    // Single write lock: check-then-set atomically to prevent TOCTOU races.
+    // Atomic check-then-set to prevent TOCTOU races.
     let job = {
         let mut lock = job_state().write().await;
         if let Some(ref existing) = *lock
@@ -220,7 +226,6 @@ pub async fn create_setup_job(
         new_job
     };
 
-    // Spawn the background job
     let state_clone = state.clone();
     tokio::spawn(async move {
         match body.mode.as_str() {
@@ -233,27 +238,37 @@ pub async fn create_setup_job(
     Ok((axum::http::StatusCode::ACCEPTED, Json(job)))
 }
 
-/// GET /api/onboarding/setup/{job_id} — poll for progress.
-pub async fn get_setup_status(Path(job_id): Path<String>) -> Result<Json<SetupJobState>, AppError> {
+pub async fn get_setup_status(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+) -> Result<Json<SetupJobState>, AppError> {
+    let locale = effective_locale(&state);
     let lock = job_state().read().await;
     match &*lock {
         Some(job) if job.job_id == job_id => Ok(Json(job.clone())),
-        _ => Err(AppError::NotFound(format!(
-            "Setup job '{job_id}' not found"
+        _ => Err(AppError::NotFound(t_vars(
+            &locale,
+            "setup-error-job-not-found",
+            &[("job_id", job_id)],
         ))),
     }
 }
 
-/// DELETE /api/onboarding/setup/{job_id} — cancel.
-pub async fn cancel_setup_job(Path(job_id): Path<String>) -> Result<Json<SetupJobState>, AppError> {
+pub async fn cancel_setup_job(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+) -> Result<Json<SetupJobState>, AppError> {
+    let locale = effective_locale(&state);
     let mut lock = job_state().write().await;
     match &mut *lock {
         Some(job) if job.job_id == job_id => {
             job.status = JobStatus::Canceled;
             Ok(Json(job.clone()))
         }
-        _ => Err(AppError::NotFound(format!(
-            "Setup job '{job_id}' not found"
+        _ => Err(AppError::NotFound(t_vars(
+            &locale,
+            "setup-error-job-not-found",
+            &[("job_id", job_id)],
         ))),
     }
 }
@@ -264,5 +279,14 @@ fn step(id: &str) -> SetupStep {
         status: StepStatus::Pending,
         message: None,
         progress: None,
+    }
+}
+
+fn effective_locale(state: &Arc<AppState>) -> String {
+    let locale = state.config().effective_locale();
+    if locale.trim().is_empty() {
+        FALLBACK_LOCALE.to_owned()
+    } else {
+        locale
     }
 }

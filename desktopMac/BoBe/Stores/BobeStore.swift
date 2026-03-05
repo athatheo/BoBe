@@ -6,7 +6,6 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "BobeStore")
 
-/// Central observable state store for the BoBe app.
 @Observable @MainActor
 final class BobeStore {
     static let shared = BobeStore()
@@ -15,10 +14,7 @@ final class BobeStore {
 
     private(set) var context = BobeContext()
     private(set) var isReconnecting = false
-    /// True when the backend has crashed beyond recovery (3+ restarts).
     private(set) var isBackendFatal = false
-
-    /// Set after initial SSE connection is established
     private var hasConnectedOnce = false
 
     var stateType: BobeStateType {
@@ -69,7 +65,6 @@ final class BobeStore {
     private var lastMessageTimer: Task<Void, Never>?
     private var textDeltaFlushTask: Task<Void, Never>?
     private var captureStartupTask: Task<Void, Never>?
-    /// Prevents App Nap from throttling the SSE connection.
     private var appNapActivity: NSObjectProtocol?
     private var backendObserverTask: Task<Void, Never>?
     private var sleepWakeObservers: [NSObjectProtocol] = []
@@ -80,9 +75,6 @@ final class BobeStore {
 
     private init() {}
 
-    /// Observe backend service state and update UI accordingly.
-    /// Called once — persists across reconnects. The sleep/wake handler
-    /// reconnects SSE without recreating this observer.
     func observeBackendState() {
         guard self.backendObserverTask == nil else { return }
         self.backendObserverTask = Task { [weak self] in
@@ -111,7 +103,7 @@ final class BobeStore {
         }
     }
 
-    /// Proactively reconnect SSE on wake — the TCP connection is likely stale.
+    /// Reconnects SSE on wake since the TCP connection is likely stale.
     private func registerSleepWakeObservers() {
         guard self.sleepWakeObservers.isEmpty else { return }
         let center = NSWorkspace.shared.notificationCenter
@@ -508,8 +500,6 @@ final class BobeStore {
             )
         }
     }
-
-    // MARK: - State Update Helper
 
     private func updateState(_ block: (inout BobeContext) -> Void) {
         var ctx = self.context

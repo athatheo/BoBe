@@ -3,7 +3,6 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "DaemonClient")
 
-/// HTTP + SSE client for communicating with the Rust backend daemon
 actor DaemonClient {
     static let shared = DaemonClient()
 

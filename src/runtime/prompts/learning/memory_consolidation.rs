@@ -4,10 +4,10 @@ use serde_json::json;
 use std::sync::LazyLock;
 
 use crate::constants::VALID_MEMORY_CATEGORIES;
+use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::PromptConfig;
 
-/// JSON Schema for memory consolidation output.
 pub static MEMORY_CONSOLIDATION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
@@ -43,29 +43,9 @@ pub static MEMORY_CONSOLIDATION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::
     })
 });
 
-/// Prompt for consolidating similar short-term memories into long-term.
 pub struct MemoryConsolidationPrompt;
 
 impl MemoryConsolidationPrompt {
-    const SYSTEM: &str = "\
-You are a memory consolidation system. Your job is to merge similar short-term memories into more general long-term memories.
-
-You will receive clusters of related memories. For each cluster, create a single consolidated memory that:
-1. Captures the essential information from all memories in the cluster
-2. Is more general and enduring than the individual memories
-3. Removes redundancy while preserving important details
-4. Uses clear, factual language
-
-Guidelines:
-- If memories in a cluster are actually different facts, keep them separate
-- If memories represent the same fact with different wording, merge them
-- If one memory is more specific than another, prefer the more specific version
-- Track which source memories each consolidated memory came from
-
-Example:
-Input cluster: [\"User prefers Python\", \"User likes Python for scripting\", \"User uses Python daily\"]
-Output: \"User strongly prefers Python, using it daily for scripting\" (merged all 3)";
-
     pub fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.3,
@@ -78,29 +58,46 @@ Output: \"User strongly prefers Python, using it daily for scripting\" (merged a
         }
     }
 
-    /// Build messages for memory consolidation.
-    ///
     /// Each inner `Vec<String>` is a cluster of similar memories.
     pub fn messages(memory_clusters: &[Vec<String>]) -> Vec<AiMessage> {
+        let locale = FALLBACK_LOCALE;
         use std::fmt::Write;
         let mut clusters_text = String::new();
         let mut global_idx: usize = 0;
 
         for (i, cluster) in memory_clusters.iter().enumerate() {
-            let _ = write!(clusters_text, "\n## Cluster {}\n", i + 1);
+            let _ = write!(
+                clusters_text,
+                "\n{}\n",
+                t_vars(
+                    locale,
+                    "prompt-memory-consolidation-cluster-header",
+                    &[("cluster_number", (i + 1).to_string())],
+                )
+            );
             for memory in cluster {
-                let _ = writeln!(clusters_text, "[{global_idx}] {memory}");
+                let _ = writeln!(
+                    clusters_text,
+                    "{}",
+                    t_vars(
+                        locale,
+                        "prompt-memory-consolidation-cluster-item",
+                        &[
+                            ("index", global_idx.to_string()),
+                            ("memory", memory.clone())
+                        ],
+                    )
+                );
                 global_idx += 1;
             }
         }
 
         vec![
-            AiMessage::system(Self::SYSTEM),
-            AiMessage::user(format!(
-                "Consolidate the following memory clusters into long-term memories.\n\
-                 {clusters_text}\n\
-                 For each cluster, create consolidated memories and track which source \
-                 indices were merged."
+            AiMessage::system(t(locale, "prompt-memory-consolidation-system")),
+            AiMessage::user(t_vars(
+                locale,
+                "prompt-memory-consolidation-user",
+                &[("clusters_text", clusters_text)],
             )),
         ]
     }

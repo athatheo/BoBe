@@ -7,7 +7,6 @@ private final class OverlayHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
-/// Manages the overlay panel's position and sizing.
 @MainActor
 final class OverlayWindowManager {
     static let shared = OverlayWindowManager()
@@ -47,7 +46,6 @@ final class OverlayWindowManager {
         self.panel = panel
     }
 
-    /// Resize the panel anchored to bottom-right
     func resize(width: CGFloat, height: CGFloat) {
         guard let panel, let screen = panel.screen ?? NSScreen.main else { return }
         let screenFrame = screen.visibleFrame

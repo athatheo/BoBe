@@ -15,22 +15,22 @@ struct SoulsEditor: View {
     var body: some View {
         SettingsEditorScaffold(hasSelection: self.selectedSoul != nil) {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsPaneHeader(title: "Souls") { self.editorState.isCreating.toggle() }
+                SettingsPaneHeader(title: L10n.tr("settings.souls.title")) { self.editorState.isCreating.toggle() }
                     .padding(.bottom, 12)
 
                 if self.editorState.isCreating {
                     HStack(spacing: 6) {
-                        BobeTextField(placeholder: "soul-name", text: self.$newName) {
+                        BobeTextField(placeholder: L10n.tr("settings.souls.new.placeholder"), text: self.$newName) {
                             if !self.newName.isEmpty { self.createSoul() }
                         }
-                        Button("Create") { self.createSoul() }
+                        Button(L10n.tr("settings.editor.action.create")) { self.createSoul() }
                             .bobeButton(.primary, size: .small)
                             .disabled(self.newName.isEmpty)
                         Button {
                             self.editorState.setCreating(false)
                             self.newName = ""
                         } label: {
-                            Text("Cancel")
+                            Text(L10n.tr("settings.editor.action.cancel"))
                         }
                         .bobeButton(.secondary, size: .small)
                     }
@@ -39,7 +39,7 @@ struct SoulsEditor: View {
                 if self.editorState.isLoading, self.souls.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Loading souls...")
+                        Text(L10n.tr("settings.souls.loading"))
                             .bobeTextStyle(.body)
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
@@ -50,10 +50,10 @@ struct SoulsEditor: View {
                         Image(systemName: "sparkles")
                             .font(.system(size: 28))
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("No souls yet")
+                        Text(L10n.tr("settings.souls.empty.title"))
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.textMuted)
-                        Text("Create one to define BoBe's personality")
+                        Text(L10n.tr("settings.souls.empty.description"))
                             .bobeTextStyle(.helper)
                             .foregroundStyle(self.theme.colors.textMuted.opacity(0.7))
                     }
@@ -71,7 +71,7 @@ struct SoulsEditor: View {
                                                 Text(soul.name)
                                                     .bobeTextStyle(.rowTitle)
                                                 if soul.isDefault {
-                                                    Text("default")
+                                                    Text(L10n.tr("settings.editor.badge.default"))
                                                         .bobeTextStyle(.badge)
                                                         .padding(.horizontal, 4)
                                                         .padding(.vertical, 1)
@@ -90,7 +90,7 @@ struct SoulsEditor: View {
                                                 get: { soul.enabled },
                                                 set: { _ in self.toggleSoul(soul) }
                                             ),
-                                            accessibilityLabel: "Enable soul"
+                                            accessibilityLabel: L10n.tr("settings.souls.toggle.enable_accessibility")
                                         )
                                     }
                                 )
@@ -109,7 +109,7 @@ struct SoulsEditor: View {
                             .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.text)
                         if self.editorState.isDirty {
-                            Text("unsaved")
+                            Text(L10n.tr("settings.editor.badge.unsaved"))
                                 .bobeTextStyle(.badge)
                                 .foregroundStyle(self.theme.colors.tertiary)
                                 .padding(.horizontal, 6)
@@ -117,7 +117,7 @@ struct SoulsEditor: View {
                                 .background(Capsule().fill(self.theme.colors.tertiary.opacity(0.15)))
                         }
                         if soul.isDefault {
-                            Text("default")
+                            Text(L10n.tr("settings.editor.badge.default"))
                                 .bobeTextStyle(.badge)
                                 .foregroundStyle(self.theme.colors.primary)
                                 .padding(.horizontal, 6)
@@ -129,15 +129,15 @@ struct SoulsEditor: View {
                         if !soul.isDefault {
                             if self.editorState.showDeleteConfirmation {
                                 HStack(spacing: 6) {
-                                    Text("Delete?")
+                                    Text(L10n.tr("settings.editor.delete.confirm"))
                                         .font(.system(size: 12))
                                         .foregroundStyle(self.theme.colors.primary)
-                                    Button("Yes") {
+                                    Button(L10n.tr("settings.editor.delete.yes")) {
                                         self.deleteSoul(soul)
                                         self.editorState.dismissDeleteConfirmation()
                                     }
                                     .bobeButton(.destructive, size: .small)
-                                    Button("No") { self.editorState.dismissDeleteConfirmation() }
+                                    Button(L10n.tr("settings.editor.delete.no")) { self.editorState.dismissDeleteConfirmation() }
                                         .bobeButton(.secondary, size: .small)
                                 }
                             } else {
@@ -146,7 +146,7 @@ struct SoulsEditor: View {
                                 } label: {
                                     Image(systemName: "trash")
                                 }
-                                .accessibilityLabel("Delete soul")
+                                .accessibilityLabel(L10n.tr("settings.souls.delete.accessibility"))
                                 .bobeButton(.destructive, size: .small)
                             }
                         }
@@ -181,7 +181,7 @@ struct SoulsEditor: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 28))
                     .foregroundStyle(self.theme.colors.textMuted)
-                Text("Select a soul to edit")
+                Text(L10n.tr("settings.souls.empty.select"))
                     .bobeTextStyle(.rowTitle)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
@@ -195,8 +195,6 @@ struct SoulsEditor: View {
         }
         .task { await self.loadSouls() }
     }
-
-    // MARK: - Actions
 
     private func loadSouls() async {
         self.editorState.setLoading(true)

@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Eye expression dispatcher for the avatar.
-/// Individual eye states are in `EyeExpressions.swift`.
+/// Eye expression dispatcher; delegates to state-specific views in `EyeExpressions.swift`.
 struct EyesIndicator: View {
     let state: BobeStateType
     var chatOpen: Bool = false
@@ -40,7 +39,7 @@ struct EyesIndicator: View {
     }
 }
 
-// MARK: - Sleeping Eyes (curved arcs ◡ ◡)
+// MARK: - Sleeping Eyes
 
 struct SleepingEyes: View {
     @Environment(\.theme) private var theme
@@ -73,7 +72,7 @@ private struct SleepArc: Shape {
     }
 }
 
-// MARK: - Error Eyes (X × X with frown)
+// MARK: - Error Eyes
 
 struct ErrorEyes: View {
     @State private var frownVisible = true

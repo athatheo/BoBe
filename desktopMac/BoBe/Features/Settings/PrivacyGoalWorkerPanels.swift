@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Privacy settings panel — local-only data posture.
 struct PrivacyPanel: View {
+    private let deleteKeyword = "DELETE"
+
     @State private var showDeleteControls = false
     @State private var deleteConfirmationText = ""
     @State private var isDeletingAll = false
@@ -16,20 +17,20 @@ struct PrivacyPanel: View {
                     Image(systemName: "externaldrive.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(self.theme.colors.primary)
-                    Text("Local Storage")
+                    Text(L10n.tr("settings.privacy.storage.title"))
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(self.theme.colors.text)
                 }
 
-                Text("BoBe stores data locally on this Mac. Souls, goals, memories, user profile, and runtime settings remain on-device.")
+                Text(L10n.tr("settings.privacy.storage.description"))
                     .font(.system(size: 13))
                     .foregroundStyle(self.theme.colors.textMuted)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Included in local state")
+                    Text(L10n.tr("settings.privacy.storage.included.title"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(self.theme.colors.text)
-                    Text("• Souls and goals\n• Memories and observations\n• User profile and settings\n• Local model metadata")
+                    Text(L10n.tr("settings.privacy.storage.included.list"))
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.textMuted)
                 }
@@ -45,34 +46,38 @@ struct PrivacyPanel: View {
                         Image(systemName: "trash.fill")
                             .font(.system(size: 15))
                             .foregroundStyle(self.theme.colors.primary)
-                        Text("Danger Zone")
+                        Text(L10n.tr("settings.privacy.danger.title"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(self.theme.colors.text)
                     }
 
-                    Text("Delete all goals, memories, non-default souls, non-default user profiles, and MCP server configs from this device.")
+                    Text(L10n.tr("settings.privacy.danger.description"))
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.textMuted)
 
                     if self.showDeleteControls {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Type DELETE to confirm")
+                            Text(L10n.tr("settings.privacy.danger.confirm_prompt_format", self.deleteKeyword))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(self.theme.colors.textMuted)
-                            BobeTextField(placeholder: "DELETE", text: self.$deleteConfirmationText, width: 220)
+                            BobeTextField(placeholder: self.deleteKeyword, text: self.$deleteConfirmationText, width: 220)
 
                             HStack(spacing: 8) {
-                                Button("Cancel") {
+                                Button(L10n.tr("settings.editor.action.cancel")) {
                                     self.showDeleteControls = false
                                     self.deleteConfirmationText = ""
                                 }
                                 .bobeButton(.secondary, size: .small)
 
-                                Button(self.isDeletingAll ? "Deleting..." : "Delete All Data") {
+                                Button(
+                                    self.isDeletingAll
+                                        ? L10n.tr("settings.privacy.danger.action.deleting")
+                                        : L10n.tr("settings.privacy.danger.action.delete_all")
+                                ) {
                                     Task { await self.deleteAllData() }
                                 }
                                 .bobeButton(.primary, size: .small)
-                                .disabled(self.deleteConfirmationText != "DELETE" || self.isDeletingAll)
+                                .disabled(self.deleteConfirmationText != self.deleteKeyword || self.isDeletingAll)
 
                                 if self.isDeletingAll {
                                     BobeSpinner(size: 14)
@@ -80,7 +85,7 @@ struct PrivacyPanel: View {
                             }
                         }
                     } else {
-                        Button("Delete All Data") {
+                        Button(L10n.tr("settings.privacy.danger.action.delete_all")) {
                             statusMessage = nil
                             self.showDeleteControls = true
                         }
@@ -105,7 +110,7 @@ struct PrivacyPanel: View {
     }
 
     private func deleteAllData() async {
-        guard self.deleteConfirmationText == "DELETE" else { return }
+        guard self.deleteConfirmationText == self.deleteKeyword else { return }
         self.isDeletingAll = true
         defer { isDeletingAll = false }
 
@@ -117,11 +122,11 @@ struct PrivacyPanel: View {
                 do {
                     _ = try await DaemonClient.shared.deleteGoal(goal.id)
                 } catch {
-                    errors.append("goal \(goal.id)")
+                    errors.append(L10n.tr("settings.privacy.danger.error.goal_format", goal.id))
                 }
             }
         } catch {
-            errors.append("goals")
+            errors.append(L10n.tr("settings.privacy.danger.error.goals"))
         }
 
         do {
@@ -130,11 +135,11 @@ struct PrivacyPanel: View {
                 do {
                     _ = try await DaemonClient.shared.deleteMemory(memory.id)
                 } catch {
-                    errors.append("memory \(memory.id)")
+                    errors.append(L10n.tr("settings.privacy.danger.error.memory_format", memory.id))
                 }
             }
         } catch {
-            errors.append("memories")
+            errors.append(L10n.tr("settings.privacy.danger.error.memories"))
         }
 
         do {
@@ -143,11 +148,11 @@ struct PrivacyPanel: View {
                 do {
                     _ = try await DaemonClient.shared.deleteSoul(soul.id)
                 } catch {
-                    errors.append("soul \(soul.name)")
+                    errors.append(L10n.tr("settings.privacy.danger.error.soul_format", soul.name))
                 }
             }
         } catch {
-            errors.append("souls")
+            errors.append(L10n.tr("settings.privacy.danger.error.souls"))
         }
 
         do {
@@ -157,34 +162,33 @@ struct PrivacyPanel: View {
                 do {
                     _ = try await DaemonClient.shared.deleteUserProfile(profile.id)
                 } catch {
-                    errors.append("profile \(profile.name)")
+                    errors.append(L10n.tr("settings.privacy.danger.error.profile_format", profile.name))
                 }
             }
         } catch {
-            errors.append("profiles")
+            errors.append(L10n.tr("settings.privacy.danger.error.profiles"))
         }
 
         do {
             _ = try await DaemonClient.shared.resetMCPConfig()
         } catch {
-            errors.append("mcp")
+            errors.append(L10n.tr("settings.privacy.danger.error.mcp"))
         }
 
         self.showDeleteControls = false
         self.deleteConfirmationText = ""
         if errors.isEmpty {
             self.statusIsError = false
-            self.statusMessage = "All local data was deleted."
+            self.statusMessage = L10n.tr("settings.privacy.danger.status.success")
         } else {
             self.statusIsError = true
             let details = errors.prefix(4).joined(separator: ", ")
-            let suffix = errors.count > 4 ? ", ..." : ""
-            self.statusMessage = "Delete completed with issues: \(details)\(suffix)"
+            let suffix = errors.count > 4 ? L10n.tr("settings.privacy.danger.status.more_suffix") : ""
+            self.statusMessage = L10n.tr("settings.privacy.danger.status.partial_format", details, suffix)
         }
     }
 }
 
-/// Goal Worker settings panel — autonomous goal execution configuration.
 struct GoalWorkerPanel: View {
     @State private var settings: DaemonSettings?
     @State private var workerStatus: GoalWorkerStatusResponse?
@@ -196,7 +200,7 @@ struct GoalWorkerPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Goal Worker")
+                Text(L10n.tr("settings.goal_worker.title"))
                     .font(.title2.bold())
                     .foregroundStyle(self.theme.colors.text)
 
@@ -215,10 +219,12 @@ struct GoalWorkerPanel: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 40)
                 } else if let settings {
-                    CollapsibleSection(title: "Autonomous Execution", icon: "gearshape.2.fill") {
+                    CollapsibleSection(title: L10n.tr("settings.goal_worker.autonomous.title"), icon: "gearshape.2.fill") {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
-                                Text("Enabled").font(.system(size: 13)).foregroundStyle(self.theme.colors.text)
+                                Text(L10n.tr("settings.goal_worker.autonomous.enabled"))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(self.theme.colors.text)
                                 Spacer()
                                 BobeToggle(
                                     isOn: Binding(
@@ -232,7 +238,9 @@ struct GoalWorkerPanel: View {
                             }
 
                             HStack {
-                                Text("Autonomous mode").font(.system(size: 13)).foregroundStyle(self.theme.colors.text)
+                                Text(L10n.tr("settings.goal_worker.autonomous.mode"))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(self.theme.colors.text)
                                 Spacer()
                                 BobeToggle(
                                     isOn: Binding(
@@ -246,7 +254,9 @@ struct GoalWorkerPanel: View {
                             }
 
                             HStack {
-                                Text("Max concurrent").font(.system(size: 13)).foregroundStyle(self.theme.colors.text)
+                                Text(L10n.tr("settings.goal_worker.autonomous.max_concurrent"))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(self.theme.colors.text)
                                 Spacer()
                                 DebouncedNumberInput(
                                     value: Binding(
@@ -262,18 +272,20 @@ struct GoalWorkerPanel: View {
                     }
 
                     if let status = workerStatus {
-                        CollapsibleSection(title: "Status", icon: "chart.bar.fill") {
+                        CollapsibleSection(title: L10n.tr("settings.goal_worker.status.title"), icon: "chart.bar.fill") {
                             VStack(alignment: .leading, spacing: 8) {
-                                self.statusRow("Active goals", "\(status.activeGoalsCount)")
-                                self.statusRow("Pending approval", "\(status.pendingApprovalCount)")
-                                self.statusRow("Worker enabled", status.enabled ? "Yes" : "No")
+                                self.statusRow(L10n.tr("settings.goal_worker.status.active_goals"), "\(status.activeGoalsCount)")
+                                self.statusRow(L10n.tr("settings.goal_worker.status.pending_approval"), "\(status.pendingApprovalCount)")
+                                self.statusRow(
+                                    L10n.tr("settings.goal_worker.status.worker_enabled"),
+                                    status.enabled ? L10n.tr("settings.common.yes") : L10n.tr("settings.common.no")
+                                )
                             }
                         }
                     }
 
                     Text(
-                        "The goal worker autonomously breaks down goals into steps and executes them "
-                            + "using tools. Goals that fail repeatedly are paused automatically."
+                        L10n.tr("settings.goal_worker.description")
                     )
                     .font(.system(size: 11))
                     .foregroundStyle(self.theme.colors.textMuted)
@@ -322,8 +334,6 @@ struct GoalWorkerPanel: View {
         }
     }
 }
-
-// MARK: - Previews
 
 #if !SPM_BUILD
 #Preview("Privacy Panel") {

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Stack of chat message bubbles. Collapsed shows last 2, expanded shows all.
 struct ChatStack: View {
     let messages: [ChatMessage]
     var maxViewportHeight: CGFloat = WindowSizes.heightChatViewportMax
@@ -83,7 +82,11 @@ struct ChatStack: View {
                     HStack(spacing: 4) {
                         Image(systemName: self.isExpanded ? "chevron.down" : "chevron.up")
                             .font(.system(size: 8))
-                        Text(self.isExpanded ? "collapse" : "+\(self.hiddenCount) hidden messages")
+                        Text(
+                            self.isExpanded
+                                ? L10n.tr("overlay.chat.action.collapse")
+                                : L10n.tr("overlay.chat.hidden_messages_format", self.hiddenCount)
+                        )
                             .font(.system(size: 10, weight: .medium))
                     }
                     .foregroundStyle(self.theme.colors.textMuted)
@@ -116,7 +119,7 @@ private struct HiddenMessagesAffordance: View {
         HStack(spacing: 4) {
             Image(systemName: "ellipsis")
                 .font(.system(size: 9, weight: .semibold))
-            Text("+\(self.count) hidden messages")
+            Text(L10n.tr("overlay.chat.hidden_messages_format", self.count))
                 .font(.system(size: 10, weight: .medium))
         }
         .foregroundStyle(self.theme.colors.textMuted)
@@ -131,7 +134,6 @@ private struct HiddenMessagesAffordance: View {
     }
 }
 
-/// Individual chat message bubble — pixel-perfect match to CSS .chat-bubble
 struct ChatBubble: View {
     let message: ChatMessage
 
@@ -160,13 +162,13 @@ struct ChatBubble: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 0) {
-                        Text(self.isUser ? "you" : "bobe")
+                        Text(self.isUser ? L10n.tr("overlay.chat.sender.you") : L10n.tr("overlay.chat.sender.bobe"))
                             .font(.system(size: 9, weight: .semibold))
                             .tracking(0.8)
                             .textCase(.uppercase)
                             .foregroundStyle(self.accentColor)
                         if self.isPending {
-                            Text(" - sending...")
+                            Text(L10n.tr("overlay.chat.pending_suffix"))
                                 .font(.system(size: 8))
                                 .italic()
                                 .foregroundStyle(self.theme.colors.textMuted)
@@ -214,7 +216,6 @@ struct ChatBubble: View {
     }
 }
 
-/// Blinking cursor shown during streaming
 struct BlinkingCursor: View {
     let color: Color
 

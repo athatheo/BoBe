@@ -1,8 +1,7 @@
 import Foundation
 
 extension Bundle {
-    /// Resolves the correct bundle for app resources.
-    /// SPM generates `Bundle.module`; Xcode builds use `Bundle.main`.
+    /// `Bundle.module` for SPM, `Bundle.main` for Xcode builds.
     static var appResources: Bundle {
         #if SWIFT_PACKAGE
             return Bundle.module

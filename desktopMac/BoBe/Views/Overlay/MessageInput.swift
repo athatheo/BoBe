@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Text input panel for sending messages.
 struct MessageInput: View {
     let onSend: (String) -> Void
     let onClose: () -> Void
@@ -21,7 +20,11 @@ struct MessageInput: View {
                     TextField(
                         "",
                         text: self.$text,
-                        prompt: Text(self.isThinking ? "BoBe is thinking…" : "Type a message...")
+                        prompt: Text(
+                            self.isThinking
+                                ? L10n.tr("overlay.input.placeholder.thinking")
+                                : L10n.tr("overlay.input.placeholder.default")
+                        )
                             .foregroundStyle(self.placeholderColor),
                         axis: .vertical
                     )
@@ -40,7 +43,7 @@ struct MessageInput: View {
                     }
 
                     if self.isThinking, !self.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("waiting...")
+                        Text(L10n.tr("overlay.input.waiting"))
                             .font(.system(size: 11))
                             .foregroundStyle(self.theme.colors.textMuted)
                             .lineLimit(1)
@@ -54,6 +57,7 @@ struct MessageInput: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.tr("overlay.input.send.accessibility"))
                     .frame(width: 32, height: 32)
                     .background(
                         Circle()
@@ -67,6 +71,7 @@ struct MessageInput: View {
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
                     .frame(width: 24, height: 24)
                     .background(
                         Circle()

@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Control Sizing
-
 enum BobeControlSize {
     case mini
     case small
@@ -41,8 +39,6 @@ enum BobeControlSize {
     }
 }
 
-// MARK: - Design Tokens
-
 enum BobeTextStyle {
     case windowTitle
     case sectionLabel
@@ -78,8 +74,6 @@ enum BobeMetrics {
     static let listRowMinHeight: CGFloat = 54
     static let listRowCornerRadius: CGFloat = 10
 }
-
-// MARK: - Themed Button Styles
 
 enum BobeButtonVariant {
     case primary
@@ -199,8 +193,6 @@ extension View {
         modifier(BobeButtonModifier(variant: variant, size: size))
     }
 }
-
-// MARK: - Input Chrome
 
 private struct BobeInputChromeModifier: ViewModifier {
     let focused: Bool
@@ -360,8 +352,6 @@ struct BobeMenuPicker<Option: Hashable>: View {
     }
 }
 
-// MARK: - Native Pop-Up Button
-
 private struct ThemedPopUpButton<Option: Hashable>: NSViewRepresentable {
     @Binding var selection: Option
     let options: [Option]
@@ -427,8 +417,6 @@ private struct ThemedPopUpButton<Option: Hashable>: NSViewRepresentable {
     }
 }
 
-// MARK: - Themed Progress Indicators
-
 struct BobeSpinner: View {
     var size: CGFloat = 14
     var lineWidth: CGFloat = 2
@@ -491,8 +479,6 @@ struct BobeLinearProgressBar: View {
         .frame(height: self.height)
     }
 }
-
-// MARK: - Selectable Row
 
 struct BobeSelectableRow<Content: View>: View {
     let isSelected: Bool

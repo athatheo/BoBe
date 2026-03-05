@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Appearance settings panel — theme picker with visual preview cards.
 struct AppearancePanel: View {
     @State private var themeStore = ThemeStore.shared
     @Environment(\.theme) private var theme
@@ -12,12 +11,12 @@ struct AppearancePanel: View {
                     Image(systemName: "paintpalette.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(self.theme.colors.primary)
-                    Text("Theme")
+                    Text(L10n.tr("settings.appearance.theme.title"))
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(self.theme.colors.text)
                 }
 
-                Text("Choose a color theme for BoBe. This affects the avatar and all UI elements.")
+                Text(L10n.tr("settings.appearance.theme.description"))
                     .font(.system(size: 13))
                     .foregroundStyle(self.theme.colors.textMuted)
 
@@ -123,7 +122,7 @@ struct ThemeCard: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(self.themeConfig.name) theme")
+        .accessibilityLabel(L10n.tr("settings.appearance.theme.accessibility_format", self.themeConfig.name))
         .accessibilityAddTraits(self.isSelected ? .isSelected : [])
         .scaleEffect(self.isHovered ? 1.02 : 1.0)
         .animation(.easeOut(duration: 0.15), value: self.isHovered)
@@ -144,8 +143,6 @@ private struct ClosedEyeArc: View {
         .frame(width: 6, height: 5)
     }
 }
-
-// MARK: - Previews
 
 #if !SPM_BUILD
 #Preview("Appearance Panel") {

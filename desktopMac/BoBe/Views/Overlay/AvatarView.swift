@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Main avatar circle with state-dependent eye expressions and decorations.
-/// Pixel-perfect avatar: 116px card, 76px inner face, exact shadows and positioning.
 struct AvatarView: View {
     let stateType: BobeStateType
     let isCapturing: Bool
@@ -28,15 +26,12 @@ struct AvatarView: View {
                         }
                     }
 
-                // Chat toggle — top-left of avatar card
                 ChatToggleButton(isActive: showInput, action: onToggleInput ?? {})
                     .offset(x: -52, y: -52)
 
-                // Connection dot — bottom-right of inner circle
                 ConnectionDot(isConnected: isConnected)
                     .offset(x: 30, y: 30)
 
-                // Message badge — top-right of inner circle
                 if hasMessage && !showInput {
                     MessageBadge()
                         .offset(x: 34, y: -34)
@@ -78,7 +73,6 @@ struct AvatarView: View {
 
     private var avatarCard: some View {
         ZStack {
-            // Outer ring with shadow
             Circle()
                 .fill(theme.colors.background)
                 .frame(width: 116, height: 116)
@@ -87,28 +81,24 @@ struct AvatarView: View {
                 )
                 .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
 
-            // Thinking numbers ring (in the gap between outer and inner)
             if stateType == .thinking {
                 ThinkingNumbersRing()
             }
 
-            // Speaking wave ring
             if stateType == .speaking {
                 SpeakingWaveRing()
             }
 
-            // Attention pulse
             if stateType == .wantsToSpeak {
                 AttentionPulse()
             }
 
-            // Inner face circle (76px)
             innerFace
         }
         .contentShape(Circle())
         .onTapGesture { onClick?() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("BoBe avatar, \(stateType == .idle ? "idle" : String(describing: stateType))")
+        .accessibilityLabel(L10n.tr("overlay.avatar.accessibility_format", self.stateAccessibilityText))
         .accessibilityAddTraits(.isButton)
     }
 
@@ -127,7 +117,6 @@ struct AvatarView: View {
                     Circle().stroke(theme.colors.avatarRing, lineWidth: 2)
                 )
                 .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
-                // Inner highlight (inset shadow equivalent)
                 .overlay(
                     Circle()
                         .fill(
@@ -141,7 +130,6 @@ struct AvatarView: View {
                         .frame(width: 76, height: 76)
                 )
 
-            // Eyes
             EyesIndicator(state: stateType, chatOpen: showInput)
         }
         .scaleEffect(motionScale)
@@ -153,9 +141,22 @@ struct AvatarView: View {
         }
         .zIndex(10)
     }
+
+    private var stateAccessibilityText: String {
+        switch self.stateType {
+        case .loading: L10n.tr("overlay.avatar.state.loading")
+        case .error: L10n.tr("overlay.avatar.state.error")
+        case .idle: L10n.tr("overlay.avatar.state.idle")
+        case .capturing: L10n.tr("overlay.avatar.state.capturing")
+        case .thinking: L10n.tr("overlay.avatar.state.thinking")
+        case .speaking: L10n.tr("overlay.avatar.state.speaking")
+        case .wantsToSpeak: L10n.tr("overlay.avatar.state.wants_to_speak")
+        case .shuttingDown: L10n.tr("overlay.avatar.state.shutting_down")
+        }
+    }
 }
 
-// MARK: - Connection Dot (14px with 2px white border)
+// MARK: - Connection Dot
 
 struct ConnectionDot: View {
     let isConnected: Bool
@@ -169,11 +170,15 @@ struct ConnectionDot: View {
                 Circle().stroke(theme.colors.background, lineWidth: 2)
             )
             .frame(width: 14, height: 14)
-            .accessibilityLabel(isConnected ? "Connected" : "Disconnected")
+            .accessibilityLabel(
+                isConnected
+                    ? L10n.tr("overlay.connection.connected")
+                    : L10n.tr("overlay.connection.disconnected")
+            )
     }
 }
 
-// MARK: - Message Badge (20px with white border)
+// MARK: - Message Badge
 
 struct MessageBadge: View {
     @State private var scale: CGFloat = 1.0
@@ -196,7 +201,7 @@ struct MessageBadge: View {
     }
 }
 
-// MARK: - Chat Toggle Button (28px circle, top-left)
+// MARK: - Chat Toggle Button
 
 struct ChatToggleButton: View {
     var isActive: Bool = false
@@ -219,16 +224,21 @@ struct ChatToggleButton: View {
             Circle().stroke(theme.colors.background, lineWidth: 2)
         )
         .shadow(color: Color.black.opacity(0.1), radius: 3, y: 1)
+        .accessibilityLabel(
+            self.isActive
+                ? L10n.tr("overlay.chat_toggle.hide.accessibility")
+                : L10n.tr("overlay.chat_toggle.show.accessibility")
+        )
     }
 }
 
-// MARK: - BoBe Label (overlapping bottom edge)
+// MARK: - BoBe Label
 
 struct BobeLabel: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Text("BoBe")
+        Text(L10n.tr("overlay.avatar.brand_label"))
             .font(.system(size: 11, weight: .bold))
             .tracking(1.5)
             .foregroundStyle(theme.colors.primary)

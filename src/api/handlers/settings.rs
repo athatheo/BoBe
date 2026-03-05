@@ -10,11 +10,8 @@ use crate::app_state::AppState;
 use crate::config::LlmBackend;
 use crate::error::AppError;
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
 pub struct SettingsResponse {
-    // LLM
     pub llm_backend: LlmBackend,
     pub ollama_model: String,
     pub openai_model: String,
@@ -22,56 +19,38 @@ pub struct SettingsResponse {
     pub azure_openai_endpoint: String,
     pub azure_openai_deployment: String,
     pub azure_openai_api_key_set: bool,
-
-    // Vision
     pub vision_backend: LlmBackend,
     pub vision_ollama_model: String,
-
-    // Capture
     pub capture_enabled: bool,
     pub capture_interval_seconds: u64,
-
-    // Check-in
     pub checkin_enabled: bool,
     pub checkin_times: Vec<String>,
     pub checkin_jitter_minutes: u32,
-
-    // Learning
     pub learning_enabled: bool,
     pub learning_interval_minutes: u64,
-
-    // Conversation
     pub conversation_inactivity_timeout_seconds: u64,
     pub conversation_auto_close_minutes: u64,
     pub conversation_summary_enabled: bool,
-
-    // Goals
     pub goal_check_interval_seconds: f64,
     pub projects_directory: String,
     pub goal_worker_enabled: bool,
     pub goal_worker_autonomous: bool,
     pub goal_worker_max_concurrent: u32,
-
-    // Tools
     pub tools_enabled: bool,
     pub tools_max_iterations: u32,
-
-    // MCP
     pub mcp_enabled: bool,
-
-    // Similarity thresholds
     pub similarity_deduplication_threshold: f64,
     pub similarity_search_recall_threshold: f64,
     pub similarity_clustering_threshold: f64,
-
-    // Memory retention
     pub memory_short_term_retention_days: u32,
     pub memory_long_term_retention_days: u32,
+    pub locale_override: Option<String>,
+    pub effective_locale: String,
+    pub supported_locales: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SettingsUpdateRequest {
-    // LLM
     pub llm_backend: Option<String>,
     pub ollama_model: Option<String>,
     pub openai_model: Option<String>,
@@ -79,51 +58,32 @@ pub struct SettingsUpdateRequest {
     pub azure_openai_endpoint: Option<String>,
     pub azure_openai_deployment: Option<String>,
     pub azure_openai_api_key: Option<String>,
-
-    // Vision
     pub vision_backend: Option<String>,
     pub vision_ollama_model: Option<String>,
-
-    // Capture
     pub capture_enabled: Option<bool>,
     pub capture_interval_seconds: Option<u64>,
-
-    // Check-in
     pub checkin_enabled: Option<bool>,
     pub checkin_times: Option<Vec<String>>,
     pub checkin_jitter_minutes: Option<u32>,
-
-    // Learning
     pub learning_enabled: Option<bool>,
     pub learning_interval_minutes: Option<u64>,
-
-    // Conversation
     pub conversation_inactivity_timeout_seconds: Option<u64>,
     pub conversation_auto_close_minutes: Option<u64>,
     pub conversation_summary_enabled: Option<bool>,
-
-    // Goals
     pub goal_check_interval_seconds: Option<f64>,
     pub projects_directory: Option<String>,
     pub goal_worker_enabled: Option<bool>,
     pub goal_worker_autonomous: Option<bool>,
     pub goal_worker_max_concurrent: Option<u32>,
-
-    // Tools
     pub tools_enabled: Option<bool>,
     pub tools_max_iterations: Option<u32>,
-
-    // MCP
     pub mcp_enabled: Option<bool>,
-
-    // Similarity thresholds
     pub similarity_deduplication_threshold: Option<f64>,
     pub similarity_search_recall_threshold: Option<f64>,
     pub similarity_clustering_threshold: Option<f64>,
-
-    // Memory retention
     pub memory_short_term_retention_days: Option<u32>,
     pub memory_long_term_retention_days: Option<u32>,
+    pub locale_override: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -135,9 +95,6 @@ pub struct SettingsUpdateResponse {
     pub persist_failed: bool,
 }
 
-// ── Handlers ────────────────────────────────────────────────────────────────
-
-/// GET /api/settings
 pub async fn get_settings(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SettingsResponse>, AppError> {
@@ -176,19 +133,34 @@ pub async fn get_settings(
         similarity_clustering_threshold: cfg.similarity.clustering_threshold,
         memory_short_term_retention_days: cfg.memory.short_term_retention_days,
         memory_long_term_retention_days: cfg.memory.long_term_retention_days,
+        locale_override: cfg.locale_override.clone(),
+        effective_locale: cfg.effective_locale(),
+        supported_locales: crate::i18n::SUPPORTED_LOCALES
+            .iter()
+            .map(|locale| (*locale).to_string())
+            .collect(),
     }))
 }
 
-/// PATCH /api/settings
-///
-/// Hot-swaps configuration at runtime through ConfigManager.
-/// Changes are persisted to ~/.bobe/config.toml and LLM provider is rebuilt
-/// when backend/model/key fields change.
+/// Hot-swaps config via `ConfigManager`. Persists to config.toml; rebuilds LLM provider on backend/model/key changes.
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SettingsUpdateRequest>,
 ) -> Result<Json<SettingsUpdateResponse>, AppError> {
-    // Validate llm_backend early (before passing to ConfigManager).
+    if let Some(ref locale) = body.locale_override {
+        let normalized = locale.trim().replace('_', "-");
+        if !normalized.is_empty()
+            && !crate::i18n::SUPPORTED_LOCALES
+                .iter()
+                .any(|supported| *supported == normalized)
+        {
+            return Err(AppError::Validation(format!(
+                "Invalid locale_override '{locale}'. Supported: {}",
+                crate::i18n::SUPPORTED_LOCALES.join(", ")
+            )));
+        }
+    }
+
     if let Some(ref v) = body.llm_backend {
         let _: LlmBackend =
             serde_json::from_value(serde_json::Value::String(v.clone())).map_err(|_| {
@@ -210,7 +182,6 @@ pub async fn update_settings(
         validate_llm_settings_update(&state, &body).await?;
     }
 
-    // Collect all provided fields into a HashMap for ConfigManager.
     let mut changes: HashMap<String, serde_json::Value> = HashMap::new();
 
     macro_rules! collect_opt {
@@ -254,8 +225,18 @@ pub async fn update_settings(
     collect_opt!(similarity_clustering_threshold);
     collect_opt!(memory_short_term_retention_days);
     collect_opt!(memory_long_term_retention_days);
+    if let Some(ref locale) = body.locale_override {
+        let normalized = locale.trim().replace('_', "-");
+        if normalized.is_empty() {
+            changes.insert("locale_override".to_owned(), serde_json::Value::Null);
+        } else {
+            changes.insert(
+                "locale_override".to_owned(),
+                serde_json::Value::String(normalized),
+            );
+        }
+    }
 
-    // checkin_times uses nested key to avoid flat legacy conversion.
     if let Some(ref v) = body.checkin_times {
         changes.insert(
             "checkin.times".to_owned(),
@@ -263,7 +244,6 @@ pub async fn update_settings(
         );
     }
 
-    // Keep frontend field name while writing canonical config key.
     if let Some(ref v) = body.projects_directory {
         changes.insert(
             "goal_worker.projects_dir".to_owned(),
@@ -280,7 +260,6 @@ pub async fn update_settings(
         }));
     }
 
-    // Route through ConfigManager: persists to config.toml, swaps config, rebuilds LLM.
     let result = state.config_manager.update(&changes);
 
     tracing::info!(

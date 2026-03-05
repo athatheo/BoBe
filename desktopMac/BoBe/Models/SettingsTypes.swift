@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Daemon Settings
-
 struct DaemonSettings: Codable, Sendable {
     var llmBackend: String
     var ollamaModel: String
@@ -20,13 +18,10 @@ struct DaemonSettings: Codable, Sendable {
     var conversationInactivityTimeoutSeconds: Int
     var conversationAutoCloseMinutes: Int
     var conversationSummaryEnabled: Bool
-    /// Goals
     var goalCheckIntervalSeconds: Double
-    /// Projects
     var projectsDirectory: String
     var toolsEnabled: Bool
     var toolsMaxIterations: Int
-    /// MCP
     var mcpEnabled: Bool
     var similarityDeduplicationThreshold: Double
     var similaritySearchRecallThreshold: Double
@@ -38,6 +33,9 @@ struct DaemonSettings: Codable, Sendable {
     var goalWorkerMaxConcurrent: Int
     var visionBackend: String
     var visionOllamaModel: String
+    var localeOverride: String?
+    var effectiveLocale: String
+    var supportedLocales: [String]
 
     enum CodingKeys: String, CodingKey {
         case llmBackend = "llm_backend"
@@ -72,6 +70,9 @@ struct DaemonSettings: Codable, Sendable {
         case goalWorkerMaxConcurrent = "goal_worker_max_concurrent"
         case visionBackend = "vision_backend"
         case visionOllamaModel = "vision_ollama_model"
+        case localeOverride = "locale_override"
+        case effectiveLocale = "effective_locale"
+        case supportedLocales = "supported_locales"
     }
 }
 
@@ -108,6 +109,7 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var goalWorkerMaxConcurrent: Int?
     var visionBackend: String?
     var visionOllamaModel: String?
+    var localeOverride: String?
 
     enum CodingKeys: String, CodingKey {
         case llmBackend = "llm_backend"
@@ -142,6 +144,7 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case goalWorkerMaxConcurrent = "goal_worker_max_concurrent"
         case visionBackend = "vision_backend"
         case visionOllamaModel = "vision_ollama_model"
+        case localeOverride = "locale_override"
     }
 }
 

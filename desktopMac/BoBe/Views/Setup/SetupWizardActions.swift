@@ -60,7 +60,7 @@ extension SetupWizard {
 
     func startSetupJob(_ request: SetupRequest) {
         step = .setupInProgress
-        progressMessage = "Starting setup..."
+        progressMessage = L10n.tr("setup.progress.starting")
         progressPercent = 0
         Task {
             do {
@@ -91,7 +91,7 @@ extension SetupWizard {
                         setupJob = job
                         progressPercent = job.overallPercent
                         if let current = job.steps.first(where: { $0.status == .inProgress }) {
-                            progressMessage = current.message ?? "Working..."
+                            progressMessage = current.message ?? L10n.tr("setup.progress.working")
                         }
                     }
                     if job.isTerminal {
@@ -104,7 +104,7 @@ extension SetupWizard {
                     if consecutiveFailures >= 5 {
                         await MainActor.run {
                             busy = false
-                            errorMessage = "Lost connection to the backend during setup. Please try again."
+                            errorMessage = L10n.tr("setup.error.lost_backend_connection")
                             step = .error
                         }
                         return
@@ -122,10 +122,10 @@ extension SetupWizard {
             apiKey = ""
             step = .captureSetup
         case .failed:
-            errorMessage = job.error ?? "Setup failed"
+            errorMessage = job.error ?? L10n.tr("setup.error.title")
             step = .error
         case .canceled:
-            errorMessage = "Setup was canceled"
+            errorMessage = L10n.tr("setup.error.canceled")
             step = .error
         default: break
         }

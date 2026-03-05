@@ -9,8 +9,6 @@ enum OverlayMotionPrimitive {
     case statusLabelTransition
 }
 
-/// Centralized animation timing and scale values for all overlay motion.
-/// Keeps animation behavior consistent across avatar, chat, and indicator transitions.
 enum OverlayMotionRuntime {
     static func animation(for primitive: OverlayMotionPrimitive) -> Animation {
         switch primitive {

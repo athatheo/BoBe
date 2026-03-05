@@ -1,7 +1,6 @@
 import AppKit
 
-/// Content view that passes clicks through transparent areas — game HUD behavior.
-/// Only accepts hits on actual child views; empty space falls through to apps beneath.
+/// Passes clicks through transparent areas; only child views receive hits.
 final class PassthroughContentView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
@@ -16,7 +15,7 @@ final class PassthroughContentView: NSView {
     }
 }
 
-/// Transparent, frameless, always-on-top floating panel for the BoBe overlay.
+/// Borderless, always-on-top floating panel for the overlay.
 final class OverlayPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
@@ -47,7 +46,6 @@ final class OverlayPanel: NSPanel {
         ignoresMouseEvents = false
     }
 
-    /// Allow the panel to become key for text input
     override var canBecomeKey: Bool {
         true
     }

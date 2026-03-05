@@ -11,6 +11,12 @@ unsafe_code = "deny"
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 
+# --- Debug leftovers: these should never ship in a daemon ---
+dbg_macro = "warn"
+todo = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+
 # --- Justified allows: architecture-driven (see CLAUDE.md for rationale) ---
 
 # Internal app, not a public crate — naming/docs norms don't apply
@@ -108,3 +114,7 @@ moka = { version = "0.12.14", features = ["future"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
 tiktoken-rs = "0.9.1"
 tower = { version = "0.5.3", features = ["timeout", "limit"] }
+fluent-bundle = "0.16.0"
+fluent-templates = "0.13.3"
+sys-locale = "0.3.2"
+unic-langid = "0.9.6"

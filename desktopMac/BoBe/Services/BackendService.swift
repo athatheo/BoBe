@@ -7,7 +7,6 @@ enum ServiceState: Sendable {
     case stopped, starting, ready, crashed, fatal
 }
 
-/// Manages the bobe backend binary lifecycle with crash recovery.
 actor BackendService {
     static let shared = BackendService()
 
@@ -18,9 +17,7 @@ actor BackendService {
     private let maxRestartAttempts = 3
     private let dataDir: URL
     private let pidFilePath: URL
-    /// Last stderr output captured from a failed backend launch.
     private(set) var lastError: String?
-    /// Stream of state changes for external observers (e.g. BobeStore).
     private var stateContinuation: AsyncStream<ServiceState>.Continuation?
     nonisolated let stateStream: AsyncStream<ServiceState>
 
@@ -37,7 +34,6 @@ actor BackendService {
         self.stateContinuation?.yield(newState)
     }
 
-    /// Start the backend with up to 3 retry attempts on failure.
     func start() async throws {
         guard self.state != .starting, self.state != .ready else { return }
         self.stopping = false
@@ -49,7 +45,6 @@ actor BackendService {
         try await self.spawnAndWaitHealthy()
     }
 
-    /// Gracefully stop the backend
     func stop() async {
         self.stopping = true
         if self.process == nil {
@@ -169,7 +164,7 @@ actor BackendService {
         logger.info("bobe backend healthy (PID: \(proc.processIdentifier))")
     }
 
-    /// Exponential backoff health check — production pattern
+    /// Exponential backoff health polling.
     private func waitForHealth() async throws {
         var delay: TimeInterval = 0.2
         let maxAttempts = 30
@@ -249,7 +244,6 @@ actor BackendService {
         try? FileManager.default.removeItem(at: self.pidFilePath)
     }
 
-    /// Check whether a TCP port is already bound on localhost.
     private func isPortInUse(_ port: Int) -> Bool {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
@@ -321,7 +315,6 @@ enum BackendServiceError: Error, LocalizedError {
     }
 }
 
-/// Thread-safe buffer for accumulating stderr output from the backend process.
 private final class StderrBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var lines: [String] = []

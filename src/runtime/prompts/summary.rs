@@ -1,21 +1,10 @@
-//! Conversation summary prompt.
-
+use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::AiMessage;
 use crate::runtime::prompts::base::PromptConfig;
 
-/// Prompt for generating conversation summaries when closing conversations.
 pub struct ConversationSummaryPrompt;
 
 impl ConversationSummaryPrompt {
-    const SYSTEM_TEMPLATE: &str = "\
-You are summarizing a conversation for future context.
-Create a brief summary including:
-- Main topics discussed
-- Any requests or preferences the user mentioned
-- Status of any ongoing matters (resolved/unresolved)
-
-Keep it concise (2-3 sentences max). Focus on information useful for future conversations.";
-
     pub fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.3,
@@ -24,10 +13,8 @@ Keep it concise (2-3 sentences max). Focus on information useful for future conv
         }
     }
 
-    /// Build messages for conversation summary generation.
-    ///
-    /// `conversation_turns` is a list of `(role, content)` tuples.
     pub fn messages(conversation_turns: &[(&str, &str)]) -> Vec<AiMessage> {
+        let locale = FALLBACK_LOCALE;
         let turns_text: String = conversation_turns
             .iter()
             .map(|(role, content)| format!("{}: {content}", role.to_uppercase()))
@@ -35,8 +22,12 @@ Keep it concise (2-3 sentences max). Focus on information useful for future conv
             .join("\n");
 
         vec![
-            AiMessage::system(Self::SYSTEM_TEMPLATE),
-            AiMessage::user(format!("Summarize this conversation:\n\n{turns_text}")),
+            AiMessage::system(t(locale, "prompt-summary-system")),
+            AiMessage::user(t_vars(
+                locale,
+                "prompt-summary-user",
+                &[("turns_text", turns_text)],
+            )),
         ]
     }
 }

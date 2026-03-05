@@ -1,20 +1,16 @@
 import SwiftUI
 
-// MARK: - Cloud & Local Config Views
-
 extension SetupWizard {
-    // MARK: - Cloud Config
-
     var cloudConfigView: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Cloud AI Setup")
+                Text(L10n.tr("setup.cloud.title"))
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(theme.colors.text)
                     .frame(maxWidth: .infinity, alignment: .center)
 
                 if let providers = options?.cloudProviders, !providers.isEmpty {
-                    Text("Provider")
+                    Text(L10n.tr("setup.cloud.provider"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
                     BobeMenuPicker(
@@ -25,7 +21,7 @@ extension SetupWizard {
                         },
                         width: 440
                     )
-                    .accessibilityLabel("Provider")
+                    .accessibilityLabel(L10n.tr("setup.cloud.provider"))
                     .onChange(of: selectedProvider) { _, newProvider in
                         let provider = providers.first(where: { $0.id == newProvider })
                         selectedModel = provider?.models.first?.id ?? ""
@@ -35,30 +31,30 @@ extension SetupWizard {
                     }
                 }
 
-                Text("API Key")
+                Text(L10n.tr("setup.cloud.api_key"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(theme.colors.text)
-                BobeSecureField(placeholder: "Your API key", text: $apiKey)
+                BobeSecureField(placeholder: L10n.tr("setup.cloud.api_key.placeholder"), text: $apiKey)
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
                    provider.needsEndpoint {
-                    Text("Endpoint URL")
+                    Text(L10n.tr("setup.cloud.endpoint"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    BobeTextField(placeholder: "https://your-resource.openai.azure.com/", text: $endpoint)
+                    BobeTextField(placeholder: L10n.tr("setup.cloud.endpoint.placeholder"), text: $endpoint)
                 }
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
                    provider.needsDeployment {
-                    Text("Deployment Name")
+                    Text(L10n.tr("setup.cloud.deployment"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
-                    BobeTextField(placeholder: "my-deployment", text: $deployment)
+                    BobeTextField(placeholder: L10n.tr("setup.cloud.deployment.placeholder"), text: $deployment)
                 }
 
                 if let provider = options?.cloudProviders.first(where: { $0.id == selectedProvider }),
                    !provider.models.isEmpty {
-                    Text("Model")
+                    Text(L10n.tr("setup.cloud.model"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.colors.text)
                     BobeMenuPicker(
@@ -69,7 +65,7 @@ extension SetupWizard {
                         },
                         width: 440
                     )
-                    .accessibilityLabel("Model")
+                    .accessibilityLabel(L10n.tr("setup.cloud.model"))
                 }
 
                 let provider = options?.cloudProviders.first { $0.id == selectedProvider }
@@ -81,7 +77,7 @@ extension SetupWizard {
                         && (!needsDeployment || !deployment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         && !busy
 
-                Button(busy ? "Setting up..." : "Continue") {
+                Button(busy ? L10n.tr("setup.common.setting_up") : L10n.tr("setup.common.continue")) {
                     handleCloudSetup()
                 }
                 .bobeButton(.primary, size: .regular)
@@ -99,16 +95,14 @@ extension SetupWizard {
         }
     }
 
-    // MARK: - Local Config
-
     var localConfigView: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Local AI Setup")
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(theme.colors.text)
-                .frame(maxWidth: .infinity, alignment: .center)
+                Text(L10n.tr("setup.local.title"))
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(theme.colors.text)
+                    .frame(maxWidth: .infinity, alignment: .center)
 
-            Text("Download and run AI entirely on your Mac. No internet needed after setup.")
+            Text(L10n.tr("setup.local.subtitle"))
                 .font(.system(size: 15))
                 .foregroundStyle(theme.colors.textMuted)
                 .multilineTextAlignment(.center)
@@ -122,7 +116,7 @@ extension SetupWizard {
                 }
             }
 
-            Button(busy ? "Setting up..." : "Continue") {
+            Button(busy ? L10n.tr("setup.common.setting_up") : L10n.tr("setup.common.continue")) {
                 handleLocalSetup()
             }
             .bobeButton(.primary, size: .regular)
@@ -135,8 +129,6 @@ extension SetupWizard {
         .frame(maxWidth: 440)
     }
 
-    // MARK: - Shared Components
-
     func backToChooseModeButton(cleanup: (() -> Void)? = nil) -> some View {
         Button {
             cleanup?()
@@ -145,7 +137,7 @@ extension SetupWizard {
             HStack(spacing: 4) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 12))
-                Text("Back")
+                Text(L10n.tr("setup.common.back"))
                     .font(.system(size: 14))
             }
             .foregroundStyle(theme.colors.textMuted)

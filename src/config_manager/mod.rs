@@ -1,10 +1,4 @@
-//! Runtime configuration manager.
-//!
-//! Coordinates hot-swappable settings across application components:
-//! - Config is an immutable snapshot behind `ArcSwap`
-//! - Changes create a new `Config` by merging, then swap atomically
-//! - LLM/embedding providers are rebuilt when backend/model fields change
-//! - Non-secret values are persisted to `~/.bobe/config.toml`
+//! Runtime configuration manager with hot-swap via `ArcSwap`.
 
 mod fields;
 pub(crate) mod persistence;
@@ -18,12 +12,6 @@ use tracing::{error, info, warn};
 use crate::config::Config;
 use crate::llm::factory::LlmProviderFactory;
 use crate::llm::{EmbeddingProvider, LlmProvider};
-
-// ── Field classification tables ────────────────────────────────────────────
-//
-// Each table determines how the `update` method handles a given key:
-// restart-required, hot-swap config only, or hot-swap + provider rebuild.
-// Keys use dotted notation matching the nested Config structure.
 
 static STATIC_FIELDS: &[&str] = &[
     "server.host",
@@ -130,11 +118,9 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "soul_file",
     "seed_default_documents",
     "setup_completed",
+    "locale_override",
 ];
 
-// ── Public types ───────────────────────────────────────────────────────────
-
-/// Result of a runtime config update.
 #[derive(Debug)]
 pub struct UpdateResult {
     pub applied_fields: Vec<String>,
@@ -142,7 +128,7 @@ pub struct UpdateResult {
     pub persist_failed: bool,
 }
 
-/// Coordinates runtime config changes.
+/// Coordinates runtime config changes: classify, persist, apply, rebuild providers.
 pub struct ConfigManager {
     config: Arc<ArcSwap<Config>>,
     llm_provider: Arc<ArcSwapOption<Arc<dyn LlmProvider>>>,
@@ -165,9 +151,6 @@ impl ConfigManager {
         }
     }
 
-    /// Classify, persist, apply in-memory, and optionally rebuild providers.
-    ///
-    /// Accepts both flat legacy keys and dotted keys.
     pub fn update(&self, changes: &HashMap<String, serde_json::Value>) -> UpdateResult {
         let mut result = UpdateResult {
             applied_fields: Vec::new(),
@@ -185,7 +168,6 @@ impl ConfigManager {
         let mut has_config_changes = false;
 
         for (key, value) in changes {
-            // Normalize to dotted key for classification and persistence
             let dotted = fields::normalize_key_pub(key);
             let k = dotted.as_str();
 
@@ -195,7 +177,6 @@ impl ConfigManager {
             } else if key_set.contains(k) || llm_set.contains(k) {
                 has_llm_changes = true;
                 has_config_changes = true;
-                // Secret fields go to Keychain, not config.toml
                 if !crate::secrets::is_secret_field(k) {
                     toml_changes.insert(dotted, value.clone());
                 }
@@ -211,7 +192,6 @@ impl ConfigManager {
             }
         }
 
-        // Store secret fields in macOS Keychain
         for (key, value) in changes {
             let dotted = fields::normalize_key_pub(key);
             if crate::secrets::is_secret_field(&dotted)
@@ -297,7 +277,7 @@ impl ConfigManager {
     }
 }
 
-/// Move changed keys from `applied` to `restart_required` when a rebuild fails.
+/// Demote changed keys from `applied` to `restart_required` on rebuild failure.
 fn demote_to_restart(
     changes: &HashMap<String, serde_json::Value>,
     result: &mut UpdateResult,

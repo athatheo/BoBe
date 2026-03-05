@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Main overlay window content.
-/// Indicator bubble sits to the left of the avatar, vertically centered.
 struct OverlayView: View {
     @State private var store: BobeStore
     @State private var themeStore: ThemeStore
@@ -98,7 +96,7 @@ struct OverlayView: View {
                         )
 
                         if self.store.isReconnecting {
-                            Text("Reconnecting...")
+                            Text(L10n.tr("overlay.reconnecting"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(self.themeStore.currentTheme.colors.textMuted)
                                 .transition(.opacity)
@@ -154,19 +152,18 @@ struct OverlayView: View {
         !self.store.messages.isEmpty && !self.showChat
     }
 
-    /// Text override for StatusLabel based on state priority
     private var statusTextOverride: String? {
         if self.store.stateType == .loading {
-            return "Starting..."
+            return L10n.tr("overlay.status.starting")
         }
         if self.store.isReconnecting {
-            return "Reconnecting..."
+            return L10n.tr("overlay.reconnecting")
         }
         if self.store.capturePermissionMissing, self.store.stateType == .idle {
-            return "Capture needs permission"
+            return L10n.tr("overlay.status.capture_permission_needed")
         }
         if let tool = store.runningTools.first {
-            return "Using \(tool.toolName)..."
+            return L10n.tr("overlay.status.using_tool_format", tool.toolName)
         }
         return nil
     }

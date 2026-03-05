@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Full-document MCP configuration editor (`mcp.json`) with validation and save flow.
+/// Edits the raw `mcp.json` document with validate-before-save flow.
 struct MCPServersPanel: View {
     @State private var rawJson = ""
     @State private var servers: [MCPServer] = []
@@ -19,12 +19,11 @@ struct MCPServersPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("MCP Configuration")
+                Text(L10n.tr("settings.mcp.title"))
                     .font(.title2.bold())
                     .foregroundStyle(self.theme.colors.text)
 
-                // swiftlint:disable:next line_length
-                Text("Edit the full mcp.json document. Save persists the config and connects servers. Secret values are stored securely in the system keychain.")
+                Text(L10n.tr("settings.mcp.description"))
                     .font(.system(size: 12))
                     .foregroundStyle(self.theme.colors.textMuted)
 
@@ -37,7 +36,7 @@ struct MCPServersPanel: View {
                     )
 
                 HStack(spacing: 8) {
-                    Button("Reload") { self.reloadConfig() }
+                    Button(L10n.tr("settings.mcp.action.reload")) { self.reloadConfig() }
                         .bobeButton(.secondary, size: .small)
                         .disabled(self.isLoading || self.isValidating || self.isSaving)
 
@@ -48,7 +47,11 @@ struct MCPServersPanel: View {
                             if self.isValidating {
                                 BobeSpinner(size: 12)
                             }
-                            Text(self.isValidating ? "Validating..." : "Validate")
+                            Text(
+                                self.isValidating
+                                    ? L10n.tr("settings.mcp.action.validating")
+                                    : L10n.tr("settings.mcp.action.validate")
+                            )
                         }
                     }
                     .bobeButton(.secondary, size: .small)
@@ -61,7 +64,11 @@ struct MCPServersPanel: View {
                             if self.isSaving {
                                 BobeSpinner(size: 12)
                             }
-                            Text(self.isSaving ? "Saving..." : "Save")
+                            Text(
+                                self.isSaving
+                                    ? L10n.tr("settings.shared.action.saving")
+                                    : L10n.tr("settings.shared.action.save")
+                            )
                         }
                     }
                     .bobeButton(.primary, size: .small)
@@ -69,7 +76,7 @@ struct MCPServersPanel: View {
 
                     Spacer()
 
-                    Button("Reset") { self.resetConfig() }
+                    Button(L10n.tr("settings.mcp.action.reset")) { self.resetConfig() }
                         .bobeButton(.destructive, size: .small)
                         .disabled(self.isLoading || self.isValidating || self.isSaving)
                 }
@@ -100,19 +107,19 @@ struct MCPServersPanel: View {
     @ViewBuilder
     private var discoverySection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Discovered Servers")
+            Text(L10n.tr("settings.mcp.discovery.title"))
                 .font(.headline)
                 .foregroundStyle(self.theme.colors.text)
 
             if self.isLoading {
                 HStack(spacing: 8) {
                     BobeSpinner(size: 12)
-                    Text("Loading MCP config...")
+                    Text(L10n.tr("settings.mcp.loading"))
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.textMuted)
                 }
             } else if self.servers.isEmpty {
-                Text("No MCP servers configured.")
+                Text(L10n.tr("settings.mcp.discovery.empty"))
                     .font(.system(size: 12))
                     .foregroundStyle(self.theme.colors.textMuted)
             } else {
@@ -122,10 +129,14 @@ struct MCPServersPanel: View {
                             HStack(spacing: 8) {
                                 Text(server.name)
                                     .font(.system(size: 12, weight: .semibold))
-                                Text(server.connected ? "connected" : "disconnected")
+                                Text(
+                                    server.connected
+                                        ? L10n.tr("settings.mcp.discovery.status.connected")
+                                        : L10n.tr("settings.mcp.discovery.status.disconnected")
+                                )
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(server.connected ? self.theme.colors.secondary : self.theme.colors.primary)
-                                Text("\(server.toolCount) tools")
+                                Text(L10n.tr("settings.mcp.discovery.tools_format", server.toolCount))
                                     .font(.system(size: 10))
                                     .foregroundStyle(self.theme.colors.textMuted)
                             }
@@ -173,7 +184,7 @@ struct MCPServersPanel: View {
 
     private func validateConfig() {
         guard !self.rawJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            self.error = "MCP JSON must not be empty."
+            self.error = L10n.tr("settings.mcp.error.empty_json")
             return
         }
 
@@ -192,7 +203,7 @@ struct MCPServersPanel: View {
                 let response = try await DaemonClient.shared.validateMCPConfig(request)
                 if response.valid {
                     self.rawJson = response.normalizedJson
-                    self.status = "Validation passed (\(response.serverCount) server(s))."
+                    self.status = L10n.tr("settings.mcp.status.validation_passed_format", response.serverCount)
                 } else {
                     self.error = response.errors.joined(separator: "\n")
                 }
@@ -204,7 +215,7 @@ struct MCPServersPanel: View {
 
     private func saveConfig() {
         guard !self.rawJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            self.error = "MCP JSON must not be empty."
+            self.error = L10n.tr("settings.mcp.error.empty_json")
             return
         }
 

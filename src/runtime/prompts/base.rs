@@ -1,11 +1,7 @@
-//! Base prompt types.
-
 use crate::llm::types::{ResponseFormat, ToolDefinition};
 
-/// Default soul fallback (used when no soul provider is available).
 pub const DEFAULT_SOUL: &str = crate::constants::DEFAULT_SOUL_FALLBACK;
 
-/// LLM parameters for a prompt — declared once per prompt type.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct PromptConfig {

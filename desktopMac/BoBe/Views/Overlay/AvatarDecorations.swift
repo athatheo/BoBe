@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Status Label (pill at top of avatar, typewriter + blinking cursor)
+// MARK: - Status Label
 
 struct StatusLabel: View {
     let stateType: BobeStateType
@@ -27,7 +27,6 @@ struct StatusLabel: View {
                         .tracking(0.5)
                         .foregroundStyle(theme.colors.primary)
 
-                    // Blinking cursor
                     if isTyping || !displayedText.isEmpty {
                         Text("|")
                             .font(.system(size: 11, weight: .bold))
@@ -68,7 +67,6 @@ struct StatusLabel: View {
         }
         .task {
             startTypewriter(effectiveText(for: stateType))
-            // Cursor blink loop — auto-cancelled when view disappears
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(0.3))
                 showCursor.toggle()
@@ -108,20 +106,19 @@ struct StatusLabel: View {
 
     private func labelText(for state: BobeStateType) -> String {
         switch state {
-        case .loading: "Loading"
+        case .loading: L10n.tr("overlay.status.loading")
         case .idle: ""
-        case .capturing: "Capturing"
-        case .thinking: "Thinking"
-        case .speaking: "Speaking"
-        case .wantsToSpeak: "Hey"
-        case .error: "Offline"
-        case .shuttingDown: "Bye!"
+        case .capturing: L10n.tr("overlay.status.capturing")
+        case .thinking: L10n.tr("overlay.status.thinking")
+        case .speaking: L10n.tr("overlay.status.speaking")
+        case .wantsToSpeak: L10n.tr("overlay.status.wants_to_speak")
+        case .error: L10n.tr("overlay.status.offline")
+        case .shuttingDown: L10n.tr("overlay.status.shutting_down")
         }
     }
 }
 
-// MARK: - Thinking Numbers Ring (terracotta chars bubbling up in the ring gap)
-// Matches Electron: random x in [-45,45], y animates [30,-40], opacity fades [0,1,1,0]
+// MARK: - Thinking Numbers Ring
 
 struct ThinkingNumbersRing: View {
     private let chars: [String] = ["1", "+", "0", "=", "π", "7", "%", "∑", "×", "2", "/", "9"]
@@ -172,14 +169,10 @@ private struct BubblingChar: View {
                     xPos = Self.randomX()
                     yOffset = 30
                     charOpacity = 0
-                    // Fade in quickly
                     withAnimation(.easeIn(duration: duration * 0.2)) { charOpacity = 1 }
-                    // Rise over full duration
                     withAnimation(.easeOut(duration: duration)) { yOffset = -40 }
-                    // Hold visible until 80% through
                     try? await Task.sleep(for: .seconds(duration * 0.8))
                     guard !Task.isCancelled else { return }
-                    // Fade out in last 20%
                     withAnimation(.easeOut(duration: duration * 0.2)) { charOpacity = 0 }
                     try? await Task.sleep(for: .seconds(duration * 0.2))
                 }
@@ -187,7 +180,7 @@ private struct BubblingChar: View {
     }
 }
 
-// MARK: - Speaking Wave Ring (16 olive bars around avatar)
+// MARK: - Speaking Wave Ring
 
 struct SpeakingWaveRing: View {
     private let barCount = 16
@@ -219,7 +212,7 @@ private struct SpeakingBar: View {
             .fill(color)
             .frame(width: 4, height: 12)
             .scaleEffect(y: scaleY)
-            .offset(y: -52) // Position in the ring gap
+            .offset(y: -52)
             .rotationEffect(.degrees(angle))
             .task {
                 try? await Task.sleep(for: .seconds(delay))
@@ -236,7 +229,7 @@ private struct SpeakingBar: View {
     }
 }
 
-// MARK: - Attention Pulse (terracotta ring pulsing)
+// MARK: - Attention Pulse
 
 struct AttentionPulse: View {
     @State private var scale: CGFloat = 1.0
@@ -246,7 +239,7 @@ struct AttentionPulse: View {
     var body: some View {
         Circle()
             .stroke(theme.colors.primary, lineWidth: 3)
-            .frame(width: 124, height: 124) // 4px larger than avatar card on each side
+            .frame(width: 124, height: 124)
             .scaleEffect(scale)
             .opacity(opacity)
             .onAppear {

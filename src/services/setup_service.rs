@@ -17,14 +17,13 @@ use crate::api::handlers::setup::{
 use crate::app_state::AppState;
 use crate::config::LlmBackend;
 use crate::error::AppError;
+use crate::i18n::{t, t_vars};
 use crate::llm::factory::LlmProviderFactory;
 
 // ── Shared job state ────────────────────────────────────────────────────────
 
 pub(crate) type SharedJobState = Arc<RwLock<Option<SetupJobState>>>;
 
-/// Global singleton for the setup job state.
-/// We use a static `OnceLock` since we can't modify `AppState`'s struct definition.
 static SETUP_JOB: std::sync::OnceLock<SharedJobState> = std::sync::OnceLock::new();
 
 pub(crate) fn job_state() -> &'static SharedJobState {
@@ -33,8 +32,6 @@ pub(crate) fn job_state() -> &'static SharedJobState {
 
 // ── Model tier mapping ──────────────────────────────────────────────────────
 
-/// Disk space estimate in bytes for a given local tier.
-/// Used by both `get_options` (client-facing) and `run_local_setup` (validation).
 pub(crate) fn tier_disk_estimate(tier: &str) -> u64 {
     match tier {
         "small" => 6_000_000_000,
@@ -65,6 +62,28 @@ fn tier_models(tier: &str) -> TierModels {
     }
 }
 
+#[derive(Debug, Clone)]
+struct SetupLocalizer {
+    locale: String,
+}
+
+impl SetupLocalizer {
+    fn from_state(state: &Arc<AppState>) -> Self {
+        let cfg = state.config();
+        Self {
+            locale: cfg.effective_locale(),
+        }
+    }
+
+    fn text(&self, key: &'static str) -> String {
+        t(&self.locale, key)
+    }
+
+    fn vars(&self, key: &'static str, args: &[(&str, String)]) -> String {
+        t_vars(&self.locale, key, args)
+    }
+}
+
 // ── Step helpers ─────────────────────────────────────────────────────────────
 
 async fn update_step(step_id: &str, status: StepStatus, message: Option<String>) {
@@ -75,7 +94,6 @@ async fn update_step(step_id: &str, status: StepStatus, message: Option<String>)
             s.message = message;
             s.progress = None;
         }
-        // Update current_step to the first in-progress step
         job.current_step = job
             .steps
             .iter()
@@ -117,33 +135,36 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             job.status = JobStatus::InProgress;
         }
     }
+    let localizer = SetupLocalizer::from_state(&state);
 
     let tier = body.tier.as_deref().unwrap_or("large");
     let models = tier_models(tier);
 
-    // Step 1: Validate data directory and disk space
     update_step("validate", StepStatus::InProgress, None).await;
     let data_dir = state.config().resolved_data_dir();
     if let Err(e) = tokio::fs::create_dir_all(&data_dir).await {
-        update_step(
-            "validate",
-            StepStatus::Failed,
-            Some(format!("Cannot create data directory: {e}")),
-        )
-        .await;
-        finish_job(JobStatus::Failed, Some(e.to_string())).await;
+        let msg = localizer.vars(
+            "setup-error-create-data-directory",
+            &[("error", e.to_string())],
+        );
+        update_step("validate", StepStatus::Failed, Some(msg.clone())).await;
+        finish_job(JobStatus::Failed, Some(msg)).await;
         return;
     }
 
-    // Check available disk space against the tier's estimate
     let required_bytes = tier_disk_estimate(tier);
     if let Some(available) = available_disk_space(&data_dir).await
         && available < required_bytes
     {
         let needed_gb = required_bytes / 1_000_000_000;
         let avail_gb = available / 1_000_000_000;
-        let msg =
-            format!("Not enough disk space: ~{needed_gb} GB required, {avail_gb} GB available");
+        let msg = localizer.vars(
+            "setup-error-not-enough-disk-space",
+            &[
+                ("needed_gb", needed_gb.to_string()),
+                ("available_gb", avail_gb.to_string()),
+            ],
+        );
         update_step("validate", StepStatus::Failed, Some(msg.clone())).await;
         finish_job(JobStatus::Failed, Some(msg)).await;
         return;
@@ -152,7 +173,7 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
     update_step(
         "validate",
         StepStatus::Succeeded,
-        Some("Data directory ready".into()),
+        Some(localizer.text("setup-step-validate-data-directory-ready")),
     )
     .await;
 
@@ -161,7 +182,6 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
-    // Step 2: Ensure Ollama engine
     update_step("engine", StepStatus::InProgress, None).await;
     let (progress_tx, mut progress_rx) =
         tokio::sync::watch::channel(crate::binary_manager::DownloadProgress {
@@ -170,7 +190,6 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             percent: None,
         });
 
-    // Spawn a task to relay progress updates
     let progress_relay = tokio::spawn(async move {
         while progress_rx.changed().await.is_ok() {
             let p = progress_rx.borrow().clone();
@@ -191,7 +210,10 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             update_step(
                 "engine",
                 StepStatus::Succeeded,
-                Some(format!("Ollama at {}", path.display())),
+                Some(localizer.vars(
+                    "setup-step-engine-ollama-at",
+                    &[("path", path.display().to_string())],
+                )),
             )
             .await;
             path
@@ -210,17 +232,17 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
-    // Ensure Ollama is running
     if let Err(e) = state.ollama_manager.ensure_running().await {
         warn!(error = %e, "setup.ollama_start_failed");
-        // Not fatal — user may have system Ollama
     }
 
-    // Step 3: Pull text model
     update_step(
         "text_model",
         StepStatus::InProgress,
-        Some(format!("Pulling {}", models.text)),
+        Some(localizer.vars(
+            "setup-step-model-pulling",
+            &[("model", models.text.to_owned())],
+        )),
     )
     .await;
     match pull_model(&state, models.text).await {
@@ -228,7 +250,10 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             update_step(
                 "text_model",
                 StepStatus::Succeeded,
-                Some(format!("{} ready", models.text)),
+                Some(localizer.vars(
+                    "setup-step-model-ready",
+                    &[("model", models.text.to_owned())],
+                )),
             )
             .await;
         }
@@ -244,11 +269,13 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
-    // Step 4: Pull vision model
     update_step(
         "vision_model",
         StepStatus::InProgress,
-        Some(format!("Pulling {}", models.vision)),
+        Some(localizer.vars(
+            "setup-step-model-pulling",
+            &[("model", models.vision.to_owned())],
+        )),
     )
     .await;
     match pull_model(&state, models.vision).await {
@@ -256,17 +283,22 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             update_step(
                 "vision_model",
                 StepStatus::Succeeded,
-                Some(format!("{} ready", models.vision)),
+                Some(localizer.vars(
+                    "setup-step-model-ready",
+                    &[("model", models.vision.to_owned())],
+                )),
             )
             .await;
         }
         Err(e) => {
-            // Vision model failure is non-fatal
             warn!(error = %e, "setup.vision_model_pull_failed");
             update_step(
                 "vision_model",
                 StepStatus::Failed,
-                Some(format!("Vision model pull failed (non-fatal): {e}")),
+                Some(localizer.vars(
+                    "setup-step-vision-model-pull-failed-non-fatal",
+                    &[("error", e.to_string())],
+                )),
             )
             .await;
         }
@@ -277,12 +309,14 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
-    // Step 5: Pull embedding model
     let embedding_model = "BAAI/bge-small-en-v1.5";
     update_step(
         "embedding_model",
         StepStatus::InProgress,
-        Some(format!("Pulling {embedding_model}")),
+        Some(localizer.vars(
+            "setup-step-model-pulling",
+            &[("model", embedding_model.to_owned())],
+        )),
     )
     .await;
     match pull_model(&state, embedding_model).await {
@@ -290,7 +324,10 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             update_step(
                 "embedding_model",
                 StepStatus::Succeeded,
-                Some(format!("{embedding_model} ready")),
+                Some(localizer.vars(
+                    "setup-step-model-ready",
+                    &[("model", embedding_model.to_owned())],
+                )),
             )
             .await;
         }
@@ -306,11 +343,10 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
-    // Step 6: Warmup embedding
     update_step(
         "embedding_warmup",
         StepStatus::InProgress,
-        Some("Loading embedding model into memory...".into()),
+        Some(localizer.text("setup-step-embedding-loading")),
     )
     .await;
     match state.embedding_provider.embed("warmup").await {
@@ -318,7 +354,7 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             update_step(
                 "embedding_warmup",
                 StepStatus::Succeeded,
-                Some("Embedding model loaded".into()),
+                Some(localizer.text("setup-step-embedding-loaded")),
             )
             .await;
         }
@@ -327,14 +363,15 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             update_step(
                 "embedding_warmup",
                 StepStatus::Failed,
-                Some(format!("Warmup failed (non-fatal): {e}")),
+                Some(localizer.vars(
+                    "setup-step-embedding-warmup-failed-non-fatal",
+                    &[("error", e.to_string())],
+                )),
             )
             .await;
         }
     }
 
-    // Step 7: Persist config
-    update_step("persist", StepStatus::InProgress, None).await;
     let mut changes = HashMap::new();
     changes.insert(
         "llm.backend".to_string(),
@@ -358,27 +395,9 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
     );
     changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
 
-    let update = state.config_manager.update(&changes);
-    if update.persist_failed {
-        update_step(
-            "persist",
-            StepStatus::Failed,
-            Some("Failed to persist configuration".into()),
-        )
-        .await;
-        finish_job(
-            JobStatus::Failed,
-            Some("Failed to persist configuration".into()),
-        )
-        .await;
+    if !persist_config(&state, changes, &localizer).await {
         return;
     }
-    update_step(
-        "persist",
-        StepStatus::Succeeded,
-        Some("Configuration saved".into()),
-    )
-    .await;
 
     info!("setup.local_complete");
     finish_job(JobStatus::Succeeded, None).await;
@@ -393,28 +412,25 @@ pub(crate) async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
     }
 
     let provider = body.provider.as_deref().unwrap_or("openai");
+    let localizer = SetupLocalizer::from_state(&state);
     update_step("validate", StepStatus::InProgress, None).await;
 
     match provider {
         "openai" => run_openai_setup(&state, &body).await,
         "azure_openai" => run_azure_setup(&state, &body).await,
         other => {
-            update_step(
-                "validate",
-                StepStatus::Failed,
-                Some(format!("Unknown provider: {other}")),
-            )
-            .await;
-            finish_job(
-                JobStatus::Failed,
-                Some(format!("Unknown provider: {other}")),
-            )
-            .await;
+            let msg = localizer.vars(
+                "setup-error-unknown-provider",
+                &[("provider", other.to_owned())],
+            );
+            update_step("validate", StepStatus::Failed, Some(msg.clone())).await;
+            finish_job(JobStatus::Failed, Some(msg)).await;
         }
     }
 }
 
 async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
+    let localizer = SetupLocalizer::from_state(state);
     let Some(api_key) = body
         .api_key
         .as_deref()
@@ -422,12 +438,8 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
         .filter(|k| !k.is_empty())
         .map(str::to_owned)
     else {
-        fail_step(
-            "validate",
-            "API key is required",
-            "API key is required for OpenAI",
-        )
-        .await;
+        let msg = localizer.text("setup-openai-error-api-key-required");
+        fail_step("validate", msg.clone(), msg).await;
         return;
     };
 
@@ -442,31 +454,36 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
             update_step(
                 "validate",
                 StepStatus::Succeeded,
-                Some("API key valid".into()),
+                Some(localizer.text("setup-openai-validation-api-key-valid")),
             )
             .await;
         }
         Ok(resp) => {
-            let msg = format!("API key validation failed: HTTP {}", resp.status());
-            fail_step("validate", &msg, &msg).await;
+            let msg = localizer.vars(
+                "setup-openai-error-validation-http",
+                &[("status", resp.status().to_string())],
+            );
+            fail_step("validate", msg.clone(), msg).await;
             return;
         }
         Err(e) => {
             let msg = if e.is_builder() {
-                "Invalid OpenAI API key format. Remove spaces/newlines and try again.".to_string()
+                localizer.text("setup-openai-error-invalid-api-key-format")
             } else {
-                format!("Cannot reach OpenAI: {e}")
+                localizer.vars(
+                    "setup-openai-error-cannot-reach",
+                    &[("error", e.to_string())],
+                )
             };
-            fail_step("validate", &msg, &msg).await;
+            fail_step("validate", msg.clone(), msg).await;
             return;
         }
     }
 
-    // Test embedding
     update_step(
         "embedding_warmup",
         StepStatus::InProgress,
-        Some("Testing embedding endpoint...".into()),
+        Some(localizer.text("setup-openai-embedding-testing")),
     )
     .await;
 
@@ -483,19 +500,18 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
             update_step(
                 "embedding_warmup",
                 StepStatus::Succeeded,
-                Some("Embedding endpoint working".into()),
+                Some(localizer.text("setup-openai-embedding-working")),
             )
             .await;
         }
         Err(e) => {
             warn!(error = %e, "setup.embedding_test_failed");
-            let msg = format!("Embedding test failed: {e}");
-            fail_step("embedding_warmup", &msg, &msg).await;
+            let msg = localizer.vars("setup-openai-embedding-failed", &[("error", e.to_string())]);
+            fail_step("embedding_warmup", msg.clone(), msg).await;
             return;
         }
     }
 
-    // Persist
     let mut changes = HashMap::new();
     changes.insert(
         "llm.backend".to_string(),
@@ -510,13 +526,14 @@ async fn run_openai_setup(state: &Arc<AppState>, body: &SetupRequest) {
         serde_json::Value::String(model),
     );
     changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
-    if persist_config(state, changes).await {
+    if persist_config(state, changes, &localizer).await {
         info!("setup.openai_complete");
         finish_job(JobStatus::Succeeded, None).await;
     }
 }
 
 async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
+    let localizer = SetupLocalizer::from_state(state);
     let Some(api_key) = body
         .api_key
         .as_deref()
@@ -524,7 +541,8 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
         .filter(|k| !k.is_empty())
         .map(str::to_owned)
     else {
-        fail_step("validate", "API key is required", "API key required").await;
+        let msg = localizer.text("setup-azure-error-api-key-required");
+        fail_step("validate", msg.clone(), msg).await;
         return;
     };
     let Some(endpoint) = body
@@ -534,7 +552,8 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
         .filter(|e| !e.is_empty())
         .map(str::to_owned)
     else {
-        fail_step("validate", "Endpoint is required", "Endpoint required").await;
+        let msg = localizer.text("setup-azure-error-endpoint-required");
+        fail_step("validate", msg.clone(), msg).await;
         return;
     };
     let Some(deployment) = body
@@ -544,16 +563,11 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
         .filter(|d| !d.is_empty())
         .map(str::to_owned)
     else {
-        fail_step(
-            "validate",
-            "Deployment name is required",
-            "Deployment required",
-        )
-        .await;
+        let msg = localizer.text("setup-azure-error-deployment-required");
+        fail_step("validate", msg.clone(), msg).await;
         return;
     };
 
-    // Test Azure endpoint
     let test_url = format!(
         "{}/openai/deployments/{}/chat/completions?api-version=2024-02-15-preview",
         endpoint.trim_end_matches('/'),
@@ -571,32 +585,33 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
             update_step(
                 "validate",
                 StepStatus::Succeeded,
-                Some("Azure endpoint validated".into()),
+                Some(localizer.text("setup-azure-validation-endpoint-validated")),
             )
             .await;
         }
         Ok(resp) => {
-            let msg = format!("Azure validation failed: HTTP {}", resp.status());
-            fail_step("validate", &msg, &msg).await;
+            let msg = localizer.vars(
+                "setup-azure-error-validation-http",
+                &[("status", resp.status().to_string())],
+            );
+            fail_step("validate", msg.clone(), msg).await;
             return;
         }
         Err(e) => {
             let msg = if e.is_builder() {
-                "Invalid Azure setup value format. Remove spaces/newlines and try again."
-                    .to_string()
+                localizer.text("setup-azure-error-invalid-value-format")
             } else {
-                format!("Cannot reach Azure endpoint: {e}")
+                localizer.vars("setup-azure-error-cannot-reach", &[("error", e.to_string())])
             };
-            fail_step("validate", &msg, &msg).await;
+            fail_step("validate", msg.clone(), msg).await;
             return;
         }
     }
 
-    // Test embedding
     update_step(
         "embedding_warmup",
         StepStatus::InProgress,
-        Some("Testing embedding...".into()),
+        Some(localizer.text("setup-azure-embedding-testing")),
     )
     .await;
     match test_azure_embedding(state, &endpoint, &api_key, &deployment).await {
@@ -604,18 +619,17 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
             update_step(
                 "embedding_warmup",
                 StepStatus::Succeeded,
-                Some("Embedding working".into()),
+                Some(localizer.text("setup-azure-embedding-working")),
             )
             .await;
         }
         Err(e) => {
-            let msg = format!("Embedding failed: {e}");
-            fail_step("embedding_warmup", &msg, &msg).await;
+            let msg = localizer.vars("setup-azure-embedding-failed", &[("error", e.to_string())]);
+            fail_step("embedding_warmup", msg.clone(), msg).await;
             return;
         }
     }
 
-    // Persist
     let mut changes = HashMap::new();
     changes.insert(
         "llm.backend".to_string(),
@@ -634,39 +648,33 @@ async fn run_azure_setup(state: &Arc<AppState>, body: &SetupRequest) {
         serde_json::Value::String(deployment),
     );
     changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
-    if persist_config(state, changes).await {
+    if persist_config(state, changes, &localizer).await {
         info!("setup.azure_complete");
         finish_job(JobStatus::Succeeded, None).await;
     }
 }
 
-/// Shared helper: mark a step failed and fail the whole job.
-async fn fail_step(step_id: &str, step_msg: &str, job_msg: &str) {
-    update_step(step_id, StepStatus::Failed, Some(step_msg.to_owned())).await;
-    finish_job(JobStatus::Failed, Some(job_msg.to_owned())).await;
+async fn fail_step(step_id: &str, step_msg: String, job_msg: String) {
+    update_step(step_id, StepStatus::Failed, Some(step_msg)).await;
+    finish_job(JobStatus::Failed, Some(job_msg)).await;
 }
 
-/// Shared helper: persist config changes and update the persist step.
-/// Returns `true` on success.
 async fn persist_config(
     state: &Arc<AppState>,
     changes: HashMap<String, serde_json::Value>,
+    localizer: &SetupLocalizer,
 ) -> bool {
     update_step("persist", StepStatus::InProgress, None).await;
     let update = state.config_manager.update(&changes);
     if update.persist_failed {
-        fail_step(
-            "persist",
-            "Failed to persist configuration",
-            "Failed to persist configuration",
-        )
-        .await;
+        let msg = localizer.text("setup-error-persist-failed");
+        fail_step("persist", msg.clone(), msg).await;
         return false;
     }
     update_step(
         "persist",
         StepStatus::Succeeded,
-        Some("Configuration saved".into()),
+        Some(localizer.text("setup-step-persist-saved")),
     )
     .await;
     true
@@ -719,7 +727,6 @@ async fn test_azure_embedding(
 }
 
 async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> {
-    // Check if model already exists (idempotent)
     if state.ollama_manager.has_model(model).await {
         info!(model, "setup.model_already_exists");
         return Ok(());
@@ -728,8 +735,6 @@ async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> 
     state
         .ollama_manager
         .pull_model(model, || {
-            // Check the shared job state for cancellation.
-            // Use try_read to avoid blocking — if the lock is held, assume not canceled.
             SETUP_JOB
                 .get()
                 .and_then(|s| s.try_read().ok())
@@ -740,18 +745,14 @@ async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> 
     Ok(())
 }
 
-/// Returns available bytes on the filesystem containing `path`, or None on error.
 async fn available_disk_space(path: &std::path::Path) -> Option<u64> {
-    // -P: POSIX format (prevents long filesystem names from wrapping lines)
-    // -k: output in 1K blocks
     let output = tokio::process::Command::new("df")
-        .args(["-Pk"])
+        .args(["-Pk"]) // POSIX format, 1K blocks
         .arg(path)
         .output()
         .await
         .ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // POSIX df output: Filesystem 1024-blocks Used Available Capacity Mounted
     let line = stdout.lines().nth(1)?;
     let available_kb: u64 = line.split_whitespace().nth(3)?.parse().ok()?;
     Some(available_kb * 1024)

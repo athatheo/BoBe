@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// AI Model settings panel — provider picker (Ollama/OpenAI/Azure) with model management.
 struct AIModelPanel: View {
     @State private var settings: DaemonSettings?
     @State private var selectedProvider = "ollama"
@@ -52,25 +51,18 @@ struct AIModelPanel: View {
                     if self.isLoading, self.settings == nil {
                         HStack(spacing: 8) {
                             BobeSpinner(size: 14)
-                            Text("Loading model settings...")
+                            Text(L10n.tr("settings.ai_model.loading"))
                                 .font(.system(size: 13))
                                 .foregroundStyle(self.theme.colors.textMuted)
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 40)
                     } else if self.settings != nil {
-                        SettingsRow(label: "Provider") {
+                        SettingsRow(label: L10n.tr("settings.ai_model.provider")) {
                             BobeMenuPicker(
                                 selection: self.$selectedProvider,
                                 options: ["ollama", "openai", "azure_openai"],
-                                label: { provider in
-                                    switch provider {
-                                    case "ollama": "Ollama (Local)"
-                                    case "openai": "OpenAI"
-                                    case "azure_openai": "Azure OpenAI"
-                                    default: provider
-                                    }
-                                },
+                                label: self.providerLabel(for:),
                                 width: 200
                             )
                             .onChange(of: self.selectedProvider) { _, _ in self.isDirty = true }
@@ -92,13 +84,17 @@ struct AIModelPanel: View {
 
             if self.isDirty {
                 HStack(spacing: 12) {
-                    Text("Unsaved changes")
+                    Text(L10n.tr("settings.ai_model.unsaved_changes"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(self.theme.colors.text)
                     Spacer()
-                    Button("Discard") { self.discardChanges() }
+                    Button(L10n.tr("settings.shared.action.discard")) { self.discardChanges() }
                         .bobeButton(.secondary, size: .small)
-                    Button(self.isSaving ? "Saving..." : "Save") { self.saveSettings() }
+                    Button(
+                        self.isSaving
+                            ? L10n.tr("settings.shared.action.saving")
+                            : L10n.tr("settings.shared.action.save")
+                    ) { self.saveSettings() }
                         .bobeButton(.primary, size: .small)
                         .disabled(self.isSaving)
                 }
@@ -119,12 +115,12 @@ struct AIModelPanel: View {
     private var ollamaSettings: some View {
         VStack(alignment: .leading, spacing: 16) {
             CollapsibleSection(
-                title: "Active Model",
+                title: L10n.tr("settings.ai_model.ollama.active_model.title"),
                 icon: "cpu",
-                description: "The model BoBe uses for all AI operations"
+                description: L10n.tr("settings.ai_model.ollama.active_model.description")
             ) {
                 if self.models.isEmpty {
-                    Text("No models installed — is Ollama running?")
+                    Text(L10n.tr("settings.ai_model.ollama.no_models"))
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.textMuted)
                 } else {
@@ -140,9 +136,9 @@ struct AIModelPanel: View {
 
             if !self.models.isEmpty {
                 CollapsibleSection(
-                    title: "Installed Models",
+                    title: L10n.tr("settings.ai_model.ollama.installed_models.title"),
                     icon: "tray.full.fill",
-                    description: "\(self.models.count) models downloaded"
+                    description: L10n.tr("settings.ai_model.ollama.installed_models.description_format", self.models.count)
                 ) {
                     ForEach(self.models) { model in
                         HStack(spacing: 8) {
@@ -150,7 +146,7 @@ struct AIModelPanel: View {
                                 .font(.system(size: 13, weight: .medium))
 
                             if model.name == self.ollamaModel {
-                                Text("Active")
+                                Text(L10n.tr("settings.ai_model.ollama.active_badge"))
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundStyle(self.theme.colors.secondary)
                                     .padding(.horizontal, 6)
@@ -164,7 +160,7 @@ struct AIModelPanel: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(self.theme.colors.textMuted)
 
-                            Button("Use") {
+                            Button(L10n.tr("settings.ai_model.ollama.action.use")) {
                                 self.ollamaModel = model.name
                                 self.isDirty = true
                             }
@@ -183,23 +179,23 @@ struct AIModelPanel: View {
             }
 
             CollapsibleSection(
-                title: "Download Model",
+                title: L10n.tr("settings.ai_model.ollama.download.title"),
                 icon: "arrow.down.circle.fill",
-                description: "Pull a model from the Ollama registry"
+                description: L10n.tr("settings.ai_model.ollama.download.description")
             ) {
                 if self.isPulling {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
-                        Text("Downloading \(self.pullModelName)...")
+                        Text(L10n.tr("settings.ai_model.ollama.downloading_format", self.pullModelName))
                             .font(.system(size: 12))
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
                 } else {
                     HStack(spacing: 8) {
-                        BobeTextField(placeholder: "Model name (e.g. llama3.2)", text: self.$pullModelName) {
+                        BobeTextField(placeholder: L10n.tr("settings.ai_model.ollama.model_name.placeholder"), text: self.$pullModelName) {
                             if !self.pullModelName.isEmpty { Task { await self.pullModel() } }
                         }
-                        Button("Pull") {
+                        Button(L10n.tr("settings.ai_model.ollama.action.pull")) {
                             Task { await self.pullModel() }
                         }
                         .bobeButton(.secondary, size: .small)
@@ -212,19 +208,21 @@ struct AIModelPanel: View {
 
     private var openaiSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("OpenAI Configuration")
+            Text(L10n.tr("settings.ai_model.openai.title"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(self.theme.colors.text)
 
-            SettingsRow(label: "API Key") {
+            SettingsRow(label: L10n.tr("settings.ai_model.openai.api_key")) {
                 BobeSecureField(
-                    placeholder: self.openaiApiKey.isEmpty ? "sk-..." : "••••••••",
+                    placeholder: self.openaiApiKey.isEmpty
+                        ? L10n.tr("settings.ai_model.openai.api_key.placeholder")
+                        : L10n.tr("settings.ai_model.secret.masked_placeholder"),
                     text: self.$openaiApiKey,
                     width: 280
                 )
                 .onChange(of: self.openaiApiKey) { _, _ in self.isDirty = true }
             }
-            SettingsRow(label: "Model") {
+            SettingsRow(label: L10n.tr("settings.ai_model.openai.model")) {
                 BobeMenuPicker(
                     selection: self.$openaiModel,
                     options: self.openAIModelChoices,
@@ -240,30 +238,30 @@ struct AIModelPanel: View {
 
     private var azureSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Azure OpenAI Configuration")
+            Text(L10n.tr("settings.ai_model.azure.title"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(self.theme.colors.text)
 
-            SettingsRow(label: "Endpoint") {
-                BobeTextField(placeholder: "https://...", text: self.$azureEndpoint, width: 280)
+            SettingsRow(label: L10n.tr("settings.ai_model.azure.endpoint")) {
+                BobeTextField(placeholder: L10n.tr("settings.ai_model.azure.endpoint.placeholder"), text: self.$azureEndpoint, width: 280)
                     .onChange(of: self.azureEndpoint) { _, _ in self.isDirty = true }
             }
-            SettingsRow(label: "API Key") {
+            SettingsRow(label: L10n.tr("settings.ai_model.azure.api_key")) {
                 BobeSecureField(
-                    placeholder: self.azureApiKey.isEmpty ? "key" : "••••••••",
+                    placeholder: self.azureApiKey.isEmpty
+                        ? L10n.tr("settings.ai_model.azure.api_key.placeholder")
+                        : L10n.tr("settings.ai_model.secret.masked_placeholder"),
                     text: self.$azureApiKey,
                     width: 280
                 )
                 .onChange(of: self.azureApiKey) { _, _ in self.isDirty = true }
             }
-            SettingsRow(label: "Deployment") {
-                BobeTextField(placeholder: "deployment-name", text: self.$azureDeployment, width: 200)
+            SettingsRow(label: L10n.tr("settings.ai_model.azure.deployment")) {
+                BobeTextField(placeholder: L10n.tr("settings.ai_model.azure.deployment.placeholder"), text: self.$azureDeployment, width: 200)
                     .onChange(of: self.azureDeployment) { _, _ in self.isDirty = true }
             }
         }
     }
-
-    // MARK: - Actions
 
     private func loadSettings() async {
         self.isLoading = true
@@ -340,6 +338,15 @@ struct AIModelPanel: View {
             self.models = resp.models
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func providerLabel(for provider: String) -> String {
+        switch provider {
+        case "ollama": L10n.tr("settings.ai_model.provider.ollama")
+        case "openai": L10n.tr("settings.ai_model.provider.openai")
+        case "azure_openai": L10n.tr("settings.ai_model.provider.azure_openai")
+        default: provider
         }
     }
 }
