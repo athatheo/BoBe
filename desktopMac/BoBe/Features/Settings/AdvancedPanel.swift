@@ -235,6 +235,12 @@ struct AdvancedPanel: View {
                 req.localeOverride = settings.localeOverride
                 _ = try await DaemonClient.shared.updateSettings(req)
                 self.error = nil
+
+                // Refresh to pick up the daemon's effective_locale
+                let refreshed = try await DaemonClient.shared.getSettings()
+                self.settings = refreshed
+                BobeStore.shared.effectiveLocale = refreshed.effectiveLocale
+                BobeStore.shared.supportedLocales = refreshed.supportedLocales
             } catch {
                 self.error = error.localizedDescription
             }
@@ -256,8 +262,10 @@ struct AdvancedPanel: View {
             },
             set: { selected in
                 guard var current = self.settings else { return }
-                current.localeOverride = selected == Self.systemLocaleOption ? "" : selected
+                let newOverride = selected == Self.systemLocaleOption ? "" : selected
+                current.localeOverride = newOverride
                 self.settings = current
+                BobeStore.shared.updateLocale(newOverride)
                 self.debounceSave()
             }
         )

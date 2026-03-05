@@ -17,6 +17,14 @@ final class BobeStore {
     private(set) var isBackendFatal = false
     private var hasConnectedOnce = false
 
+    // MARK: - Locale
+
+    var localeOverride: String = ""
+    var effectiveLocale: String = "en"
+    var supportedLocales: [String] = []
+    /// Increments on locale change to force SwiftUI views to re-evaluate L10n.tr() calls.
+    private(set) var localeVersion: Int = 0
+
     var stateType: BobeStateType {
         self.context.stateType
     }
@@ -179,6 +187,14 @@ final class BobeStore {
 
     func beginShutdown() {
         self.updateState { $0.shuttingDown = true }
+    }
+
+    // MARK: - Locale
+
+    func updateLocale(_ newOverride: String) {
+        self.localeOverride = newOverride
+        self.localeVersion += 1
+        L10n.setLocaleOverride(newOverride.isEmpty ? nil : newOverride)
     }
 
     // MARK: - Actions
@@ -438,6 +454,14 @@ final class BobeStore {
             guard let self else { return }
             do {
                 let settings = try await client.getSettings()
+
+                // Apply locale from daemon settings
+                self.effectiveLocale = settings.effectiveLocale
+                self.supportedLocales = settings.supportedLocales
+                let override = settings.localeOverride ?? ""
+                self.localeOverride = override
+                L10n.setLocaleOverride(override.isEmpty ? nil : override)
+
                 guard settings.captureEnabled else {
                     self.updateState { ctx in
                         ctx.capturing = false
