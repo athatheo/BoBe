@@ -5,7 +5,7 @@ response-proactive-current-time = Hora atual: { $time }
 response-proactive-previous-summary = Resumo da conversa anterior:
 response-proactive-recent-activity = Atividade recente:
 response-proactive-reference-previous = Você pode mencionar naturalmente a conversa anterior, se for relevante.
-response-proactive-final-directive = Responda diretamente com sua mensagem (sem preâmbulo). Seja conciso em check-ins casuais. Para revisões estruturadas ou briefings curtos conforme as instruções da sua Soul, seja completo e bem formatado.
+response-proactive-final-directive = Responda diretamente com sua mensagem (sem preâmbulo). Seja conciso em check-ins casuais. Para revisões estruturadas ou briefings conforme as instruções da sua Soul, seja completo e bem formatado.
 
 response-user-context-header = Contexto de atividade recente:
 response-user-context-suffix = Use este contexto para oferecer respostas relevantes e úteis.
@@ -159,7 +159,7 @@ prompt-decision-system =
 
     IDLE quando:
     - O usuário está em estado de fluxo e uma interrupção seria prejudicial
-    - Você entrou em contato recentemente e ele não engajou
+    - Você entrou em contato recentemente e ele não respondeu
     - O contexto não sugere nenhuma forma clara de ajudar
     - O usuário parece estar em trabalho focado e produtivo
 
@@ -262,7 +262,7 @@ prompt-goal-dedup-user-with-existing =
     Metas existentes semelhantes:
     { $existing_list }
 
-    Decida se deve CREATE como nova meta, UPDATE de uma meta existente com novo contexto, ou SKIP por ser duplicada.
+    Decida se deve CREATE como nova meta, UPDATE uma meta existente com novo contexto, ou SKIP por ser duplicada.
 
 prompt-memory-dedup-system =
     Você é um assistente de deduplicação de memórias. Sua tarefa é determinar se uma memória candidata deve ser armazenada ou ignorada.
@@ -320,7 +320,7 @@ prompt-memory-consolidation-system =
     Cluster de entrada: ["Usuário prefere Python", "Usuário gosta de Python para scripts", "Usuário usa Python diariamente"]
     Saída: "Usuário tem forte preferência por Python e o usa diariamente para scripts" (mesclou os 3)
 
-prompt-memory-consolidation-cluster-header = ## Grupo { $cluster_number }
+prompt-memory-consolidation-cluster-header = ## Cluster { $cluster_number }
 prompt-memory-consolidation-cluster-item = [{ $index }] { $memory }
 prompt-memory-consolidation-user =
     Consolide os seguintes clusters de memória em memórias de longo prazo.
