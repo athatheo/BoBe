@@ -1,6 +1,6 @@
 "setup.window.title" = "Ρύθμιση BoBe";
 "setup.welcome.title" = "Καλώς ήρθατε στο BoBe";
-"setup.welcome.subtitle" = "Ο προληπτικός βοηθός AI σας για Mac";
+"setup.welcome.subtitle" = "Ο προνοητικός σύντροφος AI σας για Mac";
 "setup.welcome.concept.souls.title" = "Ψυχές BoBe";
 "setup.welcome.concept.souls.description" = "Η προσωπικότητα του BoBe που διαμορφώνει τον τρόπο επικοινωνίας του.";
 "setup.welcome.concept.goals.title" = "Στόχοι";
@@ -9,8 +9,8 @@
 "setup.welcome.concept.memories.description" = "Το BoBe θυμάται τις προτιμήσεις, τα έργα και το πλαίσιό σας.";
 "setup.welcome.get_started" = "Έναρξη";
 "setup.choose_mode.title" = "Επιλέξτε το AI σας";
-"setup.choose_mode.subtitle" = "Το BoBe χρειάζεται ένα μοντέλο AI για να λειτουργεί.";
-"setup.choose_mode.cloud.title" = "Μοντέλα στο νέφος";
+"setup.choose_mode.subtitle" = "Το BoBe χρειάζεται ένα μοντέλο AI για να σκέφτεται.";
+"setup.choose_mode.cloud.title" = "Μοντέλα Cloud";
 "setup.choose_mode.cloud.subtitle" = "Προτείνεται — η πιο γρήγορη ρύθμιση";
 "setup.choose_mode.local.title" = "Τοπικά μοντέλα";
 "setup.choose_mode.local.subtitle" = "Τρέχουν εξ ολοκλήρου στο Mac σας";
@@ -19,7 +19,7 @@
 "setup.error.backend_unreachable" = "Δεν ήταν δυνατή η σύνδεση με την υπηρεσία παρασκηνίου. Κάντε επανεκκίνηση του BoBe.";
 "setup.error.lost_backend_connection" = "Η σύνδεση με την υπηρεσία παρασκηνίου χάθηκε κατά τη ρύθμιση. Δοκιμάστε ξανά.";
 "setup.error.canceled" = "Η ρύθμιση ακυρώθηκε";
-"setup.cloud.title" = "Ρύθμιση AI στο νέφος";
+"setup.cloud.title" = "Ρύθμιση Cloud AI";
 "setup.cloud.provider" = "Πάροχος";
 "setup.cloud.api_key" = "Κλειδί API";
 "setup.cloud.api_key.placeholder" = "Το κλειδί API σας";
@@ -45,7 +45,7 @@
 "setup.capture.permission.open_settings" = "Άνοιγμα Ρυθμίσεων Συστήματος";
 "setup.capture.permission.grant_to_continue" = "Δώστε άδεια για να συνεχίσετε.";
 "setup.capture.privacy.local" = "Τα στιγμιότυπα οθόνης δεν φεύγουν ποτέ από τη συσκευή σας — όλη η ανάλυση γίνεται τοπικά.";
-"setup.capture.privacy.cloud" = "Τα στιγμιότυπα οθόνης αποστέλλονται στον πάροχο που επιλέξατε στο νέφος για ανάλυση.";
+"setup.capture.privacy.cloud" = "Τα στιγμιότυπα οθόνης αποστέλλονται στον πάροχο cloud που επιλέξατε για ανάλυση.";
 "setup.capture.skip" = "Παράλειψη — απενεργοποίηση λήψης οθόνης";
 "setup.complete.title" = "Η ρύθμιση ολοκληρώθηκε!";
 "setup.complete.subtitle" = "Μπορείτε πάντα να αλλάξετε αυτές τις ρυθμίσεις αργότερα.";
@@ -74,7 +74,7 @@
 "tray.status_format" = "Κατάσταση: %@";
 "tray.state.connecting" = "Σύνδεση...";
 "tray.state.idle" = "Αδράνεια";
-"tray.state.capturing" = "Παρακολουθεί...";
+"tray.state.capturing" = "Κοιτάζει...";
 "tray.state.thinking" = "Σκέφτεται...";
 "tray.state.speaking" = "Μιλά";
 "tray.state.wants_to_speak" = "Έχει κάτι να πει";
@@ -100,7 +100,7 @@
 "app.service_error.backend_output_prefix" = "Έξοδος υπηρεσίας παρασκηνίου:\n";
 "app.service_error.logs_hint" = "Τα αρχεία καταγραφής βρίσκονται στο ~/.bobe/logs/";
 "app.backend_error.title" = "Σφάλμα υπηρεσίας παρασκηνίου BoBe";
-"app.backend_error.message_format" = "Το BoBe δεν μπόρεσε να επιβεβαιώσει την ετοιμότητα της υπηρεσίας παρασκηνίου.\n\n%@\n\nΔοκιμάστε ξανά ή κλείστε.";
+"app.backend_error.message_format" = "Το BoBe δεν μπόρεσε να επιβεβαιώσει την ετοιμότητα της υπηρεσίας παρασκηνίου.\n\n%@\n\nΔοκιμάστε ξανά ή τερματίστε.";
 "app.move_to_applications.title" = "Το BoBe λειτουργεί καλύτερα από τον φάκελο Εφαρμογές.";
 "app.move_to_applications.message" = "Θέλετε να μετακινήσετε το BoBe εκεί τώρα;";
 "app.move_to_applications.confirm" = "Μετακίνηση στις Εφαρμογές";
@@ -263,7 +263,7 @@
 "settings.goals.action.complete" = "Ολοκλήρωση";
 "settings.goals.badge.goal" = "Στόχος";
 "settings.goals.delete.accessibility" = "Διαγραφή στόχου";
-"settings.goals.empty.description" = "Δημιουργήστε στόχους για να δουλεύει προς αυτούς το BoBe";
+"settings.goals.empty.description" = "Δημιουργήστε στόχους για το BoBe";
 "settings.goals.empty.select" = "Επιλέξτε έναν στόχο για επεξεργασία";
 "settings.goals.empty.title" = "Δεν υπάρχουν στόχοι ακόμα";
 "settings.goals.loading" = "Φόρτωση στόχων...";
