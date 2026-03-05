@@ -57,7 +57,7 @@
 "setup.permission_status.restricted" = "Restreinte";
 "setup.permission_status.not_set" = "Non définie";
 "settings.localization.title" = "Localisation";
-"settings.localization.description" = "Langue utilisée pour les modèles de prompts IA et le texte d'accueil";
+"settings.localization.description" = "Langue utilisée pour les invites IA et le texte d'accueil";
 "settings.localization.language" = "Langue";
 "settings.localization.effective_locale" = "Langue effective";
 "settings.localization.effective_locale.description" = "Langue résolue après repli système/surcharge";

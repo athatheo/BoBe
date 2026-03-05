@@ -15,7 +15,7 @@ setup-error-create-data-directory = Impossible de créer le répertoire de donn�
 setup-error-not-enough-disk-space = Espace disque insuffisant : ~{ $needed_gb } GB requis, { $available_gb } GB disponibles
 setup-error-unknown-provider = Fournisseur inconnu : { $provider }
 setup-error-unknown-mode = Mode inconnu : { $mode }
-setup-error-job-not-found = Tâche d'installation '{ $job_id }' introuvable
+setup-error-job-not-found = Tâche de configuration '{ $job_id }' introuvable
 setup-error-persist-failed = Échec de l'enregistrement de la configuration
 
 setup-step-validate-data-directory-ready = Répertoire de données prêt
