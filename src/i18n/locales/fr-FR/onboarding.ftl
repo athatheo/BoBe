@@ -1,9 +1,9 @@
 onboarding-local-tier-small-label = Petit (4B)
-onboarding-local-tier-small-description = Rapide, faible utilisation des ressources. Idéal pour des échanges courts.
+onboarding-local-tier-small-description = Rapide et léger. Idéal pour des échanges courts.
 onboarding-local-tier-medium-label = Moyen (8B)
-onboarding-local-tier-medium-description = Performances et qualité équilibrées.
+onboarding-local-tier-medium-description = Bon équilibre entre performance et qualité.
 onboarding-local-tier-large-label = Grand (14B)
-onboarding-local-tier-large-description = Meilleure qualité, nécessite plus de ressources.
+onboarding-local-tier-large-description = Meilleure qualité, demande plus de ressources.
 
 onboarding-cloud-provider-openai-label = OpenAI
 onboarding-cloud-provider-azure-openai-label = Azure OpenAI
@@ -33,17 +33,17 @@ setup-openai-validation-api-key-valid = Clé API valide
 setup-openai-error-validation-http = Échec de validation de la clé API : HTTP { $status }
 setup-openai-error-invalid-api-key-format = Format de clé API OpenAI invalide. Retirez les espaces ou retours à la ligne, puis réessayez.
 setup-openai-error-cannot-reach = Impossible d'atteindre OpenAI : { $error }
-setup-openai-embedding-testing = Test de l'endpoint d'embedding...
-setup-openai-embedding-working = Endpoint d'embedding opérationnel
+setup-openai-embedding-testing = Test du point de terminaison d'embedding...
+setup-openai-embedding-working = Point de terminaison d'embedding opérationnel
 setup-openai-embedding-failed = Échec du test d'embedding : { $error }
 
 setup-azure-error-api-key-required = Clé API requise
-setup-azure-error-endpoint-required = Endpoint requis
+setup-azure-error-endpoint-required = Point de terminaison requis
 setup-azure-error-deployment-required = Déploiement requis
-setup-azure-validation-endpoint-validated = Endpoint Azure validé
+setup-azure-validation-endpoint-validated = Point de terminaison Azure validé
 setup-azure-error-validation-http = Échec de la validation Azure : HTTP { $status }
 setup-azure-error-invalid-value-format = Format de configuration Azure invalide. Retirez les espaces ou retours à la ligne, puis réessayez.
-setup-azure-error-cannot-reach = Impossible de joindre l'endpoint Azure : { $error }
+setup-azure-error-cannot-reach = Impossible de joindre le point de terminaison Azure : { $error }
 setup-azure-embedding-testing = Test de l'embedding...
 setup-azure-embedding-working = Embedding opérationnel
 setup-azure-embedding-failed = Échec de l'embedding : { $error }

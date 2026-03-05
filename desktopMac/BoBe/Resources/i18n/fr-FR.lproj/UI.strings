@@ -4,9 +4,9 @@
 "setup.welcome.concept.souls.title" = "Âmes BoBe";
 "setup.welcome.concept.souls.description" = "La personnalité de BoBe qui façonne sa manière de communiquer.";
 "setup.welcome.concept.goals.title" = "Objectifs";
-"setup.welcome.concept.goals.description" = "BoBe suit vos objectifs et vous aide à progresser.";
+"setup.welcome.concept.goals.description" = "BoBe suit vos objectifs et vous aide à avancer.";
 "setup.welcome.concept.memories.title" = "Mémoires";
-"setup.welcome.concept.memories.description" = "BoBe se souvient de vos préférences, projets et de votre contexte.";
+"setup.welcome.concept.memories.description" = "BoBe retient vos préférences, vos projets et votre contexte.";
 "setup.welcome.get_started" = "Commencer";
 "setup.choose_mode.title" = "Choisissez votre IA";
 "setup.choose_mode.subtitle" = "BoBe a besoin d'un modèle IA pour réfléchir.";
@@ -23,7 +23,7 @@
 "setup.cloud.provider" = "Fournisseur";
 "setup.cloud.api_key" = "Clé API";
 "setup.cloud.api_key.placeholder" = "Votre clé API";
-"setup.cloud.endpoint" = "URL de l'endpoint";
+"setup.cloud.endpoint" = "URL du point de terminaison";
 "setup.cloud.endpoint.placeholder" = "https://your-resource.openai.azure.com/";
 "setup.cloud.deployment" = "Nom du déploiement";
 "setup.cloud.deployment.placeholder" = "my-deployment";
@@ -175,7 +175,7 @@
 "settings.ai_model.azure.api_key.placeholder" = "clé";
 "settings.ai_model.azure.deployment" = "Déploiement";
 "settings.ai_model.azure.deployment.placeholder" = "deployment-name";
-"settings.ai_model.azure.endpoint" = "Endpoint";
+"settings.ai_model.azure.endpoint" = "Point de terminaison";
 "settings.ai_model.azure.endpoint.placeholder" = "https://...";
 "settings.ai_model.azure.title" = "Configuration Azure OpenAI";
 "settings.ai_model.loading" = "Chargement des réglages du modèle...";
@@ -219,7 +219,7 @@
 "settings.behavior.conversation.generate_summaries" = "Générer des résumés";
 "settings.behavior.conversation.title" = "Conversation";
 "settings.behavior.loading" = "Chargement des réglages de comportement...";
-"settings.behavior.memory.description" = "Durée de conservation des mémoires par BoBe";
+"settings.behavior.memory.description" = "Combien de temps BoBe conserve ses mémoires";
 "settings.behavior.memory.long_term_retention" = "Rétention à long terme";
 "settings.behavior.memory.short_term_retention" = "Rétention à court terme";
 "settings.behavior.memory.title" = "Mémoire";
@@ -263,7 +263,7 @@
 "settings.goals.action.complete" = "Terminer";
 "settings.goals.badge.goal" = "Objectif";
 "settings.goals.delete.accessibility" = "Supprimer l'objectif";
-"settings.goals.empty.description" = "Créez des objectifs pour que BoBe puisse y travailler";
+"settings.goals.empty.description" = "Définissez des objectifs pour que BoBe vous aide à avancer";
 "settings.goals.empty.select" = "Sélectionnez un objectif à modifier";
 "settings.goals.empty.title" = "Aucun objectif pour l'instant";
 "settings.goals.loading" = "Chargement des objectifs...";
@@ -325,7 +325,7 @@
 "settings.privacy.danger.action.delete_all" = "Supprimer toutes les données";
 "settings.privacy.danger.action.deleting" = "Suppression...";
 "settings.privacy.danger.confirm_prompt_format" = "Tapez %@ pour confirmer";
-"settings.privacy.danger.description" = "Supprime tous les objectifs, mémoires, âmes non par défaut, profils utilisateur non par défaut et configurations de serveurs MCP de cet appareil.";
+"settings.privacy.danger.description" = "Supprime tous les objectifs, mémoires, âmes non par défaut, profils utilisateur non par défaut et configurations de serveurs MCP sur cet appareil.";
 "settings.privacy.danger.error.goal_format" = "objectif %@";
 "settings.privacy.danger.error.goals" = "objectifs";
 "settings.privacy.danger.error.mcp" = "mcp";
@@ -366,7 +366,7 @@
 "settings.units.rounds" = "tours";
 "settings.units.seconds" = "secondes";
 "settings.user_profiles.delete.accessibility" = "Supprimer le profil";
-"settings.user_profiles.empty.description" = "Les profils informent BoBe sur votre parcours et vos préférences";
+"settings.user_profiles.empty.description" = "Les profils aident BoBe à mieux vous connaître";
 "settings.user_profiles.empty.select" = "Sélectionnez un profil à modifier";
 "settings.user_profiles.empty.title" = "Aucun profil pour l'instant";
 "settings.user_profiles.loading" = "Chargement des profils...";
@@ -376,15 +376,15 @@
 "settings.window.check_updates" = "Rechercher des mises à jour...";
 "settings.window.overview.card.can_do.body" = "Activez des outils, connectez des serveurs MCP et étendez les capacités de BoBe.";
 "settings.window.overview.card.can_do.heading" = "Ce que BoBe peut faire";
-"settings.window.overview.card.remembers.body" = "Gérez les mémoires, l'historique des conversations et la manière dont BoBe apprend des interactions.";
+"settings.window.overview.card.remembers.body" = "Gérez les mémoires, l'historique des conversations et comment BoBe apprend de vos échanges.";
 "settings.window.overview.card.remembers.heading" = "Ce dont BoBe se souvient";
 "settings.window.overview.card.sees.body" = "Contrôlez la capture d'écran, la fenêtre de contexte et les informations auxquelles BoBe a accès.";
 "settings.window.overview.card.sees.heading" = "Ce que BoBe voit";
-"settings.window.overview.card.sounds.body" = "Choisissez et personnalisez des modèles de personnalité qui façonnent le style de communication de BoBe.";
+"settings.window.overview.card.sounds.body" = "Choisissez et personnalisez les âmes qui définissent le style de BoBe.";
 "settings.window.overview.card.sounds.heading" = "Comment BoBe s'exprime";
 "settings.window.overview.card.speaks.body" = "Configurez la fréquence des check-ins, les messages proactifs et les préférences de notification.";
 "settings.window.overview.card.speaks.heading" = "Quand BoBe prend la parole";
-"settings.window.overview.description" = "BoBe utilise une personnalité (âme), vos objectifs et vos mémoires pour fournir une assistance contextuelle et proactive. Voici comment personnaliser votre expérience.";
+"settings.window.overview.description" = "BoBe s'appuie sur une personnalité (âme), vos objectifs et vos mémoires pour vous accompagner au quotidien. Voici comment personnaliser votre expérience.";
 "settings.window.overview.footer" = "Utilisez la barre latérale pour explorer tous les réglages. Tout fonctionne localement sur votre Mac.";
 "settings.window.overview.title" = "Comment personnaliser BoBe";
 "settings.window.sidebar_title" = "RÉGLAGES BOBE";
