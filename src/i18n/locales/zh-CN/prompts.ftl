@@ -431,3 +431,5 @@ prompt-conversation-memory-user =
     { $memories_text }
 
     这段对话揭示了用户的哪些长期事实？
+
+response-language-directive = 请始终使用中文回复。

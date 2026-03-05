@@ -431,3 +431,5 @@ prompt-conversation-memory-user =
     { $memories_text }
 
     이 대화에서 사용자에 대해 드러나는 지속적인 사실은 뭐야?
+
+response-language-directive = 항상 한국어로 답변해 주세요.

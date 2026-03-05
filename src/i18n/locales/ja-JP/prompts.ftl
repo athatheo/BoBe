@@ -431,3 +431,5 @@ prompt-conversation-memory-user =
     { $memories_text }
 
     この会話から、ユーザーに関するどのような持続的事実が分かりますか？
+
+response-language-directive = 必ず日本語で回答してください。

@@ -431,3 +431,5 @@ prompt-conversation-memory-user =
     { $memories_text }
 
     Quels faits durables sur l'utilisateur cette conversation révèle-t-elle ?
+
+response-language-directive = Réponds toujours en français.

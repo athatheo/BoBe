@@ -429,3 +429,5 @@ prompt-conversation-memory-user =
     { $memories_text }
 
     Τι lasting facts για τον χρήστη αποκαλύπτει αυτή η κουβέντα;
+
+response-language-directive = Απάντα πάντα στα ελληνικά.

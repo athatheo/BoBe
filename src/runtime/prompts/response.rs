@@ -21,10 +21,12 @@ impl ProactiveResponsePrompt {
         locale: Option<&str>,
     ) -> Vec<AiMessage> {
         let locale = locale.unwrap_or(FALLBACK_LOCALE);
+        let language_directive = t(locale, "response-language-directive");
         let system_content = format!(
-            "{}\n\n{}",
+            "{}\n\n{}\n\n{}",
             soul.unwrap_or(DEFAULT_SOUL),
-            t(locale, "response-proactive-system")
+            t(locale, "response-proactive-system"),
+            language_directive,
         );
 
         let mut user_content_parts: Vec<String> = Vec::new();
@@ -89,12 +91,14 @@ impl UserResponsePrompt {
             context.to_owned()
         };
 
+        let language_directive = t(locale, "response-language-directive");
         let system_content = format!(
-            "{}\n\n{}\n{}\n\n{}",
+            "{}\n\n{}\n{}\n\n{}\n\n{}",
             soul.unwrap_or(DEFAULT_SOUL),
             t(locale, "response-user-context-header"),
             effective_context,
-            t(locale, "response-user-context-suffix")
+            t(locale, "response-user-context-suffix"),
+            language_directive,
         );
 
         let mut msgs: Vec<AiMessage> = vec![AiMessage::system(system_content)];
