@@ -1,7 +1,4 @@
-//! Agent job trigger — monitors running agent jobs, notifies on completion.
-//!
-//! Event-driven (callback) + polling fallback. Evaluates whether to
-//! notify user (done) or continue the agent (partial progress).
+//! Monitors agent jobs, notifies on completion. Event-driven + polling fallback.
 
 use std::sync::Arc;
 
@@ -18,10 +15,9 @@ use crate::runtime::prompts::agent_job_evaluation::AgentJobEvaluationPrompt;
 use crate::runtime::state::Decision;
 use crate::services::agent_job_manager::AgentJobManager;
 
-/// Maximum continuation attempts before giving up.
 const MAX_CONTINUATIONS: i32 = 3;
 
-pub struct AgentJobTrigger {
+pub(crate) struct AgentJobTrigger {
     manager: Arc<AgentJobManager>,
     agent_job_repo: Arc<dyn AgentJobRepository>,
     generator: Arc<ProactiveGenerator>,
@@ -30,7 +26,7 @@ pub struct AgentJobTrigger {
 }
 
 impl AgentJobTrigger {
-    pub fn new(
+    pub(crate) fn new(
         manager: Arc<AgentJobManager>,
         agent_job_repo: Arc<dyn AgentJobRepository>,
         generator: Arc<ProactiveGenerator>,
@@ -46,9 +42,8 @@ impl AgentJobTrigger {
         }
     }
 
-    /// Register event-driven callback with the job manager.
-    /// Must be called after wrapping self in Arc.
-    pub async fn register_callback(self: &Arc<Self>) {
+    /// Must be called after wrapping `self` in `Arc`.
+    pub(crate) async fn register_callback(self: &Arc<Self>) {
         let trigger = Arc::clone(self);
         let callback = Arc::new(move |job: AgentJob| {
             let trigger = Arc::clone(&trigger);
@@ -60,7 +55,6 @@ impl AgentJobTrigger {
         info!("agent_job_trigger.callback_registered");
     }
 
-    /// Callback fired immediately when a subprocess exits.
     async fn on_job_complete(&self, job: AgentJob) {
         let should_continue = self.should_continue(&job).await;
         if should_continue {
@@ -73,8 +67,8 @@ impl AgentJobTrigger {
         }
     }
 
-    /// Fallback: check for any unreported jobs that slipped through.
-    pub async fn fire(&self) -> Decision {
+    /// Polling fallback for unreported jobs that slipped through the callback.
+    pub(crate) async fn fire(&self) -> Decision {
         let unreported = match self.agent_job_repo.find_unreported_terminal().await {
             Ok(jobs) => jobs,
             Err(e) => {
@@ -122,12 +116,14 @@ impl AgentJobTrigger {
         if job.result_summary.is_none() && job.error_message.is_none() {
             return false;
         }
+        let locale = self.config.load().effective_locale();
 
         let messages = AgentJobEvaluationPrompt::messages(
             &job.user_intent,
             job.result_summary.as_deref().unwrap_or(""),
             job.error_message.as_deref(),
             job.continuation_count as u32,
+            Some(&locale),
         );
         let prompt_config = AgentJobEvaluationPrompt::config();
 
@@ -181,7 +177,6 @@ impl AgentJobTrigger {
             warn!(error = %e, "agent_job_trigger.mark_reported_failed");
         }
 
-        // Continue by launching a new job with the continuation prompt
         match self
             .manager
             .launch(

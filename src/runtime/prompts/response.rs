@@ -2,10 +2,10 @@ use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::AiMessage;
 use crate::runtime::prompts::base::{DEFAULT_SOUL, PromptConfig};
 
-pub struct ProactiveResponsePrompt;
+pub(crate) struct ProactiveResponsePrompt;
 
 impl ProactiveResponsePrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.7,
             max_tokens: 2048,
@@ -13,7 +13,7 @@ impl ProactiveResponsePrompt {
         }
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         context: &str,
         soul: Option<&str>,
         previous_conversation_summary: Option<&str>,
@@ -64,10 +64,10 @@ impl ProactiveResponsePrompt {
     }
 }
 
-pub struct UserResponsePrompt;
+pub(crate) struct UserResponsePrompt;
 
 impl UserResponsePrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.7,
             max_tokens: 4096,
@@ -75,7 +75,7 @@ impl UserResponsePrompt {
         }
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         user_message: &str,
         context: &str,
         conversation_history: Option<&[(&str, &str)]>,

@@ -9,8 +9,7 @@ use tracing::{info, warn};
 use crate::db::AgentJobRepository;
 use crate::models::types::AgentJobStatus;
 
-/// Run all integrity checks. Best-effort — failures are logged, never fatal.
-pub async fn run(pool: &SqlitePool, agent_job_repo: &dyn AgentJobRepository) {
+pub(crate) async fn run(pool: &SqlitePool, agent_job_repo: &dyn AgentJobRepository) {
     mark_orphaned_jobs(agent_job_repo).await;
     repair_corrupt_embeddings(pool).await;
 }
@@ -31,7 +30,6 @@ async fn mark_orphaned_jobs(repo: &dyn AgentJobRepository) {
     }
 }
 
-/// NULL-out embedding columns that aren't valid JSON arrays.
 async fn repair_corrupt_embeddings(pool: &SqlitePool) {
     let mut total = 0u64;
     for table in ["memories", "observations"] {

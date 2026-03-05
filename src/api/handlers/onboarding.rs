@@ -7,30 +7,23 @@ use serde::Serialize;
 use crate::app_state::AppState;
 use crate::error::AppError;
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
-pub struct OnboardingStatusResponse {
-    pub complete: bool,
-    pub needs_onboarding: bool,
+pub(crate) struct OnboardingStatusResponse {
+    pub(crate) complete: bool,
+    pub(crate) needs_onboarding: bool,
     /// Always empty — kept for JSON shape compatibility with the Swift client.
     #[allow(clippy::zero_sized_map_values)]
-    pub steps: std::collections::HashMap<String, ()>,
+    pub(crate) steps: std::collections::HashMap<String, ()>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct MarkCompleteResponse {
-    pub ok: bool,
+pub(crate) struct MarkCompleteResponse {
+    pub(crate) ok: bool,
 }
 
-// ── Handlers ────────────────────────────────────────────────────────────────
-
-/// GET /onboarding/status
-///
-/// Local-only check: DB reachable + `setup_completed` flag.
-/// Never makes HTTP calls to external LLM services.
+/// Local-only check (DB + `setup_completed` flag). No external calls.
 #[allow(clippy::zero_sized_map_values)]
-pub async fn onboarding_status(
+pub(crate) async fn onboarding_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<OnboardingStatusResponse>, AppError> {
     let cfg = state.config();
@@ -46,11 +39,8 @@ pub async fn onboarding_status(
     }))
 }
 
-/// POST /onboarding/mark-complete
-///
-/// Persists `setup_completed = true` so future launches don't re-trigger the
-/// onboarding wizard when the LLM backend is temporarily unreachable.
-pub async fn mark_complete(
+/// Persists `setup_completed = true` to prevent re-triggering onboarding.
+pub(crate) async fn mark_complete(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<MarkCompleteResponse>, AppError> {
     let mut changes = std::collections::HashMap::new();

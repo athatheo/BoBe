@@ -1,6 +1,4 @@
-//! Message learner — embeds and stores user messages as observations.
-//!
-//! No LLM distillation needed; simply generates an embedding and persists.
+//! Embeds and stores user messages as observations (no LLM distillation).
 
 use std::sync::Arc;
 
@@ -14,13 +12,13 @@ use crate::runtime::learners::types::{
     LearnerError, LearnerObservation, LearnerObservationSource, LearnerResult,
 };
 
-pub struct MessageLearner {
+pub(crate) struct MessageLearner {
     embedding: Arc<dyn EmbeddingProvider>,
     observation_repo: Arc<dyn ObservationRepository>,
 }
 
 impl MessageLearner {
-    pub fn new(
+    pub(crate) fn new(
         embedding: Arc<dyn EmbeddingProvider>,
         observation_repo: Arc<dyn ObservationRepository>,
     ) -> Self {
@@ -30,8 +28,7 @@ impl MessageLearner {
         }
     }
 
-    /// Embed and store a user message observation.
-    pub async fn learn(
+    pub(crate) async fn learn(
         &self,
         observation: &LearnerObservation,
     ) -> Result<LearnerResult, LearnerError> {
@@ -57,7 +54,6 @@ impl MessageLearner {
             "message_learner.start"
         );
 
-        // 1. Generate embedding
         let embedding_vec = self
             .embedding
             .embed(message_text)
@@ -66,9 +62,9 @@ impl MessageLearner {
 
         debug!(vector_dim = embedding_vec.len(), "message_learner.embedded");
 
-        // 2. Create and store observation
+        // ObservationSource::Screen is a placeholder; overridden to UserMessage below
         let mut obs = Observation::new(
-            ObservationSource::Screen, // Using Screen as placeholder; source field is String
+            ObservationSource::Screen,
             message_text.clone(),
             "conversation".into(),
         );

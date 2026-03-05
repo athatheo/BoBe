@@ -9,12 +9,12 @@ use crate::error::AppError;
 use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
 use crate::models::types::{GoalPlanStatus, GoalPlanStepStatus};
 
-pub struct SqliteGoalPlanRepo {
+pub(crate) struct SqliteGoalPlanRepo {
     pool: SqlitePool,
 }
 
 impl SqliteGoalPlanRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }

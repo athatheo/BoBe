@@ -1,17 +1,11 @@
-/// Convert text to a filesystem-safe slug.
-///
-/// Unicode-normalized, lowercased, non-alphanumeric replaced with hyphens,
-/// truncated at word boundaries.
-pub fn slugify(text: &str, max_len: usize) -> String {
+pub(crate) fn slugify(text: &str, max_len: usize) -> String {
     let lowered = text.to_lowercase();
 
-    // Replace non-alphanumeric with hyphens
     let slug: String = lowered
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
 
-    // Collapse multiple hyphens
     let mut result = String::with_capacity(slug.len());
     let mut prev_hyphen = false;
     for c in slug.chars() {
@@ -26,10 +20,8 @@ pub fn slugify(text: &str, max_len: usize) -> String {
         }
     }
 
-    // Trim trailing hyphens
     let result = result.trim_end_matches('-');
 
-    // Truncate at word boundary
     if result.len() <= max_len {
         return result.to_string();
     }

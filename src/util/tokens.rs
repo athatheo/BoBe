@@ -11,24 +11,15 @@ static O200K: LazyLock<CoreBPE> =
 
 use crate::llm::types::AiMessage;
 
-/// Count tokens in text using the o200k_base encoding (gpt-5 family).
-///
-/// For non-OpenAI backends (Ollama, llama.cpp), this is an approximation
-/// but still more accurate than byte-length heuristics.
-pub fn count_tokens(text: &str) -> usize {
+pub(crate) fn count_tokens(text: &str) -> usize {
     O200K.encode_with_special_tokens(text).len()
 }
 
-/// Per-message overhead: role label, delimiters, separators.
 const MESSAGE_OVERHEAD_TOKENS: usize = 4;
 
-/// Minimum response budget — never clamp below this.
 const MIN_RESPONSE_TOKENS: u32 = 100;
 
-/// Count tokens across a message array.
-///
-/// Adds ~4 tokens per message for role/delimiter overhead (OpenAI convention).
-pub fn count_message_tokens(messages: &[AiMessage]) -> usize {
+pub(crate) fn count_message_tokens(messages: &[AiMessage]) -> usize {
     messages
         .iter()
         .map(|msg| {
@@ -38,13 +29,7 @@ pub fn count_message_tokens(messages: &[AiMessage]) -> usize {
         .sum()
 }
 
-/// Clamp `max_tokens` so prompt + response fits within `context_window`.
-///
-/// Returns `min(requested, context_window - prompt_tokens)`, floored at
-/// [`MIN_RESPONSE_TOKENS`]. If the prompt already exceeds the context window,
-/// returns the floor — the LLM will likely error, but at least we don't
-/// request a zero-length response.
-pub fn clamp_max_tokens(context_window: u32, prompt_tokens: usize, requested: u32) -> u32 {
+pub(crate) fn clamp_max_tokens(context_window: u32, prompt_tokens: usize, requested: u32) -> u32 {
     let available = (context_window as usize).saturating_sub(prompt_tokens);
     // Safe: available ≤ context_window ≤ u32::MAX
     let clamped = (available as u32).min(requested);

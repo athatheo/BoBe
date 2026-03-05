@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
 
-/// Validate and canonicalize a path, ensuring it is under the home directory or /tmp.
+/// Security: double-canonicalize to mitigate symlink-swap TOCTOU.
 pub(crate) fn validate_path(path: &Path) -> Result<PathBuf, AppError> {
     let canonical = path
         .canonicalize()
@@ -23,7 +23,6 @@ pub(crate) fn validate_path(path: &Path) -> Result<PathBuf, AppError> {
         )));
     }
 
-    // Re-validate after canonicalize to prevent symlink-swap TOCTOU attacks
     let re_canon = canonical
         .canonicalize()
         .map_err(|e| AppError::Tool(format!("Path changed during validation: {e}")))?;

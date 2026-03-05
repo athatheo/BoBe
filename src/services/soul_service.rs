@@ -14,28 +14,28 @@ use crate::constants::DEFAULT_SOUL_FALLBACK;
 use crate::db::SoulRepository;
 use crate::error::AppError;
 
-pub struct SoulService {
+pub(crate) struct SoulService {
     soul_file: Option<PathBuf>,
     soul_repo: Option<Arc<dyn SoulRepository>>,
 }
 
 impl SoulService {
-    pub fn new(soul_file: Option<PathBuf>, soul_repo: Option<Arc<dyn SoulRepository>>) -> Self {
+    pub(crate) fn new(
+        soul_file: Option<PathBuf>,
+        soul_repo: Option<Arc<dyn SoulRepository>>,
+    ) -> Self {
         Self {
             soul_file,
             soul_repo,
         }
     }
 
-    /// Get soul content, preferring database over file.
-    pub async fn get_soul_async(&self) -> Result<String, AppError> {
-        // Try database first
+    pub(crate) async fn get_soul_async(&self) -> Result<String, AppError> {
         if let Some(ref repo) = self.soul_repo
             && let Some(content) = self.load_soul_from_db(repo).await
         {
             return Ok(content);
         }
-        // Fall back to file-based loading
         Ok(self.load_soul_from_file().await)
     }
 
@@ -101,7 +101,6 @@ impl SoulService {
     }
 
     async fn load_default_soul(&self) -> String {
-        // Try loading from assets directory
         let asset_paths = [
             PathBuf::from("assets/defaults/SOUL.md"),
             dirs::home_dir()

@@ -47,27 +47,24 @@ use crate::util::sse::event_queue::EventQueue;
 use super::infra::Infrastructure;
 use super::repos::Repositories;
 
-/// Everything produced by wiring, consumed by `AppState` and `main`.
-pub struct Wired {
-    pub conversation_service: Arc<ConversationService>,
-    pub context_assembler: Arc<ContextAssembler>,
-    pub goals_service: Arc<GoalsService>,
-    pub tool_registry: Arc<ToolRegistry>,
-    pub runtime_session: Arc<RuntimeSession>,
-    pub learning_loop: Option<Arc<LearningLoop>>,
-    pub screen_capture: Arc<ScreenCapture>,
-    pub config_manager: Arc<ConfigManager>,
-    pub goal_worker_manager: GoalWorkerManager,
-    pub mcp_adapter: Arc<McpToolAdapter>,
+pub(crate) struct Wired {
+    pub(crate) conversation_service: Arc<ConversationService>,
+    pub(crate) context_assembler: Arc<ContextAssembler>,
+    pub(crate) goals_service: Arc<GoalsService>,
+    pub(crate) tool_registry: Arc<ToolRegistry>,
+    pub(crate) runtime_session: Arc<RuntimeSession>,
+    pub(crate) learning_loop: Option<Arc<LearningLoop>>,
+    pub(crate) screen_capture: Arc<ScreenCapture>,
+    pub(crate) config_manager: Arc<ConfigManager>,
+    pub(crate) goal_worker_manager: GoalWorkerManager,
+    pub(crate) mcp_adapter: Arc<McpToolAdapter>,
 
-    // Kept for deferred registration / callback wiring.
     native_adapter: Arc<NativeToolAdapter>,
     agent_job_trigger: Option<Arc<AgentJobTrigger>>,
 }
 
 impl Wired {
-    /// Register tool sources and wire agent-job callback.
-    pub async fn register_tools(&self, config: &Config, _event_queue: &Arc<EventQueue>) {
+    pub(crate) async fn register_tools(&self, config: &Config, _event_queue: &Arc<EventQueue>) {
         self.tool_registry
             .register(self.native_adapter.clone() as Arc<dyn ToolSource>)
             .await;
@@ -93,8 +90,7 @@ impl Wired {
         }
     }
 
-    /// Wire SSE connect/disconnect to `RuntimeSession`.
-    pub async fn wire_sse_callbacks(&self, cm: &Arc<SseConnectionManager>) {
+    pub(crate) async fn wire_sse_callbacks(&self, cm: &Arc<SseConnectionManager>) {
         let on_connect = {
             let rs = self.runtime_session.clone();
             Box::new(move || {
@@ -116,11 +112,9 @@ impl Wired {
 
 // ── Assembly ───────────────────────────────────────────────────────────────
 
-/// Wire all application-level components from infrastructure and repositories.
-pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories) -> Wired {
+pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories) -> Wired {
     let config_arc = &infra.config_arc;
 
-    // ── Core services ──────────────────────────────────────────────────
     let conversation_service = Arc::new(ConversationService::new(repos.conversation_repo.clone()));
 
     let soul_service = Arc::new(SoulService::new(
@@ -144,7 +138,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         config_arc.clone(),
     ));
 
-    // ── Agent job manager (optional) ───────────────────────────────────
     let agent_job_manager = config.coding_agent.enabled.then(|| {
         let profiles: HashMap<String, _> = match serde_json::from_str(&config.coding_agent.profiles)
         {
@@ -166,7 +159,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         ))
     });
 
-    // ── Tools ──────────────────────────────────────────────────────────
     let tool_registry = Arc::new(ToolRegistry::new());
     let native_adapter = Arc::new(NativeToolAdapter::new(build_native_tools(
         repos,
@@ -188,7 +180,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         config.mcp_dangerous_env_keys_vec().to_vec(),
     ));
 
-    // ── Learners ───────────────────────────────────────────────────────
     let message_learner = Arc::new(MessageLearner::new(
         infra.embedding_provider.clone(),
         repos.observation_repo.clone(),
@@ -200,6 +191,7 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         repos.observation_repo.clone(),
         repos.memory_repo.clone(),
         infra.vision_llm_provider.clone(),
+        config_arc.clone(),
     ));
 
     let memory_learner = Arc::new(MemoryLearner::new(
@@ -223,7 +215,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         config_arc.clone(),
     ));
 
-    // ── Decision + generation ──────────────────────────────────────────
     let decision_engine = Arc::new(DecisionEngine::new(
         infra.llm_provider.clone(),
         repos.observation_repo.clone(),
@@ -257,7 +248,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         Some(tool_call_loop.clone()),
     ));
 
-    // ── Triggers ───────────────────────────────────────────────────────
     let screen_capture = Arc::new(ScreenCapture::new());
 
     let capture_trigger = CaptureTrigger::new(
@@ -303,7 +293,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         ))
     });
 
-    // ── Runtime session ────────────────────────────────────────────────
     let runtime_session = Arc::new(RuntimeSession::new(
         checkin_trigger,
         goal_trigger,
@@ -327,7 +316,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         agent_job_trigger.clone(),
     ));
 
-    // ── Learning loop (optional) ───────────────────────────────────────
     let learning_loop = config.learning.enabled.then(|| {
         Arc::new(LearningLoop::new(
             conversation_service.clone(),
@@ -344,7 +332,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         ))
     });
 
-    // ── Goal worker ────────────────────────────────────────────────────
     let goal_worker = Arc::new(GoalWorker::new(
         config_arc.clone(),
         Arc::new(ClaudeAgentProvider::new(
@@ -370,7 +357,6 @@ pub async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories)
         repos.goal_plan_repo.clone(),
     );
 
-    // ── Config manager ─────────────────────────────────────────────────
     let config_manager = Arc::new(ConfigManager::new(
         config_arc.clone(),
         infra.llm_swap_handle.clone(),

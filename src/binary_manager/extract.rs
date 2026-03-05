@@ -8,18 +8,17 @@ use tracing::info;
 
 use crate::error::AppError;
 
-/// Extract the `ollama` binary from a `.tgz` archive.
-///
-/// The archive is expected to contain `bin/ollama` (or just `ollama` at the root).
-/// Validates paths to prevent path traversal attacks.
-pub fn extract_ollama_archive(archive_path: &Path, output_path: &Path) -> Result<(), AppError> {
+/// Includes path traversal protection.
+pub(crate) fn extract_ollama_archive(
+    archive_path: &Path,
+    output_path: &Path,
+) -> Result<(), AppError> {
     let file = std::fs::File::open(archive_path)
         .map_err(|e| AppError::Config(format!("Failed to open archive: {e}")))?;
 
     let decoder = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(decoder);
 
-    // Ensure parent directory exists
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| AppError::Config(format!("Failed to create output directory: {e}")))?;
@@ -39,7 +38,6 @@ pub fn extract_ollama_archive(archive_path: &Path, output_path: &Path) -> Result
             .map_err(|e| AppError::Config(format!("Failed to read entry path: {e}")))?
             .into_owned();
 
-        // Path traversal protection: reject paths with .. components
         if entry_path
             .components()
             .any(|c| matches!(c, std::path::Component::ParentDir))
@@ -48,7 +46,6 @@ pub fn extract_ollama_archive(archive_path: &Path, output_path: &Path) -> Result
             continue;
         }
 
-        // Look for the ollama binary (could be at root or in bin/)
         let file_name = entry_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -67,7 +64,6 @@ pub fn extract_ollama_archive(archive_path: &Path, output_path: &Path) -> Result
             std::io::copy(&mut entry, &mut output_file)
                 .map_err(|e| AppError::Config(format!("Failed to extract binary: {e}")))?;
 
-            // Make executable
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;

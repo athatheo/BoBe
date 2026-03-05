@@ -2,10 +2,10 @@ use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::AiMessage;
 use crate::runtime::prompts::base::PromptConfig;
 
-pub struct AgentJobEvaluationPrompt;
+pub(crate) struct AgentJobEvaluationPrompt;
 
 impl AgentJobEvaluationPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.2,
             max_tokens: 50,
@@ -13,13 +13,14 @@ impl AgentJobEvaluationPrompt {
         }
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         user_intent: &str,
         result_summary: &str,
         error_message: Option<&str>,
         continuation_count: u32,
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let mut user_parts = vec![
             t_vars(
                 locale,

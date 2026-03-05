@@ -7,7 +7,7 @@ use tracing::warn;
 
 use crate::config::Config;
 
-pub fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) {
+pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::Value>) {
     macro_rules! set_parsed {
         ($field:expr, $value:expr, $key:expr) => {
             match serde_json::from_value($value.clone()) {

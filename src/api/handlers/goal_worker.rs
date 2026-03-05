@@ -11,59 +11,55 @@ use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
 use crate::models::types::{GoalPlanStatus, GoalStatus};
 use crate::services::goal_worker::manager::GoalWorkerStatus;
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Deserialize)]
-pub struct GoalIdRequest {
-    pub goal_id: String,
+pub(crate) struct GoalIdRequest {
+    pub(crate) goal_id: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct GoalPlanResponse {
-    pub id: String,
-    pub goal_id: String,
-    pub summary: String,
-    pub status: String,
-    pub failure_count: i32,
-    pub last_error: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub steps: Option<Vec<GoalPlanStepResponse>>,
+pub(crate) struct GoalPlanResponse {
+    pub(crate) id: String,
+    pub(crate) goal_id: String,
+    pub(crate) summary: String,
+    pub(crate) status: String,
+    pub(crate) failure_count: i32,
+    pub(crate) last_error: Option<String>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
+    pub(crate) steps: Option<Vec<GoalPlanStepResponse>>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct GoalPlanStepResponse {
-    pub id: String,
-    pub plan_id: String,
-    pub step_order: i32,
-    pub content: String,
-    pub status: String,
-    pub result: Option<String>,
-    pub error: Option<String>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub completed_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
+pub(crate) struct GoalPlanStepResponse {
+    pub(crate) id: String,
+    pub(crate) plan_id: String,
+    pub(crate) step_order: i32,
+    pub(crate) content: String,
+    pub(crate) status: String,
+    pub(crate) result: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) started_at: Option<DateTime<Utc>>,
+    pub(crate) completed_at: Option<DateTime<Utc>>,
+    pub(crate) created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct GoalPlanListResponse {
-    pub plans: Vec<GoalPlanResponse>,
-    pub count: usize,
+pub(crate) struct GoalPlanListResponse {
+    pub(crate) plans: Vec<GoalPlanResponse>,
+    pub(crate) count: usize,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GoalPlanListQuery {
-    pub goal_id: Option<String>,
+pub(crate) struct GoalPlanListQuery {
+    pub(crate) goal_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct PlanActionResponse {
-    pub id: String,
-    pub status: String,
-    pub message: String,
+pub(crate) struct PlanActionResponse {
+    pub(crate) id: String,
+    pub(crate) status: String,
+    pub(crate) message: String,
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn plan_to_response(plan: &GoalPlan, steps: Option<Vec<GoalPlanStep>>) -> GoalPlanResponse {
     GoalPlanResponse {
@@ -94,10 +90,7 @@ fn step_to_response(step: &GoalPlanStep) -> GoalPlanStepResponse {
     }
 }
 
-// ── Handlers ────────────────────────────────────────────────────────────────
-
-/// GET /api/goal-plans
-pub async fn list_goal_plans(
+pub(crate) async fn list_goal_plans(
     State(state): State<Arc<AppState>>,
     Query(params): Query<GoalPlanListQuery>,
 ) -> Result<Json<GoalPlanListResponse>, AppError> {
@@ -120,8 +113,7 @@ pub async fn list_goal_plans(
     }))
 }
 
-/// GET /api/goal-plans/:plan_id
-pub async fn get_goal_plan(
+pub(crate) async fn get_goal_plan(
     State(state): State<Arc<AppState>>,
     Path(plan_id): Path<String>,
 ) -> Result<Json<GoalPlanResponse>, AppError> {
@@ -140,8 +132,7 @@ pub async fn get_goal_plan(
     Ok(Json(plan_to_response(&plan, Some(steps))))
 }
 
-/// POST /api/goal-plans/:plan_id/approve
-pub async fn approve_goal_plan(
+pub(crate) async fn approve_goal_plan(
     State(state): State<Arc<AppState>>,
     Path(plan_id): Path<String>,
 ) -> Result<Json<PlanActionResponse>, AppError> {
@@ -174,8 +165,7 @@ pub async fn approve_goal_plan(
     }))
 }
 
-/// POST /api/goal-plans/:plan_id/reject
-pub async fn reject_goal_plan(
+pub(crate) async fn reject_goal_plan(
     State(state): State<Arc<AppState>>,
     Path(plan_id): Path<String>,
 ) -> Result<Json<PlanActionResponse>, AppError> {
@@ -201,7 +191,6 @@ pub async fn reject_goal_plan(
         .update_plan_status(plan_uuid, GoalPlanStatus::Rejected, None)
         .await?;
 
-    // Return goal to Active so it can be re-planned
     state
         .goal_repo
         .update_status(plan.goal_id, Some(GoalStatus::Active), None)
@@ -214,8 +203,7 @@ pub async fn reject_goal_plan(
     }))
 }
 
-/// POST /api/goal-plans/pause
-pub async fn pause_goal(
+pub(crate) async fn pause_goal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GoalIdRequest>,
 ) -> Result<Json<PlanActionResponse>, AppError> {
@@ -249,8 +237,7 @@ pub async fn pause_goal(
     }))
 }
 
-/// POST /api/goal-plans/resume
-pub async fn resume_goal(
+pub(crate) async fn resume_goal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GoalIdRequest>,
 ) -> Result<Json<PlanActionResponse>, AppError> {
@@ -284,8 +271,7 @@ pub async fn resume_goal(
     }))
 }
 
-/// GET /api/goal-plans/status
-pub async fn goal_worker_status(
+pub(crate) async fn goal_worker_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<GoalWorkerStatus>, AppError> {
     let cfg = state.config();

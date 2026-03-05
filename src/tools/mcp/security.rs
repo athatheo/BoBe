@@ -1,7 +1,6 @@
 use crate::error::AppError;
 
-/// Default blocked commands (used when no config override).
-pub const DEFAULT_BLOCKED_COMMANDS: &[&str] = &[
+pub(crate) const DEFAULT_BLOCKED_COMMANDS: &[&str] = &[
     "rm",
     "rmdir",
     "dd",
@@ -32,23 +31,19 @@ pub const DEFAULT_BLOCKED_COMMANDS: &[&str] = &[
     "systemctl",
 ];
 
-/// Default dangerous env keys (used when no config override).
-pub const DEFAULT_DANGEROUS_ENV_KEYS: &[&str] = &[
+pub(crate) const DEFAULT_DANGEROUS_ENV_KEYS: &[&str] = &[
     "LD_PRELOAD",
     "LD_LIBRARY_PATH",
     "DYLD_INSERT_LIBRARIES",
     "DYLD_LIBRARY_PATH",
 ];
 
-/// Validate that a command is not in the blocklist.
-pub fn validate_mcp_command(command: &str, blocked: &[String]) -> Result<(), AppError> {
-    // Extract basename from full path
+pub(crate) fn validate_mcp_command(command: &str, blocked: &[String]) -> Result<(), AppError> {
     let basename = std::path::Path::new(command)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(command);
 
-    // Check config-provided blocklist first, fall back to defaults
     let is_blocked = if blocked.is_empty() {
         DEFAULT_BLOCKED_COMMANDS.contains(&basename)
     } else {
@@ -64,8 +59,7 @@ pub fn validate_mcp_command(command: &str, blocked: &[String]) -> Result<(), App
     Ok(())
 }
 
-/// Validate that environment variables don't contain dangerous keys.
-pub fn validate_mcp_env(
+pub(crate) fn validate_mcp_env(
     env: &std::collections::HashMap<String, String>,
     dangerous_keys: &[String],
 ) -> Result<(), AppError> {

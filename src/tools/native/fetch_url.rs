@@ -8,10 +8,8 @@ use super::base::NativeTool;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-/// Check whether a host string (IP literal or hostname) resolves to a
-/// private, loopback, or link-local address that must be blocked for SSRF.
+/// SSRF blocklist: private, loopback, and link-local addresses.
 fn is_private_host(host: &str) -> bool {
-    // Hostname-based checks (not a file extension — suppress false positive)
     #[allow(clippy::case_sensitive_file_extension_comparisons)]
     let is_local =
         host.eq_ignore_ascii_case("localhost") || host.to_ascii_lowercase().ends_with(".local");
@@ -19,7 +17,6 @@ fn is_private_host(host: &str) -> bool {
         return true;
     }
 
-    // Try parsing as IP address for precise CIDR checks
     if let Ok(ip) = host.parse::<IpAddr>() {
         return match ip {
             IpAddr::V4(v4) => {
@@ -53,7 +50,7 @@ fn is_private_host(host: &str) -> bool {
     false
 }
 
-pub struct FetchUrlTool {
+pub(crate) struct FetchUrlTool {
     client: reqwest::Client,
 }
 
@@ -64,8 +61,8 @@ impl Default for FetchUrlTool {
 }
 
 impl FetchUrlTool {
-    pub fn new() -> Self {
-        // Custom redirect policy that validates each hop against the SSRF blocklist
+    pub(crate) fn new() -> Self {
+        // Redirect policy validates each hop against the SSRF blocklist
         let redirect_policy = Policy::custom(|attempt| {
             if attempt.previous().len() >= 10 {
                 return attempt.error("too many redirects");
@@ -125,14 +122,12 @@ impl NativeTool for FetchUrlTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::Validation("'url' is required".into()))?;
 
-        // Validate URL scheme
         if !url.starts_with("http://") && !url.starts_with("https://") {
             return Err(AppError::Validation(
                 "Only http:// and https:// URLs are allowed".into(),
             ));
         }
 
-        // Parse and check for SSRF (private IP ranges)
         let parsed: url::Url = url
             .parse()
             .map_err(|e| AppError::Validation(format!("Invalid URL: {e}")))?;
@@ -194,7 +189,6 @@ impl NativeTool for FetchUrlTool {
     }
 }
 
-/// Extract visible text from HTML, stripping tags, scripts, and styles.
 fn extract_visible_text(html: &str) -> String {
     use scraper::{Html, Selector};
 
@@ -213,7 +207,6 @@ fn extract_visible_text(html: &str) -> String {
     out
 }
 
-/// Hidden tags whose text content should be excluded.
 const HIDDEN_TAGS: &[&str] = &["script", "style", "noscript", "svg", "template"];
 
 fn collect_visible_text(node: &scraper::ElementRef, out: &mut String) {

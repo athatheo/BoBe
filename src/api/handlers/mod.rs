@@ -1,18 +1,18 @@
-pub mod capture;
-pub mod conversation;
-pub mod events;
-pub mod goal_worker;
-pub mod goals;
-pub mod health;
-pub mod memories;
-pub mod models;
-pub mod onboarding;
-pub mod settings;
-pub mod setup;
-pub mod souls;
-pub mod tools;
-pub mod tools_mcp;
-pub mod user_profile;
+pub(crate) mod capture;
+pub(crate) mod conversation;
+pub(crate) mod events;
+pub(crate) mod goal_worker;
+pub(crate) mod goals;
+pub(crate) mod health;
+pub(crate) mod memories;
+pub(crate) mod models;
+pub(crate) mod onboarding;
+pub(crate) mod settings;
+pub(crate) mod setup;
+pub(crate) mod souls;
+pub(crate) mod tools;
+pub(crate) mod tools_mcp;
+pub(crate) mod user_profile;
 
 pub(super) const fn default_true() -> bool {
     true

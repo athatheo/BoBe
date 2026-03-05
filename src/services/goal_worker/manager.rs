@@ -19,17 +19,15 @@ use crate::models::types::{GoalPlanStatus, GoalStatus};
 
 use super::worker::GoalWorker;
 
-/// Status information for the goal worker, exposed via API.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct GoalWorkerStatus {
-    pub enabled: bool,
-    pub max_concurrent: u32,
-    pub active_goals_count: usize,
-    pub pending_approval_count: usize,
+pub(crate) struct GoalWorkerStatus {
+    pub(crate) enabled: bool,
+    pub(crate) max_concurrent: u32,
+    pub(crate) active_goals_count: usize,
+    pub(crate) pending_approval_count: usize,
 }
 
-/// Manages the lifecycle of goal worker tasks.
-pub struct GoalWorkerManager {
+pub(crate) struct GoalWorkerManager {
     config: Arc<ArcSwap<Config>>,
     worker: Arc<GoalWorker>,
     goal_repo: Arc<dyn GoalRepository>,
@@ -39,7 +37,7 @@ pub struct GoalWorkerManager {
 }
 
 impl GoalWorkerManager {
-    pub fn new(
+    pub(crate) fn new(
         config: Arc<ArcSwap<Config>>,
         worker: Arc<GoalWorker>,
         goal_repo: Arc<dyn GoalRepository>,
@@ -59,8 +57,7 @@ impl GoalWorkerManager {
         self.config.load()
     }
 
-    /// Main loop. Runs until a shutdown signal is received.
-    pub async fn run(&mut self, mut shutdown: broadcast::Receiver<()>) {
+    pub(crate) async fn run(&mut self, mut shutdown: broadcast::Receiver<()>) {
         let cfg = self.cfg();
         if !cfg.goal_worker.enabled {
             warn!(
@@ -120,7 +117,6 @@ impl GoalWorkerManager {
         info!("goal_worker_manager.stopped");
     }
 
-    /// Wait for all in-flight goal tasks to complete.
     async fn drain_tasks(&mut self) {
         let handles: Vec<_> = self.active_tasks.drain().map(|(_, h)| h).collect();
         for handle in handles {
@@ -131,22 +127,14 @@ impl GoalWorkerManager {
     // ── Poll cycle ──────────────────────────────────────────────────────
 
     async fn poll_cycle(&mut self) -> Result<(), AppError> {
-        // Clean up finished tasks and track failures
         self.reap_finished_tasks().await;
-
-        // 1. Auto-reject expired pending plans
         self.expire_pending_plans().await?;
-
-        // 2. Execute approved plans
         self.execute_approved_plans().await?;
-
-        // 3. Plan new goals
         self.plan_new_goals().await?;
 
         Ok(())
     }
 
-    /// Reap finished tasks and update failure counters.
     async fn reap_finished_tasks(&mut self) {
         let finished: Vec<Uuid> = self
             .active_tasks
@@ -159,12 +147,10 @@ impl GoalWorkerManager {
             if let Some(handle) = self.active_tasks.remove(&goal_id) {
                 match handle.await {
                     Ok(true) => {
-                        // Success — clear failure counter
                         self.failure_counts.remove(&goal_id);
                     }
                     Ok(false) => {
-                        // The worker returned false — check if this is a real failure
-                        // (goal reset to ACTIVE) or just waiting for approval.
+                        // Distinguish real failure (reset to ACTIVE) from awaiting approval
                         if let Ok(Some(goal)) = self.goal_repo.get_by_id(goal_id).await
                             && goal.status == GoalStatus::Active
                         {
@@ -193,11 +179,8 @@ impl GoalWorkerManager {
     // ── Recovery ────────────────────────────────────────────────────────
 
     async fn recover_stale_goals(&self) -> Result<(), AppError> {
-        // The Python version resets WORKING goals to ACTIVE on startup.
-        // We use Paused status as our "working" indicator since there's no
-        // WORKING status in the Rust enum. Goals that were in-progress
-        // remain Active (they never left Active in our flow).
-        // Nothing to reset — our flow keeps goals Active until completed/paused.
+        // No-op: our flow keeps goals Active until completed/paused,
+        // so there are no stale "working" goals to reset on restart.
         Ok(())
     }
 
@@ -214,7 +197,6 @@ impl GoalWorkerManager {
             self.plan_repo
                 .update_plan_status(plan.id, GoalPlanStatus::Rejected, None)
                 .await?;
-            // Return goal to Active so it can be re-planned
             self.goal_repo
                 .update_status(plan.goal_id, Some(GoalStatus::Active), None)
                 .await?;
@@ -279,18 +261,15 @@ impl GoalWorkerManager {
                 continue;
             }
 
-            // Skip exhausted goals
             if self.is_exhausted(goal.id) {
                 continue;
             }
 
-            // Skip goals that already have an active plan
             let existing_plan = self.plan_repo.get_active_plan_for_goal(goal.id).await?;
             if existing_plan.is_some() {
                 continue;
             }
 
-            // Also skip goals with pending approval plans
             let plans = self.plan_repo.get_plans_for_goal(goal.id).await?;
             let has_pending = plans
                 .iter()
@@ -427,7 +406,6 @@ impl GoalWorkerManager {
     }
 }
 
-/// Check if the Claude CLI is authenticated.
 async fn cli_authenticated() -> bool {
     let Ok(claude_bin) = which::which("claude") else {
         return false;

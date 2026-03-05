@@ -1,4 +1,4 @@
-pub mod deduplication_decision;
-pub mod goal_extraction;
-pub mod memory_consolidation;
-pub mod memory_distillation;
+pub(crate) mod deduplication_decision;
+pub(crate) mod goal_extraction;
+pub(crate) mod memory_consolidation;
+pub(crate) mod memory_distillation;

@@ -7,7 +7,6 @@ use super::base::NativeTool;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-/// Known dev tools to check with --version or similar flags.
 const DEV_TOOLS: &[(&str, &[&str])] = &[
     ("git", &["--version"]),
     ("python3", &["--version"]),
@@ -33,7 +32,7 @@ const DEV_TOOLS: &[(&str, &[&str])] = &[
     ("dotnet", &["--version"]),
 ];
 
-pub struct DiscoverInstalledToolsTool;
+pub(crate) struct DiscoverInstalledToolsTool;
 
 impl Default for DiscoverInstalledToolsTool {
     fn default() -> Self {
@@ -42,7 +41,7 @@ impl Default for DiscoverInstalledToolsTool {
 }
 
 impl DiscoverInstalledToolsTool {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }
@@ -72,11 +71,9 @@ impl NativeTool for DiscoverInstalledToolsTool {
     ) -> Result<String, AppError> {
         let mut output = String::from("## Installed Development Tools\n\n");
 
-        // Check package manager (macOS: Homebrew)
         if let Some(brew_info) = check_tool("brew", &["--version"]).await {
             let _ = write!(output, "### Package Manager\n• Homebrew: {brew_info}\n\n");
 
-            // List installed packages
             if let Some(packages) = run_command("brew", &["list", "--formula", "-1"]).await {
                 let count = packages.lines().count();
                 let preview: String = packages.lines().take(20).collect::<Vec<_>>().join(", ");

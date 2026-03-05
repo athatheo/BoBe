@@ -19,7 +19,7 @@ use crate::models::types::{MemorySource, MemoryType};
 use crate::runtime::prompts::learning::memory_consolidation::MemoryConsolidationPrompt;
 use crate::util::similarity::cosine_similarity;
 
-pub struct MemoryConsolidator {
+pub(crate) struct MemoryConsolidator {
     llm: Arc<dyn LlmProvider>,
     embedding: Arc<dyn EmbeddingProvider>,
     memory_repo: Arc<dyn MemoryRepository>,
@@ -27,7 +27,7 @@ pub struct MemoryConsolidator {
 }
 
 impl MemoryConsolidator {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         embedding: Arc<dyn EmbeddingProvider>,
         memory_repo: Arc<dyn MemoryRepository>,
@@ -42,7 +42,7 @@ impl MemoryConsolidator {
     }
 
     /// Consolidate short-term memories into long-term.
-    pub async fn consolidate(&self, short_term_memories: &[Memory]) -> Vec<Memory> {
+    pub(crate) async fn consolidate(&self, short_term_memories: &[Memory]) -> Vec<Memory> {
         if short_term_memories.is_empty() {
             return Vec::new();
         }
@@ -200,8 +200,9 @@ impl MemoryConsolidator {
             .iter()
             .map(|cluster| cluster.iter().map(|m| m.content.clone()).collect())
             .collect();
+        let locale = self.config.load().effective_locale();
 
-        let messages = MemoryConsolidationPrompt::messages(&memory_clusters);
+        let messages = MemoryConsolidationPrompt::messages(&memory_clusters, Some(&locale));
         let prompt_config = MemoryConsolidationPrompt::config();
 
         let response = match tokio::time::timeout(

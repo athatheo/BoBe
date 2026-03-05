@@ -14,8 +14,7 @@ use crate::llm::shared::{
 };
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
-/// Ollama LLM provider using the OpenAI-compatible /v1/chat/completions endpoint.
-pub struct OllamaProvider {
+pub(crate) struct OllamaProvider {
     client: Client,
     base_url: String,
     model: String,
@@ -25,7 +24,11 @@ pub struct OllamaProvider {
 impl OllamaProvider {
     /// # Panics
     /// Panics if the hardcoded think-tag regex fails to compile (should never happen).
-    pub fn new(client: Client, base_url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        client: Client,
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_owned();
         Self {
             client,
@@ -39,7 +42,6 @@ impl OllamaProvider {
         format!("{}/v1/chat/completions", self.base_url)
     }
 
-    /// Strip `<think>...</think>` blocks from qwen3 model outputs.
     fn strip_think_tags(&self, text: &str) -> String {
         if self.model.contains("qwen3") {
             self.think_tag_re.replace_all(text, "").trim().to_owned()
@@ -48,7 +50,6 @@ impl OllamaProvider {
         }
     }
 
-    /// Check if currently inside a think block during streaming (for qwen3).
     fn is_qwen3(&self) -> bool {
         self.model.contains("qwen3")
     }
@@ -109,7 +110,6 @@ impl LlmProvider for OllamaProvider {
             .map_err(|e| AppError::Llm(format!("Failed to parse Ollama response: {e}")))?;
 
         let mut response = parse_response(&data)?;
-        // Strip think tags from qwen3 models
         if let crate::llm::types::MessageContent::Text(ref mut text) = response.message.content {
             *text = self.strip_think_tags(text);
         }
@@ -231,8 +231,6 @@ impl LlmProvider for OllamaProvider {
     }
 }
 
-/// Filter `<think>...</think>` tags from streaming text, tracking state across chunks.
-/// Operates on `&str` to correctly handle multi-byte UTF-8 characters.
 fn filter_think_tags_streaming(input: &str, inside_think: &mut bool) -> String {
     let mut result = String::new();
     let mut remaining = input;

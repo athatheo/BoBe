@@ -12,55 +12,51 @@ use crate::db::UserProfileRepository;
 use crate::error::AppError;
 use crate::models::user_profile::UserProfile;
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
-pub struct UserProfileResponse {
-    pub id: String,
-    pub name: String,
-    pub content: String,
-    pub enabled: bool,
-    pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct UserProfileResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) content: String,
+    pub(crate) enabled: bool,
+    pub(crate) is_default: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct UserProfileListResponse {
-    pub profiles: Vec<UserProfileResponse>,
-    pub count: usize,
-    pub enabled_count: usize,
+pub(crate) struct UserProfileListResponse {
+    pub(crate) profiles: Vec<UserProfileResponse>,
+    pub(crate) count: usize,
+    pub(crate) enabled_count: usize,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UserProfileCreateRequest {
-    pub name: String,
-    pub content: String,
+pub(crate) struct UserProfileCreateRequest {
+    pub(crate) name: String,
+    pub(crate) content: String,
     #[serde(default = "super::default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UserProfileUpdateRequest {
-    pub content: Option<String>,
-    pub enabled: Option<bool>,
+pub(crate) struct UserProfileUpdateRequest {
+    pub(crate) content: Option<String>,
+    pub(crate) enabled: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct UserProfileActionResponse {
-    pub id: String,
-    pub name: String,
-    pub enabled: bool,
-    pub message: String,
+pub(crate) struct UserProfileActionResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) enabled: bool,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UserProfileListQuery {
+pub(crate) struct UserProfileListQuery {
     #[serde(default)]
-    pub enabled_only: bool,
+    pub(crate) enabled_only: bool,
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn profile_to_response(profile: &UserProfile) -> UserProfileResponse {
     UserProfileResponse {
@@ -102,10 +98,7 @@ async fn set_profile_enabled(
     }))
 }
 
-// ── Handlers ────────────────────────────────────────────────────────────────
-
-/// GET /api/user-profiles
-pub async fn list_profiles(
+pub(crate) async fn list_profiles(
     State(state): State<Arc<AppState>>,
     Query(params): Query<UserProfileListQuery>,
 ) -> Result<Json<UserProfileListResponse>, AppError> {
@@ -124,8 +117,7 @@ pub async fn list_profiles(
     }))
 }
 
-/// POST /api/user-profiles
-pub async fn create_profile(
+pub(crate) async fn create_profile(
     State(state): State<Arc<AppState>>,
     Json(body): Json<UserProfileCreateRequest>,
 ) -> Result<(StatusCode, Json<UserProfileResponse>), AppError> {
@@ -159,8 +151,7 @@ pub async fn create_profile(
     Ok((StatusCode::CREATED, Json(profile_to_response(&saved))))
 }
 
-/// GET /api/user-profiles/:id
-pub async fn get_profile(
+pub(crate) async fn get_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
@@ -173,8 +164,7 @@ pub async fn get_profile(
     Ok(Json(profile_to_response(&profile)))
 }
 
-/// GET /api/user-profiles/by-name/:name
-pub async fn get_profile_by_name(
+pub(crate) async fn get_profile_by_name(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
@@ -187,8 +177,7 @@ pub async fn get_profile_by_name(
     Ok(Json(profile_to_response(&profile)))
 }
 
-/// PATCH /api/user-profiles/:id
-pub async fn update_profile(
+pub(crate) async fn update_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
     Json(body): Json<UserProfileUpdateRequest>,
@@ -209,24 +198,21 @@ pub async fn update_profile(
     Ok(Json(profile_to_response(&updated)))
 }
 
-/// POST /api/user-profiles/:id/enable
-pub async fn enable_profile(
+pub(crate) async fn enable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
     set_profile_enabled(&state.user_profile_repo, profile_id, true).await
 }
 
-/// POST /api/user-profiles/:id/disable
-pub async fn disable_profile(
+pub(crate) async fn disable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
     set_profile_enabled(&state.user_profile_repo, profile_id, false).await
 }
 
-/// DELETE /api/user-profiles/:id
-pub async fn delete_profile(
+pub(crate) async fn delete_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {

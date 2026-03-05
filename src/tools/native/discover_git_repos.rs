@@ -21,7 +21,7 @@ const DEFAULT_SEARCH_DIRS: &[&str] = &[
 const MAX_DEPTH: usize = 3;
 const MAX_REPOS: usize = 50;
 
-pub struct DiscoverGitReposTool;
+pub(crate) struct DiscoverGitReposTool;
 
 impl Default for DiscoverGitReposTool {
     fn default() -> Self {
@@ -30,7 +30,7 @@ impl Default for DiscoverGitReposTool {
 }
 
 impl DiscoverGitReposTool {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }
@@ -100,7 +100,6 @@ impl NativeTool for DiscoverGitReposTool {
             return Ok("No git repositories found.".into());
         }
 
-        // Get metadata for each repo
         let mut output = format!("Found {} git repositories:\n\n", repos.len());
         for repo_path in &repos {
             let info = get_repo_info(repo_path).await;

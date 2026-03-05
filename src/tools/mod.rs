@@ -1,9 +1,9 @@
-pub mod executor;
-pub mod mcp;
-pub mod native;
-pub mod preselector;
-pub mod registry;
-pub mod tool_call_loop;
+pub(crate) mod executor;
+pub(crate) mod mcp;
+pub(crate) mod native;
+pub(crate) mod preselector;
+pub(crate) mod registry;
+pub(crate) mod tool_call_loop;
 
 // ─── Types and trait definitions ────────────────────────────────────────────
 
@@ -14,21 +14,20 @@ use std::collections::HashMap;
 use crate::error::AppError;
 use crate::llm::types::{AiToolCall, ToolDefinition};
 
-/// Result from tool execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolResult {
-    pub tool_call_id: String,
-    pub tool_name: String,
-    pub success: bool,
-    pub content: String,
+pub(crate) struct ToolResult {
+    pub(crate) tool_call_id: String,
+    pub(crate) tool_name: String,
+    pub(crate) success: bool,
+    pub(crate) content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<HashMap<String, serde_json::Value>>,
+    pub(crate) data: Option<HashMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 impl ToolResult {
-    pub fn ok(tool_call_id: String, tool_name: String, content: String) -> Self {
+    pub(crate) fn ok(tool_call_id: String, tool_name: String, content: String) -> Self {
         Self {
             tool_call_id,
             tool_name,
@@ -39,7 +38,7 @@ impl ToolResult {
         }
     }
 
-    pub fn err(tool_call_id: String, tool_name: String, error: String) -> Self {
+    pub(crate) fn err(tool_call_id: String, tool_name: String, error: String) -> Self {
         Self {
             tool_call_id,
             tool_name: tool_name.clone(),
@@ -51,16 +50,14 @@ impl ToolResult {
     }
 }
 
-/// Context passed to tools during execution.
 #[derive(Debug, Clone, Default)]
-pub struct ToolExecutionContext {
-    pub conversation_id: Option<String>,
+pub(crate) struct ToolExecutionContext {
+    pub(crate) conversation_id: Option<String>,
 }
 
-/// Typed notification about tool execution lifecycle events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum ToolNotification {
+pub(crate) enum ToolNotification {
     Started {
         tool_name: String,
         tool_call_id: String,
@@ -75,18 +72,10 @@ pub enum ToolNotification {
     },
 }
 
-/// Protocol for tool sources.
-///
-/// Both BoBe native tools and MCP tools implement this trait.
 #[async_trait]
-pub trait ToolSource: Send + Sync {
-    /// Source name (e.g., "bobe", "mcp:filesystem").
+pub(crate) trait ToolSource: Send + Sync {
     fn name(&self) -> &str;
-
-    /// Get available tool definitions.
     async fn get_tools(&self) -> Result<Vec<ToolDefinition>, AppError>;
-
-    /// Execute a tool call.
     async fn execute(
         &self,
         tool_call: &AiToolCall,

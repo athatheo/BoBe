@@ -6,15 +6,12 @@ use tracing::info;
 
 use crate::error::AppError;
 
-/// The full database schema. All statements use `IF NOT EXISTS` so this is
-/// safe to run on every startup — no migration tracking needed.
+/// All statements use `IF NOT EXISTS` — safe to run on every startup.
 const SCHEMA: &str = include_str!("../../migrations/schema.sql");
 
-/// Open (or create) the SQLite database and apply the schema.
-pub async fn connect_and_apply_schema(db_url: &str) -> Result<SqlitePool, AppError> {
+pub(crate) async fn connect_and_apply_schema(db_url: &str) -> Result<SqlitePool, AppError> {
     let db_url = normalize_sqlite_url(db_url);
 
-    // Ensure parent directory exists for file-based SQLite.
     if let Some(path) = sqlite_file_path(&db_url)
         && let Some(parent) = std::path::Path::new(path).parent()
     {

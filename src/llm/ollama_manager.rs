@@ -17,7 +17,7 @@ const OLLAMA_DEFAULT_CONTEXT: u32 = 4_096;
 /// - Check if Ollama is running
 /// - Start Ollama process if not running (when auto_start is enabled)
 /// - Pull models if not available locally (when auto_pull is enabled)
-pub struct OllamaManager {
+pub(crate) struct OllamaManager {
     client: Client,
     base_url: String,
     model: String,
@@ -57,7 +57,7 @@ struct ShowResponse {
 }
 
 impl OllamaManager {
-    pub fn new(
+    pub(crate) fn new(
         client: Client,
         base_url: &str,
         model: &str,
@@ -78,7 +78,7 @@ impl OllamaManager {
     }
 
     /// Ensure Ollama is running and the configured model is available.
-    pub async fn ensure_running(&self) -> Result<(), AppError> {
+    pub(crate) async fn ensure_running(&self) -> Result<(), AppError> {
         if self.health_check().await {
             info!("ollama.already_running");
         } else if self.auto_start {
@@ -108,7 +108,7 @@ impl OllamaManager {
     }
 
     /// Ensure a specific model is available, pulling if needed.
-    pub async fn ensure_model(&self, model_name: &str) -> Result<bool, AppError> {
+    pub(crate) async fn ensure_model(&self, model_name: &str) -> Result<bool, AppError> {
         if self.has_model(model_name).await {
             info!(model = model_name, "ollama.model_available");
             return Ok(true);
@@ -134,7 +134,7 @@ impl OllamaManager {
     /// 1. `num_ctx` from runtime `parameters` (the *actual* window in use)
     /// 2. `context_length` from `model_info` (model's max capability)
     /// 3. [`OLLAMA_DEFAULT_CONTEXT`] (Ollama's built-in default)
-    pub async fn get_context_window(&self, model: &str) -> u32 {
+    pub(crate) async fn get_context_window(&self, model: &str) -> u32 {
         let url = format!("{}/api/show", self.base_url);
         let resp = match self
             .client
@@ -196,7 +196,7 @@ impl OllamaManager {
     }
 
     /// Check if Ollama API is reachable.
-    pub async fn health_check(&self) -> bool {
+    pub(crate) async fn health_check(&self) -> bool {
         let url = format!("{}/api/tags", self.base_url);
         match self
             .client
@@ -211,7 +211,7 @@ impl OllamaManager {
     }
 
     /// Check if a model is available locally.
-    pub async fn has_model(&self, model_name: &str) -> bool {
+    pub(crate) async fn has_model(&self, model_name: &str) -> bool {
         let url = format!("{}/api/tags", self.base_url);
         let resp = match self
             .client
@@ -249,7 +249,7 @@ impl OllamaManager {
     ///
     /// Streams the NDJSON response line-by-line and checks `is_canceled` between
     /// lines, allowing the caller to abort a multi-GB download promptly.
-    pub async fn pull_model(
+    pub(crate) async fn pull_model(
         &self,
         model_name: &str,
         is_canceled: impl Fn() -> bool,
@@ -368,7 +368,7 @@ impl OllamaManager {
 
     /// Stop Ollama if we started it.
     #[allow(unsafe_code)]
-    pub async fn stop(&self) {
+    pub(crate) async fn stop(&self) {
         let started = *lock_or_recover(&self.started_by_us, "ollama_manager.started_by_us");
         if !started {
             return;

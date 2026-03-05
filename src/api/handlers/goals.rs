@@ -13,34 +13,32 @@ use crate::error::AppError;
 use crate::models::goal::Goal;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
-pub struct GoalResponse {
-    pub id: String,
-    pub content: String,
-    pub status: String,
-    pub priority: String,
-    pub source: String,
-    pub enabled: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct GoalResponse {
+    pub(crate) id: String,
+    pub(crate) content: String,
+    pub(crate) status: String,
+    pub(crate) priority: String,
+    pub(crate) source: String,
+    pub(crate) enabled: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct GoalListResponse {
-    pub goals: Vec<GoalResponse>,
-    pub count: usize,
-    pub active_count: usize,
+pub(crate) struct GoalListResponse {
+    pub(crate) goals: Vec<GoalResponse>,
+    pub(crate) count: usize,
+    pub(crate) active_count: usize,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GoalCreateRequest {
-    pub content: String,
+pub(crate) struct GoalCreateRequest {
+    pub(crate) content: String,
     #[serde(default = "default_priority")]
-    pub priority: String,
+    pub(crate) priority: String,
     #[serde(default = "super::default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
 }
 
 fn default_priority() -> String {
@@ -48,28 +46,26 @@ fn default_priority() -> String {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GoalUpdateRequest {
-    pub content: Option<String>,
-    pub status: Option<String>,
-    pub priority: Option<String>,
-    pub enabled: Option<bool>,
+pub(crate) struct GoalUpdateRequest {
+    pub(crate) content: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) priority: Option<String>,
+    pub(crate) enabled: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct GoalActionResponse {
-    pub id: String,
-    pub status: String,
-    pub message: String,
+pub(crate) struct GoalActionResponse {
+    pub(crate) id: String,
+    pub(crate) status: String,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GoalListQuery {
-    pub status: Option<String>,
+pub(crate) struct GoalListQuery {
+    pub(crate) status: Option<String>,
     #[serde(default)]
-    pub include_archived: bool,
+    pub(crate) include_archived: bool,
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn goal_to_response(goal: &Goal) -> GoalResponse {
     GoalResponse {
@@ -107,10 +103,7 @@ fn parse_goal_priority(s: &str) -> Result<GoalPriority, AppError> {
     }
 }
 
-// ── Handlers ────────────────────────────────────────────────────────────────
-
-/// GET /api/goals
-pub async fn list_goals(
+pub(crate) async fn list_goals(
     State(state): State<Arc<AppState>>,
     Query(params): Query<GoalListQuery>,
 ) -> Result<Json<GoalListResponse>, AppError> {
@@ -130,8 +123,7 @@ pub async fn list_goals(
     }))
 }
 
-/// GET /api/goals/:id
-pub async fn get_goal(
+pub(crate) async fn get_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalResponse>, AppError> {
@@ -144,8 +136,7 @@ pub async fn get_goal(
     Ok(Json(goal_to_response(&goal)))
 }
 
-/// POST /api/goals
-pub async fn create_goal(
+pub(crate) async fn create_goal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GoalCreateRequest>,
 ) -> Result<(StatusCode, Json<GoalResponse>), AppError> {
@@ -167,8 +158,7 @@ pub async fn create_goal(
     Ok((StatusCode::CREATED, Json(goal_to_response(&saved))))
 }
 
-/// PUT /api/goals/:id
-pub async fn update_goal(
+pub(crate) async fn update_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
     Json(body): Json<GoalUpdateRequest>,
@@ -179,7 +169,6 @@ pub async fn update_goal(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
-    // Re-embed when content changes (generates new embedding vector)
     let mut updated_goal = Some(existing_goal);
     if let Some(ref content) = body.content {
         updated_goal = state.goals_service.update_content(goal_id, content).await?;
@@ -188,7 +177,6 @@ pub async fn update_goal(
         }
     }
 
-    // Apply non-content field updates (status, priority, enabled)
     let status = body.status.as_deref().map(parse_goal_status).transpose()?;
     let priority = body
         .priority
@@ -217,8 +205,7 @@ pub async fn update_goal(
     Ok(Json(goal_to_response(&goal)))
 }
 
-/// POST /api/goals/:id/complete
-pub async fn complete_goal(
+pub(crate) async fn complete_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
@@ -243,8 +230,7 @@ pub async fn complete_goal(
     }))
 }
 
-/// POST /api/goals/:id/archive
-pub async fn archive_goal(
+pub(crate) async fn archive_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
@@ -269,8 +255,7 @@ pub async fn archive_goal(
     }))
 }
 
-/// DELETE /api/goals/:id
-pub async fn delete_goal(
+pub(crate) async fn delete_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {

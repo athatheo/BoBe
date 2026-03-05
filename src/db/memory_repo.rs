@@ -10,12 +10,12 @@ use crate::models::memory::Memory;
 use crate::models::types::MemoryType;
 use crate::util::similarity::cosine_similarity;
 
-pub struct SqliteMemoryRepo {
+pub(crate) struct SqliteMemoryRepo {
     pool: SqlitePool,
 }
 
 impl SqliteMemoryRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }
@@ -75,7 +75,6 @@ impl MemoryRepository for SqliteMemoryRepo {
         enabled_only: bool,
         since: Option<DateTime<Utc>>,
     ) -> Result<Vec<Memory>, AppError> {
-        // Exclude embedding blob for listing performance
         let cols = "id, content, memory_type, enabled, category, source, \
                     NULL as embedding, source_observation_id, source_conversation_id, \
                     created_at, updated_at";
@@ -147,7 +146,6 @@ impl MemoryRepository for SqliteMemoryRepo {
             format!(" WHERE {}", conditions.join(" AND "))
         };
 
-        // Count query
         let count_sql = format!("SELECT COUNT(*) as cnt FROM memories{where_clause}");
         let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
         if let Some(mt) = memory_type {
@@ -164,7 +162,6 @@ impl MemoryRepository for SqliteMemoryRepo {
             .await
             .map_err(AppError::Database)?;
 
-        // Data query — exclude embedding blob for listing performance
         let data_sql = format!(
             "SELECT id, content, memory_type, enabled, category, source, \
              NULL as embedding, source_observation_id, source_conversation_id, \
@@ -198,9 +195,7 @@ impl MemoryRepository for SqliteMemoryRepo {
         enabled_only: bool,
         min_score: f64,
     ) -> Result<Vec<(Memory, f64)>, AppError> {
-        // Brute-force cosine similarity in Rust. Cap the candidate set
-        // by fetching only the most recent embeddings (up to 5000) to avoid
-        // unbounded memory usage at scale.
+        // Cap candidate set to 5000 most recent to bound memory usage.
         let sql = if enabled_only {
             "SELECT * FROM memories WHERE embedding IS NOT NULL AND enabled = 1 \
              ORDER BY updated_at DESC LIMIT 5000"

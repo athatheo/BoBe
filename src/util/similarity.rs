@@ -1,7 +1,4 @@
-/// Cosine similarity between two f32 embedding vectors, computed in f64 precision.
-///
-/// Returns 0.0 for empty, mismatched-length, or zero-norm inputs.
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }

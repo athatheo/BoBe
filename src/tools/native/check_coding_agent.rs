@@ -10,12 +10,12 @@ use crate::db::AgentJobRepository;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-pub struct CheckCodingAgentTool {
+pub(crate) struct CheckCodingAgentTool {
     agent_job_repo: Arc<dyn AgentJobRepository>,
 }
 
 impl CheckCodingAgentTool {
-    pub fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
+    pub(crate) fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
         Self { agent_job_repo }
     }
 }

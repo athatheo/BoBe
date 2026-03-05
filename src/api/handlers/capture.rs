@@ -8,20 +8,19 @@ use crate::app_state::AppState;
 use crate::error::AppError;
 
 #[derive(Debug, Serialize)]
-pub struct CaptureStatusResponse {
-    pub capturing: bool,
-    pub message: String,
+pub(crate) struct CaptureStatusResponse {
+    pub(crate) capturing: bool,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct CaptureOnceResponse {
-    pub success: bool,
-    pub active_window: Option<String>,
-    pub message: String,
+pub(crate) struct CaptureOnceResponse {
+    pub(crate) success: bool,
+    pub(crate) active_window: Option<String>,
+    pub(crate) message: String,
 }
 
-/// POST /api/capture/start
-pub async fn start_capture(
+pub(crate) async fn start_capture(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaptureStatusResponse>, AppError> {
     tracing::info!("api.capture_start_requested");
@@ -33,8 +32,7 @@ pub async fn start_capture(
     }))
 }
 
-/// POST /api/capture/stop
-pub async fn stop_capture(
+pub(crate) async fn stop_capture(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaptureStatusResponse>, AppError> {
     tracing::info!("api.capture_stop_requested");
@@ -46,8 +44,7 @@ pub async fn stop_capture(
     }))
 }
 
-/// POST /api/capture/once
-pub async fn capture_once(
+pub(crate) async fn capture_once(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaptureOnceResponse>, AppError> {
     tracing::info!("api.capture_once_requested");

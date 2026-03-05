@@ -1,7 +1,4 @@
-//! RuntimeSession — top-level lifecycle manager.
-//!
-//! Dispatches to triggers on timers, manages background tasks,
-//! coordinates message handling and capture loops.
+//! Top-level lifecycle manager for triggers, capture, and message handling.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -21,7 +18,7 @@ use crate::services::conversation_service::ConversationService;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::{EventType, IndicatorType, StreamBundle};
 
-pub struct RuntimeSession {
+pub(crate) struct RuntimeSession {
     checkin_trigger: Mutex<CheckinTrigger>,
     goal_trigger: Arc<GoalTrigger>,
     capture_trigger: Mutex<CaptureTrigger>,
@@ -36,7 +33,7 @@ pub struct RuntimeSession {
 }
 
 impl RuntimeSession {
-    pub fn new(
+    pub(crate) fn new(
         checkin_trigger: CheckinTrigger,
         goal_trigger: Arc<GoalTrigger>,
         capture_trigger: CaptureTrigger,
@@ -62,8 +59,7 @@ impl RuntimeSession {
         }
     }
 
-    /// Enable screen capture.
-    pub async fn start_capture(&self) {
+    pub(crate) async fn start_capture(&self) {
         self.capture_enabled
             .store(true, std::sync::atomic::Ordering::Release);
         let mut trigger = self.capture_trigger.lock().await;
@@ -71,8 +67,7 @@ impl RuntimeSession {
         info!("runtime_session.capture_started");
     }
 
-    /// Disable screen capture.
-    pub async fn stop_capture(&self) {
+    pub(crate) async fn stop_capture(&self) {
         self.capture_enabled
             .store(false, std::sync::atomic::Ordering::Release);
         let mut trigger = self.capture_trigger.lock().await;
@@ -80,8 +75,7 @@ impl RuntimeSession {
         info!("runtime_session.capture_stopped");
     }
 
-    /// Called when an SSE client connects.
-    pub async fn on_connection(&self) {
+    pub(crate) async fn on_connection(&self) {
         let cfg = self.config.load();
         info!(
             capture_enabled = cfg.capture.enabled,
@@ -92,13 +86,12 @@ impl RuntimeSession {
         }
     }
 
-    /// Called when an SSE client disconnects.
-    pub async fn on_disconnection(&self) {
+    pub(crate) async fn on_disconnection(&self) {
         info!("runtime_session.sse_client_disconnected");
         self.stop_capture().await;
     }
 
-    pub async fn start(&self) {
+    pub(crate) async fn start(&self) {
         self.running
             .store(true, std::sync::atomic::Ordering::Release);
 
@@ -112,14 +105,13 @@ impl RuntimeSession {
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
-    pub async fn stop(&self) {
+    pub(crate) async fn stop(&self) {
         self.running
             .store(false, std::sync::atomic::Ordering::Release);
         info!("runtime_session.stopped");
     }
 
-    /// Main loop — dispatches to triggers based on timers.
-    pub async fn run(&self) {
+    pub(crate) async fn run(&self) {
         self.start().await;
 
         {
@@ -144,7 +136,6 @@ impl RuntimeSession {
                 self.log_heartbeat(loop_counter).await;
             }
 
-            // CheckinTrigger (with timeout)
             match tokio::time::timeout(std::time::Duration::from_mins(1), async {
                 let mut checkin = self.checkin_trigger.lock().await;
                 checkin.fire().await
@@ -160,12 +151,10 @@ impl RuntimeSession {
                 }
             }
 
-            // Stale conversation cleanup
             if let Err(e) = self.close_stale_conversation_if_needed().await {
                 warn!(error = %e, "runtime_session.stale_check_failed");
             }
 
-            // GoalTrigger (error-safe)
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
             if time_since_goal >= cfg.goals.check_interval_seconds {
                 match tokio::time::timeout(
@@ -185,7 +174,6 @@ impl RuntimeSession {
                 last_goal_check = Instant::now();
             }
 
-            // CaptureTrigger (error-safe)
             if self
                 .capture_enabled
                 .load(std::sync::atomic::Ordering::Acquire)
@@ -211,7 +199,6 @@ impl RuntimeSession {
                 }
             }
 
-            // AgentJobTrigger (error-safe)
             if let Some(ref agent_trigger) = self.agent_job_trigger {
                 match tokio::time::timeout(std::time::Duration::from_mins(1), agent_trigger.fire())
                     .await
@@ -247,7 +234,7 @@ impl RuntimeSession {
             return Ok(());
         }
 
-        // Re-fetch conversation and turns to avoid race with concurrent message handling
+        // Re-fetch to avoid race with concurrent message handling
         let refetched = self.conversation.get_conversation(existing.id).await?;
         let Some(refetched) = refetched else {
             return Ok(());
@@ -282,22 +269,19 @@ impl RuntimeSession {
         );
     }
 
-    /// Handle user message — delegates to MessageHandler.
-    pub async fn handle_user_message(&self, content: &str, message_id: &str) {
+    pub(crate) async fn handle_user_message(&self, content: &str, message_id: &str) {
         self.message_handler
             .handle_message(content, message_id)
             .await;
     }
 
-    /// Get current status for the API.
-    pub fn get_status(&self) -> serde_json::Value {
+    pub(crate) fn get_status(&self) -> serde_json::Value {
         serde_json::json!({
             "indicator": self.event_queue.current_indicator().as_str(),
             "capturing": self.capture_enabled.load(std::sync::atomic::Ordering::Acquire),
         })
     }
 
-    /// Push a recoverable error event to SSE clients.
     fn push_error_event(&self, trigger: &str, message: &str) {
         error!(trigger, message, "runtime_session.trigger_error");
         self.event_queue.push(StreamBundle {

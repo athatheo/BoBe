@@ -7,8 +7,8 @@ use fluent_templates::{Loader, static_loader};
 use tracing::warn;
 use unic_langid::LanguageIdentifier;
 
-pub const FALLBACK_LOCALE: &str = "en-US";
-pub const SUPPORTED_LOCALES: &[&str] = &[
+pub(crate) const FALLBACK_LOCALE: &str = "en-US";
+pub(crate) const SUPPORTED_LOCALES: &[&str] = &[
     "en-US", "el-GR", "zh-CN", "de-DE", "es-ES", "pt-BR", "ko-KR", "ja-JP", "fr-FR",
 ];
 
@@ -19,13 +19,13 @@ static_loader! {
     };
 }
 
-pub trait Localizer: Send + Sync {
+pub(crate) trait Localizer: Send + Sync {
     fn text(&self, locale: &str, key: &str) -> String;
     fn text_with_vars(&self, locale: &str, key: &str, vars: &[(&str, String)]) -> String;
 }
 
 #[derive(Default)]
-pub struct FluentLocalizer;
+pub(crate) struct FluentLocalizer;
 
 impl Localizer for FluentLocalizer {
     fn text(&self, locale: &str, key: &str) -> String {
@@ -56,15 +56,15 @@ impl Localizer for FluentLocalizer {
 
 static GLOBAL_LOCALIZER: LazyLock<FluentLocalizer> = LazyLock::new(FluentLocalizer::default);
 
-pub fn t(locale: &str, key: &str) -> String {
+pub(crate) fn t(locale: &str, key: &str) -> String {
     GLOBAL_LOCALIZER.text(locale, key)
 }
 
-pub fn t_vars(locale: &str, key: &str, vars: &[(&str, String)]) -> String {
+pub(crate) fn t_vars(locale: &str, key: &str, vars: &[(&str, String)]) -> String {
     GLOBAL_LOCALIZER.text_with_vars(locale, key, vars)
 }
 
-pub fn resolve_supported_locale(raw_locale: &str) -> String {
+pub(crate) fn resolve_supported_locale(raw_locale: &str) -> String {
     let normalized = normalize_locale_tag(raw_locale);
     if SUPPORTED_LOCALES.iter().any(|&l| l == normalized) {
         return normalized;

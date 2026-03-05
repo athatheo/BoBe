@@ -19,12 +19,12 @@ use crate::util::sse::factories::{
 
 /// Result of streaming an LLM response.
 #[derive(Debug)]
-pub struct StreamResult {
-    pub full_response: String,
-    pub chunk_count: usize,
-    pub duration_ms: f64,
-    pub success: bool,
-    pub first_token_ms: Option<f64>,
+pub(crate) struct StreamResult {
+    pub(crate) full_response: String,
+    pub(crate) chunk_count: usize,
+    pub(crate) duration_ms: f64,
+    pub(crate) success: bool,
+    pub(crate) first_token_ms: Option<f64>,
 }
 
 /// Stream a mixed LLM + tool notification stream to SSE event queue.
@@ -32,7 +32,7 @@ pub struct StreamResult {
 /// Handles both `StreamItem::Chunk` (text deltas) and
 /// `StreamItem::TypedToolNotification` (tool execution start/complete events).
 /// This is the primary streaming function used when tools are enabled.
-pub async fn stream_response(
+pub(crate) async fn stream_response(
     mut stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<StreamItem, AppError>> + Send + '_>,
     >,
@@ -95,7 +95,7 @@ pub async fn stream_response(
 /// Stream LLM response chunks (no tool notifications) to SSE event queue.
 ///
 /// Used when tools are disabled — the stream only contains `StreamChunk` items.
-pub async fn stream_llm_response(
+pub(crate) async fn stream_llm_response(
     mut stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<StreamChunk, AppError>> + Send + '_>,
     >,
@@ -243,7 +243,7 @@ fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {
 }
 
 /// Stream a simple text message (no LLM call needed).
-pub fn stream_simple_message(message: &str, event_queue: &EventQueue, msg_id: Option<&str>) {
+pub(crate) fn stream_simple_message(message: &str, event_queue: &EventQueue, msg_id: Option<&str>) {
     let msg_id = msg_id.map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned);
 
     event_queue.push(text_delta_event(&msg_id, message, 0, false));

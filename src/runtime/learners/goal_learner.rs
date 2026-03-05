@@ -38,7 +38,7 @@ enum DeduplicationDecision {
     Skip,
 }
 
-pub struct GoalLearner {
+pub(crate) struct GoalLearner {
     llm: Arc<dyn LlmProvider>,
     embedding: Arc<dyn EmbeddingProvider>,
     goals: Arc<GoalsService>,
@@ -46,7 +46,7 @@ pub struct GoalLearner {
 }
 
 impl GoalLearner {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         embedding: Arc<dyn EmbeddingProvider>,
         goals: Arc<GoalsService>,
@@ -61,7 +61,7 @@ impl GoalLearner {
     }
 
     /// Extract goals from a closed conversation.
-    pub async fn extract_from_conversation(
+    pub(crate) async fn extract_from_conversation(
         &self,
         conversation_turns: &[(String, String)],
         existing_goals: &[Goal],
@@ -84,8 +84,9 @@ impl GoalLearner {
             .map(|(role, content)| format!("{role}: {content}"))
             .collect();
         let goal_strings: Vec<String> = existing_goals.iter().map(|g| g.content.clone()).collect();
+        let locale = self.config.load().effective_locale();
 
-        let messages = GoalExtractionPrompt::messages(&turn_strings, &goal_strings);
+        let messages = GoalExtractionPrompt::messages(&turn_strings, &goal_strings, Some(&locale));
         let prompt_config = GoalExtractionPrompt::config();
 
         let response = match tokio::time::timeout(
@@ -286,7 +287,8 @@ impl GoalLearner {
             })
             .collect();
 
-        let messages = GoalDeduplicationPrompt::messages(content, &existing_data);
+        let locale = self.config.load().effective_locale();
+        let messages = GoalDeduplicationPrompt::messages(content, &existing_data, Some(&locale));
         let prompt_config = GoalDeduplicationPrompt::config();
 
         let response = match tokio::time::timeout(

@@ -21,13 +21,10 @@ use crate::models::agent_job::AgentJob;
 
 use super::agent_output_parsers::{AgentJobResult, parse_claude_ndjson, parse_text_output};
 
-/// Safety: max output file size (10 MB).
 const MAX_OUTPUT_BYTES: usize = 10 * 1024 * 1024;
 
-/// Seconds to wait after SIGTERM before SIGKILL.
 const KILL_GRACE_SECONDS: u64 = 5;
 
-/// Dangerous env vars that must NOT be passed to subprocesses.
 const BLOCKED_ENV_KEYS: &[&str] = &[
     "LD_PRELOAD",
     "DYLD_INSERT_LIBRARIES",
@@ -35,19 +32,18 @@ const BLOCKED_ENV_KEYS: &[&str] = &[
     "PYTHONPATH",
 ];
 
-/// Configuration for a single coding agent CLI profile.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AgentProfileConfig {
-    pub name: String,
-    pub command: String,
-    pub args: Vec<String>,
+pub(crate) struct AgentProfileConfig {
+    pub(crate) name: String,
+    pub(crate) command: String,
+    pub(crate) args: Vec<String>,
     #[serde(default = "default_output_format")]
-    pub output_format: String,
+    pub(crate) output_format: String,
     #[serde(default = "default_true")]
-    pub enabled: bool,
-    pub max_runtime_seconds: Option<u64>,
-    pub working_directory: Option<String>,
-    pub env_vars: Option<HashMap<String, String>>,
+    pub(crate) enabled: bool,
+    pub(crate) max_runtime_seconds: Option<u64>,
+    pub(crate) working_directory: Option<String>,
+    pub(crate) env_vars: Option<HashMap<String, String>>,
 }
 
 fn default_output_format() -> String {
@@ -58,7 +54,7 @@ fn default_true() -> bool {
     true
 }
 
-pub struct AgentJobManager {
+pub(crate) struct AgentJobManager {
     repo: Arc<dyn AgentJobRepository>,
     profiles: HashMap<String, AgentProfileConfig>,
     output_dir: PathBuf,
@@ -71,7 +67,7 @@ pub struct AgentJobManager {
 }
 
 impl AgentJobManager {
-    pub fn new(
+    pub(crate) fn new(
         repo: Arc<dyn AgentJobRepository>,
         profiles: HashMap<String, AgentProfileConfig>,
         output_dir: PathBuf,
@@ -89,8 +85,7 @@ impl AgentJobManager {
         }
     }
 
-    /// Set callback fired when a job reaches a terminal state.
-    pub async fn set_on_job_complete(
+    pub(crate) async fn set_on_job_complete(
         &self,
         callback: Arc<dyn Fn(AgentJob) -> futures::future::BoxFuture<'static, ()> + Send + Sync>,
     ) {
@@ -100,8 +95,7 @@ impl AgentJobManager {
 
     // ── Public API ──────────────────────────────────────────────────────
 
-    /// Launch a coding agent subprocess.
-    pub async fn launch(
+    pub(crate) async fn launch(
         self: &Arc<Self>,
         profile_name: &str,
         user_intent: &str,
@@ -118,7 +112,6 @@ impl AgentJobManager {
             )));
         }
 
-        // Check concurrent limit
         {
             let running = self.running_jobs.lock().await;
             if running.len() >= self.max_concurrent {
@@ -129,7 +122,6 @@ impl AgentJobManager {
             }
         }
 
-        // Verify command exists
         let cmd_path = which::which(&profile.command).map_err(|_| {
             AppError::NotFound(format!(
                 "Agent command not found: '{}'. Ensure it is installed and on PATH.",
@@ -137,7 +129,6 @@ impl AgentJobManager {
             ))
         })?;
 
-        // Resolve working directory
         let cwd = working_directory
             .map(String::from)
             .or_else(|| profile.working_directory.clone())
@@ -151,10 +142,8 @@ impl AgentJobManager {
             AppError::Validation(format!("Working directory does not exist: {cwd}"))
         })?;
 
-        // Build command
         let cmd_args = build_command(profile, user_intent);
 
-        // Create job record
         let mut job = AgentJob::new(
             profile_name.to_owned(),
             format!("{} {}", cmd_path.display(), cmd_args.join(" ")),
@@ -164,15 +153,12 @@ impl AgentJobManager {
         job.conversation_id = conversation_id;
         let mut job = self.repo.save(&job).await?;
 
-        // Prepare output file
         tokio::fs::create_dir_all(&self.output_dir).await?;
         let output_path = self.output_dir.join(format!("{}.output", job.id));
         job.raw_output_path = Some(output_path.to_string_lossy().into_owned());
 
-        // Build env
         let env = build_env(profile);
 
-        // Start subprocess
         let child = Command::new(&profile.command)
             .args(&cmd_args)
             .stdout(std::process::Stdio::piped())
@@ -190,7 +176,6 @@ impl AgentJobManager {
         job.mark_running(i64::from(pid));
         let job = self.repo.save(&job).await?;
 
-        // Spawn watcher
         let manager = Arc::clone(self);
         let job_id = job.id;
         let output_format = profile.output_format.clone();
@@ -238,7 +223,6 @@ impl AgentJobManager {
     ) {
         let mut bytes_written: usize = 0;
 
-        // Read stdout into file
         let stdout = child.stdout.take();
         let write_result = async {
             let file = tokio::fs::File::create(&output_path).await?;
@@ -296,11 +280,9 @@ impl AgentJobManager {
             return;
         }
 
-        // Wait for process exit
         let exit_status = child.wait().await;
         let exit_code = exit_status.ok().and_then(|s| s.code()).unwrap_or(-1);
 
-        // Remove from running jobs
         {
             let mut running = self.running_jobs.lock().await;
             running.remove(&job_id);
@@ -353,7 +335,6 @@ impl AgentJobManager {
                 "agent_job.finished"
             );
 
-            // Fire completion callback
             let callback = {
                 let lock = self.on_job_complete.lock().await;
                 lock.clone()
@@ -408,7 +389,6 @@ fn parse_output(output_path: &std::path::Path, output_format: &str) -> AgentJobR
 async fn kill_process(pid: u32) {
     use tokio::time::{Duration, sleep};
 
-    // Send SIGTERM
     #[cfg(unix)]
     {
         // SAFETY: libc::kill with a valid PID is safe; we obtained this PID from a

@@ -1,10 +1,4 @@
-//! Learning loop — background task that runs learners periodically.
-//!
-//! Responsibilities:
-//! 1. Poll for closed conversations → extract memories and goals
-//! 2. Poll for raw observations → distill memories
-//! 3. Daily consolidation: merge short-term → long-term memories
-//! 4. Scheduled pruning: delete old data per retention config
+//! Background loop: conversation learning, observation distillation, consolidation, and pruning.
 
 use std::sync::Arc;
 
@@ -23,21 +17,20 @@ use crate::services::goals::goals_service::GoalsService;
 use super::maintenance;
 use super::processors;
 
-/// Shared dependencies used by all learning sub-modules.
 pub(crate) struct LearningDeps {
-    pub conversation: Arc<ConversationService>,
-    pub goals_service: Arc<GoalsService>,
-    pub memory_learner: Arc<MemoryLearner>,
-    pub goal_learner: Arc<GoalLearner>,
-    pub memory_consolidator: Arc<MemoryConsolidator>,
-    pub memory_repo: Arc<dyn MemoryRepository>,
-    pub observation_repo: Arc<dyn ObservationRepository>,
-    pub goal_repo: Arc<dyn GoalRepository>,
-    pub embedding: Arc<dyn EmbeddingProvider>,
-    pub config: Arc<ArcSwap<Config>>,
+    pub(crate) conversation: Arc<ConversationService>,
+    pub(crate) goals_service: Arc<GoalsService>,
+    pub(crate) memory_learner: Arc<MemoryLearner>,
+    pub(crate) goal_learner: Arc<GoalLearner>,
+    pub(crate) memory_consolidator: Arc<MemoryConsolidator>,
+    pub(crate) memory_repo: Arc<dyn MemoryRepository>,
+    pub(crate) observation_repo: Arc<dyn ObservationRepository>,
+    pub(crate) goal_repo: Arc<dyn GoalRepository>,
+    pub(crate) embedding: Arc<dyn EmbeddingProvider>,
+    pub(crate) config: Arc<ArcSwap<Config>>,
 }
 
-pub struct LearningLoop {
+pub(crate) struct LearningLoop {
     deps: LearningDeps,
     learning_state_repo: Arc<dyn LearningStateRepository>,
     running: std::sync::atomic::AtomicBool,
@@ -46,7 +39,7 @@ pub struct LearningLoop {
 
 impl LearningLoop {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         conversation: Arc<ConversationService>,
         goals_service: Arc<GoalsService>,
         memory_learner: Arc<MemoryLearner>,
@@ -78,8 +71,7 @@ impl LearningLoop {
         }
     }
 
-    /// Main learning loop. Runs until stop() is called.
-    pub async fn run(&self) {
+    pub(crate) async fn run(&self) {
         self.running
             .store(true, std::sync::atomic::Ordering::Release);
         let cfg = self.deps.config.load();
@@ -89,7 +81,6 @@ impl LearningLoop {
             "learning_loop.starting"
         );
 
-        // Load or create state
         let mut state = match self.learning_state_repo.get_or_create().await {
             Ok(s) => s,
             Err(e) => {
@@ -103,7 +94,6 @@ impl LearningLoop {
                 error!(error = %e, "learning_loop.cycle_error");
             }
 
-            // Interruptible sleep — re-read interval each cycle
             let cfg = self.deps.config.load();
             let sleep_duration = std::time::Duration::from_mins(cfg.learning.interval_minutes);
             tokio::select! {
@@ -117,8 +107,7 @@ impl LearningLoop {
         info!("learning_loop.stopped");
     }
 
-    /// Gracefully stop the learning loop.
-    pub fn stop(&self) {
+    pub(crate) fn stop(&self) {
         info!("learning_loop.stopping");
         self.running
             .store(false, std::sync::atomic::Ordering::Release);
@@ -134,38 +123,32 @@ impl LearningLoop {
 
         let mut state_changed = false;
 
-        // 1. Process closed conversations
         let (conv_count, conv_memories, conv_goals, conv_changed) =
             processors::process_closed_conversations(&self.deps, state).await;
         if conv_changed {
             state_changed = true;
         }
 
-        // 2. Process accumulated context
         let (ctx_items, ctx_memories, ctx_changed) =
             processors::process_accumulated_context(&self.deps, state).await;
         if ctx_changed {
             state_changed = true;
         }
 
-        // 3. Daily consolidation
         let (consolidated, consolidation_changed) =
             maintenance::daily_consolidation_if_needed(&self.deps, state).await;
         if consolidation_changed {
             state_changed = true;
         }
 
-        // 4. Scheduled pruning
         let (pruned, pruning_changed) =
             maintenance::scheduled_pruning_if_needed(&self.deps, state).await;
         if pruning_changed {
             state_changed = true;
         }
 
-        // 5. Re-embed records with null embeddings
         let re_embed_stats = maintenance::re_embed_null_records(&self.deps).await;
 
-        // Save state
         if state_changed {
             state.updated_at = Utc::now();
             if let Err(e) = self.learning_state_repo.save(state).await {

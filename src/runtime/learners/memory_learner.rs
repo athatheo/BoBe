@@ -65,7 +65,7 @@ const TRANSIENT_PATTERN_MARKERS: &[&str] = &[
     "for now",
 ];
 
-pub struct MemoryLearner {
+pub(crate) struct MemoryLearner {
     llm: Arc<dyn LlmProvider>,
     embedding: Arc<dyn EmbeddingProvider>,
     memory_repo: Arc<dyn MemoryRepository>,
@@ -73,7 +73,7 @@ pub struct MemoryLearner {
 }
 
 impl MemoryLearner {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         embedding: Arc<dyn EmbeddingProvider>,
         memory_repo: Arc<dyn MemoryRepository>,
@@ -88,7 +88,7 @@ impl MemoryLearner {
     }
 
     /// Extract memories from accumulated observations.
-    pub async fn distill_from_observations(
+    pub(crate) async fn distill_from_observations(
         &self,
         observations: &[Observation],
         existing_memories: &[Memory],
@@ -107,9 +107,14 @@ impl MemoryLearner {
             .map(|m| m.content.clone())
             .collect();
         let goal_strings: Vec<String> = goals.iter().map(|g| g.content.clone()).collect();
+        let locale = self.config.load().effective_locale();
 
-        let messages =
-            MemoryDistillationPrompt::messages(&context_strings, &memory_strings, &goal_strings);
+        let messages = MemoryDistillationPrompt::messages(
+            &context_strings,
+            &memory_strings,
+            &goal_strings,
+            Some(&locale),
+        );
         let prompt_config = MemoryDistillationPrompt::config();
 
         let Some(raw_memories) = self.call_llm_for_memories(messages, prompt_config).await else {
@@ -121,7 +126,7 @@ impl MemoryLearner {
     }
 
     /// Extract memories from a closed conversation.
-    pub async fn distill_from_conversation(
+    pub(crate) async fn distill_from_conversation(
         &self,
         conversation_turns: &[(String, String)],
         existing_memories: &[Memory],
@@ -138,8 +143,10 @@ impl MemoryLearner {
             .iter()
             .map(|m| m.content.clone())
             .collect();
+        let locale = self.config.load().effective_locale();
 
-        let messages = ConversationMemoryPrompt::messages(&turn_strings, &memory_strings);
+        let messages =
+            ConversationMemoryPrompt::messages(&turn_strings, &memory_strings, Some(&locale));
         let prompt_config = ConversationMemoryPrompt::config();
 
         let Some(raw_memories) = self.call_llm_for_memories(messages, prompt_config).await else {
@@ -385,7 +392,9 @@ impl MemoryLearner {
             .map(|(id, content, cat, _)| (id.to_string(), content.to_string(), cat.to_string()))
             .collect();
 
-        let messages = MemoryDeduplicationPrompt::messages(content, category, &existing_data);
+        let locale = self.config.load().effective_locale();
+        let messages =
+            MemoryDeduplicationPrompt::messages(content, category, &existing_data, Some(&locale));
         let prompt_config = MemoryDeduplicationPrompt::config();
 
         let response = match tokio::time::timeout(

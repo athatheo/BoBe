@@ -25,7 +25,7 @@ use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
 use crate::util::tokens::{clamp_max_tokens, count_message_tokens, count_tokens};
 
-pub struct MessageHandler {
+pub(crate) struct MessageHandler {
     llm: Arc<dyn LlmProvider>,
     context_assembler: Arc<ContextAssembler>,
     conversation: Arc<ConversationService>,
@@ -39,7 +39,7 @@ pub struct MessageHandler {
 }
 
 impl MessageHandler {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         context_assembler: Arc<ContextAssembler>,
         conversation: Arc<ConversationService>,
@@ -65,7 +65,7 @@ impl MessageHandler {
         }
     }
 
-    pub async fn handle_message(&self, content: &str, message_id: &str) {
+    pub(crate) async fn handle_message(&self, content: &str, message_id: &str) {
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Err(e) = cooldown_repo.update_last_user_response(Utc::now()).await
         {

@@ -9,12 +9,12 @@ use crate::db::SoulRepository;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-pub struct GetSoulsTool {
+pub(crate) struct GetSoulsTool {
     soul_repo: Arc<dyn SoulRepository>,
 }
 
 impl GetSoulsTool {
-    pub fn new(soul_repo: Arc<dyn SoulRepository>) -> Self {
+    pub(crate) fn new(soul_repo: Arc<dyn SoulRepository>) -> Self {
         Self { soul_repo }
     }
 }

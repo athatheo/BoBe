@@ -6,7 +6,7 @@ use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::PromptConfig;
 
-pub static MEMORY_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
+pub(crate) static MEMORY_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {
@@ -42,10 +42,10 @@ pub static MEMORY_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new
     })
 });
 
-pub struct MemoryDistillationPrompt;
+pub(crate) struct MemoryDistillationPrompt;
 
 impl MemoryDistillationPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.3,
             max_tokens: 2048,
@@ -57,12 +57,13 @@ impl MemoryDistillationPrompt {
         }
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         context_items: &[String],
         existing_memories: &[String],
         goals: &[String],
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let context_text = if context_items.is_empty() {
             t(locale, "prompt-memory-distillation-no-context")
         } else {
@@ -104,10 +105,10 @@ impl MemoryDistillationPrompt {
     }
 }
 
-pub struct ConversationMemoryPrompt;
+pub(crate) struct ConversationMemoryPrompt;
 
 impl ConversationMemoryPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.3,
             max_tokens: 2048,
@@ -119,8 +120,12 @@ impl ConversationMemoryPrompt {
         }
     }
 
-    pub fn messages(conversation_turns: &[String], existing_memories: &[String]) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+    pub(crate) fn messages(
+        conversation_turns: &[String],
+        existing_memories: &[String],
+        locale: Option<&str>,
+    ) -> Vec<AiMessage> {
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let conversation_text = conversation_turns.join("\n");
 
         let memories_text = if existing_memories.is_empty() {

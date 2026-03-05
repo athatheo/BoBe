@@ -11,13 +11,13 @@ use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 use crate::tools::ToolExecutionContext;
 
-pub struct SearchGoalTool {
+pub(crate) struct SearchGoalTool {
     goal_repo: Arc<dyn GoalRepository>,
     embedding_provider: Arc<dyn EmbeddingProvider>,
 }
 
 impl SearchGoalTool {
-    pub fn new(
+    pub(crate) fn new(
         goal_repo: Arc<dyn GoalRepository>,
         embedding_provider: Arc<dyn EmbeddingProvider>,
     ) -> Self {

@@ -1,6 +1,5 @@
-pub mod capture_result;
+pub(crate) mod capture_result;
 
-use chrono::Utc;
 use tracing::{debug, info};
 
 use crate::error::AppError;
@@ -8,24 +7,14 @@ use capture_result::CaptureResult;
 
 const CAPTURE_DIR: &str = "/tmp";
 
-/// Screen capture service for taking screenshots on macOS.
-///
-/// Uses the `screencapture` CLI tool to capture the screen, then reads
-/// the PNG file and returns it as raw bytes. Active window title is
-/// retrieved via AppleScript.
-pub struct ScreenCapture;
+pub(crate) struct ScreenCapture;
 
 impl ScreenCapture {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
-    /// Capture the primary display screenshot.
-    ///
-    /// Shells out to `screencapture -x <path>` (macOS) then reads the
-    /// resulting PNG file.
-    pub async fn capture_screen(&self) -> Result<CaptureResult, AppError> {
-        let timestamp = Utc::now();
+    pub(crate) async fn capture_screen(&self) -> Result<CaptureResult, AppError> {
         debug!("capture.started");
 
         let image = tokio::task::spawn_blocking(take_screenshot)
@@ -46,8 +35,6 @@ impl ScreenCapture {
         Ok(CaptureResult {
             image,
             active_window,
-            timestamp,
-            source: "screen".into(),
         })
     }
 }
@@ -58,7 +45,6 @@ impl Default for ScreenCapture {
     }
 }
 
-/// Take a screenshot using macOS `screencapture` (blocking).
 fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
     let capture_path = format!("{}/bobe_capture_{}.png", CAPTURE_DIR, uuid::Uuid::new_v4());
     let output = std::process::Command::new("screencapture")
@@ -90,11 +76,7 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
     Ok(data)
 }
 
-/// Check if a PNG image is all black (likely a denied screen recording permission).
 fn is_blank_image(png_data: &[u8]) -> bool {
-    // Skip PNG header (8 bytes) and sample raw data after IDAT.
-    // A truly blank image will have mostly zero bytes in its data.
-    // Sample every 4th byte in the middle portion.
     let start = png_data.len().min(100);
     let end = png_data.len().saturating_sub(12);
     if end <= start {
@@ -112,7 +94,6 @@ fn is_blank_image(png_data: &[u8]) -> bool {
     sample.iter().all(|&b| b == 0)
 }
 
-/// Get the active window title via AppleScript (blocking, macOS only).
 fn get_active_window() -> Option<String> {
     let applescript =
         r#"tell application "System Events" to get name of first process whose frontmost is true"#;

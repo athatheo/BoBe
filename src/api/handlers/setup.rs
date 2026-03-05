@@ -14,34 +14,34 @@ use crate::services::setup_service::{
 };
 
 #[derive(Debug, Serialize)]
-pub struct LocalTier {
-    pub id: String,
-    pub label: String,
-    pub description: String,
-    pub disk_estimate_bytes: u64,
+pub(crate) struct LocalTier {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) description: String,
+    pub(crate) disk_estimate_bytes: u64,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ModelChoice {
-    pub id: String,
-    pub label: String,
+pub(crate) struct ModelChoice {
+    pub(crate) id: String,
+    pub(crate) label: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct CloudProvider {
-    pub id: String,
-    pub label: String,
-    pub requires: Vec<String>,
-    pub models: Vec<ModelChoice>,
+pub(crate) struct CloudProvider {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) requires: Vec<String>,
+    pub(crate) models: Vec<ModelChoice>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct OnboardingOptions {
-    pub local_tiers: Vec<LocalTier>,
-    pub cloud_providers: Vec<CloudProvider>,
+pub(crate) struct OnboardingOptions {
+    pub(crate) local_tiers: Vec<LocalTier>,
+    pub(crate) cloud_providers: Vec<CloudProvider>,
 }
 
-pub async fn get_options(
+pub(crate) async fn get_options(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<OnboardingOptions>, AppError> {
     let cfg = state.config();
@@ -114,7 +114,7 @@ pub async fn get_options(
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum StepStatus {
+pub(crate) enum StepStatus {
     Pending,
     InProgress,
     Succeeded,
@@ -123,28 +123,28 @@ pub enum StepStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct StepProgress {
+pub(crate) struct StepProgress {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub percent: Option<u8>,
+    pub(crate) percent: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_bytes: Option<u64>,
+    pub(crate) current_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_bytes: Option<u64>,
+    pub(crate) total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SetupStep {
-    pub id: String,
-    pub status: StepStatus,
+pub(crate) struct SetupStep {
+    pub(crate) id: String,
+    pub(crate) status: StepStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
+    pub(crate) message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub progress: Option<StepProgress>,
+    pub(crate) progress: Option<StepProgress>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum JobStatus {
+pub(crate) enum JobStatus {
     Pending,
     InProgress,
     Succeeded,
@@ -153,35 +153,35 @@ pub enum JobStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SetupJobState {
-    pub job_id: String,
-    pub status: JobStatus,
+pub(crate) struct SetupJobState {
+    pub(crate) job_id: String,
+    pub(crate) status: JobStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_step: Option<String>,
-    pub steps: Vec<SetupStep>,
+    pub(crate) current_step: Option<String>,
+    pub(crate) steps: Vec<SetupStep>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SetupRequest {
-    pub mode: String,
+pub(crate) struct SetupRequest {
+    pub(crate) mode: String,
     #[serde(default)]
-    pub tier: Option<String>,
+    pub(crate) tier: Option<String>,
     #[serde(default)]
-    pub provider: Option<String>,
+    pub(crate) provider: Option<String>,
     #[serde(default)]
-    pub api_key: Option<String>,
+    pub(crate) api_key: Option<String>,
     #[serde(default)]
-    pub model: Option<String>,
+    pub(crate) model: Option<String>,
     #[serde(default)]
-    pub endpoint: Option<String>,
+    pub(crate) endpoint: Option<String>,
     #[serde(default)]
-    pub deployment: Option<String>,
+    pub(crate) deployment: Option<String>,
 }
 
 /// 202 Accepted; spawns background setup job.
-pub async fn create_setup_job(
+pub(crate) async fn create_setup_job(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SetupRequest>,
 ) -> Result<(axum::http::StatusCode, Json<SetupJobState>), AppError> {
@@ -238,7 +238,7 @@ pub async fn create_setup_job(
     Ok((axum::http::StatusCode::ACCEPTED, Json(job)))
 }
 
-pub async fn get_setup_status(
+pub(crate) async fn get_setup_status(
     State(state): State<Arc<AppState>>,
     Path(job_id): Path<String>,
 ) -> Result<Json<SetupJobState>, AppError> {
@@ -254,7 +254,7 @@ pub async fn get_setup_status(
     }
 }
 
-pub async fn cancel_setup_job(
+pub(crate) async fn cancel_setup_job(
     State(state): State<Arc<AppState>>,
     Path(job_id): Path<String>,
 ) -> Result<Json<SetupJobState>, AppError> {

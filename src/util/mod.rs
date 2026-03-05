@@ -1,8 +1,8 @@
-pub mod capture;
-pub mod logging;
-pub mod network;
-pub mod similarity;
-pub mod slugify;
-pub mod sse;
-pub mod text;
-pub mod tokens;
+pub(crate) mod capture;
+pub(crate) mod logging;
+pub(crate) mod network;
+pub(crate) mod similarity;
+pub(crate) mod slugify;
+pub(crate) mod sse;
+pub(crate) mod text;
+pub(crate) mod tokens;

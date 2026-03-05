@@ -21,71 +21,70 @@ use crate::tools::mcp::security::{validate_mcp_command, validate_mcp_env};
 // ── Response / request DTOs ────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
-pub struct McpToolMetadata {
-    pub name: String,
-    pub description: String,
-    pub excluded: bool,
+pub(crate) struct McpToolMetadata {
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) excluded: bool,
 }
 
 #[derive(Debug, Serialize)]
-pub struct McpServerSummary {
-    pub name: String,
-    pub command: String,
-    pub args: Vec<String>,
-    pub enabled: bool,
-    pub connected: bool,
-    pub tool_count: usize,
-    pub tools: Vec<McpToolMetadata>,
-    pub excluded_tools: Vec<String>,
-    pub env_keys: Vec<String>,
-    pub secret_env_keys: Vec<String>,
+pub(crate) struct McpServerSummary {
+    pub(crate) name: String,
+    pub(crate) command: String,
+    pub(crate) args: Vec<String>,
+    pub(crate) enabled: bool,
+    pub(crate) connected: bool,
+    pub(crate) tool_count: usize,
+    pub(crate) tools: Vec<McpToolMetadata>,
+    pub(crate) excluded_tools: Vec<String>,
+    pub(crate) env_keys: Vec<String>,
+    pub(crate) secret_env_keys: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct McpConfigDocumentResponse {
-    pub raw_json: String,
-    pub servers: Vec<McpServerSummary>,
-    pub count: usize,
-    pub connected_count: usize,
+pub(crate) struct McpConfigDocumentResponse {
+    pub(crate) raw_json: String,
+    pub(crate) servers: Vec<McpServerSummary>,
+    pub(crate) count: usize,
+    pub(crate) connected_count: usize,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct McpConfigMutationRequest {
-    pub raw_json: String,
+pub(crate) struct McpConfigMutationRequest {
+    pub(crate) raw_json: String,
     #[serde(default)]
-    pub secret_keys: HashMap<String, Vec<String>>,
+    pub(crate) secret_keys: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct McpConfigValidateResponse {
-    pub valid: bool,
-    pub normalized_json: String,
-    pub server_count: usize,
-    pub errors: Vec<String>,
+pub(crate) struct McpConfigValidateResponse {
+    pub(crate) valid: bool,
+    pub(crate) normalized_json: String,
+    pub(crate) server_count: usize,
+    pub(crate) errors: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct McpConfigSaveResponse {
-    pub message: String,
-    pub raw_json: String,
-    pub servers: Vec<McpServerSummary>,
-    pub count: usize,
-    pub connected_count: usize,
+pub(crate) struct McpConfigSaveResponse {
+    pub(crate) message: String,
+    pub(crate) raw_json: String,
+    pub(crate) servers: Vec<McpServerSummary>,
+    pub(crate) count: usize,
+    pub(crate) connected_count: usize,
 }
 
 #[derive(Debug, Serialize)]
-pub struct McpConfigResetResponse {
-    pub message: String,
-    pub raw_json: String,
-    pub count: usize,
+pub(crate) struct McpConfigResetResponse {
+    pub(crate) message: String,
+    pub(crate) raw_json: String,
+    pub(crate) count: usize,
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
-/// GET — return persisted config + live runtime state from adapter.
-pub async fn get_document(state: &AppState) -> Result<McpConfigDocumentResponse, AppError> {
+pub(crate) async fn get_document(state: &AppState) -> Result<McpConfigDocumentResponse, AppError> {
     let (_path, file) = load_mcp_file(state)?;
     let raw_json = redacted_json(&file)?;
 
@@ -101,8 +100,7 @@ pub async fn get_document(state: &AppState) -> Result<McpConfigDocumentResponse,
     })
 }
 
-/// POST validate — pure schema + security check. No subprocesses, no side effects.
-pub fn validate_document(
+pub(crate) fn validate_document(
     state: &AppState,
     body: &McpConfigMutationRequest,
 ) -> Result<McpConfigValidateResponse, AppError> {
@@ -128,9 +126,7 @@ pub fn validate_document(
     }
 }
 
-/// PUT save — validate schema, persist secrets, write file, reload adapter.
-/// Server connection failures are per-server warnings, not global blockers.
-pub async fn save_document(
+pub(crate) async fn save_document(
     state: &AppState,
     body: McpConfigMutationRequest,
 ) -> Result<McpConfigSaveResponse, AppError> {
@@ -173,8 +169,7 @@ pub async fn save_document(
     })
 }
 
-/// DELETE reset — clear config, reload adapter, clean up secrets.
-pub async fn reset_document(state: &AppState) -> Result<McpConfigResetResponse, AppError> {
+pub(crate) async fn reset_document(state: &AppState) -> Result<McpConfigResetResponse, AppError> {
     let _guard = state.mcp_config_lock.lock().await;
     let path = resolve_config_path(state)?;
     let previous = mcp_config::load_mcp_config_file(&path).ok();
@@ -207,7 +202,6 @@ pub async fn reset_document(state: &AppState) -> Result<McpConfigResetResponse, 
 
 // ── Internals ──────────────────────────────────────────────────────────────
 
-/// Parse JSON and validate schema + security rules (pure, no I/O beyond config read).
 fn parse_and_validate(
     raw_json: &str,
     blocked_commands: &[String],
@@ -238,7 +232,6 @@ fn parse_and_validate(
     Ok(file)
 }
 
-/// Replace secret-like env values with placeholder refs.
 /// When `persist` is true, real values are stored in Keychain.
 fn normalize_secrets(
     mut file: McpConfigFile,
@@ -262,7 +255,6 @@ fn build_env_with_refs(
     let mut out = HashMap::with_capacity(env.len());
 
     for (key, value) in env {
-        // Already a ref, empty, or template — pass through.
         if mcp_config::is_secret_ref(value) || value.trim().is_empty() || value.contains("${") {
             out.insert(key.clone(), value.clone());
             continue;
@@ -271,11 +263,6 @@ fn build_env_with_refs(
         if explicit.contains(key.as_str()) || mcp_config::should_treat_as_secret_key(key) {
             let account = mcp_config::secret_account(server_name, key);
             if persist {
-                // Value arrives as plain String from the JSON request body — wrapping in
-                // SecretString here would be cosmetic since the plaintext already lives in
-                // the deserialized HashMap. Real protection is: Keychain storage + ref in
-                // file + never returned over HTTP. Matches config_manager's store_secret
-                // call pattern.
                 crate::secrets::store_secret(&account, value).map_err(|e| {
                     AppError::Config(format!("Failed to store MCP secret '{key}': {e}"))
                 })?;
@@ -289,7 +276,6 @@ fn build_env_with_refs(
     Ok(out)
 }
 
-/// Build per-server summaries from live adapter state (not ephemeral connections).
 async fn build_runtime_summaries(state: &AppState, file: &McpConfigFile) -> Vec<McpServerSummary> {
     let mut entries: Vec<(&String, &McpServerEntry)> = file.mcp_servers.iter().collect();
     entries.sort_by_key(|(name, _)| *name);

@@ -8,12 +8,12 @@ use crate::error::AppError;
 use crate::models::agent_job::AgentJob;
 use crate::models::types::AgentJobStatus;
 
-pub struct SqliteAgentJobRepo {
+pub(crate) struct SqliteAgentJobRepo {
     pool: SqlitePool,
 }
 
 impl SqliteAgentJobRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }

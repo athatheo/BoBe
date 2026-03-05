@@ -1,15 +1,14 @@
-//! Capture learner — processes screen capture observations.
-//!
-//! Analyzes screenshots via vision LLM, infers category from keywords,
-//! generates embeddings, stores observations, and updates visual memory diary.
+//! Processes screen captures: vision LLM analysis, category inference, embedding, and visual memory diary.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use base64::Engine;
 use chrono::{DateTime, Timelike, Utc};
 use tracing::{debug, info, warn};
 
+use crate::config::Config;
 use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
 use crate::error::AppError;
@@ -25,7 +24,6 @@ use crate::runtime::prompts::capture::{
     ALLOWED_CATEGORIES, VisionAnalysisPrompt, VisualMemoryConsolidationPrompt,
 };
 
-/// Keyword → category mapping for simple inference (no LLM needed).
 static CATEGORY_KEYWORDS: &[(&str, &[&str])] = &[
     (
         "coding",
@@ -114,21 +112,23 @@ static CATEGORY_KEYWORDS: &[(&str, &[&str])] = &[
     ),
 ];
 
-pub struct CaptureLearner {
+pub(crate) struct CaptureLearner {
     llm: Arc<dyn LlmProvider>,
     vision_llm: Option<Arc<dyn LlmProvider>>,
     embedding: Arc<dyn EmbeddingProvider>,
     observation_repo: Arc<dyn ObservationRepository>,
     memory_repo: Arc<dyn MemoryRepository>,
+    config: Arc<ArcSwap<Config>>,
 }
 
 impl CaptureLearner {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         embedding: Arc<dyn EmbeddingProvider>,
         observation_repo: Arc<dyn ObservationRepository>,
         memory_repo: Arc<dyn MemoryRepository>,
         vision_llm: Option<Arc<dyn LlmProvider>>,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             llm,
@@ -136,6 +136,7 @@ impl CaptureLearner {
             embedding,
             observation_repo,
             memory_repo,
+            config,
         }
     }
 
@@ -151,8 +152,7 @@ impl CaptureLearner {
         None
     }
 
-    /// Process a screen capture observation.
-    pub async fn learn(
+    pub(crate) async fn learn(
         &self,
         observation: &LearnerObservation,
     ) -> Result<LearnerResult, LearnerError> {
@@ -174,7 +174,6 @@ impl CaptureLearner {
             "capture_learner.started"
         );
 
-        // 1. Analyze screenshot
         let analysis = self
             .analyze(screenshot, observation.active_window.as_deref())
             .await;
@@ -182,14 +181,12 @@ impl CaptureLearner {
         let description = analysis.description;
         let category = analysis.category;
 
-        // 2. Generate embedding
         let embedding_vec = self
             .embedding
             .embed(&description)
             .await
             .map_err(|e| LearnerError::Embedding(e.to_string()))?;
 
-        // 3. Create and store observation
         let mut obs = Observation::new(
             ObservationSource::Screen,
             description.clone(),
@@ -219,7 +216,6 @@ impl CaptureLearner {
             "capture_learner.stored"
         );
 
-        // 4. Update visual memory diary (fire-and-forget)
         if let Err(e) = self
             .update_visual_memory(&description, &stored.id.to_string())
             .await
@@ -261,8 +257,9 @@ impl CaptureLearner {
     ) -> Result<String, AppError> {
         let image_b64 = base64::engine::general_purpose::STANDARD.encode(screenshot);
         let image_url = format!("data:image/png;base64,{image_b64}");
+        let locale = self.config.load().effective_locale();
 
-        let messages = VisionAnalysisPrompt::messages(&image_url);
+        let messages = VisionAnalysisPrompt::messages(&image_url, Some(&locale));
         let config = VisionAnalysisPrompt::config();
 
         let response = tokio::time::timeout(
@@ -318,20 +315,19 @@ impl CaptureLearner {
         let date_str = now.format("%Y-%m-%d").to_string();
         let header = format!("# Visual Memory {date_str} {period}");
 
-        // Calculate 12h window start
         let window_start_hour = if now.hour() < 12 { 0 } else { 12 };
         let window_start = now
             .date_naive()
             .and_hms_opt(window_start_hour, 0, 0)
             .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
 
-        // Find existing visual diary
         let existing_content = self
             .find_visual_diary_memory(window_start)
             .await
             .map(|m| m.content)
             .unwrap_or_default();
         let llm_context = Self::tail_lines(&existing_content, 30);
+        let locale = self.config.load().effective_locale();
 
         let obs_id_short = &observation_id[..observation_id.len().min(8)];
         let messages = VisualMemoryConsolidationPrompt::messages(
@@ -339,6 +335,7 @@ impl CaptureLearner {
             description,
             &timestamp,
             obs_id_short,
+            Some(&locale),
         );
         let config = VisualMemoryConsolidationPrompt::config();
 
@@ -365,7 +362,6 @@ impl CaptureLearner {
             format!("{header}\n\n{updated_diary}")
         };
 
-        // Find existing diary by searching memories with visual_diary source
         let existing = self.find_visual_diary_memory(window_start).await;
 
         if let Some(mut diary) = existing {

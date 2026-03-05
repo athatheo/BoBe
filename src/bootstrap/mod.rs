@@ -22,11 +22,7 @@ use crate::config::Config;
 use crate::error::AppError;
 use crate::services::goal_worker::manager::GoalWorkerManager;
 
-/// Bootstrap the full application from a validated `Config`.
-///
-/// Returns the shared `AppState` (for Axum) and a `GoalWorkerManager`
-/// (owned by `main` so it can be shut down independently).
-pub async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), AppError> {
+pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), AppError> {
     let pool = database::connect_and_apply_schema(&config.database.url).await?;
 
     let infra = infra::Infrastructure::build(&config)?;

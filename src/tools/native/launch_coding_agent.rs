@@ -8,12 +8,12 @@ use crate::error::AppError;
 use crate::services::agent_job_manager::AgentJobManager;
 use crate::tools::ToolExecutionContext;
 
-pub struct LaunchCodingAgentTool {
+pub(crate) struct LaunchCodingAgentTool {
     manager: Option<Arc<AgentJobManager>>,
 }
 
 impl LaunchCodingAgentTool {
-    pub fn new(manager: Option<Arc<AgentJobManager>>) -> Self {
+    pub(crate) fn new(manager: Option<Arc<AgentJobManager>>) -> Self {
         Self { manager }
     }
 }

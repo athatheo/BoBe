@@ -21,18 +21,18 @@ use super::providers::openai::OpenAiProvider;
 /// Holds a live reference to the config via `ArcSwap` so that every call to
 /// `create()` / `create_vision()` reads the latest config snapshot (including
 /// API keys, model names, endpoints changed at runtime).
-pub struct LlmProviderFactory {
+pub(crate) struct LlmProviderFactory {
     client: Client,
     config: Arc<ArcSwap<Config>>,
 }
 
 impl LlmProviderFactory {
-    pub fn new(client: Client, config: Arc<ArcSwap<Config>>) -> Self {
+    pub(crate) fn new(client: Client, config: Arc<ArcSwap<Config>>) -> Self {
         Self { client, config }
     }
 
     /// Create an embedding provider based on the active LLM backend.
-    pub fn create_embedding(&self) -> Result<Arc<dyn EmbeddingProvider>, AppError> {
+    pub(crate) fn create_embedding(&self) -> Result<Arc<dyn EmbeddingProvider>, AppError> {
         let config = self.config.load();
         match config.llm.backend {
             LlmBackend::Openai => {
@@ -85,7 +85,7 @@ impl LlmProviderFactory {
     /// Create a provider (wrapped with a circuit breaker) for the given backend string.
     ///
     /// Supported backends: `"ollama"`, `"openai"`, `"llamacpp"`, `"azure_openai"`.
-    pub fn create(
+    pub(crate) fn create(
         &self,
         backend: LlmBackend,
     ) -> Result<Arc<dyn LlmProvider>, crate::error::AppError> {
@@ -102,7 +102,7 @@ impl LlmProviderFactory {
     }
 
     /// Create a vision-specific provider using vision model names from config.
-    pub fn create_vision(
+    pub(crate) fn create_vision(
         &self,
         backend: LlmBackend,
     ) -> Result<Arc<dyn LlmProvider>, crate::error::AppError> {
@@ -174,7 +174,7 @@ impl LlmProviderFactory {
     }
 
     /// Create a raw provider without circuit breaker wrapping.
-    pub fn create_raw(
+    pub(crate) fn create_raw(
         &self,
         backend: LlmBackend,
     ) -> Result<(Arc<dyn LlmProvider>, String), crate::error::AppError> {

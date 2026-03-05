@@ -20,7 +20,7 @@ use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
 use crate::util::text::truncate_str;
 
-pub struct DecisionEngine {
+pub(crate) struct DecisionEngine {
     llm: Arc<dyn LlmProvider>,
     observation_repo: Arc<dyn ObservationRepository>,
     conversation: Arc<ConversationService>,
@@ -29,7 +29,7 @@ pub struct DecisionEngine {
 }
 
 impl DecisionEngine {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         observation_repo: Arc<dyn ObservationRepository>,
         conversation: Arc<ConversationService>,
@@ -46,7 +46,7 @@ impl DecisionEngine {
     }
 
     /// Route to appropriate decision logic based on trigger type.
-    pub async fn decide(&self, context: &TriggerContext) -> Decision {
+    pub(crate) async fn decide(&self, context: &TriggerContext) -> Decision {
         match context.trigger_type {
             TriggerType::Capture => {
                 let embedding = context
@@ -68,6 +68,7 @@ impl DecisionEngine {
 
     async fn decide_on_capture(&self, current_text: &str, embedding: Option<&[f32]>) -> Decision {
         let cfg = self.config.load();
+        let locale = cfg.effective_locale();
 
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
@@ -160,6 +161,7 @@ impl DecisionEngine {
             &recent_messages,
             soul.as_deref(),
             Some(&current_time),
+            Some(&locale),
         );
         let config = DecisionPrompt::config();
 
@@ -168,6 +170,7 @@ impl DecisionEngine {
 
     async fn decide_on_goal(&self, goal_content: &str) -> Decision {
         let cfg = self.config.load();
+        let locale = cfg.effective_locale();
 
         // Check active conversation
         if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
@@ -214,6 +217,7 @@ impl DecisionEngine {
             &context_summary,
             soul.as_deref(),
             Some(&current_time),
+            Some(&locale),
         );
         let config = GoalDecisionPrompt::config();
 

@@ -15,23 +15,21 @@ use crate::db::{
     SqliteSoulRepo, SqliteUserProfileRepo,
 };
 
-/// All domain repository handles, indexed by trait.
-pub struct Repositories {
-    pub conversation_repo: Arc<dyn ConversationRepository>,
-    pub memory_repo: Arc<dyn MemoryRepository>,
-    pub goal_repo: Arc<dyn GoalRepository>,
-    pub observation_repo: Arc<dyn ObservationRepository>,
-    pub cooldown_repo: Arc<dyn CooldownRepository>,
-    pub learning_state_repo: Arc<dyn LearningStateRepository>,
-    pub agent_job_repo: Arc<dyn AgentJobRepository>,
-    pub soul_repo: Arc<dyn SoulRepository>,
-    pub user_profile_repo: Arc<dyn UserProfileRepository>,
-    pub goal_plan_repo: Arc<dyn GoalPlanRepository>,
+pub(crate) struct Repositories {
+    pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
+    pub(crate) memory_repo: Arc<dyn MemoryRepository>,
+    pub(crate) goal_repo: Arc<dyn GoalRepository>,
+    pub(crate) observation_repo: Arc<dyn ObservationRepository>,
+    pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
+    pub(crate) learning_state_repo: Arc<dyn LearningStateRepository>,
+    pub(crate) agent_job_repo: Arc<dyn AgentJobRepository>,
+    pub(crate) soul_repo: Arc<dyn SoulRepository>,
+    pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
+    pub(crate) goal_plan_repo: Arc<dyn GoalPlanRepository>,
 }
 
 impl Repositories {
-    /// Construct every repository from a single pool handle.
-    pub fn from_pool(pool: &SqlitePool) -> Self {
+    pub(crate) fn from_pool(pool: &SqlitePool) -> Self {
         Self {
             conversation_repo: Arc::new(SqliteConversationRepo::new(pool.clone())),
             memory_repo: Arc::new(SqliteMemoryRepo::new(pool.clone())),

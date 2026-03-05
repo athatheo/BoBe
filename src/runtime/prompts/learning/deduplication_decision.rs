@@ -2,10 +2,10 @@ use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::PromptConfig;
 
-pub struct GoalDeduplicationPrompt;
+pub(crate) struct GoalDeduplicationPrompt;
 
 impl GoalDeduplicationPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.0,
             max_tokens: 300,
@@ -18,11 +18,12 @@ impl GoalDeduplicationPrompt {
         t(locale, "prompt-goal-dedup-system")
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         candidate_content: &str,
         existing_goals: &[(String, String, String)],
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let user_content = if existing_goals.is_empty() {
             t_vars(
                 locale,
@@ -63,10 +64,10 @@ impl GoalDeduplicationPrompt {
     }
 }
 
-pub struct MemoryDeduplicationPrompt;
+pub(crate) struct MemoryDeduplicationPrompt;
 
 impl MemoryDeduplicationPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.0,
             max_tokens: 300,
@@ -79,12 +80,13 @@ impl MemoryDeduplicationPrompt {
         t(locale, "prompt-memory-dedup-system")
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         candidate_content: &str,
         candidate_category: &str,
         existing_memories: &[(String, String, String)],
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let user_content = if existing_memories.is_empty() {
             t_vars(
                 locale,

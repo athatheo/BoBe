@@ -13,15 +13,18 @@ use crate::llm::shared::{
 };
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
-/// llama.cpp server provider using its OpenAI-compatible endpoint.
-pub struct LlamaCppProvider {
+pub(crate) struct LlamaCppProvider {
     client: Client,
     base_url: String,
     model: String,
 }
 
 impl LlamaCppProvider {
-    pub fn new(client: Client, base_url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        client: Client,
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_owned();
         Self {
             client,

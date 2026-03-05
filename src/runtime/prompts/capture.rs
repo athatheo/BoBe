@@ -2,7 +2,7 @@ use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::{AiMessage, MessageContent};
 use crate::runtime::prompts::base::PromptConfig;
 
-pub const ALLOWED_CATEGORIES: &[&str] = &[
+pub(crate) const ALLOWED_CATEGORIES: &[&str] = &[
     "coding",
     "browsing",
     "communication",
@@ -13,10 +13,10 @@ pub const ALLOWED_CATEGORIES: &[&str] = &[
     "other",
 ];
 
-pub struct VisionAnalysisPrompt;
+pub(crate) struct VisionAnalysisPrompt;
 
 impl VisionAnalysisPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.4,
             max_tokens: 3000,
@@ -24,8 +24,8 @@ impl VisionAnalysisPrompt {
         }
     }
 
-    pub fn messages(image_url: &str) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+    pub(crate) fn messages(image_url: &str, locale: Option<&str>) -> Vec<AiMessage> {
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         vec![
             AiMessage::system(t(locale, "prompt-capture-vision-system")),
             AiMessage {
@@ -42,10 +42,10 @@ impl VisionAnalysisPrompt {
     }
 }
 
-pub struct VisualMemoryConsolidationPrompt;
+pub(crate) struct VisualMemoryConsolidationPrompt;
 
 impl VisualMemoryConsolidationPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.3,
             max_tokens: 4096,
@@ -53,13 +53,14 @@ impl VisualMemoryConsolidationPrompt {
         }
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         existing_diary: &str,
         new_observation: &str,
         timestamp: &str,
         observation_id: &str,
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let diary_section = if existing_diary.is_empty() {
             t(locale, "prompt-capture-visual-memory-empty-diary")
         } else {

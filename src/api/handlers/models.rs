@@ -9,41 +9,33 @@ use crate::app_state::AppState;
 use crate::config::LlmBackend;
 use crate::error::AppError;
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Serialize)]
-pub struct ModelInfo {
-    pub name: String,
-    pub size_bytes: i64,
-    pub modified_at: String,
+pub(crate) struct ModelInfo {
+    pub(crate) name: String,
+    pub(crate) size_bytes: i64,
+    pub(crate) modified_at: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ModelsListResponse {
-    pub backend: LlmBackend,
-    pub models: Vec<ModelInfo>,
-    pub supports_pull: bool,
+pub(crate) struct ModelsListResponse {
+    pub(crate) backend: LlmBackend,
+    pub(crate) models: Vec<ModelInfo>,
+    pub(crate) supports_pull: bool,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PullModelRequest {
-    pub name: String,
+pub(crate) struct PullModelRequest {
+    pub(crate) name: String,
 }
 
-// ── Handler ─────────────────────────────────────────────────────────────────
-
-/// GET /api/models
-///
-/// Lists available LLM models for the current backend. Only Ollama supports
-/// model listing at the moment. Other backends return an empty list.
-pub async fn list_models(
+/// Only Ollama supports model listing; other backends return an empty list.
+pub(crate) async fn list_models(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ModelsListResponse>, AppError> {
     let cfg = state.config();
     let backend = cfg.llm.backend;
 
     let (models, supports_pull) = if backend == LlmBackend::Ollama {
-        // Try to fetch from Ollama API
         let ollama_url = cfg.ollama.url.clone();
         match fetch_ollama_models(&ollama_url).await {
             Ok(m) => (m, true),
@@ -63,10 +55,8 @@ pub async fn list_models(
     }))
 }
 
-/// POST /api/models/pull
-///
-/// Pull (download) a model by name. Returns SSE stream with progress events.
-pub async fn pull_model(
+/// Streams Ollama model pull progress as SSE events.
+pub(crate) async fn pull_model(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PullModelRequest>,
 ) -> axum::response::Sse<
@@ -145,10 +135,8 @@ pub async fn pull_model(
     axum::response::Sse::new(Box::pin(stream))
 }
 
-/// DELETE /api/models/{model_name}
-///
-/// Delete a locally installed model via the Ollama API.
-pub async fn delete_model(
+/// Ollama-only. Deletes a locally installed model.
+pub(crate) async fn delete_model(
     State(state): State<Arc<AppState>>,
     Path(model_name): Path<String>,
 ) -> Result<StatusCode, AppError> {
@@ -180,7 +168,7 @@ pub async fn delete_model(
     }
 }
 
-/// Moka cache for registry models — 1 hour TTL, single entry.
+/// 1-hour TTL cache for registry models.
 static REGISTRY_CACHE: std::sync::LazyLock<moka::future::Cache<(), Vec<ModelInfo>>> =
     std::sync::LazyLock::new(|| {
         moka::future::Cache::builder()
@@ -189,11 +177,8 @@ static REGISTRY_CACHE: std::sync::LazyLock<moka::future::Cache<(), Vec<ModelInfo
             .build()
     });
 
-/// GET /api/models/registry
-///
-/// List trending models from the Ollama public registry (ollama.com).
-/// Cached for 1 hour via moka with automatic eviction.
-pub async fn list_registry_models() -> Json<ModelsListResponse> {
+/// Trending models from ollama.com (cached 1h).
+pub(crate) async fn list_registry_models() -> Json<ModelsListResponse> {
     let models = REGISTRY_CACHE
         .try_get_with((), fetch_registry_models())
         .await

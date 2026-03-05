@@ -12,13 +12,13 @@ use crate::models::goal::Goal;
 use crate::models::types::{GoalPriority, GoalSource};
 use crate::tools::ToolExecutionContext;
 
-pub struct CreateGoalTool {
+pub(crate) struct CreateGoalTool {
     goal_repo: Arc<dyn GoalRepository>,
     embedding_provider: Arc<dyn EmbeddingProvider>,
 }
 
 impl CreateGoalTool {
-    pub fn new(
+    pub(crate) fn new(
         goal_repo: Arc<dyn GoalRepository>,
         embedding_provider: Arc<dyn EmbeddingProvider>,
     ) -> Self {
@@ -96,7 +96,6 @@ impl NativeTool for CreateGoalTool {
             }
         };
 
-        // Check for duplicates via semantic similarity
         let embedding = self.embedding_provider.embed(content).await?;
         let similar = self.goal_repo.find_similar(&embedding, 1, true).await?;
         if let Some((existing, score)) = similar.first()

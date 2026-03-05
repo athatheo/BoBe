@@ -9,20 +9,14 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::app_state::AppState;
 
-/// GET /api/events
-///
-/// SSE endpoint for real-time event streaming. Uses ConnectionManager
-/// to track client connections and handle reconnection with stale event
-/// trimming. Single-consumer model — only one client at a time.
-pub async fn stream_events(
+/// SSE endpoint. Single-consumer; `ConnectionManager` handles reconnection.
+pub(crate) async fn stream_events(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let connection_manager = state.connection_manager.clone();
     let queue = state.event_queue.clone();
     let runtime_session = state.runtime_session.clone();
 
-    // Establish connection — ConnectionManager sends initial indicator event
-    // and fires the on_connect callback (which calls runtime_session.on_connection)
     let conn_id = connection_manager.connect().await;
     tracing::info!(connection_id = %conn_id, "sse.connected");
 
@@ -33,7 +27,6 @@ pub async fn stream_events(
     let rs = runtime_session.clone();
     tokio::spawn(async move {
         loop {
-            // Check if this connection is still active
             if !cm.is_active_connection(&conn_id_inner).await {
                 tracing::info!(
                     connection_id = %conn_id_inner,
@@ -43,11 +36,9 @@ pub async fn stream_events(
                 break;
             }
 
-            // Pop with timeout to periodically re-check connection liveness
             let event = tokio::time::timeout(Duration::from_secs(1), queue.pop()).await;
 
             if let Ok(bundle) = event {
-                // Track indicator state
                 cm.track_indicator(&bundle).await;
 
                 let sse_data = match serde_json::to_string(&bundle) {
@@ -68,7 +59,6 @@ pub async fn stream_events(
                     break;
                 }
             }
-            // Timeout — loop will re-check connection liveness
         }
     });
 

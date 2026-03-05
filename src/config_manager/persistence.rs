@@ -1,17 +1,11 @@
-//! Atomic `config.toml` persistence for runtime config changes.
-//!
-//! Uses `toml_edit` for comment-preserving round-trip editing.
+//! Atomic `config.toml` persistence via temp-write + rename.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use tracing::{error, info};
 
-/// Persist nested key=value pairs to `~/.bobe/config.toml` via atomic temp-write + rename.
-///
-/// Keys use dotted notation: `"server.host"`, `"llm.backend"`, etc.
-/// Returns `true` on success.
-pub fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
+pub(crate) fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
     let dir = bobe_dir();
     if let Err(e) = std::fs::create_dir_all(&dir) {
         error!(error = %e, "config_persistence.mkdir_failed");
@@ -21,7 +15,6 @@ pub fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
     let config_path = dir.join("config.toml");
     let tmp_path = dir.join("config.toml.tmp");
 
-    // Read existing TOML or start fresh
     let existing = if config_path.exists() {
         match std::fs::read_to_string(&config_path) {
             Ok(s) => s,
@@ -42,7 +35,6 @@ pub fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
         }
     };
 
-    // Apply each change using dotted key paths
     for (dotted_key, value) in changes {
         set_toml_value(&mut doc, dotted_key, value);
     }
@@ -62,34 +54,28 @@ pub fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
     true
 }
 
-/// Set a value in the TOML document using a dotted key path (e.g. "server.host").
 fn set_toml_value(doc: &mut toml_edit::DocumentMut, dotted_key: &str, value: &serde_json::Value) {
     let parts: Vec<&str> = dotted_key.split('.').collect();
 
     match parts.len() {
         1 => {
-            // Top-level key
             doc[parts[0]] = json_to_toml_item(value);
         }
         2 => {
-            // Section.field
             let section = parts[0];
             let field = parts[1];
 
-            // Ensure section table exists
             if doc.get(section).is_none() {
                 doc[section] = toml_edit::Item::Table(toml_edit::Table::new());
             }
             doc[section][field] = json_to_toml_item(value);
         }
         _ => {
-            // Deeper nesting not currently needed
             tracing::warn!(key = dotted_key, "config_persistence.unsupported_nesting");
         }
     }
 }
 
-/// Convert a serde_json::Value to a toml_edit::Item.
 fn json_to_toml_item(value: &serde_json::Value) -> toml_edit::Item {
     match value {
         serde_json::Value::Bool(b) => toml_edit::value(*b),
@@ -121,10 +107,7 @@ fn json_to_toml_item(value: &serde_json::Value) -> toml_edit::Item {
             }
             toml_edit::value(toml_arr)
         }
-        serde_json::Value::Null | serde_json::Value::Object(_) => {
-            // For null, we store empty string; objects not supported at field level
-            toml_edit::value("")
-        }
+        serde_json::Value::Null | serde_json::Value::Object(_) => toml_edit::value(""),
     }
 }
 

@@ -19,8 +19,7 @@ use super::GoalContextProvider;
 const MEMORY_SEARCH_LIMIT: i64 = 5;
 const MEMORY_MIN_SCORE: f64 = 0.3;
 
-/// Assembles context from memories, goals, and soul documents.
-pub struct DefaultGoalContextProvider {
+pub(crate) struct DefaultGoalContextProvider {
     memory_repo: Arc<dyn MemoryRepository>,
     goal_repo: Arc<dyn GoalRepository>,
     soul_repo: Arc<dyn SoulRepository>,
@@ -28,7 +27,7 @@ pub struct DefaultGoalContextProvider {
 }
 
 impl DefaultGoalContextProvider {
-    pub fn new(
+    pub(crate) fn new(
         memory_repo: Arc<dyn MemoryRepository>,
         goal_repo: Arc<dyn GoalRepository>,
         soul_repo: Arc<dyn SoulRepository>,
@@ -48,7 +47,6 @@ impl GoalContextProvider for DefaultGoalContextProvider {
     async fn get_context_for_goal(&self, goal: &Goal) -> Result<String, AppError> {
         let mut sections: Vec<String> = Vec::new();
 
-        // 1. Semantic memory search using goal content
         match self.embedding_provider.embed(&goal.content).await {
             Ok(embedding) => {
                 match self
@@ -90,7 +88,6 @@ impl GoalContextProvider for DefaultGoalContextProvider {
             }
         }
 
-        // 2. Active goals (for awareness of other ongoing work)
         match self.goal_repo.find_active(true).await {
             Ok(active_goals) => {
                 let other_goals: Vec<&Goal> =
@@ -108,7 +105,6 @@ impl GoalContextProvider for DefaultGoalContextProvider {
             }
         }
 
-        // 3. Soul documents (personality / instructions)
         match self.soul_repo.find_enabled().await {
             Ok(souls) if !souls.is_empty() => {
                 let mut soul_section = String::from("## Soul / Identity\n");

@@ -11,12 +11,7 @@ use super::types::{IndicatorType, StreamBundle};
 
 const STALE_THRESHOLD_SECONDS: i64 = 60;
 
-/// Manages single-consumer SSE connection lifecycle.
-///
-/// Handles connection establishment, disconnection, stale event trimming,
-/// reconnection, and indicator tracking. Enforces single-consumer semantics:
-/// if a second client connects, the first is considered disconnected.
-pub struct SseConnectionManager {
+pub(crate) struct SseConnectionManager {
     queue: Arc<EventQueue>,
     on_connect: RwLock<Option<Box<dyn Fn() + Send + Sync>>>,
     on_disconnect: RwLock<Option<Box<dyn Fn() + Send + Sync>>>,
@@ -32,7 +27,7 @@ struct ConnectionState {
 }
 
 impl SseConnectionManager {
-    pub fn new(
+    pub(crate) fn new(
         queue: Arc<EventQueue>,
         on_connect: Option<Box<dyn Fn() + Send + Sync>>,
         on_disconnect: Option<Box<dyn Fn() + Send + Sync>>,
@@ -51,8 +46,7 @@ impl SseConnectionManager {
         }
     }
 
-    /// Wire SSE callbacks after construction (for late-binding to RuntimeSession).
-    pub async fn set_callbacks(
+    pub(crate) async fn set_callbacks(
         &self,
         on_connect: Box<dyn Fn() + Send + Sync>,
         on_disconnect: Box<dyn Fn() + Send + Sync>,
@@ -61,8 +55,7 @@ impl SseConnectionManager {
         *self.on_disconnect.write().await = Some(on_disconnect);
     }
 
-    /// Track indicator state from events being pushed.
-    pub async fn track_indicator(&self, event: &StreamBundle) {
+    pub(crate) async fn track_indicator(&self, event: &StreamBundle) {
         if event.event_type == super::types::EventType::Indicator
             && let Some(ind) = event.payload.get("indicator").and_then(|v| v.as_str())
         {
@@ -79,8 +72,7 @@ impl SseConnectionManager {
         }
     }
 
-    /// Handle SSE connection establishment. Returns connection ID.
-    pub async fn connect(&self) -> String {
+    pub(crate) async fn connect(&self) -> String {
         let mut st = self.state.lock().await;
 
         if st.connected {
@@ -133,11 +125,9 @@ impl SseConnectionManager {
         conn_id
     }
 
-    /// Handle SSE connection closure.
-    pub async fn disconnect(&self, connection_id: Option<&str>) {
+    pub(crate) async fn disconnect(&self, connection_id: Option<&str>) {
         let mut st = self.state.lock().await;
 
-        // Ignore disconnect from old connection that was replaced
         if let Some(cid) = connection_id
             && st.connection_id.as_deref() != Some(cid)
         {
@@ -159,18 +149,16 @@ impl SseConnectionManager {
         }
     }
 
-    /// Check if a connection ID is still the active connection.
-    pub async fn is_active_connection(&self, connection_id: &str) -> bool {
+    pub(crate) async fn is_active_connection(&self, connection_id: &str) -> bool {
         let st = self.state.lock().await;
         st.connected && st.connection_id.as_deref() == Some(connection_id)
     }
 
     #[cfg(test)]
-    pub async fn current_indicator(&self) -> IndicatorType {
+    pub(crate) async fn current_indicator(&self) -> IndicatorType {
         self.state.lock().await.current_indicator
     }
 
-    /// Remove events older than stale threshold from queue.
     async fn trim_stale_events(&self) {
         let events = self.queue.clear();
         let cutoff = Utc::now() - Duration::seconds(STALE_THRESHOLD_SECONDS);

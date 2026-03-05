@@ -10,22 +10,21 @@ use crate::error::AppError;
 
 const DEFAULT_MCP_CONFIG_JSON: &str = include_str!("../../assets/defaults/mcp_servers.json");
 
-pub const SECRET_REF_PREFIX: &str = "bobe-secret://";
+pub(crate) const SECRET_REF_PREFIX: &str = "bobe-secret://";
 
-/// Configuration for a single MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McpServerEntry {
-    pub command: String,
+pub(crate) struct McpServerEntry {
+    pub(crate) command: String,
     #[serde(default)]
-    pub args: Vec<String>,
+    pub(crate) args: Vec<String>,
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub(crate) env: HashMap<String, String>,
     #[serde(default = "default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default = "default_timeout")]
-    pub timeout_seconds: f64,
+    pub(crate) timeout_seconds: f64,
     #[serde(default)]
-    pub excluded_tools: Vec<String>,
+    pub(crate) excluded_tools: Vec<String>,
 }
 
 fn default_true() -> bool {
@@ -36,26 +35,23 @@ fn default_timeout() -> f64 {
     30.0
 }
 
-/// Top-level MCP configuration file format (Claude/Copilot style).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McpConfigFile {
+pub(crate) struct McpConfigFile {
     #[serde(rename = "mcpServers", alias = "servers", default)]
-    pub mcp_servers: HashMap<String, McpServerEntry>,
+    pub(crate) mcp_servers: HashMap<String, McpServerEntry>,
 }
 
-/// Parsed and validated MCP server configuration.
 #[derive(Debug, Clone)]
-pub struct McpParsedServer {
-    pub name: String,
-    pub command: String,
-    pub args: Vec<String>,
-    pub env: HashMap<String, String>,
-    pub timeout_seconds: f64,
-    pub excluded_tools: Vec<String>,
+pub(crate) struct McpParsedServer {
+    pub(crate) name: String,
+    pub(crate) command: String,
+    pub(crate) args: Vec<String>,
+    pub(crate) env: HashMap<String, String>,
+    pub(crate) timeout_seconds: f64,
+    pub(crate) excluded_tools: Vec<String>,
 }
 
-/// Resolve the effective MCP config path.
-pub fn resolve_mcp_config_path(config_file: Option<&str>) -> Result<PathBuf, AppError> {
+pub(crate) fn resolve_mcp_config_path(config_file: Option<&str>) -> Result<PathBuf, AppError> {
     if let Some(path) = config_file
         && !path.trim().is_empty()
     {
@@ -67,8 +63,7 @@ pub fn resolve_mcp_config_path(config_file: Option<&str>) -> Result<PathBuf, App
     Ok(home.join(".bobe").join("mcp.json"))
 }
 
-/// Ensure MCP config exists, creating it from bundled defaults when missing.
-pub fn ensure_mcp_config_exists(config_file: Option<&str>) -> Result<PathBuf, AppError> {
+pub(crate) fn ensure_mcp_config_exists(config_file: Option<&str>) -> Result<PathBuf, AppError> {
     let path = resolve_mcp_config_path(config_file)?;
     if path.exists() {
         return Ok(path);
@@ -80,16 +75,14 @@ pub fn ensure_mcp_config_exists(config_file: Option<&str>) -> Result<PathBuf, Ap
     Ok(path)
 }
 
-/// Load the entire MCP config file (including disabled servers).
-pub fn load_mcp_config_file(path: &Path) -> Result<McpConfigFile, AppError> {
+pub(crate) fn load_mcp_config_file(path: &Path) -> Result<McpConfigFile, AppError> {
     let content = fs::read_to_string(path)
         .map_err(|e| AppError::Config(format!("Cannot read MCP config {}: {e}", path.display())))?;
     serde_json::from_str(&content)
         .map_err(|e| AppError::Config(format!("Invalid MCP config JSON: {e}")))
 }
 
-/// Persist the entire MCP config file atomically.
-pub fn save_mcp_config_file(path: &Path, config: &McpConfigFile) -> Result<(), AppError> {
+pub(crate) fn save_mcp_config_file(path: &Path, config: &McpConfigFile) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
         #[cfg(unix)]
@@ -109,8 +102,7 @@ pub fn save_mcp_config_file(path: &Path, config: &McpConfigFile) -> Result<(), A
     Ok(())
 }
 
-/// Load and parse enabled MCP server configurations.
-pub fn load_mcp_config(
+pub(crate) fn load_mcp_config(
     path: &Path,
     blocked_commands: &[String],
     dangerous_env_keys: &[String],
@@ -119,7 +111,7 @@ pub fn load_mcp_config(
     parse_enabled_servers(file, blocked_commands, dangerous_env_keys)
 }
 
-pub fn parse_enabled_servers(
+pub(crate) fn parse_enabled_servers(
     file: McpConfigFile,
     blocked_commands: &[String],
     dangerous_env_keys: &[String],
@@ -157,15 +149,15 @@ pub fn parse_enabled_servers(
     Ok(servers)
 }
 
-pub fn is_secret_ref(value: &str) -> bool {
+pub(crate) fn is_secret_ref(value: &str) -> bool {
     value.starts_with(SECRET_REF_PREFIX)
 }
 
-pub fn secret_ref(account: &str) -> String {
+pub(crate) fn secret_ref(account: &str) -> String {
     format!("{SECRET_REF_PREFIX}{account}")
 }
 
-pub fn secret_account(server_name: &str, env_key: &str) -> String {
+pub(crate) fn secret_account(server_name: &str, env_key: &str) -> String {
     format!(
         "mcp_{}_{}",
         sanitize_secret_component(server_name),
@@ -173,7 +165,7 @@ pub fn secret_account(server_name: &str, env_key: &str) -> String {
     )
 }
 
-pub fn should_treat_as_secret_key(key: &str) -> bool {
+pub(crate) fn should_treat_as_secret_key(key: &str) -> bool {
     let upper = key.to_uppercase();
     upper.contains("SECRET")
         || upper.contains("TOKEN")

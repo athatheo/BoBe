@@ -1,13 +1,10 @@
-//! Checkin scheduler — schedules periodic check-ins at configured times.
-//!
-//! Supports scheduled times (e.g. "09:00") and/or interval-based (every N minutes).
-//! Adds random jitter to feel more natural.
+//! Schedules periodic check-ins at configured times and/or intervals with jitter.
 
 use chrono::{DateTime, Duration, Local, NaiveTime, Utc};
 use rand::RngExt;
 use tracing::{debug, info, warn};
 
-pub struct CheckinScheduler {
+pub(crate) struct CheckinScheduler {
     times: Vec<NaiveTime>,
     interval_minutes: Option<u64>,
     jitter_minutes: i32,
@@ -18,7 +15,7 @@ pub struct CheckinScheduler {
 }
 
 impl CheckinScheduler {
-    pub fn new(
+    pub(crate) fn new(
         times: &[String],
         interval_minutes: Option<u64>,
         jitter_minutes: u32,
@@ -61,7 +58,7 @@ impl CheckinScheduler {
         parsed
     }
 
-    pub fn should_checkin(&mut self) -> bool {
+    pub(crate) fn should_checkin(&mut self) -> bool {
         if !self.enabled {
             return false;
         }
@@ -71,7 +68,6 @@ impl CheckinScheduler {
 
         let now = Utc::now();
 
-        // Check scheduled times
         if !self.times.is_empty() {
             if self.next_checkin.is_none() {
                 self.schedule_next_checkin(now);
@@ -89,7 +85,6 @@ impl CheckinScheduler {
             }
         }
 
-        // Check interval-based
         if let Some(_interval) = self.interval_minutes {
             if self.next_interval_checkin.is_none() {
                 self.schedule_next_interval(now);
@@ -109,7 +104,7 @@ impl CheckinScheduler {
         false
     }
 
-    pub fn mark_checkin_done(&mut self) {
+    pub(crate) fn mark_checkin_done(&mut self) {
         let now = Utc::now();
         self.last_checkin = Some(now);
 
@@ -127,7 +122,7 @@ impl CheckinScheduler {
         );
     }
 
-    pub fn get_next_checkin_time(&mut self) -> Option<DateTime<Utc>> {
+    pub(crate) fn get_next_checkin_time(&mut self) -> Option<DateTime<Utc>> {
         if !self.enabled {
             return None;
         }
@@ -169,7 +164,6 @@ impl CheckinScheduler {
         let today = local_now.date_naive();
         let local_time = local_now.time();
 
-        // Find next scheduled time today
         let mut next_time: Option<DateTime<Utc>> = None;
         for &t in &self.times {
             if t > local_time {
@@ -182,7 +176,6 @@ impl CheckinScheduler {
             }
         }
 
-        // If none today, use first time tomorrow
         if next_time.is_none() {
             let tomorrow = today + chrono::Duration::days(1);
             let naive_dt = tomorrow.and_time(self.times[0]);
@@ -191,7 +184,6 @@ impl CheckinScheduler {
             }
         }
 
-        // Add jitter
         if let Some(ref mut t) = next_time
             && self.jitter_minutes > 0
         {

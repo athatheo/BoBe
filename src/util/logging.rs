@@ -8,7 +8,7 @@ use crate::config::Config;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
-pub fn init_tracing(config: &Config) {
+pub(crate) fn init_tracing(config: &Config) {
     let filter =
         EnvFilter::try_new(&config.logging.level).unwrap_or_else(|_| EnvFilter::new("info"));
     let file_writer = build_file_writer(config.logging.file.as_deref());
@@ -38,6 +38,7 @@ pub fn init_tracing(config: &Config) {
     }
 }
 
+#[allow(clippy::print_stderr)] // tracing isn't initialized yet; stderr is the only option
 fn build_file_writer(log_file: Option<&str>) -> Option<NonBlocking> {
     let path = log_file?.trim();
     if path.is_empty() {

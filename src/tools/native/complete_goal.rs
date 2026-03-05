@@ -10,12 +10,12 @@ use crate::error::AppError;
 use crate::models::types::GoalStatus;
 use crate::tools::ToolExecutionContext;
 
-pub struct CompleteGoalTool {
+pub(crate) struct CompleteGoalTool {
     goal_repo: Arc<dyn GoalRepository>,
 }
 
 impl CompleteGoalTool {
-    pub fn new(goal_repo: Arc<dyn GoalRepository>) -> Self {
+    pub(crate) fn new(goal_repo: Arc<dyn GoalRepository>) -> Self {
         Self { goal_repo }
     }
 }

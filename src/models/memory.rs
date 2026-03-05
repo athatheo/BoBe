@@ -3,30 +3,27 @@ use uuid::Uuid;
 
 use super::types::{MemorySource, MemoryType};
 
-/// Distilled knowledge with semantic search capability.
+/// Distilled knowledge with semantic search.
 ///
-/// Retention policies:
-/// - `short_term`: 30 days
-/// - `long_term`: 90 days
-/// - `explicit`: Forever (user said "remember this")
+/// Retention: short_term=30d, long_term=90d, explicit=forever.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-pub struct Memory {
-    pub id: Uuid,
-    pub content: String,
-    pub memory_type: MemoryType,
-    pub enabled: bool,
-    pub category: String,
-    pub source: MemorySource,
+pub(crate) struct Memory {
+    pub(crate) id: Uuid,
+    pub(crate) content: String,
+    pub(crate) memory_type: MemoryType,
+    pub(crate) enabled: bool,
+    pub(crate) category: String,
+    pub(crate) source: MemorySource,
     /// JSON-encoded embedding vector.
-    pub embedding: Option<String>,
-    pub source_observation_id: Option<Uuid>,
-    pub source_conversation_id: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub(crate) embedding: Option<String>,
+    pub(crate) source_observation_id: Option<Uuid>,
+    pub(crate) source_conversation_id: Option<Uuid>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl Memory {
-    pub fn new(
+    pub(crate) fn new(
         content: String,
         memory_type: MemoryType,
         source: MemorySource,

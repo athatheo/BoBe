@@ -9,32 +9,32 @@ use crate::error::AppError;
 use crate::tools::registry::ToolRegistry;
 
 #[derive(Debug, Serialize)]
-pub struct ToolResponse {
-    pub name: String,
-    pub description: String,
-    pub provider: String,
-    pub enabled: bool,
+pub(crate) struct ToolResponse {
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) provider: String,
+    pub(crate) enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub category: Option<String>,
+    pub(crate) category: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ToolListResponse {
-    pub tools: Vec<ToolResponse>,
-    pub count: usize,
-    pub providers: Vec<String>,
+pub(crate) struct ToolListResponse {
+    pub(crate) tools: Vec<ToolResponse>,
+    pub(crate) count: usize,
+    pub(crate) providers: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ToolUpdateResponse {
-    pub name: String,
-    pub enabled: bool,
-    pub message: String,
+pub(crate) struct ToolUpdateResponse {
+    pub(crate) name: String,
+    pub(crate) enabled: bool,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ToolUpdateRequest {
-    pub enabled: bool,
+pub(crate) struct ToolUpdateRequest {
+    pub(crate) enabled: bool,
 }
 
 async fn set_tool_enabled(
@@ -65,8 +65,7 @@ async fn set_tool_enabled(
     }))
 }
 
-/// GET /api/tools
-pub async fn list_tools(
+pub(crate) async fn list_tools(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ToolListResponse>, AppError> {
     let cfg = state.config();
@@ -117,24 +116,21 @@ pub async fn list_tools(
     }))
 }
 
-/// POST /api/tools/:tool_name/enable
-pub async fn enable_tool(
+pub(crate) async fn enable_tool(
     State(state): State<Arc<AppState>>,
     Path(tool_name): Path<String>,
 ) -> Result<Json<ToolUpdateResponse>, AppError> {
     set_tool_enabled(&state.tool_registry, &tool_name, true).await
 }
 
-/// POST /api/tools/:tool_name/disable
-pub async fn disable_tool(
+pub(crate) async fn disable_tool(
     State(state): State<Arc<AppState>>,
     Path(tool_name): Path<String>,
 ) -> Result<Json<ToolUpdateResponse>, AppError> {
     set_tool_enabled(&state.tool_registry, &tool_name, false).await
 }
 
-/// PATCH /api/tools/:tool_name
-pub async fn update_tool(
+pub(crate) async fn update_tool(
     State(state): State<Arc<AppState>>,
     Path(tool_name): Path<String>,
     Json(body): Json<ToolUpdateRequest>,

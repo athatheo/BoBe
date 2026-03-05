@@ -31,7 +31,7 @@ use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, Tool
 
 /// A [`LlmProvider`] that delegates every call to whatever provider is
 /// currently stored in the inner [`ArcSwapOption`].
-pub struct SwappableLlmProvider {
+pub(crate) struct SwappableLlmProvider {
     inner: Arc<ArcSwapOption<Arc<dyn LlmProvider>>>,
 }
 
@@ -40,7 +40,9 @@ impl SwappableLlmProvider {
     ///
     /// Returns the wrapper **and** the `ArcSwapOption` handle that
     /// [`ConfigManager`] uses to hot-swap the underlying provider.
-    pub fn new(initial: Arc<dyn LlmProvider>) -> (Self, Arc<ArcSwapOption<Arc<dyn LlmProvider>>>) {
+    pub(crate) fn new(
+        initial: Arc<dyn LlmProvider>,
+    ) -> (Self, Arc<ArcSwapOption<Arc<dyn LlmProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::from(Some(Arc::new(initial))));
         let provider = Self {
             inner: swappable.clone(),
@@ -53,7 +55,7 @@ impl SwappableLlmProvider {
     /// Used on fresh install when LLM config is incomplete. The HTTP server
     /// starts immediately; all LLM calls return `LlmUnavailable` until
     /// onboarding completes and a real provider is swapped in.
-    pub fn new_empty() -> (Self, Arc<ArcSwapOption<Arc<dyn LlmProvider>>>) {
+    pub(crate) fn new_empty() -> (Self, Arc<ArcSwapOption<Arc<dyn LlmProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::empty());
         let provider = Self {
             inner: swappable.clone(),
@@ -126,12 +128,12 @@ impl LlmProvider for SwappableLlmProvider {
 
 /// A [`EmbeddingProvider`] that delegates every call to the provider currently
 /// stored in an inner [`ArcSwapOption`].
-pub struct SwappableEmbeddingProvider {
+pub(crate) struct SwappableEmbeddingProvider {
     inner: Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>,
 }
 
 impl SwappableEmbeddingProvider {
-    pub fn new(
+    pub(crate) fn new(
         initial: Arc<dyn EmbeddingProvider>,
     ) -> (Self, Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::from(Some(Arc::new(initial))));
@@ -145,7 +147,7 @@ impl SwappableEmbeddingProvider {
     ///
     /// Used on fresh install when embedding config is incomplete. All embed
     /// calls return `LlmUnavailable` until onboarding completes.
-    pub fn new_empty() -> (Self, Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>) {
+    pub(crate) fn new_empty() -> (Self, Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>) {
         let swappable = Arc::new(ArcSwapOption::empty());
         let provider = Self {
             inner: swappable.clone(),

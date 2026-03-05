@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LlmBackend {
+pub(crate) enum LlmBackend {
     #[default]
     Ollama,
     Openai,
@@ -34,11 +34,11 @@ impl std::fmt::Display for LlmBackend {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ServerConfig {
-    pub host: String,
-    pub port: u16,
-    pub mdns_enabled: bool,
-    pub cors_origins: Vec<String>,
+pub(crate) struct ServerConfig {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) mdns_enabled: bool,
+    pub(crate) cors_origins: Vec<String>,
 }
 
 impl Default for ServerConfig {
@@ -54,8 +54,8 @@ impl Default for ServerConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct DatabaseConfig {
-    pub url: String,
+pub(crate) struct DatabaseConfig {
+    pub(crate) url: String,
 }
 
 impl Default for DatabaseConfig {
@@ -68,32 +68,32 @@ impl Default for DatabaseConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct LlmConfig {
-    pub backend: LlmBackend,
-    pub llama_url: String,
+pub(crate) struct LlmConfig {
+    pub(crate) backend: LlmBackend,
+    pub(crate) llama_url: String,
     #[serde(skip_serializing)]
-    pub openai_api_key: SecretString,
-    pub openai_model: String,
-    pub azure_openai_endpoint: String,
+    pub(crate) openai_api_key: SecretString,
+    pub(crate) openai_model: String,
+    pub(crate) azure_openai_endpoint: String,
     #[serde(skip_serializing)]
-    pub azure_openai_api_key: SecretString,
-    pub azure_openai_deployment: String,
+    pub(crate) azure_openai_api_key: SecretString,
+    pub(crate) azure_openai_deployment: String,
     #[serde(skip_serializing)]
-    pub anthropic_api_key: SecretString,
+    pub(crate) anthropic_api_key: SecretString,
     /// Context window in tokens. Auto-detected for Ollama; env override takes precedence.
-    pub context_window: u32,
+    pub(crate) context_window: u32,
 }
 
 impl LlmConfig {
-    pub fn has_openai_key(&self) -> bool {
+    pub(crate) fn has_openai_key(&self) -> bool {
         !self.openai_api_key.expose_secret().is_empty()
     }
 
-    pub fn has_azure_key(&self) -> bool {
+    pub(crate) fn has_azure_key(&self) -> bool {
         !self.azure_openai_api_key.expose_secret().is_empty()
     }
 
-    pub fn has_anthropic_key(&self) -> bool {
+    pub(crate) fn has_anthropic_key(&self) -> bool {
         !self.anthropic_api_key.expose_secret().is_empty()
     }
 }
@@ -116,12 +116,12 @@ impl Default for LlmConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct OllamaConfig {
-    pub url: String,
-    pub model: String,
-    pub auto_start: bool,
-    pub auto_pull: bool,
-    pub binary_path: Option<String>,
+pub(crate) struct OllamaConfig {
+    pub(crate) url: String,
+    pub(crate) model: String,
+    pub(crate) auto_start: bool,
+    pub(crate) auto_pull: bool,
+    pub(crate) binary_path: Option<String>,
 }
 
 impl Default for OllamaConfig {
@@ -138,11 +138,11 @@ impl Default for OllamaConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct VisionConfig {
-    pub backend: LlmBackend,
-    pub ollama_model: String,
-    pub openai_model: String,
-    pub azure_openai_deployment: String,
+pub(crate) struct VisionConfig {
+    pub(crate) backend: LlmBackend,
+    pub(crate) ollama_model: String,
+    pub(crate) openai_model: String,
+    pub(crate) azure_openai_deployment: String,
 }
 
 impl Default for VisionConfig {
@@ -158,9 +158,9 @@ impl Default for VisionConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct EmbeddingConfig {
-    pub model: String,
-    pub dimension: usize,
+pub(crate) struct EmbeddingConfig {
+    pub(crate) model: String,
+    pub(crate) dimension: usize,
 }
 
 impl Default for EmbeddingConfig {
@@ -174,9 +174,9 @@ impl Default for EmbeddingConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct CaptureConfig {
-    pub enabled: bool,
-    pub interval_seconds: u64,
+pub(crate) struct CaptureConfig {
+    pub(crate) enabled: bool,
+    pub(crate) interval_seconds: u64,
 }
 
 impl Default for CaptureConfig {
@@ -190,11 +190,11 @@ impl Default for CaptureConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct CheckinConfig {
-    pub enabled: bool,
-    pub times: Vec<String>,
-    pub jitter_minutes: u32,
-    pub interval_minutes: Option<u64>,
+pub(crate) struct CheckinConfig {
+    pub(crate) enabled: bool,
+    pub(crate) times: Vec<String>,
+    pub(crate) jitter_minutes: u32,
+    pub(crate) interval_minutes: Option<u64>,
 }
 
 impl Default for CheckinConfig {
@@ -210,10 +210,10 @@ impl Default for CheckinConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ConversationConfig {
-    pub inactivity_timeout_seconds: u64,
-    pub auto_close_minutes: u64,
-    pub summary_enabled: bool,
+pub(crate) struct ConversationConfig {
+    pub(crate) inactivity_timeout_seconds: u64,
+    pub(crate) auto_close_minutes: u64,
+    pub(crate) summary_enabled: bool,
 }
 
 impl Default for ConversationConfig {
@@ -228,10 +228,10 @@ impl Default for ConversationConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct LoggingConfig {
-    pub level: String,
-    pub json: bool,
-    pub file: Option<String>,
+pub(crate) struct LoggingConfig {
+    pub(crate) level: String,
+    pub(crate) json: bool,
+    pub(crate) file: Option<String>,
 }
 
 impl Default for LoggingConfig {
@@ -246,14 +246,14 @@ impl Default for LoggingConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct DecisionConfig {
-    pub cooldown_minutes: i64,
-    pub extended_cooldown_minutes: i64,
-    pub min_context: usize,
-    pub semantic_search_limit: i64,
-    pub recent_ai_messages_limit: i64,
-    pub max_response_tokens: u32,
-    pub response_temperature: f32,
+pub(crate) struct DecisionConfig {
+    pub(crate) cooldown_minutes: i64,
+    pub(crate) extended_cooldown_minutes: i64,
+    pub(crate) min_context: usize,
+    pub(crate) semantic_search_limit: i64,
+    pub(crate) recent_ai_messages_limit: i64,
+    pub(crate) max_response_tokens: u32,
+    pub(crate) response_temperature: f32,
 }
 
 impl Default for DecisionConfig {
@@ -272,12 +272,12 @@ impl Default for DecisionConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ToolsConfig {
-    pub enabled: bool,
-    pub max_iterations: u32,
-    pub timeout_seconds: f64,
-    pub preselector_enabled: bool,
-    pub allowed_file_dirs: Vec<String>,
+pub(crate) struct ToolsConfig {
+    pub(crate) enabled: bool,
+    pub(crate) max_iterations: u32,
+    pub(crate) timeout_seconds: f64,
+    pub(crate) preselector_enabled: bool,
+    pub(crate) allowed_file_dirs: Vec<String>,
 }
 
 impl Default for ToolsConfig {
@@ -294,11 +294,11 @@ impl Default for ToolsConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct McpConfig {
-    pub enabled: bool,
-    pub config_file: Option<String>,
-    pub blocked_commands: Vec<String>,
-    pub dangerous_env_keys: Vec<String>,
+pub(crate) struct McpConfig {
+    pub(crate) enabled: bool,
+    pub(crate) config_file: Option<String>,
+    pub(crate) blocked_commands: Vec<String>,
+    pub(crate) dangerous_env_keys: Vec<String>,
 }
 
 impl Default for McpConfig {
@@ -334,16 +334,16 @@ impl Default for McpConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct LearningConfig {
-    pub enabled: bool,
-    pub interval_minutes: u64,
-    pub min_context_items: u32,
-    pub max_memories_per_cycle: u32,
-    pub max_goals_per_cycle: u32,
-    pub max_context_per_cycle: u32,
-    pub max_memories_per_consolidation: u32,
-    pub daily_consolidation_enabled: bool,
-    pub daily_consolidation_hour: u32,
+pub(crate) struct LearningConfig {
+    pub(crate) enabled: bool,
+    pub(crate) interval_minutes: u64,
+    pub(crate) min_context_items: u32,
+    pub(crate) max_memories_per_cycle: u32,
+    pub(crate) max_goals_per_cycle: u32,
+    pub(crate) max_context_per_cycle: u32,
+    pub(crate) max_memories_per_consolidation: u32,
+    pub(crate) daily_consolidation_enabled: bool,
+    pub(crate) daily_consolidation_hour: u32,
 }
 
 impl Default for LearningConfig {
@@ -364,10 +364,10 @@ impl Default for LearningConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct SimilarityConfig {
-    pub deduplication_threshold: f64,
-    pub search_recall_threshold: f64,
-    pub clustering_threshold: f64,
+pub(crate) struct SimilarityConfig {
+    pub(crate) deduplication_threshold: f64,
+    pub(crate) search_recall_threshold: f64,
+    pub(crate) clustering_threshold: f64,
 }
 
 impl Default for SimilarityConfig {
@@ -382,12 +382,12 @@ impl Default for SimilarityConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct MemoryConfig {
-    pub raw_context_retention_days: u32,
-    pub short_term_retention_days: u32,
-    pub long_term_retention_days: u32,
-    pub pruning_enabled: bool,
-    pub goal_retention_days: u32,
+pub(crate) struct MemoryConfig {
+    pub(crate) raw_context_retention_days: u32,
+    pub(crate) short_term_retention_days: u32,
+    pub(crate) long_term_retention_days: u32,
+    pub(crate) pruning_enabled: bool,
+    pub(crate) goal_retention_days: u32,
 }
 
 impl Default for MemoryConfig {
@@ -404,12 +404,12 @@ impl Default for MemoryConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct GoalsConfig {
-    pub file: Option<String>,
-    pub max_active: u32,
-    pub sync_on_startup: bool,
-    pub sync_interval_minutes: u64,
-    pub check_interval_seconds: f64,
+pub(crate) struct GoalsConfig {
+    pub(crate) file: Option<String>,
+    pub(crate) max_active: u32,
+    pub(crate) sync_on_startup: bool,
+    pub(crate) sync_interval_minutes: u64,
+    pub(crate) check_interval_seconds: f64,
 }
 
 impl Default for GoalsConfig {
@@ -426,13 +426,13 @@ impl Default for GoalsConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct CodingAgentConfig {
-    pub enabled: bool,
-    pub profiles: String,
-    pub output_dir: String,
-    pub poll_interval_seconds: f64,
-    pub max_concurrent: u32,
-    pub max_runtime_seconds: u64,
+pub(crate) struct CodingAgentConfig {
+    pub(crate) enabled: bool,
+    pub(crate) profiles: String,
+    pub(crate) output_dir: String,
+    pub(crate) poll_interval_seconds: f64,
+    pub(crate) max_concurrent: u32,
+    pub(crate) max_runtime_seconds: u64,
 }
 
 impl Default for CodingAgentConfig {
@@ -450,18 +450,18 @@ impl Default for CodingAgentConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct GoalWorkerConfig {
-    pub enabled: bool,
-    pub max_concurrent: u32,
-    pub poll_interval_seconds: u64,
-    pub plan_max_steps: u32,
-    pub step_max_turns: u32,
-    pub autonomous: bool,
-    pub ask_user_timeout_seconds: u64,
-    pub approval_timeout_minutes: u64,
-    pub max_failure_retries: u32,
-    pub claude_model: String,
-    pub projects_dir: String,
+pub(crate) struct GoalWorkerConfig {
+    pub(crate) enabled: bool,
+    pub(crate) max_concurrent: u32,
+    pub(crate) poll_interval_seconds: u64,
+    pub(crate) plan_max_steps: u32,
+    pub(crate) step_max_turns: u32,
+    pub(crate) autonomous: bool,
+    pub(crate) ask_user_timeout_seconds: u64,
+    pub(crate) approval_timeout_minutes: u64,
+    pub(crate) max_failure_retries: u32,
+    pub(crate) claude_model: String,
+    pub(crate) projects_dir: String,
 }
 
 impl Default for GoalWorkerConfig {
@@ -485,44 +485,44 @@ impl Default for GoalWorkerConfig {
 /// Application configuration. Layered: defaults → config.toml → BOBE_* env vars.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
-pub struct Config {
+pub(crate) struct Config {
     /// Schema version for future migrations.
-    pub config_version: u32,
+    pub(crate) config_version: u32,
 
     /// Base data directory (default: `~/.bobe`).
-    pub data_dir: String,
+    pub(crate) data_dir: String,
 
-    pub server: ServerConfig,
-    pub database: DatabaseConfig,
-    pub llm: LlmConfig,
-    pub ollama: OllamaConfig,
-    pub vision: VisionConfig,
-    pub embedding: EmbeddingConfig,
-    pub capture: CaptureConfig,
-    pub checkin: CheckinConfig,
-    pub conversation: ConversationConfig,
-    pub logging: LoggingConfig,
-    pub decision: DecisionConfig,
-    pub tools: ToolsConfig,
-    pub mcp: McpConfig,
-    pub learning: LearningConfig,
-    pub similarity: SimilarityConfig,
-    pub memory: MemoryConfig,
-    pub goals: GoalsConfig,
-    pub coding_agent: CodingAgentConfig,
-    pub goal_worker: GoalWorkerConfig,
+    pub(crate) server: ServerConfig,
+    pub(crate) database: DatabaseConfig,
+    pub(crate) llm: LlmConfig,
+    pub(crate) ollama: OllamaConfig,
+    pub(crate) vision: VisionConfig,
+    pub(crate) embedding: EmbeddingConfig,
+    pub(crate) capture: CaptureConfig,
+    pub(crate) checkin: CheckinConfig,
+    pub(crate) conversation: ConversationConfig,
+    pub(crate) logging: LoggingConfig,
+    pub(crate) decision: DecisionConfig,
+    pub(crate) tools: ToolsConfig,
+    pub(crate) mcp: McpConfig,
+    pub(crate) learning: LearningConfig,
+    pub(crate) similarity: SimilarityConfig,
+    pub(crate) memory: MemoryConfig,
+    pub(crate) goals: GoalsConfig,
+    pub(crate) coding_agent: CodingAgentConfig,
+    pub(crate) goal_worker: GoalWorkerConfig,
 
-    pub soul_file: Option<String>,
-    pub seed_default_documents: bool,
-    pub locale_override: Option<String>,
+    pub(crate) soul_file: Option<String>,
+    pub(crate) seed_default_documents: bool,
+    pub(crate) locale_override: Option<String>,
 
     /// Prevents re-triggering onboarding when LLM is temporarily unreachable.
     #[serde(default)]
-    pub setup_completed: bool,
+    pub(crate) setup_completed: bool,
 }
 
 impl Config {
-    pub fn load() -> Result<Self, crate::error::AppError> {
+    pub(crate) fn load() -> Result<Self, crate::error::AppError> {
         let data_dir = resolve_data_dir();
         let config_path = PathBuf::from(&data_dir).join("config.toml");
 
@@ -562,7 +562,7 @@ impl Config {
     }
 
     /// Goals file path, defaulting to `<data_dir>/GOALS.md`.
-    pub fn resolved_goals_file_path(&self) -> PathBuf {
+    pub(crate) fn resolved_goals_file_path(&self) -> PathBuf {
         if let Some(ref path) = self.goals.file {
             PathBuf::from(path)
         } else {
@@ -570,7 +570,7 @@ impl Config {
         }
     }
 
-    pub fn resolved_projects_dir(&self) -> PathBuf {
+    pub(crate) fn resolved_projects_dir(&self) -> PathBuf {
         let raw = if self.goal_worker.projects_dir.is_empty() {
             format!("{}/goal-work", self.resolved_data_dir().display())
         } else {
@@ -579,12 +579,12 @@ impl Config {
         PathBuf::from(expand_tilde(&raw))
     }
 
-    pub fn resolved_data_dir(&self) -> PathBuf {
+    pub(crate) fn resolved_data_dir(&self) -> PathBuf {
         PathBuf::from(expand_tilde(&self.data_dir))
     }
 
     /// Effective locale: config override → system locale → `en-US`.
-    pub fn effective_locale(&self) -> String {
+    pub(crate) fn effective_locale(&self) -> String {
         if let Some(locale) = self
             .locale_override
             .as_deref()
@@ -601,19 +601,19 @@ impl Config {
         crate::i18n::FALLBACK_LOCALE.to_string()
     }
 
-    pub fn checkin_times_vec(&self) -> &[String] {
+    pub(crate) fn checkin_times_vec(&self) -> &[String] {
         &self.checkin.times
     }
 
-    pub fn mcp_blocked_commands_vec(&self) -> &[String] {
+    pub(crate) fn mcp_blocked_commands_vec(&self) -> &[String] {
         &self.mcp.blocked_commands
     }
 
-    pub fn mcp_dangerous_env_keys_vec(&self) -> &[String] {
+    pub(crate) fn mcp_dangerous_env_keys_vec(&self) -> &[String] {
         &self.mcp.dangerous_env_keys
     }
 
-    pub fn cors_origins_vec(&self) -> &[String] {
+    pub(crate) fn cors_origins_vec(&self) -> &[String] {
         &self.server.cors_origins
     }
 }

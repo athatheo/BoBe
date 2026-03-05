@@ -10,12 +10,12 @@ use crate::db::MemoryRepository;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-pub struct UpdateMemoryTool {
+pub(crate) struct UpdateMemoryTool {
     memory_repo: Arc<dyn MemoryRepository>,
 }
 
 impl UpdateMemoryTool {
-    pub fn new(memory_repo: Arc<dyn MemoryRepository>) -> Self {
+    pub(crate) fn new(memory_repo: Arc<dyn MemoryRepository>) -> Self {
         Self { memory_repo }
     }
 }

@@ -3,37 +3,34 @@ use uuid::Uuid;
 
 use super::types::AgentJobStatus;
 
-/// Tracks a coding agent subprocess from launch to completion.
-///
-/// State Machine:
-///   PENDING → RUNNING → COMPLETED | FAILED | CANCELLED
+/// Coding agent subprocess. States: PENDING → RUNNING → COMPLETED | FAILED | CANCELLED.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-pub struct AgentJob {
-    pub id: Uuid,
-    pub profile_name: String,
-    pub command: String,
-    pub user_intent: String,
-    pub status: AgentJobStatus,
-    pub working_directory: String,
-    pub conversation_id: Option<Uuid>,
-    pub pid: Option<i64>,
-    pub exit_code: Option<i32>,
-    pub result_summary: Option<String>,
-    pub raw_output_path: Option<String>,
-    pub error_message: Option<String>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub completed_at: Option<DateTime<Utc>>,
-    pub cost_usd: Option<f64>,
-    pub files_changed_json: Option<String>,
-    pub agent_session_id: Option<String>,
-    pub continuation_count: i32,
-    pub reported: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct AgentJob {
+    pub(crate) id: Uuid,
+    pub(crate) profile_name: String,
+    pub(crate) command: String,
+    pub(crate) user_intent: String,
+    pub(crate) status: AgentJobStatus,
+    pub(crate) working_directory: String,
+    pub(crate) conversation_id: Option<Uuid>,
+    pub(crate) pid: Option<i64>,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) result_summary: Option<String>,
+    pub(crate) raw_output_path: Option<String>,
+    pub(crate) error_message: Option<String>,
+    pub(crate) started_at: Option<DateTime<Utc>>,
+    pub(crate) completed_at: Option<DateTime<Utc>>,
+    pub(crate) cost_usd: Option<f64>,
+    pub(crate) files_changed_json: Option<String>,
+    pub(crate) agent_session_id: Option<String>,
+    pub(crate) continuation_count: i32,
+    pub(crate) reported: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl AgentJob {
-    pub fn new(
+    pub(crate) fn new(
         profile_name: String,
         command: String,
         user_intent: String,
@@ -65,24 +62,24 @@ impl AgentJob {
         }
     }
 
-    pub fn is_terminal(&self) -> bool {
+    pub(crate) fn is_terminal(&self) -> bool {
         self.status.is_terminal()
     }
 
-    pub fn runtime_seconds(&self) -> Option<f64> {
+    pub(crate) fn runtime_seconds(&self) -> Option<f64> {
         let started = self.started_at?;
         let end = self.completed_at.unwrap_or_else(Utc::now);
         Some((end - started).num_milliseconds() as f64 / 1000.0)
     }
 
-    pub fn mark_running(&mut self, pid: i64) {
+    pub(crate) fn mark_running(&mut self, pid: i64) {
         self.status = AgentJobStatus::Running;
         self.pid = Some(pid);
         self.started_at = Some(Utc::now());
         self.updated_at = Utc::now();
     }
 
-    pub fn mark_completed(&mut self, exit_code: i32, summary: Option<String>) {
+    pub(crate) fn mark_completed(&mut self, exit_code: i32, summary: Option<String>) {
         self.status = AgentJobStatus::Completed;
         self.exit_code = Some(exit_code);
         self.completed_at = Some(Utc::now());
@@ -92,7 +89,7 @@ impl AgentJob {
         }
     }
 
-    pub fn mark_failed(&mut self, error: String, exit_code: Option<i32>) {
+    pub(crate) fn mark_failed(&mut self, error: String, exit_code: Option<i32>) {
         self.status = AgentJobStatus::Failed;
         self.error_message = Some(error);
         self.completed_at = Some(Utc::now());
@@ -102,7 +99,7 @@ impl AgentJob {
         }
     }
 
-    pub fn mark_cancelled(&mut self, reason: Option<String>) {
+    pub(crate) fn mark_cancelled(&mut self, reason: Option<String>) {
         self.status = AgentJobStatus::Cancelled;
         self.completed_at = Some(Utc::now());
         self.updated_at = Utc::now();

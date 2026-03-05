@@ -13,8 +13,7 @@ use crate::llm::shared::{
 };
 use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, ToolDefinition};
 
-/// OpenAI API provider.
-pub struct OpenAiProvider {
+pub(crate) struct OpenAiProvider {
     client: Client,
     base_url: String,
     api_key: String,
@@ -22,7 +21,11 @@ pub struct OpenAiProvider {
 }
 
 impl OpenAiProvider {
-    pub fn new(client: Client, api_key: impl Into<String>, model: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        client: Client,
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
         Self {
             client,
             base_url: "https://api.openai.com".to_owned(),
@@ -31,7 +34,7 @@ impl OpenAiProvider {
         }
     }
 
-    pub fn with_base_url(
+    pub(crate) fn with_base_url(
         client: Client,
         base_url: impl Into<String>,
         api_key: impl Into<String>,
@@ -183,7 +186,6 @@ impl LlmProvider for OpenAiProvider {
 
                 buffer.push_str(&String::from_utf8_lossy(&bytes));
 
-                // Guard against unbounded buffer growth from malformed streams
                 if buffer.len() > 1_048_576 {
                     yield Err(AppError::Llm("SSE buffer exceeded 1MB limit".into()));
                     return;

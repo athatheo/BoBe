@@ -10,12 +10,12 @@ use crate::db::ObservationRepository;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-pub struct GetRecentContextTool {
+pub(crate) struct GetRecentContextTool {
     observation_repo: Arc<dyn ObservationRepository>,
 }
 
 impl GetRecentContextTool {
-    pub fn new(observation_repo: Arc<dyn ObservationRepository>) -> Self {
+    pub(crate) fn new(observation_repo: Arc<dyn ObservationRepository>) -> Self {
         Self { observation_repo }
     }
 }

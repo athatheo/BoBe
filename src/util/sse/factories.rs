@@ -2,13 +2,11 @@ use serde_json::json;
 
 use super::types::{EventType, IndicatorType, StreamBundle};
 
-/// Create an indicator event showing the daemon's current activity.
-pub fn indicator_event(indicator: IndicatorType, message: Option<&str>) -> StreamBundle {
+pub(crate) fn indicator_event(indicator: IndicatorType, message: Option<&str>) -> StreamBundle {
     indicator_event_with_progress(indicator, message, None)
 }
 
-/// Create an indicator event with optional progress (0.0–1.0).
-pub fn indicator_event_with_progress(
+pub(crate) fn indicator_event_with_progress(
     indicator: IndicatorType,
     message: Option<&str>,
     progress: Option<f64>,
@@ -29,8 +27,7 @@ pub fn indicator_event_with_progress(
     }
 }
 
-/// Create a text delta event for streaming LLM output.
-pub fn text_delta_event(
+pub(crate) fn text_delta_event(
     message_id: &str,
     delta: &str,
     sequence: usize,
@@ -49,8 +46,12 @@ pub fn text_delta_event(
     }
 }
 
-/// Create an error event with code and recoverability classification.
-pub fn error_event(message_id: &str, code: &str, message: &str, recoverable: bool) -> StreamBundle {
+pub(crate) fn error_event(
+    message_id: &str,
+    code: &str,
+    message: &str,
+    recoverable: bool,
+) -> StreamBundle {
     StreamBundle {
         event_type: EventType::Error,
         message_id: message_id.to_owned(),
@@ -64,8 +65,7 @@ pub fn error_event(message_id: &str, code: &str, message: &str, recoverable: boo
     }
 }
 
-/// Create a tool call start event.
-pub fn tool_call_start_event(
+pub(crate) fn tool_call_start_event(
     message_id: &str,
     tool_name: &str,
     tool_call_id: &str,
@@ -83,8 +83,7 @@ pub fn tool_call_start_event(
     }
 }
 
-/// Create a tool call completion event.
-pub fn tool_call_complete_event(
+pub(crate) fn tool_call_complete_event(
     message_id: &str,
     tool_name: &str,
     tool_call_id: &str,
@@ -108,13 +107,11 @@ pub fn tool_call_complete_event(
     }
 }
 
-/// Create an end-of-turn event.
-pub fn end_of_turn_event(message_id: &str, sequence: usize) -> StreamBundle {
+pub(crate) fn end_of_turn_event(message_id: &str, sequence: usize) -> StreamBundle {
     text_delta_event(message_id, "", sequence, true)
 }
 
-/// Create a heartbeat event.
-pub fn heartbeat_event() -> StreamBundle {
+pub(crate) fn heartbeat_event() -> StreamBundle {
     StreamBundle {
         event_type: EventType::Heartbeat,
         message_id: String::new(),
@@ -124,8 +121,7 @@ pub fn heartbeat_event() -> StreamBundle {
     }
 }
 
-/// Create a conversation closed event.
-pub fn conversation_closed_event(
+pub(crate) fn conversation_closed_event(
     conversation_id: &str,
     reason: &str,
     turn_count: u32,

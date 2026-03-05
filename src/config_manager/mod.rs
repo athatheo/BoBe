@@ -122,14 +122,14 @@ static HOT_SWAP_FIELDS: &[&str] = &[
 ];
 
 #[derive(Debug)]
-pub struct UpdateResult {
-    pub applied_fields: Vec<String>,
-    pub restart_required_fields: Vec<String>,
-    pub persist_failed: bool,
+pub(crate) struct UpdateResult {
+    pub(crate) applied_fields: Vec<String>,
+    pub(crate) restart_required_fields: Vec<String>,
+    pub(crate) persist_failed: bool,
 }
 
 /// Coordinates runtime config changes: classify, persist, apply, rebuild providers.
-pub struct ConfigManager {
+pub(crate) struct ConfigManager {
     config: Arc<ArcSwap<Config>>,
     llm_provider: Arc<ArcSwapOption<Arc<dyn LlmProvider>>>,
     embedding_provider: Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>,
@@ -137,7 +137,7 @@ pub struct ConfigManager {
 }
 
 impl ConfigManager {
-    pub fn new(
+    pub(crate) fn new(
         config: Arc<ArcSwap<Config>>,
         llm_provider: Arc<ArcSwapOption<Arc<dyn LlmProvider>>>,
         embedding_provider: Arc<ArcSwapOption<Arc<dyn EmbeddingProvider>>>,
@@ -151,7 +151,7 @@ impl ConfigManager {
         }
     }
 
-    pub fn update(&self, changes: &HashMap<String, serde_json::Value>) -> UpdateResult {
+    pub(crate) fn update(&self, changes: &HashMap<String, serde_json::Value>) -> UpdateResult {
         let mut result = UpdateResult {
             applied_fields: Vec::new(),
             restart_required_fields: Vec::new(),

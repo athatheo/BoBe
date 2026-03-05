@@ -1,8 +1,4 @@
-//! Conversation and context processors for the learning loop.
-//!
-//! Handles:
-//! - Extracting memories/goals from closed conversations
-//! - Distilling observations from accumulated context
+//! Extracts memories/goals from closed conversations and distills observations.
 
 use tracing::{debug, warn};
 
@@ -11,8 +7,7 @@ use crate::models::types::{MemoryType, ObservationSource};
 
 use super::learning_loop::LearningDeps;
 
-/// Process closed conversations since the last processed timestamp.
-/// Returns (conversations_found, memories_created, goals_created, state_changed).
+/// Returns `(conversations_found, memories_created, goals_created, state_changed)`.
 pub(crate) async fn process_closed_conversations(
     deps: &LearningDeps,
     state: &mut crate::models::learning_state::LearningState,
@@ -38,7 +33,6 @@ pub(crate) async fn process_closed_conversations(
         "learning_loop.processing_conversations"
     );
 
-    // Get existing for dedup
     let existing_memories = get_all_memories(deps).await;
     let existing_goals = deps.goals_service.get_active(100).await.unwrap_or_default();
 
@@ -74,14 +68,12 @@ pub(crate) async fn process_closed_conversations(
             .collect();
 
         if turn_tuples.is_empty() {
-            // Empty conversation — still mark as processed
             if let Some(closed) = conv.closed_at {
                 processed_closed_times.push(closed);
             }
             continue;
         }
 
-        // Extract memories
         let memories = deps
             .memory_learner
             .distill_from_conversation(&turn_tuples, &all_memories)
@@ -93,7 +85,6 @@ pub(crate) async fn process_closed_conversations(
             all_memories.truncate(MAX_ACCUMULATED_ITEMS);
         }
 
-        // Extract goals
         let goals = deps
             .goal_learner
             .extract_from_conversation(&turn_tuples, &all_goals)
@@ -101,13 +92,11 @@ pub(crate) async fn process_closed_conversations(
         total_goals += goals.len();
         all_goals.extend(goals);
 
-        // Only advance timestamp for successfully processed conversations
         if let Some(closed) = conv.closed_at {
             processed_closed_times.push(closed);
         }
     }
 
-    // Update state only based on successfully processed conversations
     let mut changed = false;
     if let Some(&latest) = processed_closed_times.iter().max() {
         state.last_conversation_processed_at = Some(latest);
@@ -117,8 +106,7 @@ pub(crate) async fn process_closed_conversations(
     (conversations.len(), total_memories, total_goals, changed)
 }
 
-/// Process accumulated observations since the last processed timestamp.
-/// Returns (items_processed, memories_created, state_changed).
+/// Returns `(items_processed, memories_created, state_changed)`.
 pub(crate) async fn process_accumulated_context(
     deps: &LearningDeps,
     state: &mut crate::models::learning_state::LearningState,
@@ -139,7 +127,6 @@ pub(crate) async fn process_accumulated_context(
         }
     };
 
-    // Filter out already-processed sources
     let observations: Vec<_> = observations
         .into_iter()
         .filter(|obs| {
@@ -162,8 +149,7 @@ pub(crate) async fn process_accumulated_context(
         .distill_from_observations(to_process, &existing_memories, &goals)
         .await;
 
-    // Always advance timestamp after processing — observations are consumed
-    // regardless of whether the learner produced memories from them
+    // Advance timestamp regardless of whether memories were produced
     let mut changed = false;
     let created_times: Vec<_> = to_process.iter().map(|o| o.created_at).collect();
     if let Some(&latest) = created_times.iter().max() {
@@ -174,7 +160,6 @@ pub(crate) async fn process_accumulated_context(
     (to_process.len(), memories.len(), changed)
 }
 
-/// Fetch all short-term and long-term memories for dedup context.
 async fn get_all_memories(deps: &LearningDeps) -> Vec<Memory> {
     let mut all = Vec::new();
     if let Ok(st) = deps

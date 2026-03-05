@@ -1,6 +1,4 @@
-//! Capture trigger — entry point for capture-based proactive engagement.
-//!
-//! Orchestrates: screenshot → learn → cooldown check → decision → response.
+//! Capture-based proactive engagement: screenshot -> learn -> cooldown -> decision -> response.
 
 use std::sync::Arc;
 
@@ -22,7 +20,7 @@ use crate::util::sse::types::IndicatorType;
 use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 
-pub struct CaptureTrigger {
+pub(crate) struct CaptureTrigger {
     screen_capture: Arc<ScreenCapture>,
     capture_learner: Arc<CaptureLearner>,
     decision_engine: Arc<DecisionEngine>,
@@ -36,7 +34,7 @@ pub struct CaptureTrigger {
 }
 
 impl CaptureTrigger {
-    pub fn new(
+    pub(crate) fn new(
         screen_capture: Arc<ScreenCapture>,
         capture_learner: Arc<CaptureLearner>,
         decision_engine: Arc<DecisionEngine>,
@@ -60,18 +58,17 @@ impl CaptureTrigger {
         }
     }
 
-    pub async fn start(&mut self) {
+    pub(crate) async fn start(&mut self) {
         self.enabled = true;
         info!("capture_trigger.started");
     }
 
-    pub async fn stop(&mut self) {
+    pub(crate) async fn stop(&mut self) {
         self.enabled = false;
         info!("capture_trigger.stopped");
     }
 
-    /// Execute the capture trigger — takes screenshot internally, learns, then decides.
-    pub async fn fire(&mut self) -> Decision {
+    pub(crate) async fn fire(&mut self) -> Decision {
         let observation = self.run_capture_cycle().await;
         let Some(obs) = observation else {
             return Decision::Idle;
@@ -79,7 +76,6 @@ impl CaptureTrigger {
 
         let cfg = self.config.load();
 
-        // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
                 cfg.decision.cooldown_minutes,
@@ -96,7 +92,6 @@ impl CaptureTrigger {
             return Decision::Idle;
         }
 
-        // Decision
         self.event_queue
             .push(indicator_event(IndicatorType::Thinking, None));
         let context = TriggerContext {
@@ -123,7 +118,6 @@ impl CaptureTrigger {
         let cycle_num = self.context_count + 1;
         info!(cycle = cycle_num, "capture_trigger.cycle_start");
 
-        // 1. Capture screenshot
         self.event_queue
             .push(indicator_event(IndicatorType::ScreenCapture, None));
         let capture_result = match self.screen_capture.capture_screen().await {
@@ -136,7 +130,6 @@ impl CaptureTrigger {
             }
         };
 
-        // 2. Analyze screenshot via learner
         self.event_queue
             .push(indicator_event(IndicatorType::Thinking, None));
         let observation =

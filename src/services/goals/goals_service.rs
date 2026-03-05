@@ -20,21 +20,19 @@ use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 
 use super::goals_file_parser::parse_goals_file;
 
-/// Maximum file size for GOALS.md (1 MB).
 const MAX_GOALS_FILE_SIZE: u64 = 1024 * 1024;
 
-/// Result of syncing GOALS.md to database.
 #[derive(Debug, Clone)]
-pub struct SyncResult;
+pub(crate) struct SyncResult;
 
-pub struct GoalsService {
+pub(crate) struct GoalsService {
     repo: Arc<dyn GoalRepository>,
     embedding: Arc<dyn EmbeddingProvider>,
     config: Arc<ArcSwap<Config>>,
 }
 
 impl GoalsService {
-    pub fn new(
+    pub(crate) fn new(
         repo: Arc<dyn GoalRepository>,
         embedding: Arc<dyn EmbeddingProvider>,
         config: Arc<ArcSwap<Config>>,
@@ -48,8 +46,7 @@ impl GoalsService {
 
     // ── Database Operations ─────────────────────────────────────────────
 
-    /// Create a goal with embedding.
-    pub async fn create(
+    pub(crate) async fn create(
         &self,
         content: &str,
         source: GoalSource,
@@ -73,11 +70,9 @@ impl GoalsService {
         Ok(saved)
     }
 
-    /// Get active goals ordered by priority (high → medium → low).
-    pub async fn get_active(&self, limit: usize) -> Result<Vec<Goal>, AppError> {
+    pub(crate) async fn get_active(&self, limit: usize) -> Result<Vec<Goal>, AppError> {
         let mut goals = self.repo.find_active(true).await?;
 
-        // Sort by priority
         goals.sort_by_key(|g| match g.priority {
             GoalPriority::High => 0,
             GoalPriority::Medium => 1,
@@ -89,8 +84,7 @@ impl GoalsService {
         Ok(goals)
     }
 
-    /// Semantic search for relevant goals.
-    pub async fn get_by_embedding(
+    pub(crate) async fn get_by_embedding(
         &self,
         embedding: &[f32],
         limit: i64,
@@ -122,8 +116,7 @@ impl GoalsService {
         Ok(goals)
     }
 
-    /// Update a goal's content and re-generate its embedding.
-    pub async fn update_content(
+    pub(crate) async fn update_content(
         &self,
         goal_id: Uuid,
         content: &str,
@@ -156,15 +149,13 @@ impl GoalsService {
         Ok(Some(updated))
     }
 
-    /// Get all goals, optionally including archived.
-    pub async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError> {
+    pub(crate) async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError> {
         self.repo.get_all(include_archived).await
     }
 
     // ── File Operations ─────────────────────────────────────────────────
 
-    /// Parse GOALS.md and sync to database.
-    pub async fn sync_from_file(&self) -> Result<SyncResult, AppError> {
+    pub(crate) async fn sync_from_file(&self) -> Result<SyncResult, AppError> {
         let cfg = self.config.load();
         let goals_file = cfg.resolved_goals_file_path();
         let mut created = 0u32;
@@ -178,7 +169,6 @@ impl GoalsService {
             )));
         }
 
-        // Check file size
         let metadata = tokio::fs::metadata(&goals_file).await?;
         if metadata.len() > MAX_GOALS_FILE_SIZE {
             return Err(AppError::Validation(format!(
@@ -238,7 +228,6 @@ impl GoalsService {
                     updated += 1;
                 }
             } else {
-                // Create new goal with embedding
                 match self.embedding.embed(&parsed.content).await {
                     Ok(embedding_vec) => {
                         let mut new_goal = Goal::new(parsed.content.clone(), source, priority);
@@ -258,7 +247,6 @@ impl GoalsService {
             }
         }
 
-        // Archive goals not in file (user removed them)
         for (content_key, existing) in &existing_by_content {
             if !seen_contents.contains(content_key) && existing.status != GoalStatus::Archived {
                 self.repo

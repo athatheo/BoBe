@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum AppError {
+pub(crate) enum AppError {
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 

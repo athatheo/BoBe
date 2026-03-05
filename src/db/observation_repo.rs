@@ -9,12 +9,12 @@ use crate::error::AppError;
 use crate::models::observation::Observation;
 use crate::util::similarity::cosine_similarity;
 
-pub struct SqliteObservationRepo {
+pub(crate) struct SqliteObservationRepo {
     pool: SqlitePool,
 }
 
 impl SqliteObservationRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }
@@ -76,7 +76,6 @@ impl ObservationRepository for SqliteObservationRepo {
         since: Option<chrono::DateTime<Utc>>,
         limit: Option<i64>,
     ) -> Result<Vec<Observation>, AppError> {
-        // Exclude embedding blob — callers need content, not vectors
         let cols =
             "id, source, content, category, NULL as embedding, metadata, created_at, updated_at";
         let rows = match (since, limit) {

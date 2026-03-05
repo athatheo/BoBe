@@ -6,22 +6,20 @@ use super::registry::ToolRegistry;
 use crate::llm::types::AiToolCall;
 use crate::tools::{ToolExecutionContext, ToolResult};
 
-/// Executes tool calls with timeout, error handling, and logging.
-pub struct ToolExecutor {
+pub(crate) struct ToolExecutor {
     registry: Arc<ToolRegistry>,
     default_timeout: std::time::Duration,
 }
 
 impl ToolExecutor {
-    pub fn new(registry: Arc<ToolRegistry>, default_timeout_secs: f64) -> Self {
+    pub(crate) fn new(registry: Arc<ToolRegistry>, default_timeout_secs: f64) -> Self {
         Self {
             registry,
             default_timeout: std::time::Duration::from_secs_f64(default_timeout_secs),
         }
     }
 
-    /// Execute a single tool call with timeout.
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         tool_call: &AiToolCall,
         timeout: Option<std::time::Duration>,
@@ -85,8 +83,7 @@ impl ToolExecutor {
         }
     }
 
-    /// Execute multiple tool calls concurrently.
-    pub async fn execute_batch(
+    pub(crate) async fn execute_batch(
         &self,
         tool_calls: &[AiToolCall],
         context: Option<&ToolExecutionContext>,

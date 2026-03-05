@@ -1,6 +1,4 @@
-/// Truncate a string to at most `max_bytes` bytes without splitting a UTF-8
-/// character. Returns a `&str` slice that is always valid UTF-8.
-pub fn truncate_str(s: &str, max_bytes: usize) -> &str {
+pub(crate) fn truncate_str(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;
     }

@@ -8,13 +8,12 @@ use crate::error::AppError;
 use crate::llm::types::{AiToolCall, ToolDefinition};
 use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 
-/// Aggregates all BoBe native tools as a single ToolSource.
-pub struct NativeToolAdapter {
+pub(crate) struct NativeToolAdapter {
     tools: HashMap<String, Arc<dyn NativeTool>>,
 }
 
 impl NativeToolAdapter {
-    pub fn new(tools: Vec<Arc<dyn NativeTool>>) -> Self {
+    pub(crate) fn new(tools: Vec<Arc<dyn NativeTool>>) -> Self {
         let mut map = HashMap::new();
 
         for tool in tools {
@@ -24,7 +23,7 @@ impl NativeToolAdapter {
         Self { tools: map }
     }
 
-    pub fn tool_names(&self) -> Vec<String> {
+    pub(crate) fn tool_names(&self) -> Vec<String> {
         self.tools.keys().cloned().collect()
     }
 }

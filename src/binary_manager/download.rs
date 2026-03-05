@@ -10,10 +10,7 @@ use crate::error::AppError;
 const OLLAMA_DARWIN_URL: &str =
     "https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz";
 
-/// Download the Ollama binary archive from GitHub releases.
-///
-/// Streams the download and calls `on_progress(current_bytes, total_bytes)` periodically.
-pub async fn download_ollama(
+pub(crate) async fn download_ollama(
     client: &reqwest::Client,
     output_path: &Path,
     mut on_progress: impl FnMut(u64, Option<u64>),
@@ -36,7 +33,6 @@ pub async fn download_ollama(
     let total_size = response.content_length();
     info!(total_bytes = ?total_size, "binary_download.content_length");
 
-    // Ensure parent directory exists
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| AppError::Config(format!("Failed to create directory: {e}")))?;
@@ -59,14 +55,12 @@ pub async fn download_ollama(
 
         downloaded += chunk.len() as u64;
 
-        // Report progress every ~1MB
         if downloaded - last_progress > 1_000_000 {
             on_progress(downloaded, total_size);
             last_progress = downloaded;
         }
     }
 
-    // Final progress report
     on_progress(downloaded, total_size);
 
     info!(

@@ -1,14 +1,14 @@
 use crate::llm::types::{ResponseFormat, ToolDefinition};
 
-pub const DEFAULT_SOUL: &str = crate::constants::DEFAULT_SOUL_FALLBACK;
+pub(crate) const DEFAULT_SOUL: &str = crate::constants::DEFAULT_SOUL_FALLBACK;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct PromptConfig {
-    pub temperature: f32,
-    pub max_tokens: u32,
-    pub tools: Vec<ToolDefinition>,
-    pub response_format: Option<ResponseFormat>,
+pub(crate) struct PromptConfig {
+    pub(crate) temperature: f32,
+    pub(crate) max_tokens: u32,
+    pub(crate) tools: Vec<ToolDefinition>,
+    pub(crate) response_format: Option<ResponseFormat>,
 }
 
 impl Default for PromptConfig {

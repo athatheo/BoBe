@@ -9,12 +9,12 @@ use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::types::{ConversationState, TurnRole};
 
-pub struct SqliteConversationRepo {
+pub(crate) struct SqliteConversationRepo {
     pool: SqlitePool,
 }
 
 impl SqliteConversationRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }
@@ -54,17 +54,6 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(row)
     }
 
-    async fn get_active(&self) -> Result<Option<Conversation>, AppError> {
-        let row = sqlx::query_as::<_, Conversation>(
-            "SELECT * FROM conversations WHERE state = ?1 LIMIT 1",
-        )
-        .bind(ConversationState::Active.as_str())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
-        Ok(row)
-    }
-
     async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
         let row = sqlx::query_as::<_, Conversation>(
             "SELECT * FROM conversations WHERE state IN (?1, ?2) ORDER BY updated_at DESC LIMIT 1",
@@ -75,33 +64,6 @@ impl ConversationRepository for SqliteConversationRepo {
         .await
         .map_err(AppError::Database)?;
         Ok(row)
-    }
-
-    async fn find_by_state(
-        &self,
-        state: ConversationState,
-        limit: i64,
-    ) -> Result<Vec<Conversation>, AppError> {
-        let rows = sqlx::query_as::<_, Conversation>(
-            "SELECT * FROM conversations WHERE state = ?1 ORDER BY created_at DESC LIMIT ?2",
-        )
-        .bind(state.as_str())
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
-        Ok(rows)
-    }
-
-    async fn find_recent(&self, limit: i64) -> Result<Vec<Conversation>, AppError> {
-        let rows = sqlx::query_as::<_, Conversation>(
-            "SELECT * FROM conversations ORDER BY created_at DESC LIMIT ?1",
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
-        Ok(rows)
     }
 
     async fn find_closed_since(
@@ -182,10 +144,9 @@ impl ConversationRepository for SqliteConversationRepo {
     }
 
     async fn add_turn(&self, turn: &ConversationTurn) -> Result<ConversationTurn, AppError> {
-        // Atomic: verify not closed + insert turn + touch timestamp
+        // Transaction prevents TOCTOU race: verify not closed + insert + touch timestamp
         let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
 
-        // Check conversation state inside transaction to prevent TOCTOU race
         let conv_state: Option<(String,)> =
             sqlx::query_as("SELECT state FROM conversations WHERE id = ?1")
                 .bind(turn.conversation_id)
@@ -277,7 +238,6 @@ impl ConversationRepository for SqliteConversationRepo {
     }
 
     async fn delete(&self, id: Uuid) -> Result<bool, AppError> {
-        // Turns are CASCADE deleted by FK
         let result = sqlx::query("DELETE FROM conversations WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)

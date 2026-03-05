@@ -6,13 +6,11 @@ use tracing::{debug, info, warn};
 use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 
-/// Response from Ollama's `/api/embed` endpoint.
 #[derive(Debug, Deserialize)]
 struct OllamaEmbedResponse {
     embeddings: Vec<Vec<f32>>,
 }
 
-/// Response from OpenAI/Azure OpenAI embeddings endpoint.
 #[derive(Debug, Deserialize)]
 struct OpenAiEmbedResponse {
     data: Vec<OpenAiEmbedData>,
@@ -23,7 +21,6 @@ struct OpenAiEmbedData {
     embedding: Vec<f32>,
 }
 
-/// Validate an embedding has the expected dimension and all finite values.
 fn validate_embedding(embedding: &[f32], expected_dimension: usize) -> bool {
     if embedding.len() != expected_dimension {
         warn!(
@@ -36,10 +33,7 @@ fn validate_embedding(embedding: &[f32], expected_dimension: usize) -> bool {
     embedding.iter().all(|v| v.is_finite())
 }
 
-/// Local embedding provider that calls Ollama's embedding endpoint.
-///
-/// Uses the `/api/embed` API with a configurable model (default: nomic-embed-text).
-pub struct LocalEmbeddingProvider {
+pub(crate) struct LocalEmbeddingProvider {
     client: Client,
     base_url: String,
     model: String,
@@ -47,7 +41,7 @@ pub struct LocalEmbeddingProvider {
 }
 
 impl LocalEmbeddingProvider {
-    pub fn new(client: Client, base_url: &str, model: &str, dimension: usize) -> Self {
+    pub(crate) fn new(client: Client, base_url: &str, model: &str, dimension: usize) -> Self {
         info!(
             model = model,
             dimension = dimension,
@@ -67,8 +61,7 @@ enum OpenAiAuth {
     ApiKey(String),
 }
 
-/// Remote embedding provider for OpenAI and Azure OpenAI.
-pub struct OpenAiEmbeddingProvider {
+pub(crate) struct OpenAiEmbeddingProvider {
     client: Client,
     endpoint_url: String,
     auth: OpenAiAuth,
@@ -77,7 +70,7 @@ pub struct OpenAiEmbeddingProvider {
 }
 
 impl OpenAiEmbeddingProvider {
-    pub fn openai(client: Client, api_key: &str, model: &str, dimension: usize) -> Self {
+    pub(crate) fn openai(client: Client, api_key: &str, model: &str, dimension: usize) -> Self {
         info!(
             backend = "openai",
             model = model,
@@ -93,7 +86,7 @@ impl OpenAiEmbeddingProvider {
         }
     }
 
-    pub fn azure(
+    pub(crate) fn azure(
         client: Client,
         endpoint: &str,
         api_key: &str,

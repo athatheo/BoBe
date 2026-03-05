@@ -10,7 +10,6 @@ use tracing::{debug, error, info};
 use super::config::McpParsedServer;
 use crate::error::AppError;
 
-/// JSON-RPC request.
 #[derive(serde::Serialize)]
 struct JsonRpcRequest {
     jsonrpc: &'static str,
@@ -20,7 +19,6 @@ struct JsonRpcRequest {
     params: Option<Value>,
 }
 
-/// JSON-RPC response.
 #[derive(serde::Deserialize)]
 struct JsonRpcResponse {
     #[serde(rename = "id")]
@@ -36,8 +34,7 @@ struct JsonRpcError {
     message: String,
 }
 
-/// Manages a connection to a single MCP server subprocess via JSON-RPC over stdio.
-pub struct McpClient {
+pub(crate) struct McpClient {
     config: McpParsedServer,
     process: Mutex<Option<McpProcess>>,
     request_id: AtomicU64,
@@ -52,7 +49,7 @@ struct McpProcess {
 }
 
 impl McpClient {
-    pub fn new(config: McpParsedServer) -> Self {
+    pub(crate) fn new(config: McpParsedServer) -> Self {
         Self {
             config,
             process: Mutex::new(None),
@@ -62,20 +59,19 @@ impl McpClient {
         }
     }
 
-    pub fn is_connected(&self) -> bool {
+    pub(crate) fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Acquire)
     }
 
-    pub async fn last_error(&self) -> Option<String> {
+    pub(crate) async fn last_error(&self) -> Option<String> {
         self.last_error.lock().await.clone()
     }
 
-    pub fn timeout_seconds(&self) -> f64 {
+    pub(crate) fn timeout_seconds(&self) -> f64 {
         self.config.timeout_seconds
     }
 
-    /// Spawn the MCP server process and initialize the session.
-    pub async fn connect(&self) -> Result<(), AppError> {
+    pub(crate) async fn connect(&self) -> Result<(), AppError> {
         info!(server = %self.config.name, command = %self.config.command, "Connecting to MCP server");
 
         let mut cmd = Command::new(&self.config.command);
@@ -120,7 +116,6 @@ impl McpClient {
         });
         drop(proc);
 
-        // Send initialize request
         let init_result = self
             .send_request(
                 "initialize",
@@ -137,7 +132,6 @@ impl McpClient {
 
         match init_result {
             Ok(_) => {
-                // Send initialized notification
                 let _ = self
                     .send_notification("notifications/initialized", None)
                     .await;
@@ -153,12 +147,10 @@ impl McpClient {
         }
     }
 
-    /// Disconnect and clean up the subprocess.
-    pub async fn disconnect(&self) {
+    pub(crate) async fn disconnect(&self) {
         let mut proc = self.process.lock().await;
         if let Some(mut p) = proc.take() {
             let _ = p.child.kill();
-            // Reap with timeout to avoid blocking indefinitely
             let _ = tokio::task::spawn_blocking(move || {
                 for _ in 0..30 {
                     if let Ok(Some(_)) = p.child.try_wait() {
@@ -173,8 +165,7 @@ impl McpClient {
         debug!(server = %self.config.name, "MCP server disconnected");
     }
 
-    /// List available tools from the MCP server.
-    pub async fn list_tools(&self) -> Result<Vec<McpToolInfo>, AppError> {
+    pub(crate) async fn list_tools(&self) -> Result<Vec<McpToolInfo>, AppError> {
         let result = self.send_request("tools/list", None).await?;
 
         let tools = result
@@ -209,8 +200,7 @@ impl McpClient {
         Ok(infos)
     }
 
-    /// Execute a tool call on the MCP server.
-    pub async fn call_tool(
+    pub(crate) async fn call_tool(
         &self,
         name: &str,
         arguments: HashMap<String, Value>,
@@ -267,7 +257,6 @@ impl McpClient {
             .as_mut()
             .ok_or_else(|| AppError::Mcp("MCP server not connected".into()))?;
 
-        // Write request (sync I/O — fast for pipes)
         writeln!(process.stdin, "{request_str}")
             .map_err(|e| AppError::Mcp(format!("Failed to write to MCP server: {e}")))?;
         process
@@ -275,12 +264,10 @@ impl McpClient {
             .flush()
             .map_err(|e| AppError::Mcp(format!("Failed to flush MCP server stdin: {e}")))?;
 
-        // Read response in a blocking-safe context to avoid starving the tokio runtime.
         let timeout = Duration::from_secs_f64(self.config.timeout_seconds.max(1.0));
         let server_name = self.config.name.clone();
         let method_name = method.to_owned();
 
-        // Borrow the reader + child from the process for the blocking read
         let reader = &mut process.reader;
         let child = &mut process.child;
 
@@ -311,7 +298,6 @@ impl McpClient {
                             timeout.as_secs_f64()
                         )));
                     }
-                    // Yield to tokio instead of hard-blocking the thread
                     tokio::time::sleep(Duration::from_millis(10)).await;
                 }
                 Err(e) => {
@@ -380,12 +366,10 @@ fn set_nonblocking_stdout(_stdout: &std::process::ChildStdout) -> Result<(), App
 
 impl Drop for McpClient {
     fn drop(&mut self) {
-        // Best-effort cleanup — never block Drop
         if let Ok(mut proc) = self.process.try_lock()
             && let Some(mut p) = proc.take()
         {
             let _ = p.child.kill();
-            // Reap in a background thread with 3s timeout to avoid blocking
             std::thread::spawn(move || {
                 for _ in 0..30 {
                     if let Ok(Some(_)) = p.child.try_wait() {
@@ -398,10 +382,9 @@ impl Drop for McpClient {
     }
 }
 
-/// Tool info returned from MCP server.
 #[derive(Debug, Clone)]
-pub struct McpToolInfo {
-    pub name: String,
-    pub description: String,
-    pub input_schema: Value,
+pub(crate) struct McpToolInfo {
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) input_schema: Value,
 }

@@ -22,14 +22,13 @@ use crate::util::slugify::slugify;
 
 use super::{GoalExecutionResult, GoalExecutorProvider, PlanStep};
 
-/// Implements `GoalExecutorProvider` using the Anthropic API + Claude CLI.
-pub struct ClaudeAgentProvider {
+pub(crate) struct ClaudeAgentProvider {
     config: Arc<ArcSwap<Config>>,
     http_client: reqwest::Client,
 }
 
 impl ClaudeAgentProvider {
-    pub fn new(config: Arc<ArcSwap<Config>>, http_client: reqwest::Client) -> Self {
+    pub(crate) fn new(config: Arc<ArcSwap<Config>>, http_client: reqwest::Client) -> Self {
         Self {
             config,
             http_client,
@@ -47,7 +46,6 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
         let cfg = self.cfg();
         let base = cfg.resolved_projects_dir();
 
-        // Slugify the goal title for a human-readable directory name
         let slug = slugify(goal_title, 50);
         let short_id = &goal_id.to_string()[..8];
         let dir_name = if slug.is_empty() {
@@ -80,6 +78,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
         let effective_max_steps = max_steps.unwrap_or(cfg.goal_worker.plan_max_steps);
         let api_key = cfg.llm.anthropic_api_key.expose_secret().to_owned();
         let model = cfg.goal_worker.claude_model.clone();
+        let locale = cfg.effective_locale();
         drop(cfg);
 
         if api_key.is_empty() {
@@ -88,8 +87,12 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
             ));
         }
 
-        let (system_msg, user_msg) =
-            GoalPlanningPrompt::messages(&goal.content, context, effective_max_steps);
+        let (system_msg, user_msg) = GoalPlanningPrompt::messages(
+            &goal.content,
+            context,
+            effective_max_steps,
+            Some(&locale),
+        );
 
         let body = serde_json::json!({
             "model": model,
@@ -122,7 +125,6 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
             .await
             .map_err(|e| AppError::Llm(format!("Failed to parse Anthropic response: {e}")))?;
 
-        // Extract text from response content blocks
         let plan_text = extract_text_from_response(&data);
 
         let steps = parse_plan(&plan_text, effective_max_steps);
@@ -147,6 +149,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
         let cfg = self.cfg();
         let model = cfg.goal_worker.claude_model.clone();
         let api_key = cfg.llm.anthropic_api_key.expose_secret().to_owned();
+        let locale = cfg.effective_locale();
         drop(cfg);
 
         let step_list: String = steps
@@ -157,7 +160,7 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
             .join("\n");
 
         let (system_msg, user_msg) =
-            GoalExecutionPrompt::messages(&goal.content, &step_list, work_dir);
+            GoalExecutionPrompt::messages(&goal.content, &step_list, work_dir, Some(&locale));
 
         // Try the Claude CLI first (preferred — it has tool use built in)
         match execute_via_cli(&model, &api_key, &system_msg, &user_msg, work_dir).await {
@@ -186,7 +189,6 @@ impl GoalExecutorProvider for ClaudeAgentProvider {
 
 // ─── CLI execution ──────────────────────────────────────────────────────────
 
-/// Execute via the `claude` CLI with `--print --output-format json`.
 async fn execute_via_cli(
     model: &str,
     api_key: &str,
@@ -210,18 +212,15 @@ async fn execute_via_cli(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    // Set API key in the child environment if provided
     if !api_key.is_empty() {
         cmd.env("ANTHROPIC_API_KEY", api_key);
     }
-    // Bypass nested-session guard
-    cmd.env("CLAUDECODE", "");
+    cmd.env("CLAUDECODE", ""); // bypass nested-session guard
 
     let mut child = cmd
         .spawn()
         .map_err(|e| AppError::Tool(format!("Failed to spawn claude CLI: {e}")))?;
 
-    // Write prompt to stdin
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
         let _ = stdin.write_all(prompt.as_bytes()).await;
@@ -237,7 +236,6 @@ async fn execute_via_cli(
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if output.status.success() {
-        // Try to parse JSON output for the result text
         let result_text = parse_cli_output(&stdout).unwrap_or(stdout);
         Ok(GoalExecutionResult {
             success: true,
@@ -257,14 +255,11 @@ async fn execute_via_cli(
     }
 }
 
-/// Parse the JSON output from `claude --output-format json`.
 fn parse_cli_output(stdout: &str) -> Option<String> {
     let data: serde_json::Value = serde_json::from_str(stdout).ok()?;
-    // The CLI JSON output contains a "result" field with the text
     if let Some(result) = data.get("result").and_then(|v| v.as_str()) {
         return Some(result.to_string());
     }
-    // Or it may be in content blocks
     if let Some(content) = data.get("content").and_then(|v| v.as_array()) {
         let text: String = content
             .iter()
@@ -286,7 +281,6 @@ fn parse_cli_output(stdout: &str) -> Option<String> {
 
 // ─── API fallback ───────────────────────────────────────────────────────────
 
-/// Fallback: call Anthropic Messages API directly (no tool use).
 async fn execute_via_api(
     client: &reqwest::Client,
     model: &str,
@@ -343,7 +337,6 @@ async fn execute_via_api(
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/// Extract text content from an Anthropic Messages API response.
 fn extract_text_from_response(data: &serde_json::Value) -> String {
     let Some(content) = data.get("content").and_then(|v| v.as_array()) else {
         return String::new();
@@ -361,17 +354,15 @@ fn extract_text_from_response(data: &serde_json::Value) -> String {
         .join("\n")
 }
 
-/// Parse Claude's plan JSON (or free-form text) into `PlanStep` objects.
+/// Parses JSON `{"steps": [...]}` or falls back to numbered-list extraction.
 fn parse_plan(plan_text: &str, max_steps: u32) -> Vec<PlanStep> {
     let text = plan_text.trim();
     if text.is_empty() {
         return Vec::new();
     }
 
-    // Strip markdown code fences
     let json_text = strip_code_fences(text);
 
-    // Try JSON parsing first
     if let Ok(data) = serde_json::from_str::<serde_json::Value>(&json_text)
         && let Some(raw_steps) = data.get("steps").and_then(|v| v.as_array())
     {
@@ -423,7 +414,6 @@ fn parse_plan(plan_text: &str, max_steps: u32) -> Vec<PlanStep> {
         .collect()
 }
 
-/// Strip markdown code fences (```json ... ``` or ``` ... ```).
 fn strip_code_fences(text: &str) -> String {
     if let Some(start_idx) = text.find("```json") {
         let after_fence = &text[start_idx + 7..];

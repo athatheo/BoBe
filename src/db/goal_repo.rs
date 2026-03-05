@@ -9,12 +9,12 @@ use crate::models::goal::Goal;
 use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
 use crate::util::similarity::cosine_similarity;
 
-pub struct SqliteGoalRepo {
+pub(crate) struct SqliteGoalRepo {
     pool: SqlitePool,
 }
 
 impl SqliteGoalRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }
@@ -251,7 +251,6 @@ impl GoalRepository for SqliteGoalRepo {
         if statuses.is_empty() {
             return Ok(0);
         }
-        // Build parameterized IN clause: WHERE status IN (?, ?, ?)
         let params: Vec<&str> = statuses.iter().map(GoalStatus::as_str).collect();
         let placeholders = (0..params.len())
             .map(|i| format!("?{}", i + 2))
@@ -273,16 +272,7 @@ impl GoalRepository for SqliteGoalRepo {
         Ok(deleted)
     }
 
-    async fn find_by_content(&self, content: &str) -> Result<Option<Goal>, AppError> {
-        sqlx::query_as::<_, Goal>("SELECT * FROM goals WHERE content = ?1")
-            .bind(content)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
-    }
-
     async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError> {
-        // Exclude embedding blob for listing performance
         let cols = "id, content, priority, source, status, enabled, inference_reason, \
                     NULL as embedding, created_at, updated_at";
         let sql = if include_archived {
@@ -330,7 +320,6 @@ impl GoalRepository for SqliteGoalRepo {
         }
         let now = chrono::Utc::now();
         let status_str = status.as_str();
-        // Build parameterized IN clause
         let placeholders = (0..goal_ids.len())
             .map(|i| format!("?{}", i + 3))
             .collect::<Vec<_>>()

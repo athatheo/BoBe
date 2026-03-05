@@ -5,7 +5,7 @@ use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::PromptConfig;
 
-pub static GOAL_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
+pub(crate) static GOAL_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {
@@ -39,10 +39,10 @@ pub static GOAL_EXTRACTION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|
     })
 });
 
-pub struct GoalExtractionPrompt;
+pub(crate) struct GoalExtractionPrompt;
 
 impl GoalExtractionPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.2,
             max_tokens: 2048,
@@ -54,8 +54,12 @@ impl GoalExtractionPrompt {
         }
     }
 
-    pub fn messages(conversation_turns: &[String], existing_goals: &[String]) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+    pub(crate) fn messages(
+        conversation_turns: &[String],
+        existing_goals: &[String],
+        locale: Option<&str>,
+    ) -> Vec<AiMessage> {
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let conversation_text = conversation_turns.join("\n");
 
         let goals_text = if existing_goals.is_empty() {

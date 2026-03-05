@@ -28,20 +28,17 @@ use super::soul_service::SoulService;
 /// individual models may support much larger contexts (32K–128K+).
 const CONTEXT_TOKEN_WARN_THRESHOLD: usize = 4_000;
 
-/// Container for assembled context items from all sources.
 #[derive(Debug, Clone, Default)]
-pub struct AssembledContext {
-    pub souls: Vec<Soul>,
-    pub goals: Vec<Goal>,
-    pub memories: Vec<Memory>,
-    pub observations: Vec<Observation>,
-    pub user_profiles: Vec<UserProfile>,
+pub(crate) struct AssembledContext {
+    pub(crate) souls: Vec<Soul>,
+    pub(crate) goals: Vec<Goal>,
+    pub(crate) memories: Vec<Memory>,
+    pub(crate) observations: Vec<Observation>,
+    pub(crate) user_profiles: Vec<UserProfile>,
 }
 
 impl AssembledContext {
-    /// Format assembled context for LLM prompt injection.
-    /// Only includes sections that have content.
-    pub fn to_prompt_sections(&self) -> std::collections::HashMap<String, String> {
+    pub(crate) fn to_prompt_sections(&self) -> std::collections::HashMap<String, String> {
         let mut sections = std::collections::HashMap::new();
 
         if !self.souls.is_empty() {
@@ -125,8 +122,7 @@ impl AssembledContext {
         sections
     }
 
-    /// Format assembled context into a single context string and optional personality.
-    pub fn to_context_string(&self) -> (String, Option<String>) {
+    pub(crate) fn to_context_string(&self) -> (String, Option<String>) {
         let mut sections = self.to_prompt_sections();
         let personality = sections.remove("personality");
         let mut context = sections.remove("recent_context").unwrap_or_default();
@@ -153,15 +149,14 @@ impl AssembledContext {
     }
 }
 
-/// Options for building context.
-pub struct BuildContextOptions {
-    pub include_memories: bool,
-    pub include_goals: bool,
-    pub include_souls: bool,
-    pub include_observations: bool,
-    pub memory_limit: i64,
-    pub observation_limit: i64,
-    pub memory_min_score: f64,
+pub(crate) struct BuildContextOptions {
+    pub(crate) include_memories: bool,
+    pub(crate) include_goals: bool,
+    pub(crate) include_souls: bool,
+    pub(crate) include_observations: bool,
+    pub(crate) memory_limit: i64,
+    pub(crate) observation_limit: i64,
+    pub(crate) memory_min_score: f64,
 }
 
 impl Default for BuildContextOptions {
@@ -178,8 +173,7 @@ impl Default for BuildContextOptions {
     }
 }
 
-/// Assembles context from multiple sources for LLM prompts.
-pub struct ContextAssembler {
+pub(crate) struct ContextAssembler {
     soul_repo: Arc<dyn SoulRepository>,
     goal_repo: Arc<dyn GoalRepository>,
     memory_repo: Arc<dyn MemoryRepository>,
@@ -190,7 +184,7 @@ pub struct ContextAssembler {
 }
 
 impl ContextAssembler {
-    pub fn new(
+    pub(crate) fn new(
         soul_repo: Arc<dyn SoulRepository>,
         goal_repo: Arc<dyn GoalRepository>,
         memory_repo: Arc<dyn MemoryRepository>,
@@ -210,11 +204,13 @@ impl ContextAssembler {
         }
     }
 
-    /// Build complete context for an LLM prompt.
-    pub async fn build_context(&self, query: &str, opts: BuildContextOptions) -> AssembledContext {
+    pub(crate) async fn build_context(
+        &self,
+        query: &str,
+        opts: BuildContextOptions,
+    ) -> AssembledContext {
         let mut results = AssembledContext::default();
 
-        // Generate embedding once, reuse for all semantic searches
         let embedding = if !query.is_empty() && (opts.include_memories || opts.include_observations)
         {
             match self.embedding.embed(query).await {
@@ -295,8 +291,7 @@ impl ContextAssembler {
         results
     }
 
-    /// Get all enabled soul documents.
-    pub async fn get_enabled_souls(&self) -> Vec<Soul> {
+    pub(crate) async fn get_enabled_souls(&self) -> Vec<Soul> {
         match self.soul_repo.find_enabled().await {
             Ok(souls) => souls,
             Err(e) => {
@@ -306,8 +301,7 @@ impl ContextAssembler {
         }
     }
 
-    /// Get soul content using fallback chain: SoulService → repo → empty.
-    pub async fn get_soul_content(&self) -> String {
+    pub(crate) async fn get_soul_content(&self) -> String {
         if let Some(ref svc) = self.soul_service {
             match svc.get_soul_async().await {
                 Ok(content) => return content,

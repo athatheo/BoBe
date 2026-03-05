@@ -9,7 +9,7 @@ use crate::llm::types::{
 };
 
 /// Convert an `AiMessage` to the OpenAI chat-completions JSON format.
-pub fn message_to_json(msg: &AiMessage) -> Value {
+pub(crate) fn message_to_json(msg: &AiMessage) -> Value {
     let mut obj = serde_json::Map::new();
     obj.insert("role".into(), json!(msg.role));
 
@@ -60,7 +60,7 @@ fn is_reasoning_model(model: &str) -> bool {
 
 /// Map finish_reason values to canonical form.
 /// Azure may send "content_filter" which we treat as "stop".
-pub fn map_finish_reason(raw: &str) -> &str {
+pub(crate) fn map_finish_reason(raw: &str) -> &str {
     match raw {
         "tool_calls" | "length" | "stop" => raw,
         "content_filter" => "stop",
@@ -69,7 +69,7 @@ pub fn map_finish_reason(raw: &str) -> &str {
 }
 
 /// Build a full chat-completions request body.
-pub fn build_chat_request(
+pub(crate) fn build_chat_request(
     model: &str,
     messages: &[AiMessage],
     tools: Option<&[ToolDefinition]>,
@@ -131,7 +131,7 @@ pub fn build_chat_request(
 }
 
 /// Parse tool_calls from a response choice's message object.
-pub fn parse_tool_calls(message: &Value) -> Vec<AiToolCall> {
+pub(crate) fn parse_tool_calls(message: &Value) -> Vec<AiToolCall> {
     let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) else {
         return vec![];
     };
@@ -155,7 +155,7 @@ pub fn parse_tool_calls(message: &Value) -> Vec<AiToolCall> {
 }
 
 /// Parse a full (non-streaming) chat-completions response.
-pub fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
+pub(crate) fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
     let choice = data
         .get("choices")
         .and_then(|c| c.get(0))
@@ -216,7 +216,7 @@ pub fn parse_response(data: &Value) -> Result<AiResponse, AppError> {
 /// Tool call arguments in streaming deltas are fragments — they are NOT parsed
 /// into `AiToolCall` here. Instead use `ToolCallAccumulator` to reconstruct
 /// complete tool calls across chunks.
-pub fn parse_stream_chunk(data: &Value) -> Option<StreamChunk> {
+pub(crate) fn parse_stream_chunk(data: &Value) -> Option<StreamChunk> {
     let choice = data.get("choices")?.get(0)?;
     let delta = choice.get("delta")?;
 
@@ -293,7 +293,7 @@ struct ToolCallDelta {
 /// OpenAI/Azure send tool calls incrementally: the first chunk contains
 /// the `id` and `name`, subsequent chunks append to `arguments`.
 #[derive(Default)]
-pub struct ToolCallAccumulator {
+pub(crate) struct ToolCallAccumulator {
     pending: Vec<PendingToolCall>,
 }
 
@@ -305,12 +305,12 @@ struct PendingToolCall {
 }
 
 impl ToolCallAccumulator {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Feed a raw SSE data value. Extracts and buffers any tool call deltas.
-    pub fn feed(&mut self, data: &Value) {
+    pub(crate) fn feed(&mut self, data: &Value) {
         for delta in extract_tool_call_deltas(data) {
             // Grow the pending vec if needed
             while self.pending.len() <= delta.index {
@@ -328,12 +328,12 @@ impl ToolCallAccumulator {
     }
 
     /// Returns true if any tool calls have been accumulated.
-    pub fn has_tool_calls(&self) -> bool {
+    pub(crate) fn has_tool_calls(&self) -> bool {
         !self.pending.is_empty()
     }
 
     /// Finalize and return complete `AiToolCall` objects.
-    pub fn finish(self) -> Vec<AiToolCall> {
+    pub(crate) fn finish(self) -> Vec<AiToolCall> {
         self.pending
             .into_iter()
             .filter(|tc| !tc.id.is_empty() && !tc.name.is_empty())
@@ -361,7 +361,7 @@ impl ToolCallAccumulator {
 /// Drains a single complete line from `buffer`. Strips the `data: ` prefix,
 /// skips empty lines and `[DONE]` sentinels, and parses JSON.
 /// Returns the parsed JSON value, or `None` if no complete line is available.
-pub fn drain_next_sse_line(buffer: &mut String, provider_label: &str) -> Option<Value> {
+pub(crate) fn drain_next_sse_line(buffer: &mut String, provider_label: &str) -> Option<Value> {
     loop {
         let line_end = buffer.find('\n')?;
         let parsed: Option<Value> = {

@@ -11,13 +11,13 @@ use crate::error::AppError;
 use crate::llm::EmbeddingProvider;
 use crate::tools::ToolExecutionContext;
 
-pub struct SearchMemoriesTool {
+pub(crate) struct SearchMemoriesTool {
     memory_repo: Arc<dyn MemoryRepository>,
     embedding_provider: Arc<dyn EmbeddingProvider>,
 }
 
 impl SearchMemoriesTool {
-    pub fn new(
+    pub(crate) fn new(
         memory_repo: Arc<dyn MemoryRepository>,
         embedding_provider: Arc<dyn EmbeddingProvider>,
     ) -> Self {

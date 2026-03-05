@@ -1,2 +1,2 @@
-pub mod goals_file_parser;
-pub mod goals_service;
+pub(crate) mod goals_file_parser;
+pub(crate) mod goals_service;

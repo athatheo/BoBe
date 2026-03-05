@@ -3,14 +3,14 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum ConversationState {
+pub(crate) enum ConversationState {
     Pending,
     Active,
     Closed,
 }
 
 impl ConversationState {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Active => "active",
@@ -28,13 +28,13 @@ impl std::fmt::Display for ConversationState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum TurnRole {
+pub(crate) enum TurnRole {
     User,
     Assistant,
 }
 
 impl TurnRole {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::User => "user",
             Self::Assistant => "assistant",
@@ -53,7 +53,7 @@ impl std::fmt::Display for TurnRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum GoalStatus {
+pub(crate) enum GoalStatus {
     Active,
     Completed,
     Archived,
@@ -61,7 +61,7 @@ pub enum GoalStatus {
 }
 
 impl GoalStatus {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Active => "active",
             Self::Completed => "completed",
@@ -80,14 +80,14 @@ impl std::fmt::Display for GoalStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum GoalPriority {
+pub(crate) enum GoalPriority {
     High,
     Medium,
     Low,
 }
 
 impl GoalPriority {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::High => "high",
             Self::Medium => "medium",
@@ -105,13 +105,13 @@ impl std::fmt::Display for GoalPriority {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum GoalSource {
+pub(crate) enum GoalSource {
     User,
     Inferred,
 }
 
 impl GoalSource {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::User => "user",
             Self::Inferred => "inferred",
@@ -130,14 +130,14 @@ impl std::fmt::Display for GoalSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
-pub enum MemoryType {
+pub(crate) enum MemoryType {
     ShortTerm,
     LongTerm,
     Explicit,
 }
 
 impl MemoryType {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::ShortTerm => "short_term",
             Self::LongTerm => "long_term",
@@ -155,7 +155,7 @@ impl std::fmt::Display for MemoryType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
-pub enum MemorySource {
+pub(crate) enum MemorySource {
     Observation,
     Conversation,
     VisualDiary,
@@ -163,7 +163,7 @@ pub enum MemorySource {
 }
 
 impl MemorySource {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Observation => "observation",
             Self::Conversation => "conversation",
@@ -184,15 +184,17 @@ impl std::fmt::Display for MemorySource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
-pub enum ObservationSource {
+pub(crate) enum ObservationSource {
     Screen,
+    #[allow(dead_code)] // planned: audio input
     Audio,
+    #[allow(dead_code)] // planned: clipboard monitoring
     Clipboard,
     UserMessage,
 }
 
 impl ObservationSource {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Screen => "screen",
             Self::Audio => "audio",
@@ -213,7 +215,7 @@ impl std::fmt::Display for ObservationSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum AgentJobStatus {
+pub(crate) enum AgentJobStatus {
     Pending,
     Running,
     Completed,
@@ -222,7 +224,7 @@ pub enum AgentJobStatus {
 }
 
 impl AgentJobStatus {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Running => "running",
@@ -232,7 +234,7 @@ impl AgentJobStatus {
         }
     }
 
-    pub fn is_terminal(&self) -> bool {
+    pub(crate) fn is_terminal(&self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
     }
 }
@@ -248,7 +250,7 @@ impl std::fmt::Display for AgentJobStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
-pub enum GoalPlanStatus {
+pub(crate) enum GoalPlanStatus {
     PendingApproval,
     Approved,
     AutoApproved,
@@ -259,7 +261,7 @@ pub enum GoalPlanStatus {
 }
 
 impl GoalPlanStatus {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::PendingApproval => "pending_approval",
             Self::Approved => "approved",
@@ -281,7 +283,7 @@ impl std::fmt::Display for GoalPlanStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
-pub enum GoalPlanStepStatus {
+pub(crate) enum GoalPlanStepStatus {
     Pending,
     InProgress,
     Completed,
@@ -290,7 +292,7 @@ pub enum GoalPlanStepStatus {
 }
 
 impl GoalPlanStepStatus {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::InProgress => "in_progress",
@@ -300,7 +302,7 @@ impl GoalPlanStepStatus {
         }
     }
 
-    pub fn is_terminal(&self) -> bool {
+    pub(crate) fn is_terminal(&self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Skipped)
     }
 }

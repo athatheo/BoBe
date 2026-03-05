@@ -13,7 +13,7 @@ use crate::constants::{
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-pub struct BrowserHistoryTool;
+pub(crate) struct BrowserHistoryTool;
 
 impl Default for BrowserHistoryTool {
     fn default() -> Self {
@@ -22,7 +22,7 @@ impl Default for BrowserHistoryTool {
 }
 
 impl BrowserHistoryTool {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
@@ -146,8 +146,6 @@ impl NativeTool for BrowserHistoryTool {
     }
 }
 
-/// Escape a string for safe use in a SQL LIKE pattern passed to sqlite3 CLI.
-/// Handles single quotes (SQL string delimiter), and LIKE wildcards (%, _).
 /// The resulting SQL must include `ESCAPE '\'` for the wildcard escaping to work.
 fn escape_sql_like(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -163,7 +161,6 @@ fn escape_sql_like(input: &str) -> String {
     out
 }
 
-/// Run a SQL query against an SQLite DB using the sqlite3 CLI.
 /// Copies the DB to a temp file to avoid locking the browser's DB.
 async fn query_sqlite(db_path: &PathBuf, temp_name: &str, sql: &str) -> Result<String, AppError> {
     let temp = std::env::temp_dir().join(temp_name);
@@ -190,7 +187,6 @@ async fn query_sqlite(db_path: &PathBuf, temp_name: &str, sql: &str) -> Result<S
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Parse tab-separated rows into (title, url, timestamp) tuples.
 fn parse_rows(output: &str) -> Vec<(String, String, String)> {
     output
         .lines()

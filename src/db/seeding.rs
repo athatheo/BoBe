@@ -6,24 +6,19 @@ use crate::error::AppError;
 use crate::models::soul::Soul;
 use crate::models::user_profile::UserProfile;
 
-/// Default souls to seed from embedded assets.
 const DEFAULT_SOULS: &[(&str, &str)] = &[("SOUL.md", "default_soul")];
-
-/// Default user profiles to seed from embedded assets.
 const DEFAULT_USER_PROFILES: &[(&str, &str)] = &[("USER_PROFILE.md", "default")];
 
-/// Embedded default assets
 const DEFAULT_SOUL_MD: &str = include_str!("../assets/defaults/SOUL.md");
 const DEFAULT_USER_PROFILE_MD: &str = include_str!("../assets/defaults/USER_PROFILE.md");
 const DEFAULT_GOALS_MD: &str = include_str!("../assets/defaults/GOALS.md");
 
-/// Result of a seeding operation.
 #[derive(Debug)]
-pub struct SeedResult {
-    pub created: u32,
-    pub updated: u32,
-    pub skipped: u32,
-    pub errors: u32,
+pub(crate) struct SeedResult {
+    pub(crate) created: u32,
+    pub(crate) updated: u32,
+    pub(crate) skipped: u32,
+    pub(crate) errors: u32,
 }
 
 fn load_default_asset(filename: &str) -> Option<&'static str> {
@@ -38,8 +33,9 @@ fn load_default_asset(filename: &str) -> Option<&'static str> {
     }
 }
 
-/// Seed default souls into the database.
-pub async fn seed_default_souls(soul_repo: &dyn SoulRepository) -> Result<SeedResult, AppError> {
+pub(crate) async fn seed_default_souls(
+    soul_repo: &dyn SoulRepository,
+) -> Result<SeedResult, AppError> {
     let mut result = SeedResult {
         created: 0,
         updated: 0,
@@ -98,8 +94,7 @@ pub async fn seed_default_souls(soul_repo: &dyn SoulRepository) -> Result<SeedRe
     Ok(result)
 }
 
-/// Seed default user profiles into the database.
-pub async fn seed_default_user_profiles(
+pub(crate) async fn seed_default_user_profiles(
     profile_repo: &dyn UserProfileRepository,
 ) -> Result<SeedResult, AppError> {
     let mut result = SeedResult {

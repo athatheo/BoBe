@@ -8,24 +8,21 @@ use std::path::Path;
 use serde_json::Value;
 use tracing::warn;
 
-/// Maximum lines to include in text-based summary.
 const TEXT_SUMMARY_MAX_LINES: usize = 30;
 
-/// Parsed result from a coding agent's output.
 #[derive(Debug, Clone, Default)]
-pub struct AgentJobResult {
-    pub summary: Option<String>,
-    pub cost_usd: Option<f64>,
+pub(crate) struct AgentJobResult {
+    pub(crate) summary: Option<String>,
+    pub(crate) cost_usd: Option<f64>,
     /// Agent session ID (for resume/continuation).
-    pub session_id: Option<String>,
-    pub files_changed: Vec<String>,
-    pub tools_used: Vec<String>,
-    pub is_error: bool,
-    pub error_detail: Option<String>,
+    pub(crate) session_id: Option<String>,
+    pub(crate) files_changed: Vec<String>,
+    pub(crate) tools_used: Vec<String>,
+    pub(crate) is_error: bool,
+    pub(crate) error_detail: Option<String>,
 }
 
-/// Parse Claude Code stream-json (NDJSON) output.
-pub fn parse_claude_ndjson(output_path: &Path) -> AgentJobResult {
+pub(crate) fn parse_claude_ndjson(output_path: &Path) -> AgentJobResult {
     let mut result = AgentJobResult::default();
 
     if !output_path.exists() {
@@ -169,8 +166,7 @@ fn extract_file_changes(msg: &Value, files_seen: &mut BTreeSet<String>) {
     }
 }
 
-/// Parse plain text output from agents like Aider or OpenCode.
-pub fn parse_text_output(output_path: &Path) -> AgentJobResult {
+pub(crate) fn parse_text_output(output_path: &Path) -> AgentJobResult {
     let mut result = AgentJobResult::default();
 
     if !output_path.exists() {

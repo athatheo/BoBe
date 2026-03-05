@@ -11,7 +11,7 @@ use crate::tools::ToolExecutionContext;
 const MAX_FILE_SIZE: u64 = 1_048_576; // 1 MB
 const MAX_LINES: usize = 500;
 
-pub struct FileReaderTool;
+pub(crate) struct FileReaderTool;
 
 impl Default for FileReaderTool {
     fn default() -> Self {
@@ -20,7 +20,7 @@ impl Default for FileReaderTool {
 }
 
 impl FileReaderTool {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }

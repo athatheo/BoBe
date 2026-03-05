@@ -14,34 +14,32 @@ use crate::error::AppError;
 use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
-pub struct MemoryResponse {
-    pub id: String,
-    pub content: String,
-    pub memory_type: String,
-    pub category: String,
-    pub source: String,
-    pub enabled: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct MemoryResponse {
+    pub(crate) id: String,
+    pub(crate) content: String,
+    pub(crate) memory_type: String,
+    pub(crate) category: String,
+    pub(crate) source: String,
+    pub(crate) enabled: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct MemoryListResponse {
-    pub memories: Vec<MemoryResponse>,
-    pub count: usize,
-    pub total: i64,
+pub(crate) struct MemoryListResponse {
+    pub(crate) memories: Vec<MemoryResponse>,
+    pub(crate) count: usize,
+    pub(crate) total: i64,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MemoryCreateRequest {
-    pub content: String,
+pub(crate) struct MemoryCreateRequest {
+    pub(crate) content: String,
     #[serde(default = "default_category")]
-    pub category: String,
+    pub(crate) category: String,
     #[serde(default = "default_memory_type")]
-    pub memory_type: String,
+    pub(crate) memory_type: String,
 }
 
 fn default_category() -> String {
@@ -53,30 +51,30 @@ fn default_memory_type() -> String {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MemoryUpdateRequest {
-    pub content: Option<String>,
-    pub category: Option<String>,
-    pub enabled: Option<bool>,
+pub(crate) struct MemoryUpdateRequest {
+    pub(crate) content: Option<String>,
+    pub(crate) category: Option<String>,
+    pub(crate) enabled: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct MemoryActionResponse {
-    pub id: String,
-    pub enabled: bool,
-    pub message: String,
+pub(crate) struct MemoryActionResponse {
+    pub(crate) id: String,
+    pub(crate) enabled: bool,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MemoryListQuery {
-    pub memory_type: Option<String>,
-    pub category: Option<String>,
-    pub source: Option<String>,
+pub(crate) struct MemoryListQuery {
+    pub(crate) memory_type: Option<String>,
+    pub(crate) category: Option<String>,
+    pub(crate) source: Option<String>,
     #[serde(default)]
-    pub enabled_only: bool,
+    pub(crate) enabled_only: bool,
     #[serde(default = "default_limit")]
-    pub limit: i64,
+    pub(crate) limit: i64,
     #[serde(default)]
-    pub offset: i64,
+    pub(crate) offset: i64,
 }
 
 fn default_limit() -> i64 {
@@ -84,10 +82,10 @@ fn default_limit() -> i64 {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MemorySearchRequest {
-    pub query: String,
+pub(crate) struct MemorySearchRequest {
+    pub(crate) query: String,
     #[serde(default = "default_search_limit")]
-    pub limit: i64,
+    pub(crate) limit: i64,
 }
 
 fn default_search_limit() -> i64 {
@@ -95,25 +93,23 @@ fn default_search_limit() -> i64 {
 }
 
 #[derive(Debug, Serialize)]
-pub struct MemorySearchHit {
-    pub id: String,
-    pub content: String,
-    pub memory_type: String,
-    pub category: String,
-    pub source: String,
-    pub enabled: bool,
-    pub similarity: f64,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct MemorySearchHit {
+    pub(crate) id: String,
+    pub(crate) content: String,
+    pub(crate) memory_type: String,
+    pub(crate) category: String,
+    pub(crate) source: String,
+    pub(crate) enabled: bool,
+    pub(crate) similarity: f64,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct MemorySearchResponse {
-    pub results: Vec<MemorySearchHit>,
-    pub count: usize,
+pub(crate) struct MemorySearchResponse {
+    pub(crate) results: Vec<MemorySearchHit>,
+    pub(crate) count: usize,
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn memory_to_response(memory: &Memory) -> MemoryResponse {
     MemoryResponse {
@@ -166,10 +162,7 @@ async fn set_memory_enabled(
     }))
 }
 
-// ── Handlers ────────────────────────────────────────────────────────────────
-
-/// GET /api/memories
-pub async fn list_memories(
+pub(crate) async fn list_memories(
     State(state): State<Arc<AppState>>,
     Query(params): Query<MemoryListQuery>,
 ) -> Result<Json<MemoryListResponse>, AppError> {
@@ -195,8 +188,7 @@ pub async fn list_memories(
     }))
 }
 
-/// GET /api/memories/:id
-pub async fn get_memory(
+pub(crate) async fn get_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryResponse>, AppError> {
@@ -209,8 +201,7 @@ pub async fn get_memory(
     Ok(Json(memory_to_response(&memory)))
 }
 
-/// POST /api/memories
-pub async fn create_memory(
+pub(crate) async fn create_memory(
     State(state): State<Arc<AppState>>,
     Json(body): Json<MemoryCreateRequest>,
 ) -> Result<(StatusCode, Json<MemoryResponse>), AppError> {
@@ -223,7 +214,6 @@ pub async fn create_memory(
     }
 
     let memory_type = parse_memory_type(&body.memory_type)?;
-    // User-created memories always have source="conversation" (closest to user input)
     let memory = Memory::new(
         body.content,
         memory_type,
@@ -243,8 +233,7 @@ pub async fn create_memory(
     Ok((StatusCode::CREATED, Json(memory_to_response(&saved))))
 }
 
-/// PUT /api/memories/:id
-pub async fn update_memory(
+pub(crate) async fn update_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
     Json(body): Json<MemoryUpdateRequest>,
@@ -270,8 +259,7 @@ pub async fn update_memory(
     Ok(Json(memory_to_response(&updated)))
 }
 
-/// DELETE /api/memories/:id
-pub async fn delete_memory(
+pub(crate) async fn delete_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
@@ -284,24 +272,21 @@ pub async fn delete_memory(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /api/memories/:id/enable
-pub async fn enable_memory(
+pub(crate) async fn enable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
     set_memory_enabled(&state.memory_repo, memory_id, true).await
 }
 
-/// POST /api/memories/:id/disable
-pub async fn disable_memory(
+pub(crate) async fn disable_memory(
     State(state): State<Arc<AppState>>,
     Path(memory_id): Path<Uuid>,
 ) -> Result<Json<MemoryActionResponse>, AppError> {
     set_memory_enabled(&state.memory_repo, memory_id, false).await
 }
 
-/// POST /api/memories/search
-pub async fn search_memories(
+pub(crate) async fn search_memories(
     State(state): State<Arc<AppState>>,
     Json(body): Json<MemorySearchRequest>,
 ) -> Result<Json<MemorySearchResponse>, AppError> {

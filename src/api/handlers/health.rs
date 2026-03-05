@@ -6,10 +6,8 @@ use std::sync::Arc;
 
 use crate::app_state::AppState;
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
-pub struct HealthResponse {
+pub(crate) struct HealthResponse {
     status: &'static str,
     services: ServiceHealth,
     version: &'static str,
@@ -17,19 +15,19 @@ pub struct HealthResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ServiceHealth {
+pub(crate) struct ServiceHealth {
     database: &'static str,
     llm: &'static str,
 }
 
-pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+pub(crate) async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let db_ok = sqlx::query("SELECT 1").fetch_one(&state.db).await.is_ok();
 
     let cfg = state.config();
     let setup_completed = cfg.setup_completed;
     drop(cfg);
 
-    // Don't flag LLM as broken during onboarding — it's expected to be absent
+    // LLM is expected to be absent during onboarding
     let llm_ok = if setup_completed {
         state.llm_provider.health_check().await
     } else {
@@ -50,8 +48,7 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResp
     })
 }
 
-/// GET /api/status — runtime status for the UI.
-pub async fn get_status(State(state): State<Arc<AppState>>) -> Json<Value> {
+pub(crate) async fn get_status(State(state): State<Arc<AppState>>) -> Json<Value> {
     let mut status = state.runtime_session.get_status();
     if let Some(obj) = status.as_object_mut() {
         obj.insert("version".to_owned(), json!(env!("CARGO_PKG_VERSION")));

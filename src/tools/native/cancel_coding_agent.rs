@@ -9,12 +9,12 @@ use crate::db::AgentJobRepository;
 use crate::error::AppError;
 use crate::tools::ToolExecutionContext;
 
-pub struct CancelCodingAgentTool {
+pub(crate) struct CancelCodingAgentTool {
     agent_job_repo: Arc<dyn AgentJobRepository>,
 }
 
 impl CancelCodingAgentTool {
-    pub fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
+    pub(crate) fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
         Self { agent_job_repo }
     }
 }
@@ -68,14 +68,12 @@ impl NativeTool for CancelCodingAgentTool {
             ));
         }
 
-        // Send SIGTERM to the process if it has a PID
         if let Some(pid) = job.pid {
             let _ = std::process::Command::new("kill")
                 .arg(pid.to_string())
                 .status();
         }
 
-        // Update job to cancelled status
         let mut cancelled = job;
         cancelled.mark_cancelled(Some("Cancelled by user".into()));
         self.agent_job_repo.save(&cancelled).await?;

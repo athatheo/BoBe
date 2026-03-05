@@ -11,7 +11,7 @@ use crate::tools::ToolExecutionContext;
 const MAX_ENTRIES: usize = 500;
 const MAX_RECURSIVE_DEPTH: usize = 2;
 
-pub struct ListDirectoryTool;
+pub(crate) struct ListDirectoryTool;
 
 impl Default for ListDirectoryTool {
     fn default() -> Self {
@@ -20,7 +20,7 @@ impl Default for ListDirectoryTool {
 }
 
 impl ListDirectoryTool {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 

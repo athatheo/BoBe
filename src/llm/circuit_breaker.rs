@@ -13,7 +13,7 @@ use crate::llm::types::{AiMessage, AiResponse, ResponseFormat, StreamChunk, Tool
 
 /// Circuit breaker states following the standard pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CircuitState {
+pub(crate) enum CircuitState {
     Closed,
     Open,
     HalfOpen,
@@ -31,12 +31,12 @@ impl std::fmt::Display for CircuitState {
 
 /// Configuration for the circuit breaker.
 #[derive(Debug, Clone)]
-pub struct CircuitBreakerConfig {
-    pub failure_threshold: u32,
-    pub recovery_timeout: std::time::Duration,
-    pub half_open_max_calls: u32,
-    pub backoff_multiplier: f64,
-    pub max_recovery_timeout: std::time::Duration,
+pub(crate) struct CircuitBreakerConfig {
+    pub(crate) failure_threshold: u32,
+    pub(crate) recovery_timeout: std::time::Duration,
+    pub(crate) half_open_max_calls: u32,
+    pub(crate) backoff_multiplier: f64,
+    pub(crate) max_recovery_timeout: std::time::Duration,
 }
 
 impl Default for CircuitBreakerConfig {
@@ -61,13 +61,13 @@ struct CircuitBreakerInner {
 }
 
 /// Async-safe circuit breaker using tokio::sync::Mutex.
-pub struct CircuitBreaker {
+pub(crate) struct CircuitBreaker {
     inner: Mutex<CircuitBreakerInner>,
     name: String,
 }
 
 impl CircuitBreaker {
-    pub fn new(name: impl Into<String>, config: CircuitBreakerConfig) -> Self {
+    pub(crate) fn new(name: impl Into<String>, config: CircuitBreakerConfig) -> Self {
         let recovery_timeout = config.recovery_timeout;
         Self {
             name: name.into(),
@@ -83,7 +83,7 @@ impl CircuitBreaker {
     }
 
     /// Check if a request is allowed through the circuit breaker.
-    pub async fn allow_request(&self) -> Result<(), AppError> {
+    pub(crate) async fn allow_request(&self) -> Result<(), AppError> {
         let mut inner = self.inner.lock().await;
         match inner.state {
             CircuitState::Closed => Ok(()),
@@ -129,7 +129,7 @@ impl CircuitBreaker {
     }
 
     /// Record a successful call — resets circuit to closed.
-    pub async fn record_success(&self) {
+    pub(crate) async fn record_success(&self) {
         let mut inner = self.inner.lock().await;
         if inner.state != CircuitState::Closed {
             info!(
@@ -145,7 +145,7 @@ impl CircuitBreaker {
     }
 
     /// Record a failed call — may trip the circuit open.
-    pub async fn record_failure(&self) {
+    pub(crate) async fn record_failure(&self) {
         let mut inner = self.inner.lock().await;
         inner.failure_count += 1;
         inner.last_failure_time = Some(Instant::now());
@@ -180,13 +180,13 @@ impl CircuitBreaker {
 }
 
 /// Wrapper that adds circuit breaker protection to any `LlmProvider`.
-pub struct CircuitBreakerLlmWrapper {
+pub(crate) struct CircuitBreakerLlmWrapper {
     provider: Arc<dyn LlmProvider>,
     breaker: Arc<CircuitBreaker>,
 }
 
 impl CircuitBreakerLlmWrapper {
-    pub fn new(provider: Arc<dyn LlmProvider>, breaker: Arc<CircuitBreaker>) -> Self {
+    pub(crate) fn new(provider: Arc<dyn LlmProvider>, breaker: Arc<CircuitBreaker>) -> Self {
         Self { provider, breaker }
     }
 }

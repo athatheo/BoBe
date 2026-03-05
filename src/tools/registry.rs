@@ -11,7 +11,7 @@ use crate::tools::ToolSource;
 ///
 /// Uses `DashMap` for lock-free concurrent reads on the hot path
 /// (tool lookups during every LLM call) with rare writes (registration).
-pub struct ToolRegistry {
+pub(crate) struct ToolRegistry {
     sources: DashMap<String, Arc<dyn ToolSource>>,
     tool_to_source: DashMap<String, String>,
     enabled_overrides: DashMap<String, bool>,
@@ -24,7 +24,7 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             sources: DashMap::new(),
             tool_to_source: DashMap::new(),
@@ -32,8 +32,7 @@ impl ToolRegistry {
         }
     }
 
-    /// Register a tool source and index its tools.
-    pub async fn register(&self, source: Arc<dyn ToolSource>) {
+    pub(crate) async fn register(&self, source: Arc<dyn ToolSource>) {
         let name = source.name().to_owned();
         debug!(source = %name, "Registering tool source");
 
@@ -46,11 +45,7 @@ impl ToolRegistry {
         self.sources.insert(name, source);
     }
 
-    /// Collect all tool definitions from every registered source.
-    ///
-    /// When `include_disabled` is false, tools disabled via [`Self::set_tool_enabled`]
-    /// are filtered out so the LLM never sees them.
-    pub async fn get_all_tools(&self, include_disabled: bool) -> Vec<ToolDefinition> {
+    pub(crate) async fn get_all_tools(&self, include_disabled: bool) -> Vec<ToolDefinition> {
         let sources: Vec<Arc<dyn ToolSource>> =
             self.sources.iter().map(|e| e.value().clone()).collect();
 
@@ -81,14 +76,12 @@ impl ToolRegistry {
         all
     }
 
-    /// Find the source that provides a given tool.
-    pub async fn get_source_for_tool(&self, tool_name: &str) -> Option<Arc<dyn ToolSource>> {
+    pub(crate) async fn get_source_for_tool(&self, tool_name: &str) -> Option<Arc<dyn ToolSource>> {
         let source_name = self.tool_to_source.get(tool_name)?.value().clone();
         self.sources.get(&source_name).map(|e| e.value().clone())
     }
 
-    /// Rebuild the tool→source index from all registered sources.
-    pub async fn refresh_index(&self) -> Result<(), AppError> {
+    pub(crate) async fn refresh_index(&self) -> Result<(), AppError> {
         self.tool_to_source.clear();
         let sources: Vec<(String, Arc<dyn ToolSource>)> = self
             .sources
@@ -109,8 +102,7 @@ impl ToolRegistry {
         Ok(())
     }
 
-    /// Check whether a tool is enabled (`None` if tool is unknown).
-    pub fn is_tool_enabled(&self, tool_name: &str) -> Option<bool> {
+    pub(crate) fn is_tool_enabled(&self, tool_name: &str) -> Option<bool> {
         if !self.tool_to_source.contains_key(tool_name) {
             return None;
         }
@@ -121,8 +113,7 @@ impl ToolRegistry {
         )
     }
 
-    /// Set the enabled state of a tool. Returns `true` if the tool exists.
-    pub fn set_tool_enabled(&self, tool_name: &str, enabled: bool) -> bool {
+    pub(crate) fn set_tool_enabled(&self, tool_name: &str, enabled: bool) -> bool {
         if !self.tool_to_source.contains_key(tool_name) {
             return false;
         }
@@ -131,13 +122,11 @@ impl ToolRegistry {
         true
     }
 
-    /// Enable a tool. Returns `true` if the tool exists.
-    pub fn enable_tool(&self, tool_name: &str) -> bool {
+    pub(crate) fn enable_tool(&self, tool_name: &str) -> bool {
         self.set_tool_enabled(tool_name, true)
     }
 
-    /// Disable a tool. Returns `true` if the tool exists.
-    pub fn disable_tool(&self, tool_name: &str) -> bool {
+    pub(crate) fn disable_tool(&self, tool_name: &str) -> bool {
         self.set_tool_enabled(tool_name, false)
     }
 }

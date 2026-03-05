@@ -1,6 +1,4 @@
-//! Checkin trigger — entry point for scheduled check-ins.
-//!
-//! Orchestrates: check schedule → active conversation check → cooldown → send.
+//! Entry point for scheduled check-ins: schedule -> conversation check -> cooldown -> send.
 
 use std::sync::Arc;
 
@@ -15,7 +13,7 @@ use crate::runtime::state::Decision;
 use crate::runtime::triggers::checkin_scheduler::CheckinScheduler;
 use crate::services::conversation_service::ConversationService;
 
-pub struct CheckinTrigger {
+pub(crate) struct CheckinTrigger {
     scheduler: CheckinScheduler,
     generator: Arc<ProactiveGenerator>,
     conversation: Arc<ConversationService>,
@@ -24,7 +22,7 @@ pub struct CheckinTrigger {
 }
 
 impl CheckinTrigger {
-    pub fn new(
+    pub(crate) fn new(
         scheduler: CheckinScheduler,
         generator: Arc<ProactiveGenerator>,
         conversation: Arc<ConversationService>,
@@ -40,30 +38,25 @@ impl CheckinTrigger {
         }
     }
 
-    /// Execute the checkin trigger. Returns `Decision::Engage` if check-in was sent.
-    pub async fn fire(&mut self) -> Decision {
+    pub(crate) async fn fire(&mut self) -> Decision {
         if !self.scheduler.should_checkin() {
             return Decision::Idle;
         }
 
         let cfg = self.config.load();
 
-        // Skip if active non-stale conversation
-        if let Ok(Some(existing)) = self.conversation.get_pending_or_active().await {
-            // Get turns to check staleness
-            if let Ok(turns) = self
+        if let Ok(Some(existing)) = self.conversation.get_pending_or_active().await
+            && let Ok(turns) = self
                 .conversation
                 .get_conversation_turns(existing.id, 100)
                 .await
-                && !existing.is_stale(cfg.conversation.auto_close_minutes as i64, &turns)
-            {
-                debug!(reason = "active_conversation", "checkin_trigger.skipped");
-                self.scheduler.mark_checkin_done();
-                return Decision::Idle;
-            }
+            && !existing.is_stale(cfg.conversation.auto_close_minutes as i64, &turns)
+        {
+            debug!(reason = "active_conversation", "checkin_trigger.skipped");
+            self.scheduler.mark_checkin_done();
+            return Decision::Idle;
         }
 
-        // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
                 cfg.decision.cooldown_minutes,
@@ -79,7 +72,6 @@ impl CheckinTrigger {
             return Decision::Idle;
         }
 
-        // Generate LLM-powered check-in
         info!("checkin_trigger.started");
         self.generator
             .generate_proactive_response(
@@ -93,7 +85,7 @@ impl CheckinTrigger {
         Decision::Engage
     }
 
-    pub fn get_next_checkin_time(&mut self) -> Option<DateTime<Utc>> {
+    pub(crate) fn get_next_checkin_time(&mut self) -> Option<DateTime<Utc>> {
         self.scheduler.get_next_checkin_time()
     }
 }

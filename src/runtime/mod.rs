@@ -1,11 +1,11 @@
-pub mod decision_engine;
-pub mod message_handler;
-pub mod proactive_generator;
-pub mod response_streamer;
-pub mod session;
-pub mod state;
+pub(crate) mod decision_engine;
+pub(crate) mod message_handler;
+pub(crate) mod proactive_generator;
+pub(crate) mod response_streamer;
+pub(crate) mod session;
+pub(crate) mod state;
 
-pub mod learners;
-pub mod learning;
-pub mod prompts;
-pub mod triggers;
+pub(crate) mod learners;
+pub(crate) mod learning;
+pub(crate) mod prompts;
+pub(crate) mod triggers;

@@ -6,12 +6,12 @@ use crate::db::LearningStateRepository;
 use crate::error::AppError;
 use crate::models::learning_state::LearningState;
 
-pub struct SqliteLearningStateRepo {
+pub(crate) struct SqliteLearningStateRepo {
     pool: SqlitePool,
 }
 
 impl SqliteLearningStateRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }

@@ -3,18 +3,18 @@ use uuid::Uuid;
 
 /// Personality document injected into LLM prompts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-pub struct Soul {
-    pub id: Uuid,
-    pub name: String,
-    pub content: String,
-    pub enabled: bool,
-    pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct Soul {
+    pub(crate) id: Uuid,
+    pub(crate) name: String,
+    pub(crate) content: String,
+    pub(crate) enabled: bool,
+    pub(crate) is_default: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl Soul {
-    pub fn new(name: String, content: String, is_default: bool) -> Self {
+    pub(crate) fn new(name: String, content: String, is_default: bool) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

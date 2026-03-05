@@ -13,10 +13,7 @@ use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 
 const TOOL_NAME_SEPARATOR: &str = "__";
 
-/// Manages multiple MCP server connections and exposes their tools.
-///
-/// Uses `DashMap` for lock-free concurrent access to client/tool/config maps.
-pub struct McpToolAdapter {
+pub(crate) struct McpToolAdapter {
     clients: DashMap<String, Arc<McpClient>>,
     tool_to_server: DashMap<String, String>,
     server_configs: DashMap<String, McpParsedServer>,
@@ -26,7 +23,7 @@ pub struct McpToolAdapter {
 }
 
 impl McpToolAdapter {
-    pub fn new(
+    pub(crate) fn new(
         config_path: PathBuf,
         blocked_commands: Vec<String>,
         dangerous_env_keys: Vec<String>,
@@ -41,8 +38,7 @@ impl McpToolAdapter {
         }
     }
 
-    /// Initialize all MCP servers from file config.
-    pub async fn initialize(&self) -> Result<(), AppError> {
+    pub(crate) async fn initialize(&self) -> Result<(), AppError> {
         let servers = self.load_enabled_servers().await;
         if servers.is_empty() {
             debug!("No MCP servers configured");
@@ -58,8 +54,7 @@ impl McpToolAdapter {
         Ok(())
     }
 
-    /// Shut down all MCP server connections.
-    pub async fn shutdown(&self) {
+    pub(crate) async fn shutdown(&self) {
         let snapshot: Vec<(String, Arc<McpClient>)> = self
             .clients
             .iter()
@@ -75,20 +70,17 @@ impl McpToolAdapter {
         self.server_configs.clear();
     }
 
-    /// Reload all MCP servers from the canonical config file.
-    pub async fn reload_from_config(&self) -> Result<(), AppError> {
+    pub(crate) async fn reload_from_config(&self) -> Result<(), AppError> {
         self.shutdown().await;
         self.initialize().await
     }
 
-    /// Get the last error for a specific server.
-    pub async fn get_server_error(&self, name: &str) -> Option<String> {
+    pub(crate) async fn get_server_error(&self, name: &str) -> Option<String> {
         let client = self.clients.get(name)?;
         client.value().last_error().await
     }
 
-    /// Get unfiltered/raw tools directly from the MCP server.
-    pub async fn get_raw_tools_for_server(
+    pub(crate) async fn get_raw_tools_for_server(
         &self,
         server_name: &str,
     ) -> Result<Vec<McpToolInfo>, AppError> {
@@ -160,7 +152,7 @@ impl ToolSource for McpToolAdapter {
     async fn get_tools(&self) -> Result<Vec<ToolDefinition>, AppError> {
         let mut all_defs = Vec::new();
 
-        // Collect client refs outside the DashMap iterator to avoid !Send guards across awaits.
+        // Snapshot client refs to avoid holding DashMap guards across awaits
         let snapshot: Vec<(String, Arc<McpClient>)> = self
             .clients
             .iter()

@@ -1,17 +1,14 @@
-//! Base types for learners.
-
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-/// Sources that produce observations for learning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LearnerObservationSource {
+pub(crate) enum LearnerObservationSource {
     Capture,
     Message,
 }
 
 impl LearnerObservationSource {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Capture => "capture",
             Self::Message => "message",
@@ -19,20 +16,19 @@ impl LearnerObservationSource {
     }
 }
 
-/// Raw observation from a source, before learner processing.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct LearnerObservation {
-    pub source: LearnerObservationSource,
-    pub timestamp: DateTime<Utc>,
-    pub screenshot: Option<Vec<u8>>,
-    pub text: Option<String>,
-    pub active_window: Option<String>,
-    pub metadata: HashMap<String, serde_json::Value>,
+pub(crate) struct LearnerObservation {
+    pub(crate) source: LearnerObservationSource,
+    pub(crate) timestamp: DateTime<Utc>,
+    pub(crate) screenshot: Option<Vec<u8>>,
+    pub(crate) text: Option<String>,
+    pub(crate) active_window: Option<String>,
+    pub(crate) metadata: HashMap<String, serde_json::Value>,
 }
 
 impl LearnerObservation {
-    pub fn capture(screenshot: Vec<u8>, active_window: Option<String>) -> Self {
+    pub(crate) fn capture(screenshot: Vec<u8>, active_window: Option<String>) -> Self {
         Self {
             source: LearnerObservationSource::Capture,
             timestamp: Utc::now(),
@@ -43,7 +39,7 @@ impl LearnerObservation {
         }
     }
 
-    pub fn message(text: String) -> Self {
+    pub(crate) fn message(text: String) -> Self {
         Self {
             source: LearnerObservationSource::Message,
             timestamp: Utc::now(),
@@ -55,9 +51,8 @@ impl LearnerObservation {
     }
 }
 
-/// Error type for learner operations.
 #[derive(Debug, thiserror::Error)]
-pub enum LearnerError {
+pub(crate) enum LearnerError {
     #[error("Wrong observation source: expected {expected}, got {got}")]
     WrongSource { expected: String, got: String },
 
@@ -85,9 +80,7 @@ impl From<crate::error::AppError> for LearnerError {
     }
 }
 
-/// Result of a single learner operation.
 #[derive(Debug)]
-pub enum LearnerResult {
-    /// Observation was stored successfully.
+pub(crate) enum LearnerResult {
     Stored { observation_id: uuid::Uuid },
 }

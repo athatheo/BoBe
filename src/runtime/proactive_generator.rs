@@ -24,7 +24,7 @@ use crate::util::sse::factories::conversation_closed_event;
 use crate::util::sse::types::IndicatorType;
 use crate::util::tokens::{clamp_max_tokens, count_message_tokens};
 
-pub struct ProactiveGenerator {
+pub(crate) struct ProactiveGenerator {
     llm: Arc<dyn LlmProvider>,
     context_assembler: Arc<ContextAssembler>,
     conversation: Arc<ConversationService>,
@@ -36,7 +36,7 @@ pub struct ProactiveGenerator {
 }
 
 impl ProactiveGenerator {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         context_assembler: Arc<ContextAssembler>,
         conversation: Arc<ConversationService>,
@@ -58,7 +58,7 @@ impl ProactiveGenerator {
         }
     }
 
-    pub async fn generate_proactive_response(
+    pub(crate) async fn generate_proactive_response(
         &self,
         auto_close_minutes: i64,
         context_summary: Option<String>,
@@ -320,10 +320,10 @@ impl ProactiveGenerator {
             .map(|(r, c)| (r.as_str(), c.as_str()))
             .collect();
 
-        let messages = ConversationSummaryPrompt::messages(&turn_refs);
-        let prompt_config = ConversationSummaryPrompt::config();
-
         let cfg = self.config.load();
+        let locale = cfg.effective_locale();
+        let messages = ConversationSummaryPrompt::messages(&turn_refs, Some(&locale));
+        let prompt_config = ConversationSummaryPrompt::config();
         let prompt_tokens = count_message_tokens(&messages);
         let max_tokens = clamp_max_tokens(
             cfg.llm.context_window,

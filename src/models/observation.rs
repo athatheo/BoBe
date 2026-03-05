@@ -3,26 +3,23 @@ use uuid::Uuid;
 
 use super::types::ObservationSource;
 
-/// Raw captured data with semantic search capability.
-///
-/// Source abstraction: ScreenCapture → source="screen", etc.
-/// Retention: 7 days (daily pruning job).
+/// Raw captured data with semantic search. Retention: 7 days.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-pub struct Observation {
-    pub id: Uuid,
-    pub source: ObservationSource,
-    pub content: String,
-    pub category: String,
+pub(crate) struct Observation {
+    pub(crate) id: Uuid,
+    pub(crate) source: ObservationSource,
+    pub(crate) content: String,
+    pub(crate) category: String,
     /// JSON-encoded embedding vector.
-    pub embedding: Option<String>,
+    pub(crate) embedding: Option<String>,
     /// JSON-encoded flexible metadata.
-    pub metadata: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub(crate) metadata: Option<String>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl Observation {
-    pub fn new(source: ObservationSource, content: String, category: String) -> Self {
+    pub(crate) fn new(source: ObservationSource, content: String, category: String) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

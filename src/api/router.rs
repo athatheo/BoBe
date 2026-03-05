@@ -10,8 +10,7 @@ use super::handlers;
 use super::middleware::{AllowedHosts, host_validation, request_logging};
 use crate::app_state::AppState;
 
-/// Build the complete Axum router with all middleware.
-pub fn build_router(state: Arc<AppState>) -> Router {
+pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     let cfg = state.config();
 
     let origins: Vec<axum::http::HeaderValue> = cfg
@@ -35,19 +34,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let allowed_hosts = AllowedHosts::new(&cfg.server.host, cfg.server.port);
 
     Router::new()
-        // Health & Status
         .route("/health", get(handlers::health::health_check))
         .route("/status", get(handlers::health::get_status))
-        // SSE Events
         .route("/events", get(handlers::events::stream_events))
-        // Conversation
         .route("/message", post(handlers::conversation::send_message))
         .route("/message/dismiss", post(handlers::conversation::dismiss_message))
-        // Capture
         .route("/capture/start", post(handlers::capture::start_capture))
         .route("/capture/stop", post(handlers::capture::stop_capture))
         .route("/capture/once", post(handlers::capture::capture_once))
-        // Goals
         .route("/goals", get(handlers::goals::list_goals).post(handlers::goals::create_goal))
         .route(
             "/goals/{goal_id}",
@@ -63,7 +57,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/goals/{goal_id}/archive",
             post(handlers::goals::archive_goal),
         )
-        // Memories
         .route(
             "/memories",
             get(handlers::memories::list_memories).post(handlers::memories::create_memory),
@@ -86,7 +79,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/memories/{memory_id}/disable",
             post(handlers::memories::disable_memory),
         )
-        // Souls
         .route(
             "/souls",
             get(handlers::souls::list_souls).post(handlers::souls::create_soul),
@@ -109,7 +101,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/souls/{soul_id}/disable",
             post(handlers::souls::disable_soul),
         )
-        // User Profiles
         .route(
             "/user-profiles",
             get(handlers::user_profile::list_profiles)
@@ -133,18 +124,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/user-profiles/{profile_id}/disable",
             post(handlers::user_profile::disable_profile),
         )
-        // Settings
         .route(
             "/settings",
             get(handlers::settings::get_settings)
                 .patch(handlers::settings::update_settings),
         )
-        // Models
         .route("/models", get(handlers::models::list_models))
         .route("/models/pull", post(handlers::models::pull_model))
         .route("/models/registry", get(handlers::models::list_registry_models))
         .route("/models/{model_name}", delete(handlers::models::delete_model))
-        // Onboarding & Setup
         .route(
             "/onboarding/status",
             get(handlers::onboarding::onboarding_status),
@@ -166,7 +154,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::setup::get_setup_status)
                 .delete(handlers::setup::cancel_setup_job),
         )
-        // Tools (MCP full-document config routes)
         .route(
             "/tools/mcp/config",
             get(handlers::tools_mcp::get_mcp_config)
@@ -190,7 +177,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/tools/{tool_name}/disable",
             post(handlers::tools::disable_tool),
         )
-        // Goal Worker
         .route(
             "/goal-plans",
             get(handlers::goal_worker::list_goal_plans),
@@ -219,18 +205,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/goal-plans/{plan_id}/reject",
             post(handlers::goal_worker::reject_goal_plan),
         )
-        // Middleware (order: outermost applied first, innermost runs first)
         .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)
-        // Global request timeout (30s). SSE is unaffected — its handler returns
-        // the Sse response immediately; the background stream runs independently.
+        // SSE unaffected — its handler returns the Sse response immediately.
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::GATEWAY_TIMEOUT,
             std::time::Duration::from_secs(30),
         ))
-        // Cap concurrent in-flight requests to prevent resource exhaustion.
         .layer(tower::limit::ConcurrencyLimitLayer::new(64))
         .with_state(state)
 }

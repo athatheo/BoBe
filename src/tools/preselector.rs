@@ -21,15 +21,14 @@ Rules:
 const MAX_CONVERSATION_MESSAGES: usize = 10;
 const MAX_TOKENS: u32 = 500;
 
-/// Narrows the tool list based on conversation context using an LLM call.
-pub struct ToolPreselector {
+pub(crate) struct ToolPreselector {
     llm: Arc<dyn LlmProvider>,
     config: Arc<ArcSwap<Config>>,
     max_tools_for_bypass: usize,
 }
 
 impl ToolPreselector {
-    pub fn new(llm: Arc<dyn LlmProvider>, config: Arc<ArcSwap<Config>>) -> Self {
+    pub(crate) fn new(llm: Arc<dyn LlmProvider>, config: Arc<ArcSwap<Config>>) -> Self {
         Self {
             llm,
             config,
@@ -37,17 +36,13 @@ impl ToolPreselector {
         }
     }
 
-    /// Select relevant tools based on conversation context.
-    ///
-    /// Returns all tools if preselection is disabled, there are few tools, or on error.
-    pub async fn preselect(
+    pub(crate) async fn preselect(
         &self,
         messages: &[AiMessage],
         all_tools: &[ToolDefinition],
     ) -> Vec<ToolDefinition> {
         let cfg = self.config.load();
 
-        // Bypass conditions
         if !cfg.tools.preselector_enabled
             || all_tools.len() <= self.max_tools_for_bypass
             || messages.is_empty()
@@ -150,10 +145,8 @@ fn format_conversation(messages: &[AiMessage]) -> String {
 }
 
 fn parse_tool_names(content: &str) -> Option<Vec<String>> {
-    // Try parsing as JSON
     let trimmed = content.trim();
 
-    // Handle markdown code blocks
     let json_str = if trimmed.starts_with("```") {
         trimmed
             .trim_start_matches("```json")

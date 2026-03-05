@@ -11,18 +11,18 @@ mod observation_repo;
 mod soul_repo;
 mod user_profile_repo;
 
-pub mod seeding;
+pub(crate) mod seeding;
 
-pub use agent_job_repo::SqliteAgentJobRepo;
-pub use conversation_repo::SqliteConversationRepo;
-pub use cooldown_repo::SqliteCooldownRepo;
-pub use goal_plan_repo::SqliteGoalPlanRepo;
-pub use goal_repo::SqliteGoalRepo;
-pub use learning_state_repo::SqliteLearningStateRepo;
-pub use memory_repo::SqliteMemoryRepo;
-pub use observation_repo::SqliteObservationRepo;
-pub use soul_repo::SqliteSoulRepo;
-pub use user_profile_repo::SqliteUserProfileRepo;
+pub(crate) use agent_job_repo::SqliteAgentJobRepo;
+pub(crate) use conversation_repo::SqliteConversationRepo;
+pub(crate) use cooldown_repo::SqliteCooldownRepo;
+pub(crate) use goal_plan_repo::SqliteGoalPlanRepo;
+pub(crate) use goal_repo::SqliteGoalRepo;
+pub(crate) use learning_state_repo::SqliteLearningStateRepo;
+pub(crate) use memory_repo::SqliteMemoryRepo;
+pub(crate) use observation_repo::SqliteObservationRepo;
+pub(crate) use soul_repo::SqliteSoulRepo;
+pub(crate) use user_profile_repo::SqliteUserProfileRepo;
 
 // ─── Repository trait definitions ───────────────────────────────────────────
 
@@ -48,17 +48,10 @@ use crate::models::user_profile::UserProfile;
 
 #[async_trait]
 #[allow(dead_code)]
-pub trait ConversationRepository: Send + Sync {
+pub(crate) trait ConversationRepository: Send + Sync {
     async fn save(&self, conversation: &Conversation) -> Result<Conversation, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Conversation>, AppError>;
-    async fn get_active(&self) -> Result<Option<Conversation>, AppError>;
     async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError>;
-    async fn find_by_state(
-        &self,
-        state: ConversationState,
-        limit: i64,
-    ) -> Result<Vec<Conversation>, AppError>;
-    async fn find_recent(&self, limit: i64) -> Result<Vec<Conversation>, AppError>;
     async fn find_closed_since(
         &self,
         since: Option<DateTime<Utc>>,
@@ -86,7 +79,7 @@ pub trait ConversationRepository: Send + Sync {
 
 #[async_trait]
 #[allow(dead_code)]
-pub trait MemoryRepository: Send + Sync {
+pub(crate) trait MemoryRepository: Send + Sync {
     async fn save(&self, memory: &Memory) -> Result<Memory, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Memory>, AppError>;
     async fn find_by_type(
@@ -131,7 +124,7 @@ pub trait MemoryRepository: Send + Sync {
 
 #[async_trait]
 #[allow(dead_code)]
-pub trait GoalRepository: Send + Sync {
+pub(crate) trait GoalRepository: Send + Sync {
     async fn save(&self, goal: &Goal) -> Result<Goal, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Goal>, AppError>;
     async fn find_by_status(
@@ -163,17 +156,14 @@ pub trait GoalRepository: Send + Sync {
         enabled: Option<bool>,
     ) -> Result<Option<Goal>, AppError>;
     async fn delete(&self, id: Uuid) -> Result<bool, AppError>;
-    /// Delete goals with given statuses that were updated before the cutoff.
     async fn delete_stale_goals(
         &self,
         statuses: &[GoalStatus],
         older_than: DateTime<Utc>,
     ) -> Result<u64, AppError>;
-    async fn find_by_content(&self, content: &str) -> Result<Option<Goal>, AppError>;
     async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError>;
     async fn find_null_embedding(&self, limit: i64) -> Result<Vec<Goal>, AppError>;
     async fn update_embedding(&self, id: Uuid, embedding: &[f32]) -> Result<(), AppError>;
-    /// Bulk update status for multiple goals. Returns count of updated rows.
     async fn bulk_update_status(
         &self,
         goal_ids: &[Uuid],
@@ -182,7 +172,7 @@ pub trait GoalRepository: Send + Sync {
 }
 
 #[async_trait]
-pub trait ObservationRepository: Send + Sync {
+pub(crate) trait ObservationRepository: Send + Sync {
     async fn save(&self, observation: &Observation) -> Result<Observation, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Observation>, AppError>;
     async fn find_recent(&self, minutes: i64) -> Result<Vec<Observation>, AppError>;
@@ -204,7 +194,7 @@ pub trait ObservationRepository: Send + Sync {
 
 #[async_trait]
 #[allow(dead_code)]
-pub trait SoulRepository: Send + Sync {
+pub(crate) trait SoulRepository: Send + Sync {
     async fn save(&self, soul: &Soul) -> Result<Soul, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<Soul>, AppError>;
     async fn get_by_name(&self, name: &str) -> Result<Option<Soul>, AppError>;
@@ -224,7 +214,7 @@ pub trait SoulRepository: Send + Sync {
 
 #[async_trait]
 #[allow(dead_code)]
-pub trait AgentJobRepository: Send + Sync {
+pub(crate) trait AgentJobRepository: Send + Sync {
     async fn save(&self, job: &AgentJob) -> Result<AgentJob, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<AgentJob>, AppError>;
     async fn find_by_status(&self, status: AgentJobStatus) -> Result<Vec<AgentJob>, AppError>;
@@ -235,7 +225,7 @@ pub trait AgentJobRepository: Send + Sync {
 
 #[async_trait]
 #[allow(dead_code)]
-pub trait UserProfileRepository: Send + Sync {
+pub(crate) trait UserProfileRepository: Send + Sync {
     async fn save(&self, profile: &UserProfile) -> Result<UserProfile, AppError>;
     async fn get_by_id(&self, id: Uuid) -> Result<Option<UserProfile>, AppError>;
     async fn get_by_name(&self, name: &str) -> Result<Option<UserProfile>, AppError>;
@@ -252,14 +242,14 @@ pub trait UserProfileRepository: Send + Sync {
 }
 
 #[async_trait]
-pub trait LearningStateRepository: Send + Sync {
+pub(crate) trait LearningStateRepository: Send + Sync {
     async fn get_or_create(&self) -> Result<LearningState, AppError>;
     async fn save(&self, state: &LearningState) -> Result<(), AppError>;
 }
 
 #[async_trait]
 #[allow(dead_code)]
-pub trait CooldownRepository: Send + Sync {
+pub(crate) trait CooldownRepository: Send + Sync {
     fn last_engagement(&self) -> Option<DateTime<Utc>>;
     fn last_user_response(&self) -> Option<DateTime<Utc>>;
     fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo>;
@@ -269,7 +259,7 @@ pub trait CooldownRepository: Send + Sync {
 }
 
 #[async_trait]
-pub trait GoalPlanRepository: Send + Sync {
+pub(crate) trait GoalPlanRepository: Send + Sync {
     async fn create_plan(
         &self,
         goal_id: Uuid,

@@ -1,14 +1,13 @@
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
-/// Result of a cooldown check when cooldown is active.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct CooldownInfo {
-    pub remaining: Duration,
-    pub cooldown_minutes: i64,
-    /// `"user_response"` or `"ai_engagement"`
-    pub cooldown_type: String,
+pub(crate) struct CooldownInfo {
+    pub(crate) remaining: Duration,
+    pub(crate) cooldown_minutes: i64,
+    /// Either `"user_response"` or `"ai_engagement"`.
+    pub(crate) cooldown_type: String,
 }
 
 /// Tracks cooldown state for proactive engagement.
@@ -16,16 +15,16 @@ pub struct CooldownInfo {
 /// Single-row table — enforced by application logic.
 /// Survives server restarts (ADR-0003).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-pub struct Cooldown {
-    pub id: Uuid,
-    pub last_engagement: Option<DateTime<Utc>>,
-    pub last_user_response: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct Cooldown {
+    pub(crate) id: Uuid,
+    pub(crate) last_engagement: Option<DateTime<Utc>>,
+    pub(crate) last_user_response: Option<DateTime<Utc>>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl Cooldown {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -36,9 +35,12 @@ impl Cooldown {
         }
     }
 
-    /// Check if cooldown period is active.
     /// Returns `Some(CooldownInfo)` if in cooldown, `None` if ready to engage.
-    pub fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo> {
+    pub(crate) fn check_cooldown(
+        &self,
+        base_minutes: i64,
+        extended_minutes: i64,
+    ) -> Option<CooldownInfo> {
         let now = Utc::now();
 
         if let Some(last_response) = self.last_user_response {

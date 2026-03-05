@@ -7,12 +7,12 @@ use crate::db::UserProfileRepository;
 use crate::error::AppError;
 use crate::models::user_profile::UserProfile;
 
-pub struct SqliteUserProfileRepo {
+pub(crate) struct SqliteUserProfileRepo {
     pool: SqlitePool,
 }
 
 impl SqliteUserProfileRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }

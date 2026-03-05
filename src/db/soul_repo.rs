@@ -7,12 +7,12 @@ use crate::db::SoulRepository;
 use crate::error::AppError;
 use crate::models::soul::Soul;
 
-pub struct SqliteSoulRepo {
+pub(crate) struct SqliteSoulRepo {
     pool: SqlitePool,
 }
 
 impl SqliteSoulRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }

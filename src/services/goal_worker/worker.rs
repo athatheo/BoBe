@@ -21,8 +21,7 @@ use crate::util::sse::event_queue::EventQueue;
 
 use super::{GoalContextProvider, GoalExecutorProvider, PlanStep};
 
-/// Single-goal lifecycle orchestrator.
-pub struct GoalWorker {
+pub(crate) struct GoalWorker {
     config: Arc<ArcSwap<Config>>,
     executor: Arc<dyn GoalExecutorProvider>,
     context_provider: Arc<dyn GoalContextProvider>,
@@ -33,7 +32,7 @@ pub struct GoalWorker {
 }
 
 impl GoalWorker {
-    pub fn new(
+    pub(crate) fn new(
         config: Arc<ArcSwap<Config>>,
         executor: Arc<dyn GoalExecutorProvider>,
         context_provider: Arc<dyn GoalContextProvider>,
@@ -57,10 +56,7 @@ impl GoalWorker {
         self.config.load()
     }
 
-    /// Generate a plan and either auto-execute or present for approval.
-    ///
-    /// Returns `true` if the goal was completed, `false` otherwise.
-    pub async fn work_on_goal(&self, goal: &Goal) -> bool {
+    pub(crate) async fn work_on_goal(&self, goal: &Goal) -> bool {
         let goal_id = goal.id;
         let autonomous = self.cfg().goal_worker.autonomous;
 
@@ -92,17 +88,14 @@ impl GoalWorker {
     async fn work_on_goal_inner(&self, goal: &Goal, autonomous: bool) -> Result<bool, AppError> {
         let goal_id = goal.id;
 
-        // 1. Gather context
         let context = self.context_provider.get_context_for_goal(goal).await?;
 
-        // 2. Generate plan via executor
         let plan_steps = self.executor.generate_plan(goal, &context, None).await?;
         if plan_steps.is_empty() {
             warn!(goal_id = %goal_id, "goal_worker.empty_plan");
             return Ok(false);
         }
 
-        // 3. Persist plan to DB
         let summary = format!("Plan for: {}", &goal.content[..goal.content.len().min(100)]);
         let initial_status = if autonomous {
             GoalPlanStatus::AutoApproved
@@ -114,7 +107,6 @@ impl GoalWorker {
             .create_plan(goal_id, &summary, initial_status)
             .await?;
 
-        // Create plan steps
         for step in &plan_steps {
             self.plan_repo
                 .create_step(plan.id, step.order, &step.content)
@@ -122,7 +114,6 @@ impl GoalWorker {
         }
 
         if autonomous {
-            // Auto-approve and execute immediately
             self.notify_started(goal).await;
 
             info!(
@@ -134,7 +125,6 @@ impl GoalWorker {
             return self.execute_approved_plan(goal, plan.id).await;
         }
 
-        // Non-autonomous: notify user and wait for approval
         self.notify_plan_ready(goal, &plan_steps).await;
 
         info!(
@@ -146,10 +136,7 @@ impl GoalWorker {
         Ok(false) // Not complete yet — waiting for approval
     }
 
-    /// Execute an approved plan in a work directory.
-    ///
-    /// Called by `GoalWorkerManager` when a plan is approved.
-    pub async fn execute_approved_plan(
+    pub(crate) async fn execute_approved_plan(
         &self,
         goal: &Goal,
         plan_id: Uuid,
@@ -170,15 +157,12 @@ impl GoalWorker {
             "goal_worker.executing_plan"
         );
 
-        // Mark plan as in-progress
         self.plan_repo
             .update_plan_status(plan_id, GoalPlanStatus::InProgress, None)
             .await?;
 
-        // Create work directory
         let work_dir = self.executor.create_work_dir(goal_id, &goal.content);
 
-        // Filter out already-completed or skipped steps
         let pending_steps: Vec<_> = steps
             .iter()
             .filter(|s| {
@@ -190,13 +174,11 @@ impl GoalWorker {
             .cloned()
             .collect();
 
-        // Execute the full plan
         let result = self
             .executor
             .execute_goal(goal, &plan, &pending_steps, &work_dir)
             .await?;
 
-        // Mark steps based on result
         let final_status = if result.success {
             GoalPlanStepStatus::Completed
         } else {
@@ -220,7 +202,6 @@ impl GoalWorker {
                 .await;
         }
 
-        // Mark plan and goal
         if result.success {
             self.plan_repo
                 .update_plan_status(plan_id, GoalPlanStatus::Completed, None)
@@ -280,8 +261,7 @@ impl GoalWorker {
         self.persist_as_turn(&message).await;
     }
 
-    /// Notify the user that a goal has been paused after repeated failures.
-    pub async fn notify_goal_paused(
+    pub(crate) async fn notify_goal_paused(
         &self,
         goal: &Goal,
         failure_count: u32,
@@ -300,7 +280,6 @@ impl GoalWorker {
         self.persist_as_turn(&message).await;
     }
 
-    /// Add a message to the active conversation for context.
     async fn persist_as_turn(&self, message: &str) {
         match self.conversation_service.get_pending_or_active().await {
             Ok(Some(conv)) => {

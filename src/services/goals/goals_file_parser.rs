@@ -30,18 +30,16 @@ use regex::Regex;
 static CHECKBOX_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^-\s*\[([ xX])\]\s*(.+)$").expect("valid checkbox regex"));
 
-/// A goal parsed from GOALS.md.
 #[derive(Debug, Clone)]
-pub struct ParsedGoal {
-    pub content: String,
+pub(crate) struct ParsedGoal {
+    pub(crate) content: String,
     /// "high" | "medium" | "low"
-    pub priority: String,
-    pub completed: bool,
-    pub is_inferred: bool,
+    pub(crate) priority: String,
+    pub(crate) completed: bool,
+    pub(crate) is_inferred: bool,
 }
 
-/// Parse GOALS.md content into structured goals.
-pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
+pub(crate) fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
     let mut goals = Vec::new();
     let mut current_priority = "medium".to_owned();
     let mut in_inferred_section = false;
@@ -50,7 +48,6 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
     for line in content.lines() {
         let line = line.trim();
 
-        // Track section headers
         if let Some(section_name) = line.strip_prefix("## ") {
             let lower = section_name.trim().to_lowercase();
             if lower.contains("inferred") || lower.contains("bobe") {
@@ -75,7 +72,6 @@ pub fn parse_goals_file(content: &str) -> Vec<ParsedGoal> {
             continue;
         }
 
-        // Skip non-checkbox lines
         let Some(caps) = CHECKBOX_REGEX.captures(line) else {
             continue;
         };

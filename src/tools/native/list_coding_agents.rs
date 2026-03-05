@@ -10,12 +10,12 @@ use crate::error::AppError;
 use crate::models::types::AgentJobStatus;
 use crate::tools::ToolExecutionContext;
 
-pub struct ListCodingAgentsTool {
+pub(crate) struct ListCodingAgentsTool {
     agent_job_repo: Arc<dyn AgentJobRepository>,
 }
 
 impl ListCodingAgentsTool {
-    pub fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
+    pub(crate) fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
         Self { agent_job_repo }
     }
 }

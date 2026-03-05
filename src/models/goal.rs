@@ -5,22 +5,22 @@ use super::types::{GoalPriority, GoalSource, GoalStatus};
 
 /// User intention with semantic search capability.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-pub struct Goal {
-    pub id: Uuid,
-    pub content: String,
-    pub priority: GoalPriority,
-    pub source: GoalSource,
-    pub status: GoalStatus,
-    pub enabled: bool,
-    pub inference_reason: Option<String>,
+pub(crate) struct Goal {
+    pub(crate) id: Uuid,
+    pub(crate) content: String,
+    pub(crate) priority: GoalPriority,
+    pub(crate) source: GoalSource,
+    pub(crate) status: GoalStatus,
+    pub(crate) enabled: bool,
+    pub(crate) inference_reason: Option<String>,
     /// JSON-encoded embedding vector.
-    pub embedding: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub(crate) embedding: Option<String>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl Goal {
-    pub fn new(content: String, source: GoalSource, priority: GoalPriority) -> Self {
+    pub(crate) fn new(content: String, source: GoalSource, priority: GoalPriority) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -36,15 +36,15 @@ impl Goal {
         }
     }
 
-    pub fn is_active(&self) -> bool {
+    pub(crate) fn is_active(&self) -> bool {
         self.status == GoalStatus::Active
     }
 
-    pub fn is_completed(&self) -> bool {
+    pub(crate) fn is_completed(&self) -> bool {
         self.status == GoalStatus::Completed
     }
 
-    pub fn is_archived(&self) -> bool {
+    pub(crate) fn is_archived(&self) -> bool {
         self.status == GoalStatus::Archived
     }
 }

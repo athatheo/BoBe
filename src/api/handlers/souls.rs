@@ -12,55 +12,51 @@ use crate::db::SoulRepository;
 use crate::error::AppError;
 use crate::models::soul::Soul;
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
-pub struct SoulResponse {
-    pub id: String,
-    pub name: String,
-    pub content: String,
-    pub enabled: bool,
-    pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct SoulResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) content: String,
+    pub(crate) enabled: bool,
+    pub(crate) is_default: bool,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct SoulListResponse {
-    pub souls: Vec<SoulResponse>,
-    pub count: usize,
-    pub enabled_count: usize,
+pub(crate) struct SoulListResponse {
+    pub(crate) souls: Vec<SoulResponse>,
+    pub(crate) count: usize,
+    pub(crate) enabled_count: usize,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SoulCreateRequest {
-    pub name: String,
-    pub content: String,
+pub(crate) struct SoulCreateRequest {
+    pub(crate) name: String,
+    pub(crate) content: String,
     #[serde(default = "super::default_true")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SoulUpdateRequest {
-    pub content: Option<String>,
-    pub enabled: Option<bool>,
+pub(crate) struct SoulUpdateRequest {
+    pub(crate) content: Option<String>,
+    pub(crate) enabled: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct SoulActionResponse {
-    pub id: String,
-    pub name: String,
-    pub enabled: bool,
-    pub message: String,
+pub(crate) struct SoulActionResponse {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) enabled: bool,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SoulListQuery {
+pub(crate) struct SoulListQuery {
     #[serde(default)]
-    pub enabled_only: bool,
+    pub(crate) enabled_only: bool,
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn soul_to_response(soul: &Soul) -> SoulResponse {
     SoulResponse {
@@ -102,10 +98,7 @@ async fn set_soul_enabled(
     }))
 }
 
-// ── Handlers ────────────────────────────────────────────────────────────────
-
-/// GET /api/souls
-pub async fn list_souls(
+pub(crate) async fn list_souls(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SoulListQuery>,
 ) -> Result<Json<SoulListResponse>, AppError> {
@@ -124,8 +117,7 @@ pub async fn list_souls(
     }))
 }
 
-/// GET /api/souls/:id
-pub async fn get_soul(
+pub(crate) async fn get_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulResponse>, AppError> {
@@ -138,8 +130,7 @@ pub async fn get_soul(
     Ok(Json(soul_to_response(&soul)))
 }
 
-/// POST /api/souls
-pub async fn create_soul(
+pub(crate) async fn create_soul(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SoulCreateRequest>,
 ) -> Result<(StatusCode, Json<SoulResponse>), AppError> {
@@ -152,7 +143,6 @@ pub async fn create_soul(
         ));
     }
 
-    // Check for duplicate name
     if state.soul_repo.get_by_name(&body.name).await?.is_some() {
         return Err(AppError::Validation(format!(
             "Soul with name '{}' already exists",
@@ -169,11 +159,8 @@ pub async fn create_soul(
     Ok((StatusCode::CREATED, Json(soul_to_response(&saved))))
 }
 
-/// PATCH /api/souls/:id
-///
-/// Copy-on-write for default souls: editing a default soul renames it
-/// to "<name> (edited)" and preserves the original as a disabled copy.
-pub async fn update_soul(
+/// Copy-on-write: editing a default soul preserves the original as a disabled copy.
+pub(crate) async fn update_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
     Json(body): Json<SoulUpdateRequest>,
@@ -191,7 +178,6 @@ pub async fn update_soul(
         let original_content = soul.content.clone();
         let edited_name = format!("{original_name} (edited)");
 
-        // Rename + apply edits in one update
         let updated = state
             .soul_repo
             .update(
@@ -203,7 +189,6 @@ pub async fn update_soul(
             )
             .await?;
 
-        // Preserve original as disabled copy
         let default_copy = Soul {
             id: Uuid::new_v4(),
             name: original_name,
@@ -235,8 +220,7 @@ pub async fn update_soul(
     Ok(Json(soul_to_response(&updated)))
 }
 
-/// GET /api/souls/by-name/:name
-pub async fn get_soul_by_name(
+pub(crate) async fn get_soul_by_name(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<SoulResponse>, AppError> {
@@ -249,24 +233,21 @@ pub async fn get_soul_by_name(
     Ok(Json(soul_to_response(&soul)))
 }
 
-/// POST /api/souls/:id/enable
-pub async fn enable_soul(
+pub(crate) async fn enable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
     set_soul_enabled(&state.soul_repo, soul_id, true).await
 }
 
-/// POST /api/souls/:id/disable
-pub async fn disable_soul(
+pub(crate) async fn disable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
     set_soul_enabled(&state.soul_repo, soul_id, false).await
 }
 
-/// DELETE /api/souls/:id
-pub async fn delete_soul(
+pub(crate) async fn delete_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {

@@ -1,6 +1,6 @@
-pub mod adapter;
-pub mod client;
-pub mod config;
-pub mod security;
+pub(crate) mod adapter;
+pub(crate) mod client;
+pub(crate) mod config;
+pub(crate) mod security;
 
-pub use adapter::McpToolAdapter;
+pub(crate) use adapter::McpToolAdapter;

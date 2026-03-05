@@ -14,13 +14,13 @@ use crate::models::memory::Memory;
 use crate::models::types::{MemorySource, MemoryType};
 use crate::tools::ToolExecutionContext;
 
-pub struct CreateMemoryTool {
+pub(crate) struct CreateMemoryTool {
     memory_repo: Arc<dyn MemoryRepository>,
     embedding_provider: Arc<dyn EmbeddingProvider>,
 }
 
 impl CreateMemoryTool {
-    pub fn new(
+    pub(crate) fn new(
         memory_repo: Arc<dyn MemoryRepository>,
         embedding_provider: Arc<dyn EmbeddingProvider>,
     ) -> Self {

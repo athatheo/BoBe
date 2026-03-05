@@ -11,7 +11,7 @@ use crate::tools::ToolExecutionContext;
 
 const MAX_RESULTS: usize = 100;
 
-pub struct SearchFilesTool;
+pub(crate) struct SearchFilesTool;
 
 impl Default for SearchFilesTool {
     fn default() -> Self {
@@ -20,12 +20,12 @@ impl Default for SearchFilesTool {
 }
 
 impl SearchFilesTool {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
     fn validate_regex(pattern: &str) -> Result<(), AppError> {
-        // Simple ReDoS protection: limit quantifier nesting
+        // ReDoS protection: limit quantifier nesting
         let quantifier_count = pattern.matches('*').count()
             + pattern.matches('+').count()
             + pattern.matches('?').count();
@@ -130,7 +130,6 @@ impl NativeTool for SearchFilesTool {
             )));
         }
 
-        // Build pattern
         let pattern = if use_regex {
             Self::validate_regex(query)?;
             if case_sensitive {
@@ -149,7 +148,6 @@ impl NativeTool for SearchFilesTool {
 
         let re = Regex::new(&pattern).map_err(|e| AppError::Tool(format!("Pattern error: {e}")))?;
 
-        // Search via tokio::task::spawn_blocking for heavy IO
         let re_clone = re.clone();
         let file_pattern_clone = file_pattern.clone();
         let results = tokio::task::spawn_blocking(move || {
@@ -200,7 +198,6 @@ fn search_directory(
             continue;
         }
 
-        // Skip binary files
         if let Ok(content) = std::fs::read_to_string(path) {
             let display_path = path.to_string_lossy().to_string();
             for (line_num, line) in content.lines().enumerate() {
@@ -216,7 +213,6 @@ fn search_directory(
     results
 }
 
-/// Simple glob matching for file patterns (supports * and ?).
 fn glob_match(pattern: &str, name: &str) -> bool {
     let re_pattern = format!(
         "^{}$",

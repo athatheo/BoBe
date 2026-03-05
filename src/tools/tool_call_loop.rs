@@ -16,15 +16,14 @@ use crate::llm::types::{AiMessage, StreamItem, ToolDefinition};
 use crate::tools::{ToolExecutionContext, ToolNotification, ToolResult};
 use crate::util::tokens::{clamp_max_tokens, count_message_tokens};
 
-/// Agentic loop: LLM → tool calls → results → LLM, until stop or max iterations.
-pub struct ToolCallLoop {
+pub(crate) struct ToolCallLoop {
     llm: Arc<dyn LlmProvider>,
     executor: Arc<ToolExecutor>,
     config: Arc<ArcSwap<Config>>,
 }
 
 impl ToolCallLoop {
-    pub fn new(
+    pub(crate) fn new(
         llm: Arc<dyn LlmProvider>,
         executor: Arc<ToolExecutor>,
         config: Arc<ArcSwap<Config>>,
@@ -36,13 +35,7 @@ impl ToolCallLoop {
         }
     }
 
-    /// Run the streaming tool call loop.
-    ///
-    /// Returns a stream that yields `StreamItem` — either LLM text chunks or
-    /// tool execution notifications. The stream handles the full agentic loop:
-    /// stream LLM → detect tool calls → execute tools (with notifications) →
-    /// feed results back → stream next LLM response.
-    pub fn stream(
+    pub(crate) fn stream(
         &self,
         messages: Vec<AiMessage>,
         tools: Vec<ToolDefinition>,
@@ -57,8 +50,6 @@ impl ToolCallLoop {
         let cfg = self.config.load();
         let max_iterations = cfg.tools.max_iterations as usize;
 
-        // Clamp max_tokens for initial prompt; subsequent iterations may have
-        // more messages (tool results), but use the same budget as a safety net.
         let prompt_tokens = count_message_tokens(&messages);
         let max_tokens = clamp_max_tokens(cfg.llm.context_window, prompt_tokens, max_tokens);
 
@@ -84,7 +75,6 @@ impl ToolCallLoop {
     }
 }
 
-/// Internal: run the streaming tool call loop, sending items through the channel.
 async fn run_streaming_loop(
     llm: Arc<dyn LlmProvider>,
     executor: Arc<ToolExecutor>,
@@ -104,7 +94,7 @@ async fn run_streaming_loop(
     for iteration in 0..max_iterations {
         debug!(iteration, "Streaming tool call loop iteration");
 
-        // Withhold tools on the final iteration to force a text response
+        // Withhold tools on final iteration to force a text response
         let current_tools = if iteration < max_iterations - 1 {
             Some(&tools[..])
         } else {
@@ -135,7 +125,6 @@ async fn run_streaming_loop(
                     if let Some(ref reason) = chunk.finish_reason {
                         finish_reason = Some(reason.clone());
                     }
-                    // Yield text deltas immediately
                     if tx.send(Ok(StreamItem::Chunk(chunk))).await.is_err() {
                         return Ok(()); // receiver dropped
                     }
@@ -147,7 +136,6 @@ async fn run_streaming_loop(
             }
         }
 
-        // Check if done (no tool calls requested)
         if finish_reason.as_deref() != Some("tool_calls") || accumulated_tool_calls.is_empty() {
             info!(
                 iteration,
@@ -157,7 +145,6 @@ async fn run_streaming_loop(
             return Ok(());
         }
 
-        // Add assistant message with accumulated content + tool calls
         let mut assistant_msg =
             AiMessage::assistant_with_tool_calls(accumulated_tool_calls.clone());
         if !accumulated_content.is_empty() {
@@ -165,7 +152,6 @@ async fn run_streaming_loop(
         }
         current_messages.push(assistant_msg);
 
-        // Execute tools with notifications
         let (typed_notifications, results) =
             execute_tools_with_notifications(&executor, &accumulated_tool_calls, ctx_ref).await;
 
@@ -179,7 +165,6 @@ async fn run_streaming_loop(
             }
         }
 
-        // Add tool results to messages
         for result in &results {
             current_messages.push(AiMessage::tool(
                 result.tool_call_id.clone(),
@@ -187,11 +172,8 @@ async fn run_streaming_loop(
                 result.content.clone(),
             ));
         }
-
-        // Continue to next iteration (will stream next LLM response)
     }
 
-    // Max iterations reached — stream final response without tools
     warn!("Streaming tool call loop hit max iterations");
 
     let mut final_stream = llm.stream(current_messages, None, None, temperature, max_tokens);
@@ -221,8 +203,6 @@ async fn run_streaming_loop(
     Ok(())
 }
 
-/// Execute tools in parallel, returning start/complete notifications and results.
-/// Each tool is tracked individually with its own error handling and duration.
 async fn execute_tools_with_notifications(
     executor: &ToolExecutor,
     tool_calls: &[crate::llm::types::AiToolCall],
@@ -230,7 +210,6 @@ async fn execute_tools_with_notifications(
 ) -> (Vec<ToolNotification>, Vec<ToolResult>) {
     let mut typed_notifications = Vec::new();
 
-    // Emit start notifications
     for tc in tool_calls {
         typed_notifications.push(ToolNotification::Started {
             tool_name: tc.name.clone(),
@@ -238,14 +217,12 @@ async fn execute_tools_with_notifications(
         });
     }
 
-    // Execute in parallel, tracking per-tool timing
     let start_times: Vec<std::time::Instant> = tool_calls
         .iter()
         .map(|_| std::time::Instant::now())
         .collect();
     let batch_results = executor.execute_batch(tool_calls, context).await;
 
-    // Emit completion notifications with per-tool duration
     for (i, result) in batch_results.iter().enumerate() {
         let duration_ms = if i < start_times.len() {
             start_times[i].elapsed().as_secs_f64() * MILLIS_PER_SECOND

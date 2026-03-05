@@ -9,29 +9,21 @@ use axum::response::{IntoResponse, Response};
 
 use crate::constants::MILLIS_PER_SECOND;
 
-/// Shared allowed-hosts set for the middleware layer.
 #[derive(Clone)]
-pub struct AllowedHosts {
+pub(crate) struct AllowedHosts {
     hosts: Arc<HashSet<String>>,
 }
 
 impl AllowedHosts {
-    /// Build an allowed-hosts set for the given bind address.
-    ///
-    /// When host is `127.0.0.1` or `localhost`: strict localhost-only.
-    /// When host is `0.0.0.0`: also allows all local network interface IPs
-    /// (LAN devices).
-    pub fn new(host: &str, port: u16) -> Self {
+    /// Build allowed-hosts set. `0.0.0.0` allows all interfaces; otherwise localhost-only.
+    pub(crate) fn new(host: &str, port: u16) -> Self {
         let mut set = HashSet::new();
-        // Always allow localhost variants
         set.insert(format!("127.0.0.1:{port}"));
         set.insert(format!("localhost:{port}"));
         set.insert("127.0.0.1".into());
         set.insert("localhost".into());
 
         if host == "0.0.0.0" {
-            // Allow any host when explicitly binding to all interfaces.
-            // Full LAN IP discovery will be wired later.
             set.insert(format!("0.0.0.0:{port}"));
             set.insert("0.0.0.0".into());
         }
@@ -42,9 +34,8 @@ impl AllowedHosts {
     }
 }
 
-/// Axum middleware that validates the `Host` header to block DNS rebinding
-/// attacks. Rejects requests whose Host header is not in the allowed set.
-pub async fn host_validation(
+/// Host header validation middleware to block DNS rebinding attacks.
+pub(crate) async fn host_validation(
     axum::extract::Extension(allowed): axum::extract::Extension<AllowedHosts>,
     req: Request<Body>,
     next: Next,
@@ -68,8 +59,8 @@ pub async fn host_validation(
     next.run(req).await
 }
 
-/// Axum middleware that logs request lifecycle with a unique request ID.
-pub async fn request_logging(req: Request<Body>, next: Next) -> Response {
+/// Request logging middleware with unique request ID.
+pub(crate) async fn request_logging(req: Request<Body>, next: Next) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string()[..12].to_string();
     let method = req.method().clone();
     let uri = req.uri().path().to_owned();

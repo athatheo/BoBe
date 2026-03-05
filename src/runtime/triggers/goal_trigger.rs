@@ -1,6 +1,4 @@
-//! Goal trigger — checks if active goals are relevant to current context.
-//!
-//! Fetches active goals, asks DecisionEngine per-goal, stops after first engagement.
+//! Checks active goals against current context, engages on first match.
 
 use std::sync::Arc;
 
@@ -16,7 +14,7 @@ use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
 
-pub struct GoalTrigger {
+pub(crate) struct GoalTrigger {
     goal_repo: Arc<dyn GoalRepository>,
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
@@ -26,7 +24,7 @@ pub struct GoalTrigger {
 }
 
 impl GoalTrigger {
-    pub fn new(
+    pub(crate) fn new(
         goal_repo: Arc<dyn GoalRepository>,
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
@@ -44,11 +42,9 @@ impl GoalTrigger {
         }
     }
 
-    /// Execute the goal trigger. Returns `Decision::Engage` if engagement was triggered.
-    pub async fn fire(&self) -> Decision {
+    pub(crate) async fn fire(&self) -> Decision {
         let cfg = self.config.load();
 
-        // Cooldown check
         if let Some(ref cooldown_repo) = self.cooldown_repo
             && let Some(cooldown) = cooldown_repo.check_cooldown(
                 cfg.decision.cooldown_minutes,

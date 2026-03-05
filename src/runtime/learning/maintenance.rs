@@ -1,9 +1,4 @@
-//! Maintenance tasks for the learning loop.
-//!
-//! Handles:
-//! - Daily consolidation of short-term → long-term memories
-//! - Scheduled pruning of old data per retention config
-//! - Re-embedding records that have null embeddings
+//! Learning loop maintenance: consolidation, pruning, and re-embedding.
 
 use chrono::{Duration, Timelike, Utc};
 use tracing::{debug, info, warn};
@@ -14,10 +9,7 @@ use crate::models::types::{MemorySource, MemoryType};
 
 use super::learning_loop::LearningDeps;
 
-// ── Consolidation ───────────────────────────────────────────────────────────
-
-/// Run daily consolidation if the hour matches and hasn't run today.
-/// Returns (consolidated_count, state_changed).
+/// Returns `(consolidated_count, state_changed)`.
 pub(crate) async fn daily_consolidation_if_needed(
     deps: &LearningDeps,
     state: &mut crate::models::learning_state::LearningState,
@@ -93,10 +85,7 @@ pub(crate) fn is_consolidation_candidate(memory: &crate::models::memory::Memory)
         .starts_with("# visual memory")
 }
 
-// ── Pruning ─────────────────────────────────────────────────────────────────
-
-/// Run scheduled pruning if it hasn't run today.
-/// Returns (total_deleted, state_changed).
+/// Returns `(total_deleted, state_changed)`.
 pub(crate) async fn scheduled_pruning_if_needed(
     deps: &LearningDeps,
     state: &mut crate::models::learning_state::LearningState,
@@ -155,7 +144,6 @@ pub(crate) async fn scheduled_pruning_if_needed(
         }
     };
 
-    // Delete stale archived/completed goals
     let goal_cutoff = now - Duration::days(cfg.memory.goal_retention_days as i64);
     let goals_deleted = match deps
         .goal_repo
@@ -191,20 +179,16 @@ pub(crate) async fn scheduled_pruning_if_needed(
     (usize::try_from(total_deleted).unwrap_or(0), true)
 }
 
-// ── Re-embedding ────────────────────────────────────────────────────────────
-
 #[derive(Default)]
 pub(crate) struct ReEmbedStats {
-    pub re_embedded: usize,
-    pub deleted: usize,
-    pub skipped: usize,
+    pub(crate) re_embedded: usize,
+    pub(crate) deleted: usize,
+    pub(crate) skipped: usize,
 }
 
-/// Re-embed records that have null embeddings across all entity types.
 pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
     let mut stats = ReEmbedStats::default();
 
-    // Observations
     if let Ok(records) = deps.observation_repo.find_null_embedding(50).await {
         let (r, d, s) = re_embed_batch(
             records.into_iter().map(|o| (o.id, o.content)).collect(),
@@ -226,7 +210,6 @@ pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
         stats.skipped += s;
     }
 
-    // Memories
     if let Ok(records) = deps.memory_repo.find_null_embedding(50).await {
         let (r, d, s) = re_embed_batch(
             records.into_iter().map(|m| (m.id, m.content)).collect(),
@@ -248,7 +231,6 @@ pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
         stats.skipped += s;
     }
 
-    // Goals
     if let Ok(records) = deps.goal_repo.find_null_embedding(50).await {
         let (r, d, s) = re_embed_batch(
             records.into_iter().map(|g| (g.id, g.content)).collect(),
@@ -282,9 +264,6 @@ pub(crate) async fn re_embed_null_records(deps: &LearningDeps) -> ReEmbedStats {
     stats
 }
 
-/// Generic re-embed: for each `(id, content)` pair, embed via provider, save
-/// via `on_update`, or delete via `on_delete` if content is blank / embed fails.
-///
 /// Returns `(re_embedded, deleted, skipped)`.
 async fn re_embed_batch<U, D>(
     records: Vec<(uuid::Uuid, String)>,

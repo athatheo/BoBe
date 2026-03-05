@@ -8,7 +8,7 @@ use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::PromptConfig;
 
-pub static MEMORY_CONSOLIDATION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
+pub(crate) static MEMORY_CONSOLIDATION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {
@@ -43,10 +43,10 @@ pub static MEMORY_CONSOLIDATION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::
     })
 });
 
-pub struct MemoryConsolidationPrompt;
+pub(crate) struct MemoryConsolidationPrompt;
 
 impl MemoryConsolidationPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.3,
             max_tokens: 1024,
@@ -59,8 +59,11 @@ impl MemoryConsolidationPrompt {
     }
 
     /// Each inner `Vec<String>` is a cluster of similar memories.
-    pub fn messages(memory_clusters: &[Vec<String>]) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+    pub(crate) fn messages(
+        memory_clusters: &[Vec<String>],
+        locale: Option<&str>,
+    ) -> Vec<AiMessage> {
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         use std::fmt::Write;
         let mut clusters_text = String::new();
         let mut global_idx: usize = 0;

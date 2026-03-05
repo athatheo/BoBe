@@ -9,17 +9,15 @@ use crate::db::CooldownRepository;
 use crate::error::AppError;
 use crate::models::cooldown::{Cooldown, CooldownInfo};
 
-/// SQLite cooldown repository.
-///
-/// Manages a single-row cooldown_state table with an in-memory cache.
-/// Uses tokio::sync::Mutex since the guard must be held across .await.
-pub struct SqliteCooldownRepo {
+/// Single-row cooldown_state table with in-memory cache.
+/// Uses `tokio::sync::Mutex` since the guard is held across `.await`.
+pub(crate) struct SqliteCooldownRepo {
     pool: SqlitePool,
     state: Mutex<Option<Cooldown>>,
 }
 
 impl SqliteCooldownRepo {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self {
             pool,
             state: Mutex::new(None),

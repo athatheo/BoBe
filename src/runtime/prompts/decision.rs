@@ -5,7 +5,7 @@ use crate::i18n::{FALLBACK_LOCALE, t_vars};
 use crate::llm::types::{AiMessage, ResponseFormat};
 use crate::runtime::prompts::base::{DEFAULT_SOUL, PromptConfig};
 
-pub static DECISION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
+pub(crate) static DECISION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     json!({
         "type": "object",
         "properties": {
@@ -24,10 +24,10 @@ pub static DECISION_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     })
 });
 
-pub struct DecisionPrompt;
+pub(crate) struct DecisionPrompt;
 
 impl DecisionPrompt {
-    pub fn config() -> PromptConfig {
+    pub(crate) fn config() -> PromptConfig {
         PromptConfig {
             temperature: 0.3,
             max_tokens: 150,
@@ -39,14 +39,15 @@ impl DecisionPrompt {
         }
     }
 
-    pub fn messages(
+    pub(crate) fn messages(
         current: &str,
         context: &str,
         recent_messages: &str,
         soul: Option<&str>,
         current_time: Option<&str>,
+        locale: Option<&str>,
     ) -> Vec<AiMessage> {
-        let locale = FALLBACK_LOCALE;
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let system_content = t_vars(
             locale,
             "prompt-decision-system",

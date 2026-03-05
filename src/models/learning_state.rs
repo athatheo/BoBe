@@ -1,23 +1,20 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-/// Tracks learning progress for resumability.
-///
-/// Single-row table — enforced by application logic.
-/// Allows the learning loop to resume from where it left off after restarts.
+/// Single-row table tracking learning progress for resumability across restarts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-pub struct LearningState {
-    pub id: Uuid,
-    pub last_conversation_processed_at: Option<DateTime<Utc>>,
-    pub last_context_processed_at: Option<DateTime<Utc>>,
-    pub last_consolidation_at: Option<DateTime<Utc>>,
-    pub last_pruning_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+pub(crate) struct LearningState {
+    pub(crate) id: Uuid,
+    pub(crate) last_conversation_processed_at: Option<DateTime<Utc>>,
+    pub(crate) last_context_processed_at: Option<DateTime<Utc>>,
+    pub(crate) last_consolidation_at: Option<DateTime<Utc>>,
+    pub(crate) last_pruning_at: Option<DateTime<Utc>>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 impl LearningState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

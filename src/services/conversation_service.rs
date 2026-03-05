@@ -1,10 +1,4 @@
 //! ConversationService — manages conversation lifecycle and turn management.
-//!
-//! Handles:
-//! - Conversation lifecycle (pending → active → closed)
-//! - Adding turns to conversations
-//! - Retrieving conversation history
-//! - Closing stale conversations
 
 use std::sync::Arc;
 
@@ -17,19 +11,18 @@ use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::types::{ConversationState, TurnRole};
 
-pub struct ConversationService {
+pub(crate) struct ConversationService {
     repo: Arc<dyn ConversationRepository>,
 }
 
 impl ConversationService {
-    pub fn new(repo: Arc<dyn ConversationRepository>) -> Self {
+    pub(crate) fn new(repo: Arc<dyn ConversationRepository>) -> Self {
         Self { repo }
     }
 
     // ── Conversation Lifecycle ──────────────────────────────────────────
 
-    /// Create a new pending conversation (AI reaches out).
-    pub async fn create_pending(&self, ai_message: &str) -> Result<Conversation, AppError> {
+    pub(crate) async fn create_pending(&self, ai_message: &str) -> Result<Conversation, AppError> {
         let conversation = Conversation::new_pending();
         let saved = self.repo.save(&conversation).await?;
 
@@ -44,8 +37,7 @@ impl ConversationService {
         Ok(saved)
     }
 
-    /// Create a new active conversation (user initiates).
-    pub async fn create_active(&self, user_message: &str) -> Result<Conversation, AppError> {
+    pub(crate) async fn create_active(&self, user_message: &str) -> Result<Conversation, AppError> {
         let conversation = Conversation::new_active();
         let saved = self.repo.save(&conversation).await?;
 
@@ -60,8 +52,10 @@ impl ConversationService {
         Ok(saved)
     }
 
-    /// Activate a pending conversation (PENDING → ACTIVE).
-    pub async fn activate(&self, conversation_id: Uuid) -> Result<Option<Conversation>, AppError> {
+    pub(crate) async fn activate(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<Option<Conversation>, AppError> {
         let conversation = self.repo.get_by_id(conversation_id).await?;
         let Some(conversation) = conversation else {
             warn!(conversation_id = %conversation_id, "conversation.activate_not_found");
@@ -82,8 +76,10 @@ impl ConversationService {
         }
     }
 
-    /// Close a conversation. Idempotent.
-    pub async fn close(&self, conversation_id: Uuid) -> Result<Option<Conversation>, AppError> {
+    pub(crate) async fn close(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<Option<Conversation>, AppError> {
         let conversation = self.repo.get_by_id(conversation_id).await?;
         let Some(conversation) = conversation else {
             warn!(conversation_id = %conversation_id, "conversation.close_not_found");
@@ -105,32 +101,29 @@ impl ConversationService {
         Ok(updated)
     }
 
-    /// Close a conversation with a summary and create a new pending one.
-    pub async fn close_and_start_new(
+    pub(crate) async fn close_and_start_new(
         &self,
         conversation_id: Uuid,
         summary: Option<String>,
     ) -> Result<Conversation, AppError> {
-        // Close existing
         self.repo
             .update_state(conversation_id, ConversationState::Closed, summary)
             .await?;
 
-        // Create new pending
         let new_conv = Conversation::new_pending();
         let saved = self.repo.save(&new_conv).await?;
         Ok(saved)
     }
 
-    /// Get the most recently closed conversation with its summary.
-    pub async fn get_last_closed_conversation(&self) -> Result<Option<Conversation>, AppError> {
+    pub(crate) async fn get_last_closed_conversation(
+        &self,
+    ) -> Result<Option<Conversation>, AppError> {
         self.repo.get_last_closed().await
     }
 
     // ── Turn Management ─────────────────────────────────────────────────
 
-    /// Add a turn. Returns None if conversation not found.
-    pub async fn add_turn(
+    pub(crate) async fn add_turn(
         &self,
         conversation_id: Uuid,
         role: TurnRole,
@@ -156,28 +149,24 @@ impl ConversationService {
 
     // ── Queries ─────────────────────────────────────────────────────────
 
-    /// Get the current pending or active conversation, if any.
-    pub async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
+    pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
         self.repo.get_pending_or_active().await
     }
 
-    /// Get recent AI messages (for decision engine to avoid repetition).
-    pub async fn get_recent_ai_messages(&self, limit: i64) -> Result<Vec<String>, AppError> {
+    pub(crate) async fn get_recent_ai_messages(&self, limit: i64) -> Result<Vec<String>, AppError> {
         self.repo
             .get_recent_turns_by_role(TurnRole::Assistant, limit)
             .await
     }
 
-    /// Get a conversation by ID with all its turns.
-    pub async fn get_conversation(
+    pub(crate) async fn get_conversation(
         &self,
         conversation_id: Uuid,
     ) -> Result<Option<Conversation>, AppError> {
         self.repo.get_by_id(conversation_id).await
     }
 
-    /// Get turns for a conversation, ordered by creation time.
-    pub async fn get_conversation_turns(
+    pub(crate) async fn get_conversation_turns(
         &self,
         conversation_id: Uuid,
         limit: i64,
@@ -185,16 +174,14 @@ impl ConversationService {
         self.repo.get_turns(conversation_id, limit).await
     }
 
-    /// Get conversations closed since a given timestamp (for LearningLoop).
-    pub async fn get_closed_since(
+    pub(crate) async fn get_closed_since(
         &self,
         since: Option<DateTime<Utc>>,
     ) -> Result<Vec<Conversation>, AppError> {
         self.repo.find_closed_since(since).await
     }
 
-    /// Get last 2 turns from previous closed conversation for cross-conversation context.
-    pub async fn get_previous_conversation_context(&self) -> Vec<(String, String)> {
+    pub(crate) async fn get_previous_conversation_context(&self) -> Vec<(String, String)> {
         let Ok(Some(last_closed)) = self.get_last_closed_conversation().await else {
             return Vec::new();
         };
@@ -207,7 +194,6 @@ impl ConversationService {
             }
         };
 
-        // Get last 2 turns
         turns
             .into_iter()
             .rev()

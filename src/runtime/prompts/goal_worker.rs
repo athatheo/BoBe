@@ -2,11 +2,16 @@ use std::path::Path;
 
 use crate::i18n::{FALLBACK_LOCALE, t_vars};
 
-pub struct GoalPlanningPrompt;
+pub(crate) struct GoalPlanningPrompt;
 
 impl GoalPlanningPrompt {
-    pub fn messages(goal_content: &str, context: &str, max_steps: u32) -> (String, String) {
-        let locale = FALLBACK_LOCALE;
+    pub(crate) fn messages(
+        goal_content: &str,
+        context: &str,
+        max_steps: u32,
+        locale: Option<&str>,
+    ) -> (String, String) {
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let system = t_vars(
             locale,
             "prompt-goal-worker-planning-system",
@@ -26,11 +31,16 @@ impl GoalPlanningPrompt {
     }
 }
 
-pub struct GoalExecutionPrompt;
+pub(crate) struct GoalExecutionPrompt;
 
 impl GoalExecutionPrompt {
-    pub fn messages(goal_content: &str, step_list: &str, work_dir: &Path) -> (String, String) {
-        let locale = FALLBACK_LOCALE;
+    pub(crate) fn messages(
+        goal_content: &str,
+        step_list: &str,
+        work_dir: &Path,
+        locale: Option<&str>,
+    ) -> (String, String) {
+        let locale = locale.unwrap_or(FALLBACK_LOCALE);
         let work_dir_str = work_dir.display();
         let system = t_vars(
             locale,

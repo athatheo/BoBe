@@ -5,13 +5,7 @@ use tokio::sync::Notify;
 use super::factories::{heartbeat_event, indicator_event};
 use super::types::{IndicatorType, StreamBundle};
 
-/// Bounded async queue for SSE events.
-///
-/// Properties:
-/// - Max size: configurable (default 100)
-/// - Overflow: drops oldest events
-/// - No persistence (ephemeral)
-pub struct EventQueue {
+pub(crate) struct EventQueue {
     inner: Mutex<VecDeque<StreamBundle>>,
     max_size: usize,
     notify: Notify,
@@ -19,7 +13,7 @@ pub struct EventQueue {
 }
 
 impl EventQueue {
-    pub fn new(max_size: usize) -> Self {
+    pub(crate) fn new(max_size: usize) -> Self {
         Self {
             inner: Mutex::new(VecDeque::with_capacity(max_size)),
             max_size,
@@ -28,8 +22,7 @@ impl EventQueue {
         }
     }
 
-    /// Push an event into the queue. Drops oldest if full.
-    pub fn push(&self, event: StreamBundle) {
+    pub(crate) fn push(&self, event: StreamBundle) {
         let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
         if queue.len() >= self.max_size && queue.pop_front_if(|_| true).is_some() {
             tracing::warn!("SSE event queue overflow, dropping oldest event");
@@ -39,10 +32,8 @@ impl EventQueue {
         self.notify.notify_waiters();
     }
 
-    /// Pop the next event, or wait until one is available.
-    pub async fn pop(&self) -> StreamBundle {
+    pub(crate) async fn pop(&self) -> StreamBundle {
         loop {
-            // Register for notification BEFORE checking queue to avoid race
             let notified = self.notify.notified();
             {
                 let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
@@ -54,25 +45,21 @@ impl EventQueue {
         }
     }
 
-    /// Get the current indicator state (for reconnection).
-    pub fn current_indicator(&self) -> IndicatorType {
+    pub(crate) fn current_indicator(&self) -> IndicatorType {
         *lock_or_recover(&self.current_indicator, "event_queue.current_indicator")
     }
 
-    /// Set the current indicator state and push an indicator event.
-    pub fn set_indicator(&self, indicator: IndicatorType) {
+    pub(crate) fn set_indicator(&self, indicator: IndicatorType) {
         *lock_or_recover(&self.current_indicator, "event_queue.current_indicator") = indicator;
         self.push(indicator_event(indicator, None));
     }
 
-    /// Drain all events from the queue.
-    pub fn clear(&self) -> Vec<StreamBundle> {
+    pub(crate) fn clear(&self) -> Vec<StreamBundle> {
         let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
         queue.drain(..).collect()
     }
 
-    /// Push a heartbeat event.
-    pub fn push_heartbeat(&self) {
+    pub(crate) fn push_heartbeat(&self) {
         self.push(heartbeat_event());
     }
 }

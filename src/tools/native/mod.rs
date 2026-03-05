@@ -1,42 +1,36 @@
-pub mod adapter;
-pub mod base;
+pub(crate) mod adapter;
+pub(crate) mod base;
 
-// Memory tools
-pub mod create_memory;
-pub mod get_goals;
-pub mod get_recent_context;
-pub mod get_souls;
-pub mod search_context;
-pub mod search_goal;
-pub mod search_memories;
-pub mod update_memory;
+pub(crate) mod create_memory;
+pub(crate) mod get_goals;
+pub(crate) mod get_recent_context;
+pub(crate) mod get_souls;
+pub(crate) mod search_context;
+pub(crate) mod search_goal;
+pub(crate) mod search_memories;
+pub(crate) mod update_memory;
 
-// Goal tools
-pub mod archive_goal;
-pub mod complete_goal;
-pub mod create_goal;
-pub mod pause_goal;
-pub mod resume_goal;
-pub mod update_goal;
+pub(crate) mod archive_goal;
+pub(crate) mod complete_goal;
+pub(crate) mod create_goal;
+pub(crate) mod pause_goal;
+pub(crate) mod resume_goal;
+pub(crate) mod update_goal;
 
-// Plan tools
-pub mod approve_plan;
-pub mod reject_plan;
+pub(crate) mod approve_plan;
+pub(crate) mod reject_plan;
 
-// File system tools
-pub mod file_reader;
-pub mod list_directory;
+pub(crate) mod file_reader;
+pub(crate) mod list_directory;
 pub(crate) mod path_validation;
-pub mod search_files;
+pub(crate) mod search_files;
 
-// Research tools
-pub mod browser_history;
-pub mod fetch_url;
+pub(crate) mod browser_history;
+pub(crate) mod fetch_url;
 
-// System tools
-pub mod cancel_coding_agent;
-pub mod check_coding_agent;
-pub mod discover_git_repos;
-pub mod discover_installed_tools;
-pub mod launch_coding_agent;
-pub mod list_coding_agents;
+pub(crate) mod cancel_coding_agent;
+pub(crate) mod check_coding_agent;
+pub(crate) mod discover_git_repos;
+pub(crate) mod discover_installed_tools;
+pub(crate) mod launch_coding_agent;
+pub(crate) mod list_coding_agents;
