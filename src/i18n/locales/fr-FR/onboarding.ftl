@@ -1,5 +1,5 @@
 onboarding-local-tier-small-label = Petit (4B)
-onboarding-local-tier-small-description = Rapide, faible utilisation des ressources. Idéal pour des interactions rapides.
+onboarding-local-tier-small-description = Rapide, faible utilisation des ressources. Idéal pour les interactions rapides.
 onboarding-local-tier-medium-label = Moyen (8B)
 onboarding-local-tier-medium-description = Performances et qualité équilibrées.
 onboarding-local-tier-large-label = Grand (14B)

@@ -65,5 +65,5 @@ xcrun notarytool store-credentials "BoBe-notarize" \
   --apple-id "your@apple.id" --team-id "TEAM_ID" --password "app-specific-password"
 
 # Then:
-xcrun notarytool submit BoBe.dmg --keychain-profile "BoBe-notarize" --w`ait
+xcrun notarytool submit BoBe.dmg --keychain-profile "BoBe-notarize" --wait
 ```

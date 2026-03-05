@@ -37,7 +37,7 @@
 "setup.progress.title" = "Configuration de BoBe";
 "setup.progress.starting" = "Démarrage de la configuration...";
 "setup.progress.working" = "Traitement en cours...";
-"setup.capture.title" = "Conscience de l'écran";
+"setup.capture.title" = "Perception de l'écran";
 "setup.capture.description" = "BoBe jette périodiquement un œil à votre écran pour offrir une aide pertinente, suivre vos objectifs et se souvenir de ce sur quoi vous travaillez — sans que vous ayez à tout expliquer.";
 "setup.capture.permission.title" = "Enregistrement de l'écran";
 "setup.capture.permission.description" = "Accorde à BoBe l'accès à ce qui est affiché sur votre écran.";

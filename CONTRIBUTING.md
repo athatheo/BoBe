@@ -47,25 +47,31 @@ just check          # Full lint + test suite
 ```
 src/                          # Rust backend (bobe-daemon)
   api/                        # Axum routes and handlers
+  app_state.rs                # Arc-wrapped DI container
+  binary_manager/             # Ollama binary download/extraction
   bootstrap/                  # Dependency wiring and startup
   config.rs                   # Configuration (BOBE_* env vars)
   config_manager/             # Runtime hot-swap config
   db/                         # SQLite repositories (sqlx)
+  i18n/                       # Internationalization (fluent)
   llm/                        # LLM provider abstraction
   models/                     # Domain structs
   runtime/                    # Session state, learners, triggers, prompts
+  secrets.rs                  # macOS Keychain integration
   services/                   # Business logic layer
   tools/                      # Native tools + MCP integration
   util/                       # SSE, capture, tokens, text utils
 
 desktopMac/                   # Swift macOS app (BoBe.app)
   BoBe/App/                   # App delegate, overlay panel, tray
+  BoBe/Features/Settings/     # Settings panels (AI model, behavior, etc.)
   BoBe/Models/                # API DTOs, entity types
   BoBe/Services/              # Backend lifecycle, HTTP + SSE client
   BoBe/Stores/                # Observable state stores
-  BoBe/Views/                 # Overlay, settings, setup wizard
+  BoBe/Theme/                 # Theme configuration
+  BoBe/Views/                 # Overlay UI + setup wizard
 
-migrations/                   # SQLite migrations (auto-run on startup)
+migrations/                   # SQLite schema (auto-run on startup)
 docs/                         # Additional documentation
 ```
 
@@ -76,9 +82,9 @@ docs/                         # Additional documentation
 - **Edition 2024**, MSRV 1.93, `unsafe_code = "deny"`
 - **Clippy pedantic** enabled with justified allows (see `Cargo.toml`)
 - Errors via `thiserror`, handlers return `Result<T, AppError>` — no `unwrap()`/`expect()` outside tests
-- LLM prompts live exclusively in `runtime/prompts/`
+- LLM prompt templates live in `runtime/prompts/` (some supplementary prompts in `tools/preselector.rs` and `i18n/`)
 - Configuration via `BOBE_*` env vars, persisted to `~/.bobe/config.toml`
-- API keys stored in macOS Keychain via the `secrecy` crate
+- API keys stored in macOS Keychain via `security-framework`, handled in-memory with the `secrecy` crate
 - Follow [RUST_GUIDELINES.md](docs/RUST_GUIDELINES.md) for architecture and style
 
 ### Swift
@@ -97,7 +103,7 @@ docs/                         # Additional documentation
 ## Architecture Principles
 
 - **Constructor injection** via `AppState` (Arc-wrapped, Axum State extractor) — no DI framework
-- **Layered architecture**: Handler (thin) -> Service (logic) -> Repository (data)
+- **Layered architecture**: Handler -> Service -> Repository (some simple handlers call repos directly)
 - **Trait-based abstraction** for LLM providers, embedding, and repositories
 - **Hot-swappable config** via `ArcSwap` — settings changes apply without restart
 - **localhost-only** by design — all network traffic stays on `127.0.0.1`

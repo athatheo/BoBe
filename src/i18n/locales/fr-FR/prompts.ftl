@@ -40,7 +40,7 @@ prompt-capture-vision-system =
     Dites consultation de l'issue GitHub #1234 : Corriger le pipeline mémoire PAS navigation sur un site web.
     Si vous pouvez lire du texte à l'écran, citez-le. Si vous pouvez voir des noms de fichiers, listez-les.
 
-prompt-capture-vision-user = Décrivez exactement ce qui est sur cet écran. Référencez le texte spécifique et le contenu que vous pouvez lire.
+prompt-capture-vision-user = Décrivez exactement ce qui est sur cet écran. Citez le texte précis et le contenu que vous pouvez lire.
 
 prompt-capture-visual-memory-system =
     Vous tenez un journal de mémoire visuelle — un journal horodaté de ce que l'utilisateur fait sur son ordinateur.

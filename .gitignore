@@ -3,6 +3,8 @@
 **/.DS_Store
 build/
 
+.vscode/settings.json
+
 # SwiftPM local build cache
 desktopMac/.build/
 

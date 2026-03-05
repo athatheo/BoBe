@@ -2,17 +2,13 @@
 
 ## Planned: Conversation History Compaction
 
-**Problem:** `build_conversation_history()` fetches up to 20 turns with no token awareness. On Ollama's default 4K context, this overflows quickly.
+**Problem:** `build_conversation_history()` accepts a `token_budget` and trims the oldest turns to fit the budget, which prevents overflow. However, it does not compact old turns — trimmed history is simply dropped.
 
-**Current safety net:** `clamp_max_tokens` reduces the response budget when the prompt is large, but does not trim history itself.
+**Current safety nets:**
+- `build_conversation_history()` in `message_handler.rs` respects a token budget derived from the context window
+- `clamp_max_tokens` reduces the response budget when the prompt is large
 
-**Planned solution:** Proactive compaction — when history tokens exceed **80%** of the history budget, compact the **oldest 60%** of turns into a ~200-token summary using the existing `ConversationSummaryPrompt`. Store the summary on `Conversation.summary`. This creates headroom for many turns before the next compaction cycle.
-
-**What it replaces:**
-
-- The warning-only `CONTEXT_TOKEN_WARN_THRESHOLD` (4K) in `context_assembler.rs`
-- The unused `DecisionConfig.max_response_tokens` field
-- The naive 20-turn fetch with no size awareness
+**Planned improvement:** Proactive compaction — when history tokens exceed **80%** of the history budget, compact the **oldest 60%** of turns into a ~200-token summary using the existing `ConversationSummaryPrompt`. Store the summary on `Conversation.summary`. This preserves context from early turns that would otherwise be dropped.
 
 **Infrastructure to reuse:**
 
@@ -32,9 +28,9 @@
 
 ## Active UX/Runtime Issues (reported 2026-03-04)
 
-1. **Settings window close crash (critical)**
-   - Repro: open Settings, click window close (**X**).
-   - Result: app crashes with `EXC_BAD_ACCESS` / bad pointer dereference in AppKit runloop teardown.
+1. **Settings window close crash (mitigated)**
+   - Was: `EXC_BAD_ACCESS` on window close.
+   - Mitigation: `windowShouldClose` now uses `orderOut(nil)` instead of closing, preventing the NSWindow dealloc race. Needs further testing.
 
 2. **Settings navbar/toggle UX regressions**
    - Duplicate sidebar-toggle buttons visible.

@@ -61,14 +61,18 @@
     "bobe",
     "Clippy",
     "codesign",
+    "conv",
+    "Cooldown",
     "FOOTGUN",
     "impls",
     "justfile",
     "keypair",
     "libexec",
     "Liskov",
+    "mdns",
     "Newtype",
     "notarytool",
+    "Ollama",
     "osascript",
     "pipefail",
     "recompiles",
@@ -84,5 +88,6 @@
     "xcodegen",
     "xcrun"
   ],
-  "snyk.advanced.autoSelectOrganization": true
+  "snyk.advanced.autoSelectOrganization": true,
+  "snyk.advanced.organization": "329e7bcf-be97-453f-98be-b318c8ee237c"
 }

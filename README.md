@@ -133,7 +133,8 @@ cargo test -q        # Run backend tests
 
 **Code layout (`desktopMac/BoBe/`)**
 - `App/`: app lifecycle, tray, overlay panel, updater
-- `Views/`: overlay UI, settings screens, setup wizard
+- `Features/Settings/`: settings panels (AI model, behavior, appearance, etc.)
+- `Views/`: overlay UI + setup wizard
 - `Stores/`: observable app state
 - `Services/`: backend process + HTTP/SSE client
 - `Models/`: API DTOs and domain view models
@@ -207,7 +208,13 @@ The backend exposes a REST API on `127.0.0.1:8766`. Key endpoints:
 | `/models/pull` | POST | Download a model (SSE progress) |
 | `/tools` | GET | List available tools |
 | `/tools/mcp/config` | GET/PUT/DELETE | MCP server configuration |
+| `/onboarding/status` | GET | Onboarding completion status |
 | `/onboarding/setup` | POST | Start setup wizard job |
+| `/onboarding/setup/{job_id}` | GET/DELETE | Check or cancel a setup job |
+| `/goal-plans` | GET | List goal worker plans |
+| `/goal-plans/status` | GET | Goal worker status |
+| `/goal-plans/{plan_id}` | GET | Get a specific goal plan |
+| `/goal-plans/{plan_id}/approve` | POST | Approve a goal plan |
 | `/capture/start` | POST | Enable screen capture |
 | `/capture/stop` | POST | Disable screen capture |
 
@@ -219,7 +226,7 @@ BoBe handles sensitive data (screen captures, API keys, personal context). Secur
 
 - **Localhost only** — all endpoints bind to `127.0.0.1`, never exposed to the network
 - **Host validation** middleware on every route
-- **API keys** stored in macOS Keychain via the `secrecy` crate, never logged or written to disk in plaintext
+- **API keys** stored in macOS Keychain via `security-framework`, handled in-memory with the `secrecy` crate, never logged or written to disk in plaintext
 - **File tools** use `canonicalize()` + ancestry checks to prevent path traversal
 - **MCP commands** validated against a configurable blocklist
 - **CORS** locked to localhost origins
