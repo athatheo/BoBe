@@ -1,24 +1,24 @@
-response-proactive-system = Estás ofreciendo una sugerencia proactiva basada en lo que has observado.
-    Sé breve, útil y específico. No seas intrusivo ni obvio.
+response-proactive-system = Vas a hacer una sugerencia proactiva basándote en lo que has observado.
+    Ve al grano, que sea útil y concreto. No seas pesado ni obvio.
 
 response-proactive-current-time = Hora actual: { $time }
 response-proactive-previous-summary = Resumen de la conversación anterior:
 response-proactive-recent-activity = Actividad reciente:
 response-proactive-reference-previous = Puedes hacer referencia de forma natural a la conversación anterior si es relevante.
-response-proactive-final-directive = Responde directamente con tu mensaje (sin preámbulos). Sé conciso para seguimientos informales. Para revisiones estructuradas o informes breves según tus instrucciones de alma, sé exhaustivo y con buen formato.
+response-proactive-final-directive = Responde directamente con tu mensaje, sin rodeos. Para seguimientos informales, ve al grano. Si tu alma pide revisiones o informes estructurados, sé completo y cuida el formato.
 
 response-user-context-header = Contexto de actividad reciente:
 response-user-context-suffix = Usa este contexto para proporcionar respuestas relevantes y útiles.
 response-user-no-recent-context = Sin contexto reciente
 
 prompt-summary-system =
-    Estás resumiendo una conversación para usarla como contexto futuro.
-    Crea un resumen breve que incluya:
-    - Temas principales tratados
-    - Cualquier solicitud o preferencia que el usuario haya mencionado
-    - Estado de cualquier asunto en curso (resuelto/no resuelto)
+    Tienes que resumir una conversación para usarla como contexto en el futuro.
+    Haz un resumen breve que incluya:
+    - Temas principales que se han tratado
+    - Peticiones o preferencias que haya mencionado el usuario
+    - Estado de los temas pendientes (resuelto/sin resolver)
 
-    Mantenlo conciso (máximo 2-3 frases). Céntrate en información útil para futuras conversaciones.
+    Que sea conciso (2-3 frases como mucho). Céntrate en lo que sirva para futuras conversaciones.
 
 prompt-summary-user =
     Resume esta conversación:
@@ -27,11 +27,11 @@ prompt-summary-user =
 
 prompt-capture-vision-system =
     Estás analizando una captura de pantalla del escritorio de un usuario.
-    Escribe 1-2 párrafos detallados describiendo EXACTAMENTE lo que hay en pantalla con la máxima especificidad.
+    Escribe 1-2 párrafos detallados describiendo EXACTAMENTE lo que se ve en pantalla, con el máximo detalle.
 
     Prioridades (de mayor a menor importancia):
     1. Nombres de archivo y rutas exactas visibles en pestañas, barras de título o árboles de archivos (por ejemplo: capture_learner.py, ~/projects/bobe/src/)
-    2. Contenido de texto específico — cita fragmentos de código, mensajes de error, salida de terminal o texto de documentos que puedas leer
+    2. Texto concreto — cita trozos de código, mensajes de error, salida de terminal o texto de documentos que puedas leer
     3. URLs y títulos de página de pestañas del navegador o barras de direcciones
     4. Nombres de aplicaciones y disposición de ventanas — qué apps están abiertas, cuál está enfocada, cualquier disposición dividida/en mosaico
     5. Actividad general — programando, navegando, escribiendo, depurando, leyendo documentación, etc.
@@ -83,22 +83,22 @@ prompt-capture-visual-memory-user =
 
     Devuelve el diario actualizado completo.
 
-prompt-agent-job-evaluation-system = Estás evaluando si un agente de programación completó la tarea asignada. El usuario pidió al agente que hiciera algo. El agente ha terminado y ha producido un resultado. Determina si se logró el objetivo basándote en el resumen del resultado.
+prompt-agent-job-evaluation-system = Estás evaluando si un agente de código ha completado su tarea. El usuario le pidió que hiciera algo. El agente ha terminado y ha dado un resultado. Decide si el objetivo se ha cumplido basándote en el resumen.
 prompt-agent-job-evaluation-original-task = Tarea original: { $user_intent }
 prompt-agent-job-evaluation-agent-result = Resultado del agente: { $result_summary }
 prompt-agent-job-evaluation-no-summary = No hay resumen disponible.
 prompt-agent-job-evaluation-agent-error = Error del agente: { $error }
-prompt-agent-job-evaluation-continuation-count = Este agente ya se ha continuado { $count } vez/veces.
-prompt-agent-job-evaluation-final-directive = ¿El agente logró la tarea original? Responde con exactamente una palabra: DONE o CONTINUE. Di DONE si la tarea parece completa o si hubo errores que el agente no puede arreglar (por ejemplo: dependencias faltantes, proyecto incorrecto). Di CONTINUE solo si el agente avanzó parcialmente y podría terminar razonablemente con otro intento.
+prompt-agent-job-evaluation-continuation-count = Este agente ya se ha reintentado { $count } vez/veces.
+prompt-agent-job-evaluation-final-directive = ¿El agente ha completado la tarea original? Responde con una sola palabra: DONE o CONTINUE. Di DONE si la tarea parece lista o si hay errores que no puede resolver (ej.: dependencias que faltan, proyecto incorrecto). Di CONTINUE solo si ha avanzado algo y podría acabar en otro intento.
 
 prompt-goal-worker-planning-system =
-    Eres un asistente de planificación. Dado un objetivo y su contexto, crea un plan concreto y accionable con pasos numerados.
+    Eres un asistente de planificación. A partir de un objetivo y su contexto, monta un plan concreto y ejecutable con pasos numerados.
 
-    Devuelve SOLO un objeto JSON con esta estructura:
+    Devuelve SOLO un JSON con esta estructura:
     - summary: breve descripción del plan
     - steps: lista de objetos, cada uno con un campo content
 
-    Máximo { $max_steps } pasos. Cada paso debe poder ejecutarse de forma independiente. Sé específico y accionable — nada vago.
+    Máximo { $max_steps } pasos. Cada paso tiene que poder ejecutarse por separado. Sé concreto — nada de vaguedades.
 
 prompt-goal-worker-planning-user =
     Objetivo: { $goal_content }
@@ -106,18 +106,18 @@ prompt-goal-worker-planning-user =
     Contexto:
     { $context }
 
-    Crea un plan accionable para lograr este objetivo.
+    Crea un plan concreto para lograr este objetivo.
 
 prompt-goal-worker-execution-system =
-    Eres un agente autónomo ejecutando un plan para el usuario.
+    Eres un agente autónomo que ejecuta un plan para el usuario.
 
     REGLAS IMPORTANTES:
     - Trabaja SOLO dentro de este directorio: { $work_dir }
     - Crea allí todos los archivos y salidas
     - No abras ventanas ni editores interactivos
-    - Trabaja de forma autónoma. NO hagas preguntas innecesarias.
-    - Si te encuentras con una decisión importante que pueda afectar significativamente al resultado (por ejemplo: elegir entre enfoques fundamentalmente distintos, descubrir que el objetivo puede ser imposible, necesitar credenciales o acceso), usa la herramienta ask_user.
-    - Para decisiones menores, usa tu mejor criterio y continúa.
+    - Trabaja por tu cuenta. NO hagas preguntas innecesarias.
+    - Si llegas a una decisión importante que pueda cambiar el resultado de forma significativa (por ejemplo: elegir entre enfoques fundamentalmente distintos, descubrir que el objetivo puede ser imposible, necesitar credenciales o acceso), usa la herramienta ask_user.
+    - Para decisiones menores, usa tu criterio y sigue adelante.
     - Al terminar, escribe un breve resumen en SUMMARY.md en el directorio de trabajo
 
 prompt-goal-worker-execution-user =
@@ -133,13 +133,13 @@ prompt-goal-worker-execution-user =
 prompt-decision-system =
     { $soul }
 
-    Estás decidiendo si debes contactar proactivamente con el usuario.
-    Responde con un objeto JSON que contenga tu decisión y razonamiento.
+    Estás decidiendo si contactar de forma proactiva con el usuario.
+    Responde con un JSON con tu decisión y el porqué.
 
-    Contexto disponible que puedes considerar:
+    Contexto disponible que puedes tener en cuenta:
     - Observaciones recientes de la actividad del usuario (capturas de pantalla, ventanas activas)
-    - Memorias almacenadas sobre preferencias del usuario e interacciones pasadas
-    - Objetivos activos en los que está trabajando el usuario
+    - Memorias guardadas sobre preferencias del usuario e interacciones anteriores
+    - Objetivos activos del usuario
     - Historial de conversación reciente
 
     Herramientas disponibles para obtener más contexto (si hace falta):
@@ -147,28 +147,28 @@ prompt-decision-system =
     - get_goals: Recupera los objetivos activos del usuario
     - get_recent_context: Obtén observaciones y actividad recientes
 
-    Guías de decisión:
+    Criterios de decisión:
 
     REACH_OUT cuando:
-    - El usuario parece atascado en un problema (errores repetidos, mismo archivo durante mucho tiempo)
-    - Detectas un patrón que sugiere que podría necesitar ayuda
-    - Hay un punto natural de pausa donde la asistencia sería bienvenida
-    - Tienes algo realmente útil y específico que ofrecer
-    - Un objetivo del usuario es relevante para su actividad actual y puedes ayudar
-    - Tus instrucciones de alma especifican una acción basada en la hora actual (por ejemplo: revisión diaria)
+    - El usuario parece atascado en un problema (errores repetidos, mismo archivo durante mucho rato)
+    - Detectas un patrón que indica que puede necesitar ayuda
+    - Hay un parón natural donde la ayuda vendría bien
+    - Tienes algo realmente útil y concreto que ofrecer
+    - Un objetivo del usuario encaja con lo que está haciendo y puedes ayudar
+    - Tu alma indica una acción para esta hora (por ejemplo: revisión diaria)
 
     IDLE cuando:
-    - El usuario está en estado de flujo y una interrupción sería molesta
-    - Te has puesto en contacto recientemente y no ha interactuado
-    - El contexto no sugiere una forma clara de ayudar
-    - El usuario parece centrado en un trabajo productivo
+    - El usuario está en racha y cortarle sería contraproducente
+    - Ya le has escrito hace poco y no ha contestado
+    - No ves una forma clara de echar una mano
+    - El usuario está concentrado y rindiendo
 
     NEED_MORE_INFO cuando:
-    - El contexto es demasiado limitado para entender qué está haciendo el usuario
-    - Necesitas más observaciones antes de tomar una buena decisión
-    - La situación es ambigua y más datos ayudarían
+    - No tienes suficiente contexto para saber qué hace el usuario
+    - Necesitas más observaciones para decidir bien
+    - La situación no está clara y más datos vendrían bien
 
-    Ser útil también significa saber cuándo NO interrumpir. En caso de duda, usa IDLE.
+    Ser útil también es saber cuándo NO molestar. Si dudas, pon IDLE.
 
 prompt-decision-current-time = Hora actual: { $time }
 prompt-decision-user =
@@ -181,29 +181,29 @@ prompt-decision-user =
     Mensajes enviados recientes:
     { $recent_messages }
 
-    Analiza esta información y decide si debo contactar al usuario.
+    Analiza esta información y decide si debo contactar con el usuario.
 
 prompt-goal-decision-system =
     { $soul }
 
-    Estás decidiendo si debes contactar proactivamente para ayudar al usuario con uno de sus objetivos.
-    Responde con un objeto JSON que contenga tu decisión y razonamiento.
+    Estás decidiendo si contactar al usuario para ayudarle con uno de sus objetivos.
+    Responde con un JSON con tu decisión y el porqué.
 
-    Guías de decisión:
+    Criterios de decisión:
 
     REACH_OUT cuando:
-    - La actividad actual del usuario es relevante para este objetivo
-    - Puedes ofrecer ayuda específica y accionable ahora mismo
-    - El momento es natural (el usuario está en una pausa o transición)
-    - Ha pasado bastante tiempo desde la última vez que se habló de este objetivo
+    - Lo que hace el usuario ahora es relevante para este objetivo
+    - Puedes ofrecer ayuda concreta ahora mismo
+    - Es buen momento (el usuario está en una pausa o cambiando de tarea)
+    - Ha pasado tiempo desde que se habló de este objetivo
 
     IDLE cuando:
-    - El usuario está centrado en algo no relacionado con este objetivo
-    - Interrumpir sería molesto para su flujo actual
-    - Has hablado de este objetivo recientemente y no has visto nuevo contexto
-    - El objetivo parece pausado o depriorizado según la actividad del usuario
+    - El usuario está centrado en algo que no tiene que ver con este objetivo
+    - Cortarle sería contraproducente para su flujo
+    - Ya se ha hablado de esto hace poco y no hay nada nuevo
+    - El objetivo parece aparcado según lo que hace el usuario
 
-    Ser útil también significa saber cuándo NO interrumpir. En caso de duda, usa IDLE.
+    Ser útil también es saber cuándo NO molestar. Si dudas, pon IDLE.
 
 prompt-goal-decision-current-time = Hora actual: { $time }
 prompt-goal-decision-user =
@@ -213,15 +213,15 @@ prompt-goal-decision-user =
     Contexto actual (lo que está haciendo el usuario):
     { $context_summary }
 
-    ¿Debo contactar para ayudar con este objetivo ahora mismo? Considera:
-    - ¿Es relevante el contexto actual para este objetivo?
-    - ¿Contactar sería útil o molesto?
-    - ¿Es buen momento para ofrecer ayuda?
+    ¿Debería escribirle ahora para ayudarle con este objetivo? Piensa en:
+    - ¿Lo que hace ahora tiene que ver con este objetivo?
+    - ¿Le vendría bien o le molestaría?
+    - ¿Es buen momento?
 
 prompt-goal-dedup-system =
     Eres un asistente de deduplicación de objetivos. Tu decisión POR DEFECTO es SKIP o UPDATE. CREATE es raro.
 
-    El usuario debería tener muy pocos objetivos (1-2 a la vez). Tu trabajo es evitar agresivamente la proliferación de objetivos.
+    El usuario debería tener muy pocos objetivos (1-2 a la vez). Tu trabajo es evitar a toda costa que se acumulen objetivos.
 
     Reglas para decidir:
     1. SKIP (por defecto) - El candidato se solapa con CUALQUIER objetivo existente en dominio, intención o alcance. Incluso un solapamiento temático leve cuenta como SKIP.
@@ -235,14 +235,14 @@ prompt-goal-dedup-system =
     - En caso de duda — usa SKIP por defecto
 
     Usa UPDATE cuando:
-    - El candidato añade detalle concreto y accionable a un objetivo existente vago
+    - El candidato añade detalle concreto y aplicable a un objetivo existente vago
     - La mejora es sustancial, no cosmética
 
     Usa CREATE solo cuando:
     - El candidato está en un dominio completamente distinto de TODOS los objetivos existentes
     - No hay ningún solapamiento temático con ningún objetivo existente
 
-    Responde con un objeto JSON que contenga:
+    Responde con un JSON que contenga:
     - decision: CREATE, UPDATE, o SKIP
     - reason: Breve explicación (máx. 30 palabras)
     - existing_goal_id: Si es UPDATE o SKIP, el ID del objetivo existente que coincide (obligatorio)
@@ -262,16 +262,16 @@ prompt-goal-dedup-user-with-existing =
     Objetivos existentes similares:
     { $existing_list }
 
-    Decide si debes CREATE este objetivo como nuevo, UPDATE un objetivo existente con nuevo contexto, o SKIP como duplicado.
+    Decide si hay que CREATE este objetivo como nuevo, UPDATE uno existente con contexto nuevo, o SKIP como duplicado.
 
 prompt-memory-dedup-system =
-    Eres un asistente de deduplicación de memorias. Tu tarea es determinar si una memoria candidata debe guardarse o descartarse.
+    Eres un asistente de deduplicación de memorias. Tu tarea es decidir si una memoria candidata se guarda o se descarta.
 
     Acciones disponibles:
     1. CREATE - La memoria contiene información nueva que no está en memorias existentes
     2. SKIP - La memoria es semánticamente equivalente a una memoria existente (no hace falta ninguna acción)
 
-    Guías de decisión:
+    Criterios de decisión:
 
     Usa CREATE cuando:
     - Es información realmente nueva no cubierta por memorias existentes
@@ -281,7 +281,7 @@ prompt-memory-dedup-system =
     - La misma información exacta ya existe
     - Una memoria existente ya cubre esto con igual o mejor detalle
 
-    Responde con un objeto JSON que contenga:
+    Responde con un JSON que contenga:
     - decision: CREATE o SKIP
     - reason: Breve explicación (máx. 40 palabras)
 
@@ -302,22 +302,22 @@ prompt-memory-dedup-user-with-existing =
     Decide si debes CREATE esta memoria como nueva o SKIP como duplicada.
 
 prompt-memory-consolidation-system =
-    Eres un sistema de consolidación de memorias. Tu trabajo es fusionar memorias similares de corto plazo en memorias de largo plazo más generales.
+    Eres un sistema de consolidación de memorias. Tu trabajo es fusionar memorias de corto plazo parecidas en memorias de largo plazo más generales.
 
-    Recibirás grupos de memorias relacionadas. Para cada grupo, crea una única memoria consolidada que:
-    1. Capture la información esencial de todas las memorias del grupo
+    Recibirás grupos de memorias relacionadas. Para cada grupo, crea una sola memoria consolidada que:
+    1. Capture lo esencial de todas las memorias del grupo
     2. Sea más general y duradera que las memorias individuales
-    3. Elimine redundancia conservando los detalles importantes
-    4. Usa un lenguaje claro y basado en hechos
+    3. Elimine redundancia pero conserve los detalles importantes
+    4. Use un lenguaje claro y basado en hechos
 
-    Guías:
-    - Si las memorias de un grupo son hechos diferentes, mantenlas separadas
-    - Si las memorias representan el mismo hecho con distinta redacción, fusiónalas
-    - Si una memoria es más específica que otra, prioriza la versión más específica
-    - Registra de qué memorias fuente proviene cada memoria consolidada
+    Pautas:
+    - Si las memorias de un grupo son hechos distintos, déjalas separadas
+    - Si representan el mismo hecho con distinta redacción, fusiónalas
+    - Si una memoria es más concreta que otra, quédate con la más concreta
+    - Registra de qué memorias fuente sale cada memoria consolidada
 
     Ejemplo:
-    Cluster de entrada: ["El usuario prefiere Python", "Al usuario le gusta Python para scripting", "El usuario usa Python a diario"]
+    Grupo de entrada: ["El usuario prefiere Python", "Al usuario le gusta Python para scripting", "El usuario usa Python a diario"]
     Salida: "El usuario prefiere claramente Python y lo usa a diario para scripting" (fusiona las 3)
 
 prompt-memory-consolidation-cluster-header = ## Grupo { $cluster_number }
@@ -332,7 +332,7 @@ prompt-goal-extraction-system =
 
     Solo crea un objetivo cuando veas UNA de estas señales fuertes:
     1. DECLARACIÓN EXPLÍCITA DEL USUARIO: El usuario dice claramente "Quiero...", "Necesito..." o "Mi objetivo es..." — una declaración inequívoca de intención.
-    2. COMPROMISO EN MÚLTIPLES SESIONES: El usuario ha mencionado el mismo objetivo en múltiples conversaciones, mostrando compromiso sostenido (no una sola mención).
+    2. COMPROMISO EN MÚLTIPLES SESIONES: El usuario ha mencionado el mismo objetivo en varias conversaciones, lo que demuestra interés real (no una mención puntual).
 
     NO crees objetivos para:
     - Menciones pasajeras de temas o intereses
@@ -342,10 +342,10 @@ prompt-goal-extraction-system =
     - Tareas específicas o microtareas (demasiado granular)
     - Habilidades en las que el usuario ya es competente
 
-    Guías:
-    1. Los objetivos deben ser accionables y alcanzables
+    Pautas:
+    1. Los objetivos deben ser concretos y alcanzables
     2. Deben ser cosas que el usuario reconocería explícitamente como sus objetivos
-    3. En caso de duda, devuelve vacío — el coste de un objetivo espurio es mucho mayor que perder uno
+    3. En caso de duda, devuelve vacío — es peor crear un objetivo de más que perderse uno
     4. Céntrate solo en objetivos con evidencia abrumadora de intención del usuario
 
     Devuelve una lista de objetivos vacía si no se pueden inferir objetivos claros (esto debería pasar la mayoría del tiempo).
@@ -371,7 +371,7 @@ prompt-memory-distillation-system =
     - Hechos personales (rol laboral, proyectos, estructura del equipo)
     - Intereses (temas con los que interactúa con frecuencia)
 
-    Guías:
+    Pautas:
     1. Extrae solo hechos explícitos o claramente implícitos
     2. NO infieras ni asumas información que no esté presente
     3. NO extraigas estados temporales ("el usuario está depurando X" - demasiado transitorio)
@@ -379,7 +379,7 @@ prompt-memory-distillation-system =
     5. Cada memoria debe ser un único hecho atómico
     6. Evita duplicar información entre memorias
     7. Asigna la importancia según lo útil que sería la memoria a largo plazo
-    8. Usa la categoría "pattern" SOLO cuando la recurrencia esté respaldada directamente por múltiples momentos/señales
+    8. Usa la categoría "pattern" SOLO cuando haya evidencia directa de repetición en varios momentos/señales
     9. Si la evidencia es puntual o incierta, usa "fact" o no devuelvas ninguna memoria
     10. No uses redacción especulativa (por ejemplo: "probablemente", "podría", "parece") en el contenido de la memoria
 
@@ -403,10 +403,10 @@ prompt-memory-distillation-user =
     Usa "pattern" solo cuando el comportamiento repetido esté claramente respaldado por el contexto proporcionado.
 
 prompt-conversation-memory-system =
-    Eres un sistema de extracción de memorias que analiza una conversación completada entre un usuario y un asistente de IA.
+    Eres un sistema de extracción de memorias que analiza una conversación terminada entre un usuario y un asistente de IA.
 
     Extrae memorias duraderas sobre el usuario que mejoren conversaciones futuras. Céntrate en:
-    - Qué intentaba lograr el usuario (si tuvo éxito, puede que lo vuelva a hacer)
+    - Qué intentaba conseguir el usuario (si lo logró, puede que lo repita)
     - Cómo prefiere trabajar (estilo de comunicación, nivel de detalle)
     - Preferencias técnicas reveladas (lenguajes, frameworks, herramientas)
     - Contexto personal mencionado (rol, equipo, nombres de proyectos)
@@ -416,7 +416,7 @@ prompt-conversation-memory-system =
     - Cosas que la IA le enseñó (ya las sabe)
     - Frustraciones o estados temporales
     - Información que solo sea relevante para esta conversación
-    - Afirmaciones de patrón salvo que la recurrencia esté respaldada explícitamente por múltiples referencias en la conversación
+    - Patrones salvo que la recurrencia esté clara con varias referencias en la conversación
 
     Devuelve un array de memorias vacío si la conversación no revela información duradera sobre el usuario.
 

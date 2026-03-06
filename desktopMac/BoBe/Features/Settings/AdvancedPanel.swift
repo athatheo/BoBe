@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct AdvancedPanel: View {
-    private static let systemLocaleOption = "__system__"
-
     @State private var settings: DaemonSettings?
     @State private var isLoading = false
     @State private var error: String?
@@ -34,7 +32,6 @@ struct AdvancedPanel: View {
                     self.goalsSection
                     self.learningSection
                     self.conversationSection
-                    self.localizationSection
                     self.projectsSection
                     self.mcpSection
                 } else if self.isLoading {
@@ -159,32 +156,6 @@ struct AdvancedPanel: View {
         }
     }
 
-    private var localizationSection: some View {
-        CollapsibleSection(
-            title: L10n.tr("settings.localization.title"),
-            icon: "globe",
-            description: L10n.tr("settings.localization.description")
-        ) {
-            SettingsRow(label: L10n.tr("settings.localization.language")) {
-                BobeMenuPicker(
-                    selection: self.localeSelectionBinding,
-                    options: self.localeOptions,
-                    label: self.localeLabel,
-                    width: 240
-                )
-            }
-
-            SettingsRow(
-                label: L10n.tr("settings.localization.effective_locale"),
-                description: L10n.tr("settings.localization.effective_locale.description")
-            ) {
-                Text(self.settings?.effectiveLocale ?? "en-US")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(self.theme.colors.textMuted)
-            }
-        }
-    }
-
     private var mcpSection: some View {
         CollapsibleSection(
             title: L10n.tr("settings.advanced.mcp.title"),
@@ -245,42 +216,6 @@ struct AdvancedPanel: View {
                 self.error = error.localizedDescription
             }
         }
-    }
-
-    private var localeOptions: [String] {
-        [Self.systemLocaleOption] + (self.settings?.supportedLocales ?? ["en-US"])
-    }
-
-    private var localeSelectionBinding: Binding<String> {
-        Binding(
-            get: {
-                if let override = self.settings?.localeOverride,
-                   !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return override
-                }
-                return Self.systemLocaleOption
-            },
-            set: { selected in
-                guard var current = self.settings else { return }
-                let newOverride = selected == Self.systemLocaleOption ? "" : selected
-                current.localeOverride = newOverride
-                self.settings = current
-                BobeStore.shared.updateLocale(newOverride)
-                self.debounceSave()
-            }
-        )
-    }
-
-    private func localeLabel(_ localeId: String) -> String {
-        if localeId == Self.systemLocaleOption {
-            return L10n.tr("settings.localization.system_default")
-        }
-
-        if let localized = Locale.current.localizedString(forIdentifier: localeId) {
-            return "\(localized) (\(localeId))"
-        }
-
-        return localeId
     }
 
     private func browseDirectory() {

@@ -1,6 +1,9 @@
 import AppKit
 import Observation
+import os
 import SwiftUI
+
+private let logger = Logger(subsystem: "com.bobe.app", category: "TrayManager")
 
 @MainActor
 final class TrayManager: NSObject, NSMenuDelegate {
@@ -71,6 +74,10 @@ final class TrayManager: NSObject, NSMenuDelegate {
         let settingsItem = NSMenuItem(title: L10n.tr("tray.settings"), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+
+        let languageItem = NSMenuItem(title: L10n.tr("tray.language"), action: nil, keyEquivalent: "")
+        languageItem.submenu = buildLanguageSubmenu()
+        menu.addItem(languageItem)
 
         let checkUpdatesItem = NSMenuItem(
             title: L10n.tr("tray.check_updates"),
@@ -144,6 +151,55 @@ final class TrayManager: NSObject, NSMenuDelegate {
     private func quitApp() {
         self.store.disconnect()
         NSApplication.shared.terminate(nil)
+    }
+
+    private func buildLanguageSubmenu() -> NSMenu {
+        let submenu = NSMenu()
+
+        let systemDefault = NSMenuItem(
+            title: L10n.tr("tray.language.system_default"),
+            action: #selector(changeLanguage(_:)),
+            keyEquivalent: ""
+        )
+        systemDefault.target = self
+        systemDefault.representedObject = "" as String
+        systemDefault.state = self.store.localeOverride.isEmpty ? .on : .off
+        submenu.addItem(systemDefault)
+
+        submenu.addItem(.separator())
+
+        for localeId in self.store.supportedLocales {
+            let locale = Locale(identifier: localeId)
+            let nativeName = locale.localizedString(forLanguageCode: localeId)?
+                .prefix(1).uppercased()
+                .appending(String(locale.localizedString(forLanguageCode: localeId)?.dropFirst() ?? ""))
+                ?? localeId
+            let item = NSMenuItem(title: nativeName, action: #selector(changeLanguage(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = localeId
+            item.state = self.store.localeOverride == localeId ? .on : .off
+            submenu.addItem(item)
+        }
+
+        return submenu
+    }
+
+    @objc
+    private func changeLanguage(_ sender: NSMenuItem) {
+        let localeId = sender.representedObject as? String ?? ""
+        let previousLocale = store.localeOverride
+        Task { @MainActor in
+            self.store.updateLocale(localeId)
+            do {
+                var req = SettingsUpdateRequest()
+                req.localeOverride = localeId
+                _ = try await DaemonClient.shared.updateSettings(req)
+            } catch {
+                logger.error("Failed to persist language change: \(error.localizedDescription)")
+                self.store.updateLocale(previousLocale)
+            }
+            self.updateMenu()
+        }
     }
 
     private func loadTrayIcon() -> NSImage? {

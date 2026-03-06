@@ -43,7 +43,7 @@ prompt-capture-vision-system =
 prompt-capture-vision-user = Décris exactement ce qui est sur cet écran. Cite le texte précis et le contenu que tu peux lire.
 
 prompt-capture-visual-memory-system =
-    Tu tiens un journal de mémoire visuelle — un journal horodaté de ce que l'utilisateur fait sur son ordinateur.
+    Tu tiens un journal de mémoire visuelle — un historique horodaté de ce que l'utilisateur fait sur son ordinateur.
 
     Tu vas recevoir :
     1. Le journal EXISTANT (peut être vide pour la première entrée de la journée)
@@ -83,7 +83,7 @@ prompt-capture-visual-memory-user =
 
     Renvoie le journal complet mis à jour.
 
-prompt-agent-job-evaluation-system = Tu évalues si un agent de codage a terminé la tâche qui lui était assignée. L'utilisateur a demandé quelque chose à l'agent. L'agent a terminé et produit un résultat. Détermine si l'objectif a été atteint à partir du résumé du résultat.
+prompt-agent-job-evaluation-system = Tu évalues si un agent a terminé la tâche qui lui était assignée. L'utilisateur a demandé quelque chose à l'agent. L'agent a terminé et produit un résultat. Détermine si l'objectif a été atteint à partir du résumé du résultat.
 prompt-agent-job-evaluation-original-task = Tâche d'origine : { $user_intent }
 prompt-agent-job-evaluation-agent-result = Résultat de l'agent : { $result_summary }
 prompt-agent-job-evaluation-no-summary = Aucun résumé disponible.
@@ -302,7 +302,7 @@ prompt-memory-dedup-user-with-existing =
     Décide s'il faut CREATE une nouvelle mémoire ou SKIP comme doublon.
 
 prompt-memory-consolidation-system =
-    Tu es un système de consolidation de mémoire. Ton rôle : fusionner des mémoires court terme similaires en mémoires long terme plus générales.
+    Tu es un système de consolidation de mémoire. Ton rôle : fusionner des mémoires à court terme similaires en mémoires à long terme plus générales.
 
     Tu vas recevoir des groupes de mémoires liées. Pour chaque groupe, crée une mémoire consolidée unique qui :
     1. Capture les informations essentielles de toutes les mémoires du groupe
@@ -323,7 +323,7 @@ prompt-memory-consolidation-system =
 prompt-memory-consolidation-cluster-header = ## Groupe { $cluster_number }
 prompt-memory-consolidation-cluster-item = [{ $index }] { $memory }
 prompt-memory-consolidation-user =
-    Consolide les groupes de mémoires suivants en mémoires long terme.
+    Consolide les groupes de mémoires suivants en mémoires à long terme.
     { $clusters_text }
     Pour chaque groupe, crée des mémoires consolidées et note quels indices source ont été fusionnés.
 
@@ -363,7 +363,7 @@ prompt-goal-extraction-user =
     Quels nouveaux objectifs peux-tu inférer de cette conversation ?
 
 prompt-memory-distillation-system =
-    Tu es un système d'extraction de mémoire. Ton rôle : identifier des faits mémorables sur l'utilisateur à partir de ses conversations et activités.
+    Tu es un système d'extraction de mémoire. Ton rôle : identifier des faits à retenir sur l'utilisateur à partir de ses conversations et activités.
 
     Extrais des mémoires utiles pour personnaliser les interactions futures. Concentre-toi sur :
     - Les préférences utilisateur (outils, langages, workflows qu'il préfère)

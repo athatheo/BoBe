@@ -56,12 +56,6 @@
 "setup.permission_status.denied" = "未授予";
 "setup.permission_status.restricted" = "受限";
 "setup.permission_status.not_set" = "未设置";
-"settings.localization.title" = "本地化";
-"settings.localization.description" = "AI 提示词模板和引导文案所使用的语言";
-"settings.localization.language" = "语言";
-"settings.localization.effective_locale" = "生效语言环境";
-"settings.localization.effective_locale.description" = "根据系统语言和手动选择自动确定的语言";
-"settings.localization.system_default" = "系统默认";
 "settings.shared.toggle.enabled" = "已开启";
 "settings.shared.action.add_new" = "添加 +";
 "settings.shared.section.enabled_format" = "%@ 已开启";
@@ -87,6 +81,8 @@
 "tray.settings" = "设置...";
 "tray.check_updates" = "检查更新...";
 "tray.about" = "关于 BoBe";
+"tray.language" = "语言";
+"tray.language.system_default" = "跟随系统";
 "tray.quit" = "退出 BoBe";
 "app.common.retry" = "重试";
 "app.common.quit" = "退出";

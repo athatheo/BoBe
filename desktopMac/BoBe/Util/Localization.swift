@@ -1,27 +1,16 @@
 import Foundation
+import os
+
+private let lock = OSAllocatedUnfairLock<Bundle?>(initialState: nil)
 
 enum L10n {
-    nonisolated(unsafe) private static var overrideBundle: Bundle?
-
     static func setLocaleOverride(_ localeId: String?) {
-        guard let localeId, !localeId.isEmpty else {
-            overrideBundle = nil
-            return
-        }
-        // Try exact match first (e.g. "de-DE"), then language-only (e.g. "de")
-        let candidates = [localeId, String(localeId.prefix(2))]
-        for candidate in candidates {
-            if let url = Bundle.appResources.url(forResource: candidate, withExtension: "lproj"),
-               let bundle = Bundle(url: url) {
-                overrideBundle = bundle
-                return
-            }
-        }
-        overrideBundle = nil
+        let bundle = resolveBundle(for: localeId)
+        lock.withLock { $0 = bundle }
     }
 
     static func tr(_ key: String, _ args: CVarArg...) -> String {
-        let bundle = overrideBundle ?? Bundle.appResources
+        let bundle = lock.withLock { $0 } ?? Bundle.appResources
         let format = NSLocalizedString(
             key,
             tableName: "UI",
@@ -31,5 +20,17 @@ enum L10n {
         )
         guard !args.isEmpty else { return format }
         return String(format: format, locale: .current, arguments: args)
+    }
+
+    private static func resolveBundle(for localeId: String?) -> Bundle? {
+        guard let localeId, !localeId.isEmpty else { return nil }
+        let candidates = [localeId, String(localeId.prefix(2))]
+        for candidate in candidates {
+            if let url = Bundle.appResources.url(forResource: candidate, withExtension: "lproj"),
+               let bundle = Bundle(url: url) {
+                return bundle
+            }
+        }
+        return nil
     }
 }

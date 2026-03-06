@@ -23,7 +23,7 @@
 "setup.cloud.provider" = "Πάροχος";
 "setup.cloud.api_key" = "Κλειδί API";
 "setup.cloud.api_key.placeholder" = "Το κλειδί API σου";
-"setup.cloud.endpoint" = "Endpoint URL";
+"setup.cloud.endpoint" = "Τελικό σημείο";
 "setup.cloud.endpoint.placeholder" = "https://your-resource.openai.azure.com/";
 "setup.cloud.deployment" = "Όνομα Deployment";
 "setup.cloud.deployment.placeholder" = "deployment-name";
@@ -56,12 +56,6 @@
 "setup.permission_status.denied" = "Δεν επιτράπηκε";
 "setup.permission_status.restricted" = "Περιορισμένο";
 "setup.permission_status.not_set" = "Δεν έχει οριστεί";
-"settings.localization.title" = "Τοπικοποίηση";
-"settings.localization.description" = "Γλώσσα για τα πρότυπα AI και τα κείμενα εισαγωγής";
-"settings.localization.language" = "Γλώσσα";
-"settings.localization.effective_locale" = "Ενεργό locale";
-"settings.localization.effective_locale.description" = "Το τελικό locale μετά τα system defaults";
-"settings.localization.system_default" = "Προεπιλογή συστήματος";
 "settings.shared.toggle.enabled" = "Ενεργό";
 "settings.shared.action.add_new" = "Προσθήκη νέου +";
 "settings.shared.section.enabled_format" = "%@ ενεργό";
@@ -87,6 +81,8 @@
 "tray.settings" = "Ρυθμίσεις...";
 "tray.check_updates" = "Έλεγχος για ενημερώσεις...";
 "tray.about" = "Σχετικά με το BoBe";
+"tray.language" = "Γλώσσα";
+"tray.language.system_default" = "Προεπιλογή συστήματος";
 "tray.quit" = "Έξοδος από το BoBe";
 "app.common.retry" = "Δοκίμασε ξανά";
 "app.common.quit" = "Έξοδος";
@@ -175,7 +171,7 @@
 "settings.ai_model.azure.api_key.placeholder" = "κλειδί";
 "settings.ai_model.azure.deployment" = "Deployment";
 "settings.ai_model.azure.deployment.placeholder" = "deployment-name";
-"settings.ai_model.azure.endpoint" = "Endpoint URL";
+"settings.ai_model.azure.endpoint" = "Τελικό σημείο";
 "settings.ai_model.azure.endpoint.placeholder" = "https://...";
 "settings.ai_model.azure.title" = "Ρύθμιση Azure OpenAI";
 "settings.ai_model.loading" = "Φόρτωση ρυθμίσεων μοντέλου...";
@@ -184,7 +180,7 @@
 "settings.ai_model.ollama.active_badge" = "Ενεργό";
 "settings.ai_model.ollama.active_model.description" = "Το μοντέλο που χρησιμοποιεί το BoBe για όλες τις λειτουργίες AI";
 "settings.ai_model.ollama.active_model.title" = "Ενεργό μοντέλο";
-"settings.ai_model.ollama.download.description" = "Κάντε pull ένα model από το Ollama registry";
+"settings.ai_model.ollama.download.description" = "Κάντε pull ένα μοντέλο από το Ollama registry";
 "settings.ai_model.ollama.download.title" = "Λήψη μοντέλου";
 "settings.ai_model.ollama.downloading_format" = "Λήψη %@...";
 "settings.ai_model.ollama.installed_models.description_format" = "Έχουν ληφθεί %d μοντέλα";
@@ -204,7 +200,7 @@
 "settings.appearance.theme.accessibility_format" = "Θέμα %@";
 "settings.appearance.theme.description" = "Διάλεξε χρωματικό θέμα για το BoBe. Επηρεάζει το avatar και όλα τα στοιχεία του UI.";
 "settings.appearance.theme.title" = "Θέμα";
-"settings.behavior.capture.description" = "Το BoBe τραβάει περιοδικά στιγμιότυπο της οθόνης σου για context";
+"settings.behavior.capture.description" = "Το BoBe τραβάει περιοδικά στιγμιότυπο της οθόνης σου για πλαίσιο";
 "settings.behavior.capture.interval" = "Διάστημα λήψης";
 "settings.behavior.capture.permission_missing" = "Δεν έχει δοθεί άδεια Εγγραφής Οθόνης.";
 "settings.behavior.capture.title" = "Λήψη οθόνης";

@@ -56,12 +56,6 @@
 "setup.permission_status.denied" = "Not Granted";
 "setup.permission_status.restricted" = "Restricted";
 "setup.permission_status.not_set" = "Not Set";
-"settings.localization.title" = "Localization";
-"settings.localization.description" = "Language used for AI prompt templates and onboarding text";
-"settings.localization.language" = "Language";
-"settings.localization.effective_locale" = "Effective locale";
-"settings.localization.effective_locale.description" = "Resolved locale after system/override fallback";
-"settings.localization.system_default" = "System Default";
 "settings.shared.toggle.enabled" = "Enabled";
 "settings.shared.action.add_new" = "Add New +";
 "settings.shared.section.enabled_format" = "%@ enabled";
@@ -87,6 +81,8 @@
 "tray.settings" = "Settings...";
 "tray.check_updates" = "Check for Updates...";
 "tray.about" = "About BoBe";
+"tray.language" = "Language";
+"tray.language.system_default" = "System Default";
 "tray.quit" = "Quit BoBe";
 "app.common.retry" = "Retry";
 "app.common.quit" = "Quit";

@@ -56,12 +56,6 @@
 "setup.permission_status.denied" = "Non accordée";
 "setup.permission_status.restricted" = "Restreinte";
 "setup.permission_status.not_set" = "Non définie";
-"settings.localization.title" = "Localisation";
-"settings.localization.description" = "Langue des prompts IA et de l'assistant de configuration";
-"settings.localization.language" = "Langue";
-"settings.localization.effective_locale" = "Langue effective";
-"settings.localization.effective_locale.description" = "Langue effective après prise en compte du système et des préférences";
-"settings.localization.system_default" = "Par défaut du système";
 "settings.shared.toggle.enabled" = "Activé";
 "settings.shared.action.add_new" = "Ajouter +";
 "settings.shared.section.enabled_format" = "%@ activé";
@@ -87,6 +81,8 @@
 "tray.settings" = "Réglages...";
 "tray.check_updates" = "Rechercher des mises à jour...";
 "tray.about" = "À propos de BoBe";
+"tray.language" = "Langue";
+"tray.language.system_default" = "Langue du système";
 "tray.quit" = "Quitter BoBe";
 "app.common.retry" = "Réessayer";
 "app.common.quit" = "Quitter";

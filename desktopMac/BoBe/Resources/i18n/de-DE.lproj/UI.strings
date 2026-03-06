@@ -25,7 +25,7 @@
 "setup.cloud.api_key.placeholder" = "Dein API-Schlüssel";
 "setup.cloud.endpoint" = "Endpunkt-URL";
 "setup.cloud.endpoint.placeholder" = "https://your-resource.openai.azure.com/";
-"setup.cloud.deployment" = "Deployment-Name";
+"setup.cloud.deployment" = "Bereitstellungsname";
 "setup.cloud.deployment.placeholder" = "my-deployment";
 "setup.cloud.model" = "Modell";
 "setup.local.title" = "Lokale KI-Einrichtung";
@@ -56,13 +56,7 @@
 "setup.permission_status.denied" = "Nicht erteilt";
 "setup.permission_status.restricted" = "Eingeschränkt";
 "setup.permission_status.not_set" = "Nicht festgelegt";
-"settings.localization.title" = "Lokalisierung";
-"settings.localization.description" = "Sprache für KI-Promptvorlagen und Onboarding-Texte";
-"settings.localization.language" = "Sprache";
-"settings.localization.effective_locale" = "Aktives Gebietsschema";
-"settings.localization.effective_locale.description" = "Ermitteltes Gebietsschema nach System-/Überschreibungs-Fallback";
-"settings.localization.system_default" = "Systemstandard";
-"settings.shared.toggle.enabled" = "Aktiviert";
+"settings.shared.toggle.enabled" = "Ein";
 "settings.shared.action.add_new" = "Neu hinzufügen +";
 "settings.shared.section.enabled_format" = "%@ aktiviert";
 "settings.shared.bytes.gb_format" = "%.1f GB";
@@ -87,6 +81,8 @@
 "tray.settings" = "Einstellungen...";
 "tray.check_updates" = "Nach Updates suchen...";
 "tray.about" = "Über BoBe";
+"tray.language" = "Sprache";
+"tray.language.system_default" = "Systemstandard";
 "tray.quit" = "BoBe beenden";
 "app.common.retry" = "Erneut versuchen";
 "app.common.quit" = "Beenden";
@@ -111,7 +107,7 @@
 /* Wave 2 frontend settings/overlay localization */
 "overlay.avatar.accessibility_format" = "BoBe-Avatar, %@";
 "overlay.avatar.brand_label" = "BoBe";
-"overlay.avatar.state.capturing" = "nimmt auf";
+"overlay.avatar.state.capturing" = "schaut";
 "overlay.avatar.state.error" = "Fehler";
 "overlay.avatar.state.idle" = "inaktiv";
 "overlay.avatar.state.loading" = "lädt";
@@ -135,7 +131,7 @@
 "overlay.input.waiting" = "wartet...";
 "overlay.reconnecting" = "Verbinde erneut...";
 "overlay.status.capture_permission_needed" = "Aufnahme benötigt Berechtigung";
-"overlay.status.capturing" = "Nimmt auf";
+"overlay.status.capturing" = "Schaut";
 "overlay.status.loading" = "Lädt";
 "overlay.status.offline" = "Offline";
 "overlay.status.shutting_down" = "Tschüss!";
@@ -173,7 +169,7 @@
 "settings.advanced.title" = "Für Nerds";
 "settings.ai_model.azure.api_key" = "API-Schlüssel";
 "settings.ai_model.azure.api_key.placeholder" = "key";
-"settings.ai_model.azure.deployment" = "Deployment";
+"settings.ai_model.azure.deployment" = "Bereitstellung";
 "settings.ai_model.azure.deployment.placeholder" = "deployment-name";
 "settings.ai_model.azure.endpoint" = "Endpunkt";
 "settings.ai_model.azure.endpoint.placeholder" = "https://...";
@@ -202,7 +198,7 @@
 "settings.ai_model.secret.masked_placeholder" = "••••••••";
 "settings.ai_model.unsaved_changes" = "Nicht gespeicherte Änderungen";
 "settings.appearance.theme.accessibility_format" = "%@-Theme";
-"settings.appearance.theme.description" = "Wähle ein Theme für BoBe. Betrifft den Avatar und alle Bedienelemente.";
+"settings.appearance.theme.description" = "Wähle ein Farbschema für BoBe. Betrifft den Avatar und die gesamte Oberfläche.";
 "settings.appearance.theme.title" = "Theme";
 "settings.behavior.capture.description" = "BoBe erfasst deinen Bildschirm regelmäßig für zusätzlichen Kontext";
 "settings.behavior.capture.interval" = "Aufnahmeintervall";
@@ -249,7 +245,7 @@
 "settings.editor.delete.confirm" = "Löschen?";
 "settings.editor.delete.no" = "Nein";
 "settings.editor.delete.yes" = "Ja";
-"settings.goal_worker.autonomous.enabled" = "Aktiviert";
+"settings.goal_worker.autonomous.enabled" = "Ein";
 "settings.goal_worker.autonomous.max_concurrent" = "Max. gleichzeitig";
 "settings.goal_worker.autonomous.mode" = "Autonomer Modus";
 "settings.goal_worker.autonomous.title" = "Autonome Ausführung";
@@ -308,7 +304,7 @@
 "settings.memories.category.interest" = "Interesse";
 "settings.memories.category.observation" = "Beobachtung";
 "settings.memories.category.pattern" = "Muster";
-"settings.memories.category.preference" = "Präferenz";
+"settings.memories.category.preference" = "Vorliebe";
 "settings.memories.delete.accessibility" = "Erinnerung löschen";
 "settings.memories.empty.select" = "Wähle eine Erinnerung zum Bearbeiten";
 "settings.memories.empty.title" = "Keine Erinnerungen";

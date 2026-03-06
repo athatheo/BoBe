@@ -56,12 +56,6 @@
 "setup.permission_status.denied" = "허용되지 않음";
 "setup.permission_status.restricted" = "제한됨";
 "setup.permission_status.not_set" = "설정되지 않음";
-"settings.localization.title" = "현지화";
-"settings.localization.description" = "AI 프롬프트 템플릿과 온보딩 텍스트에 사용할 언어";
-"settings.localization.language" = "언어";
-"settings.localization.effective_locale" = "적용 언어";
-"settings.localization.effective_locale.description" = "시스템과 수동 설정을 반영한 최종 언어 설정";
-"settings.localization.system_default" = "시스템 기본값";
 "settings.shared.toggle.enabled" = "활성화됨";
 "settings.shared.action.add_new" = "새로 추가 +";
 "settings.shared.section.enabled_format" = "%@ 활성화됨";
@@ -87,6 +81,8 @@
 "tray.settings" = "설정...";
 "tray.check_updates" = "업데이트 확인...";
 "tray.about" = "BoBe 정보";
+"tray.language" = "언어";
+"tray.language.system_default" = "시스템 기본값";
 "tray.quit" = "BoBe 종료";
 "app.common.retry" = "다시 시도";
 "app.common.quit" = "종료";

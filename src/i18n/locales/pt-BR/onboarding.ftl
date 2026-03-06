@@ -1,9 +1,9 @@
 onboarding-local-tier-small-label = Pequeno (4B)
-onboarding-local-tier-small-description = Rápido, com baixo uso de recursos. Ótimo para interações rápidas.
+onboarding-local-tier-small-description = Rápido e leve. Ótimo pra interações rápidas.
 onboarding-local-tier-medium-label = Médio (8B)
-onboarding-local-tier-medium-description = Desempenho e qualidade equilibrados.
+onboarding-local-tier-medium-description = Equilíbrio entre desempenho e qualidade.
 onboarding-local-tier-large-label = Grande (14B)
-onboarding-local-tier-large-description = Melhor qualidade, exige mais recursos.
+onboarding-local-tier-large-description = Melhor qualidade, mas exige mais recursos.
 
 onboarding-cloud-provider-openai-label = OpenAI
 onboarding-cloud-provider-azure-openai-label = Azure OpenAI
@@ -39,7 +39,7 @@ setup-openai-embedding-failed = Falha no teste de embeddings: { $error }
 
 setup-azure-error-api-key-required = Chave de API obrigatória
 setup-azure-error-endpoint-required = Endpoint obrigatório
-setup-azure-error-deployment-required = Deployment obrigatório
+setup-azure-error-deployment-required = Implantação obrigatória
 setup-azure-validation-endpoint-validated = Endpoint do Azure validado
 setup-azure-error-validation-http = Falha na validação do Azure: HTTP { $status }
 setup-azure-error-invalid-value-format = Formato de valor de configuração do Azure inválido. Remova espaços/quebras de linha e tente novamente.
