@@ -1,3 +1,5 @@
+/* Machine-translated. Contributions and corrections from native speakers welcome. */
+
 "setup.window.title" = "BoBe 设置";
 "setup.welcome.title" = "欢迎使用 BoBe";
 "setup.welcome.subtitle" = "Mac 上的主动式 AI 伙伴";
@@ -68,7 +70,7 @@
 "tray.status_format" = "状态：%@";
 "tray.state.connecting" = "连接中...";
 "tray.state.idle" = "空闲";
-"tray.state.capturing" = "观察中...";
+"tray.state.capturing" = "感知中...";
 "tray.state.thinking" = "思考中...";
 "tray.state.speaking" = "正在说话";
 "tray.state.wants_to_speak" = "有话想说";
@@ -76,8 +78,8 @@
 "tray.state.shutting_down" = "正在关闭...";
 "tray.show" = "显示 BoBe";
 "tray.hide" = "隐藏 BoBe";
-"tray.capture.start" = "开始观察";
-"tray.capture.stop" = "停止观察";
+"tray.capture.enable" = "启用屏幕感知";
+"tray.capture.disable" = "停用屏幕感知";
 "tray.settings" = "设置...";
 "tray.check_updates" = "检查更新...";
 "tray.about" = "关于 BoBe";
@@ -107,7 +109,7 @@
 /* Wave 2 frontend settings/overlay localization */
 "overlay.avatar.accessibility_format" = "BoBe 头像，%@";
 "overlay.avatar.brand_label" = "BoBe";
-"overlay.avatar.state.capturing" = "观察中";
+"overlay.avatar.state.capturing" = "感知中";
 "overlay.avatar.state.error" = "错误";
 "overlay.avatar.state.idle" = "空闲";
 "overlay.avatar.state.loading" = "加载中";
@@ -131,7 +133,7 @@
 "overlay.input.waiting" = "等待中...";
 "overlay.reconnecting" = "正在重连...";
 "overlay.status.capture_permission_needed" = "需要屏幕录制权限";
-"overlay.status.capturing" = "观察中";
+"overlay.status.capturing" = "感知中";
 "overlay.status.loading" = "加载中";
 "overlay.status.offline" = "离线";
 "overlay.status.shutting_down" = "再见！";
@@ -200,8 +202,8 @@
 "settings.appearance.theme.accessibility_format" = "%@ 主题";
 "settings.appearance.theme.description" = "为 BoBe 选择颜色主题。这会影响头像和所有界面元素。";
 "settings.appearance.theme.title" = "主题";
-"settings.behavior.capture.description" = "BoBe 会定期查看你的屏幕来了解上下文";
-"settings.behavior.capture.interval" = "截屏间隔";
+"settings.behavior.capture.description" = "BoBe 会定期分析你的屏幕来了解上下文";
+"settings.behavior.capture.interval" = "感知间隔";
 "settings.behavior.capture.permission_missing" = "尚未授予屏幕录制权限。";
 "settings.behavior.capture.title" = "屏幕感知";
 "settings.behavior.checkins.action.add" = "添加";
@@ -380,7 +382,7 @@
 "settings.window.overview.card.sounds.heading" = "BoBe 的说话风格";
 "settings.window.overview.card.speaks.body" = "设置问候频率、主动消息和通知偏好。";
 "settings.window.overview.card.speaks.heading" = "BoBe 何时发声";
-"settings.window.overview.description" = "BoBe 结合人格（Soul）、你的目标和记忆，在合适的时机主动帮你。你可以在这里自定义各项体验。";
+"settings.window.overview.description" = "BoBe 结合人格（Soul）、你的目标以及它积累的记忆，在合适的时机主动帮你。你可以在这里自定义各项体验。";
 "settings.window.overview.footer" = "使用侧边栏探索全部设置。一切都在你的 Mac 本地运行。";
 "settings.window.overview.title" = "调整 BoBe";
 "settings.window.sidebar_title" = "BOBE TUNING";

@@ -1,3 +1,5 @@
+/* Machine-translated. Contributions and corrections from native speakers welcome. */
+
 "setup.window.title" = "BoBe 설정";
 "setup.welcome.title" = "BoBe에 오신 것을 환영합니다";
 "setup.welcome.subtitle" = "Mac을 위한 나만의 AI 동반자";
@@ -46,10 +48,10 @@
 "setup.capture.permission.grant_to_continue" = "계속하려면 권한을 허용하세요.";
 "setup.capture.privacy.local" = "스크린샷은 기기 밖으로 나가지 않으며, 모든 분석은 로컬에서 이루어져요.";
 "setup.capture.privacy.cloud" = "분석을 위해 선택한 클라우드 제공업체로 스크린샷이 전송돼요.";
-"setup.capture.skip" = "건너뛰기 — 화면 캡처 사용 안 함";
+"setup.capture.skip" = "건너뛰기 — 화면 인식 사용 안 함";
 "setup.complete.title" = "설정 완료!";
 "setup.complete.subtitle" = "이 설정은 나중에 언제든지 변경할 수 있어요.";
-"setup.complete.details" = "메뉴 막대의 BoBe 아이콘 → BoBe 튜닝에서 AI 모델, 소울, 목표, 화면 캡처 등 모든 설정을 관리할 수 있어요.";
+"setup.complete.details" = "메뉴 막대의 BoBe 아이콘 → BoBe 튜닝에서 AI 모델, 소울, 목표, 화면 인식 등 모든 설정을 관리할 수 있어요.";
 "setup.complete.finishing" = "마무리 중...";
 "setup.complete.get_started" = "시작하기";
 "setup.permission_status.granted" = "✓ 허용됨";
@@ -76,8 +78,8 @@
 "tray.state.shutting_down" = "종료 중...";
 "tray.show" = "BoBe 보기";
 "tray.hide" = "BoBe 숨기기";
-"tray.capture.start" = "캡처 시작";
-"tray.capture.stop" = "캡처 중지";
+"tray.capture.enable" = "화면 인식 활성화";
+"tray.capture.disable" = "화면 인식 비활성화";
 "tray.settings" = "설정...";
 "tray.check_updates" = "업데이트 확인...";
 "tray.about" = "BoBe 정보";
@@ -107,7 +109,7 @@
 /* Wave 2 frontend settings/overlay localization */
 "overlay.avatar.accessibility_format" = "BoBe 아바타, %@";
 "overlay.avatar.brand_label" = "BoBe";
-"overlay.avatar.state.capturing" = "캡처 중";
+"overlay.avatar.state.capturing" = "인식 중";
 "overlay.avatar.state.error" = "오류";
 "overlay.avatar.state.idle" = "대기";
 "overlay.avatar.state.loading" = "로딩 중";
@@ -130,8 +132,8 @@
 "overlay.input.send.accessibility" = "메시지 보내기";
 "overlay.input.waiting" = "대기 중...";
 "overlay.reconnecting" = "재연결 중...";
-"overlay.status.capture_permission_needed" = "캡처 권한 필요";
-"overlay.status.capturing" = "캡처 중";
+"overlay.status.capture_permission_needed" = "화면 인식 권한 필요";
+"overlay.status.capturing" = "인식 중";
 "overlay.status.loading" = "로딩 중";
 "overlay.status.offline" = "오프라인";
 "overlay.status.shutting_down" = "안녕!";
@@ -200,10 +202,10 @@
 "settings.appearance.theme.accessibility_format" = "%@ 테마";
 "settings.appearance.theme.description" = "BoBe의 색상 테마를 선택하세요. 아바타와 모든 UI 요소에 적용돼요.";
 "settings.appearance.theme.title" = "테마";
-"settings.behavior.capture.description" = "BoBe가 맥락 파악을 위해 주기적으로 화면을 캡처해요";
-"settings.behavior.capture.interval" = "캡처 간격";
+"settings.behavior.capture.description" = "BoBe가 맥락 파악을 위해 주기적으로 화면을 살펴봐요";
+"settings.behavior.capture.interval" = "인식 간격";
 "settings.behavior.capture.permission_missing" = "화면 기록 권한이 허용되지 않았어요.";
-"settings.behavior.capture.title" = "화면 캡처";
+"settings.behavior.capture.title" = "화면 인식";
 "settings.behavior.checkins.action.add" = "추가";
 "settings.behavior.checkins.description" = "하루 중 예약된 자동 체크인";
 "settings.behavior.checkins.jitter" = "지터";
@@ -374,13 +376,13 @@
 "settings.window.overview.card.can_do.heading" = "BoBe가 할 수 있는 일";
 "settings.window.overview.card.remembers.body" = "메모리, 대화 기록, BoBe의 학습 방식을 관리하세요.";
 "settings.window.overview.card.remembers.heading" = "BoBe가 기억하는 것";
-"settings.window.overview.card.sees.body" = "화면 캡처, 맥락 창, BoBe가 접근할 수 있는 정보를 제어하세요.";
+"settings.window.overview.card.sees.body" = "화면 인식, 맥락 창, BoBe가 접근할 수 있는 정보를 제어하세요.";
 "settings.window.overview.card.sees.heading" = "BoBe가 보는 것";
 "settings.window.overview.card.sounds.body" = "BoBe의 소통 스타일을 결정하는 성격 템플릿을 선택하고 맞춤 설정하세요.";
 "settings.window.overview.card.sounds.heading" = "BoBe의 말투";
 "settings.window.overview.card.speaks.body" = "체크인 빈도, 자동 메시지, 알림 설정을 구성하세요.";
 "settings.window.overview.card.speaks.heading" = "BoBe가 먼저 말할 때";
-"settings.window.overview.description" = "BoBe는 성격(소울), 목표, 메모리를 활용해 상황에 맞게 먼저 도움을 제공해요. 아래에서 원하는 대로 설정해 보세요.";
+"settings.window.overview.description" = "BoBe는 성격(소울), 목표, 그리고 스스로 쌓아온 기억을 활용해 상황에 맞게 먼저 도움을 제공해요. 아래에서 원하는 대로 설정해 보세요.";
 "settings.window.overview.footer" = "사이드바에서 모든 설정을 둘러보세요. 모든 기능은 Mac에서 로컬로 실행돼요.";
 "settings.window.overview.title" = "BoBe 설정 방법";
 "settings.window.sidebar_title" = "BOBE 튜닝";

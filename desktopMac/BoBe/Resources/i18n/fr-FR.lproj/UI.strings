@@ -1,3 +1,5 @@
+/* Machine-translated. Contributions and corrections from native speakers welcome. */
+
 "setup.window.title" = "Configuration de BoBe";
 "setup.welcome.title" = "Bienvenue dans BoBe";
 "setup.welcome.subtitle" = "Votre compagnon IA proactif pour Mac";
@@ -44,12 +46,12 @@
 "setup.capture.permission.restricted" = "Cette autorisation est gérée par votre organisation et ne peut pas être modifiée.";
 "setup.capture.permission.open_settings" = "Ouvrir les Réglages Système";
 "setup.capture.permission.grant_to_continue" = "Accordez l'autorisation pour continuer.";
-"setup.capture.privacy.local" = "Les captures d'écran ne quittent jamais votre machine — toute l'analyse est effectuée localement.";
-"setup.capture.privacy.cloud" = "Les captures d'écran sont envoyées au fournisseur cloud que vous avez sélectionné pour l'analyse.";
-"setup.capture.skip" = "Ignorer — désactiver la capture d'écran";
+"setup.capture.privacy.local" = "Rien ne quitte votre machine — toute l'analyse est effectuée localement.";
+"setup.capture.privacy.cloud" = "Le contenu de l'écran est envoyé au fournisseur cloud que vous avez sélectionné pour l'analyse.";
+"setup.capture.skip" = "Ignorer — désactiver la perception d'écran";
 "setup.complete.title" = "Configuration terminée !";
 "setup.complete.subtitle" = "Vous pourrez toujours modifier ces réglages plus tard.";
-"setup.complete.details" = "Cliquez sur l'icône BoBe dans votre barre de menu → Réglages BoBe pour gérer votre modèle IA, vos Âmes, vos objectifs, la capture d'écran et toutes vos préférences.";
+"setup.complete.details" = "Cliquez sur l'icône BoBe dans votre barre de menu → Réglages BoBe pour gérer votre modèle IA, vos Âmes, vos objectifs, la perception d'écran et toutes vos préférences.";
 "setup.complete.finishing" = "Finalisation...";
 "setup.complete.get_started" = "Commencer";
 "setup.permission_status.granted" = "✓ Accordée";
@@ -76,8 +78,8 @@
 "tray.state.shutting_down" = "Arrêt en cours...";
 "tray.show" = "Afficher BoBe";
 "tray.hide" = "Masquer BoBe";
-"tray.capture.start" = "Démarrer la capture";
-"tray.capture.stop" = "Arrêter la capture";
+"tray.capture.enable" = "Activer la perception";
+"tray.capture.disable" = "Désactiver la perception";
 "tray.settings" = "Réglages...";
 "tray.check_updates" = "Rechercher des mises à jour...";
 "tray.about" = "À propos de BoBe";
@@ -107,7 +109,7 @@
 /* Wave 2 frontend settings/overlay localization */
 "overlay.avatar.accessibility_format" = "Avatar BoBe, %@";
 "overlay.avatar.brand_label" = "BoBe";
-"overlay.avatar.state.capturing" = "capture";
+"overlay.avatar.state.capturing" = "perception";
 "overlay.avatar.state.error" = "erreur";
 "overlay.avatar.state.idle" = "inactif";
 "overlay.avatar.state.loading" = "chargement";
@@ -130,8 +132,8 @@
 "overlay.input.send.accessibility" = "Envoyer le message";
 "overlay.input.waiting" = "en attente...";
 "overlay.reconnecting" = "Reconnexion...";
-"overlay.status.capture_permission_needed" = "La capture nécessite une autorisation";
-"overlay.status.capturing" = "Capture";
+"overlay.status.capture_permission_needed" = "La perception d'écran nécessite une autorisation";
+"overlay.status.capturing" = "Perception";
 "overlay.status.loading" = "Chargement";
 "overlay.status.offline" = "Hors ligne";
 "overlay.status.shutting_down" = "À bientôt !";
@@ -200,10 +202,10 @@
 "settings.appearance.theme.accessibility_format" = "thème %@";
 "settings.appearance.theme.description" = "Choisissez un thème de couleur pour BoBe. Cela affecte l'avatar et tous les éléments d'interface.";
 "settings.appearance.theme.title" = "Thème";
-"settings.behavior.capture.description" = "BoBe capture périodiquement votre écran pour le contexte";
-"settings.behavior.capture.interval" = "Intervalle de capture";
+"settings.behavior.capture.description" = "BoBe observe périodiquement votre écran pour mieux comprendre le contexte";
+"settings.behavior.capture.interval" = "Intervalle de perception";
 "settings.behavior.capture.permission_missing" = "Autorisation d'enregistrement de l'écran non accordée.";
-"settings.behavior.capture.title" = "Capture d'écran";
+"settings.behavior.capture.title" = "Perception de l'écran";
 "settings.behavior.checkins.action.add" = "Ajouter";
 "settings.behavior.checkins.description" = "Check-ins proactifs planifiés au fil de la journée";
 "settings.behavior.checkins.jitter" = "Variation";
@@ -374,13 +376,13 @@
 "settings.window.overview.card.can_do.heading" = "Ce que BoBe peut faire";
 "settings.window.overview.card.remembers.body" = "Gérez les mémoires, l'historique des conversations et comment BoBe apprend de vos échanges.";
 "settings.window.overview.card.remembers.heading" = "Ce dont BoBe se souvient";
-"settings.window.overview.card.sees.body" = "Contrôlez la capture d'écran, la fenêtre de contexte et les informations auxquelles BoBe a accès.";
+"settings.window.overview.card.sees.body" = "Contrôlez la perception de l'écran, la fenêtre de contexte et les informations auxquelles BoBe a accès.";
 "settings.window.overview.card.sees.heading" = "Ce que BoBe voit";
 "settings.window.overview.card.sounds.body" = "Choisissez et personnalisez les âmes qui définissent le style de BoBe.";
 "settings.window.overview.card.sounds.heading" = "Comment BoBe s'exprime";
 "settings.window.overview.card.speaks.body" = "Configurez la fréquence des check-ins, les messages proactifs et les préférences de notification.";
 "settings.window.overview.card.speaks.heading" = "Quand BoBe prend la parole";
-"settings.window.overview.description" = "BoBe s'appuie sur une personnalité (âme), vos objectifs et vos mémoires pour vous accompagner au quotidien. Voici comment personnaliser votre expérience.";
+"settings.window.overview.description" = "BoBe s'appuie sur une personnalité (âme), vos objectifs et ce qu'il a retenu pour vous accompagner au quotidien. Voici comment personnaliser votre expérience.";
 "settings.window.overview.footer" = "Utilisez la barre latérale pour explorer tous les réglages. Tout fonctionne localement sur votre Mac.";
 "settings.window.overview.title" = "Comment personnaliser BoBe";
 "settings.window.sidebar_title" = "RÉGLAGES BOBE";

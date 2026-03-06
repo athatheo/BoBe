@@ -1,3 +1,5 @@
+/* Machine-translated. Contributions and corrections from native speakers welcome. */
+
 "setup.window.title" = "Ρύθμιση BoBe";
 "setup.welcome.title" = "Καλώς ήρθες στο BoBe";
 "setup.welcome.subtitle" = "Ο προνοητικός AI βοηθός σου για Mac";
@@ -44,12 +46,12 @@
 "setup.capture.permission.restricted" = "Αυτή η άδεια διαχειρίζεται από τον οργανισμό σου και δεν μπορεί να αλλάξει.";
 "setup.capture.permission.open_settings" = "Άνοιγμα Ρυθμίσεων Συστήματος";
 "setup.capture.permission.grant_to_continue" = "Δώσε άδεια για να συνεχίσεις.";
-"setup.capture.privacy.local" = "Τα screenshots δεν φεύγουν ποτέ από τη συσκευή σου — όλη η ανάλυση γίνεται τοπικά.";
-"setup.capture.privacy.cloud" = "Τα screenshots αποστέλλονται στον cloud πάροχο που επέλεξες για ανάλυση.";
-"setup.capture.skip" = "Παράλειψη — απενεργοποίηση λήψης οθόνης";
+"setup.capture.privacy.local" = "Τα δεδομένα οθόνης δεν φεύγουν ποτέ από τη συσκευή σου — όλη η ανάλυση γίνεται τοπικά.";
+"setup.capture.privacy.cloud" = "Τα δεδομένα οθόνης αποστέλλονται στον cloud πάροχο που επέλεξες για ανάλυση.";
+"setup.capture.skip" = "Παράλειψη — απενεργοποίηση αντίληψης οθόνης";
 "setup.complete.title" = "Η ρύθμιση ολοκληρώθηκε!";
 "setup.complete.subtitle" = "Μπορείς πάντα να αλλάξεις αυτές τις ρυθμίσεις αργότερα.";
-"setup.complete.details" = "Κάνε κλικ στο εικονίδιο BoBe στη γραμμή μενού → Ρυθμίσεις BoBe για να διαχειριστείς το μοντέλο AI, τις Ψυχές, τους Στόχους, τη λήψη οθόνης και όλες τις προτιμήσεις.";
+"setup.complete.details" = "Κάνε κλικ στο εικονίδιο BoBe στη γραμμή μενού → Ρυθμίσεις BoBe για να διαχειριστείς το μοντέλο AI, τις Ψυχές, τους Στόχους, την αντίληψη οθόνης και όλες τις προτιμήσεις.";
 "setup.complete.finishing" = "Ολοκλήρωση...";
 "setup.complete.get_started" = "Έναρξη";
 "setup.permission_status.granted" = "✓ Επιτράπηκε";
@@ -76,8 +78,8 @@
 "tray.state.shutting_down" = "Τερματισμός...";
 "tray.show" = "Εμφάνιση BoBe";
 "tray.hide" = "Απόκρυψη BoBe";
-"tray.capture.start" = "Έναρξη λήψης";
-"tray.capture.stop" = "Διακοπή λήψης";
+"tray.capture.enable" = "Ενεργοποίηση αντίληψης";
+"tray.capture.disable" = "Απενεργοποίηση αντίληψης";
 "tray.settings" = "Ρυθμίσεις...";
 "tray.check_updates" = "Έλεγχος για ενημερώσεις...";
 "tray.about" = "Σχετικά με το BoBe";
@@ -107,7 +109,7 @@
 /* Wave 2 frontend settings/overlay localization */
 "overlay.avatar.accessibility_format" = "Άβαταρ BoBe, %@";
 "overlay.avatar.brand_label" = "BoBe";
-"overlay.avatar.state.capturing" = "λήψη";
+"overlay.avatar.state.capturing" = "αντίληψη";
 "overlay.avatar.state.error" = "σφάλμα";
 "overlay.avatar.state.idle" = "αδράνεια";
 "overlay.avatar.state.loading" = "φόρτωση";
@@ -130,8 +132,8 @@
 "overlay.input.send.accessibility" = "Αποστολή μηνύματος";
 "overlay.input.waiting" = "αναμονή...";
 "overlay.reconnecting" = "Επανασύνδεση...";
-"overlay.status.capture_permission_needed" = "Η λήψη χρειάζεται άδεια";
-"overlay.status.capturing" = "Λήψη";
+"overlay.status.capture_permission_needed" = "Η αντίληψη οθόνης χρειάζεται άδεια";
+"overlay.status.capturing" = "Αντίληψη";
 "overlay.status.loading" = "Φόρτωση";
 "overlay.status.offline" = "Εκτός σύνδεσης";
 "overlay.status.shutting_down" = "Γεια!";
@@ -200,10 +202,10 @@
 "settings.appearance.theme.accessibility_format" = "Θέμα %@";
 "settings.appearance.theme.description" = "Διάλεξε χρωματικό θέμα για το BoBe. Επηρεάζει το avatar και όλα τα στοιχεία του UI.";
 "settings.appearance.theme.title" = "Θέμα";
-"settings.behavior.capture.description" = "Το BoBe τραβάει περιοδικά στιγμιότυπο της οθόνης σου για πλαίσιο";
-"settings.behavior.capture.interval" = "Διάστημα λήψης";
+"settings.behavior.capture.description" = "Το BoBe παρατηρεί περιοδικά την οθόνη σου για να καταλαβαίνει το πλαίσιο";
+"settings.behavior.capture.interval" = "Διάστημα αντίληψης";
 "settings.behavior.capture.permission_missing" = "Δεν έχει δοθεί άδεια Εγγραφής Οθόνης.";
-"settings.behavior.capture.title" = "Λήψη οθόνης";
+"settings.behavior.capture.title" = "Αντίληψη οθόνης";
 "settings.behavior.checkins.action.add" = "Προσθήκη";
 "settings.behavior.checkins.description" = "Προγραμματισμένα αυτόματα check-ins μέσα στην ημέρα";
 "settings.behavior.checkins.jitter" = "Τυχαιότητα";
@@ -374,13 +376,13 @@
 "settings.window.overview.card.can_do.heading" = "Τι μπορεί να κάνει το BoBe";
 "settings.window.overview.card.remembers.body" = "Διαχειρίσου μνήμες, ιστορικό συνομιλιών και πώς μαθαίνει το BoBe από τις αλληλεπιδράσεις.";
 "settings.window.overview.card.remembers.heading" = "Τι θυμάται το BoBe";
-"settings.window.overview.card.sees.body" = "Έλεγξε τη λήψη οθόνης, το context window και σε τι έχει πρόσβαση το BoBe.";
+"settings.window.overview.card.sees.body" = "Έλεγξε την αντίληψη οθόνης, το context window και σε τι έχει πρόσβαση το BoBe.";
 "settings.window.overview.card.sees.heading" = "Τι βλέπει το BoBe";
 "settings.window.overview.card.sounds.body" = "Διάλεξε και προσάρμοσε πρότυπα προσωπικότητας που καθορίζουν πώς μιλάει το BoBe.";
 "settings.window.overview.card.sounds.heading" = "Πώς ακούγεται το BoBe";
 "settings.window.overview.card.speaks.body" = "Ρύθμισε τη συχνότητα check-ins, τα αυτόματα μηνύματα και τις ειδοποιήσεις.";
 "settings.window.overview.card.speaks.heading" = "Πότε μιλάει το BoBe";
-"settings.window.overview.description" = "Το BoBe χρησιμοποιεί μια προσωπικότητα (Ψυχή), τους στόχους σου και τις μνήμες σου για να προσφέρει σχετική, προνοητική βοήθεια. Δες πώς μπορείς να προσαρμόσεις την εμπειρία σου.";
+"settings.window.overview.description" = "Το BoBe χρησιμοποιεί μια προσωπικότητα (Ψυχή), τους στόχους σου και όσα έχει μάθει για να προσφέρει σχετική, προνοητική βοήθεια. Δες πώς μπορείς να προσαρμόσεις την εμπειρία σου.";
 "settings.window.overview.footer" = "Χρησιμοποίησε το sidebar για να δεις όλες τις ρυθμίσεις. Όλα τρέχουν τοπικά στο Mac σου.";
 "settings.window.overview.title" = "Πώς να προσαρμόσεις το BoBe";
 "settings.window.sidebar_title" = "ΡΥΘΜΙΣΕΙΣ BOBE";

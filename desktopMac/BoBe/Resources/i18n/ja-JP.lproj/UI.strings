@@ -1,3 +1,5 @@
+/* Machine-translated. Contributions and corrections from native speakers welcome. */
+
 "setup.window.title" = "BoBe セットアップ";
 "setup.welcome.title" = "BoBeへようこそ";
 "setup.welcome.subtitle" = "Mac向けのプロアクティブAIコンパニオン";
@@ -46,10 +48,10 @@
 "setup.capture.permission.grant_to_continue" = "続けるには権限を許可してください。";
 "setup.capture.privacy.local" = "スクリーンショットが端末外に送信されることはなく、解析はすべてローカルで行われます。";
 "setup.capture.privacy.cloud" = "スクリーンショットは解析のため、選択したクラウドプロバイダーへ送信されます。";
-"setup.capture.skip" = "スキップ — 画面キャプチャを無効にする";
+"setup.capture.skip" = "スキップ — 画面認識を無効にする";
 "setup.complete.title" = "セットアップ完了！";
 "setup.complete.subtitle" = "これらの設定は後からいつでも変更できます。";
-"setup.complete.details" = "メニューバーのBoBeアイコン → BoBe チューニング から、AIモデル、ソウル、ゴール、画面キャプチャ、各種設定を管理できます。";
+"setup.complete.details" = "メニューバーのBoBeアイコン → BoBe チューニング から、AIモデル、ソウル、ゴール、画面認識、各種設定を管理できます。";
 "setup.complete.finishing" = "完了処理中...";
 "setup.complete.get_started" = "はじめる";
 "setup.permission_status.granted" = "✓ 許可済み";
@@ -76,8 +78,8 @@
 "tray.state.shutting_down" = "終了中...";
 "tray.show" = "BoBeを表示";
 "tray.hide" = "BoBeを隠す";
-"tray.capture.start" = "キャプチャ開始";
-"tray.capture.stop" = "キャプチャ停止";
+"tray.capture.enable" = "画面認識を有効化";
+"tray.capture.disable" = "画面認識を無効化";
 "tray.settings" = "設定...";
 "tray.check_updates" = "アップデートを確認...";
 "tray.about" = "BoBeについて";
@@ -107,7 +109,7 @@
 /* Wave 2 frontend settings/overlay localization */
 "overlay.avatar.accessibility_format" = "BoBeアバター、%@";
 "overlay.avatar.brand_label" = "BoBe";
-"overlay.avatar.state.capturing" = "キャプチャ中";
+"overlay.avatar.state.capturing" = "認識中";
 "overlay.avatar.state.error" = "エラー";
 "overlay.avatar.state.idle" = "待機中";
 "overlay.avatar.state.loading" = "読み込み中";
@@ -130,8 +132,8 @@
 "overlay.input.send.accessibility" = "メッセージを送信";
 "overlay.input.waiting" = "待機中...";
 "overlay.reconnecting" = "再接続中...";
-"overlay.status.capture_permission_needed" = "キャプチャには権限が必要です";
-"overlay.status.capturing" = "キャプチャ中";
+"overlay.status.capture_permission_needed" = "画面認識には権限が必要です";
+"overlay.status.capturing" = "認識中";
 "overlay.status.loading" = "読み込み中";
 "overlay.status.offline" = "オフライン";
 "overlay.status.shutting_down" = "またね！";
@@ -200,10 +202,10 @@
 "settings.appearance.theme.accessibility_format" = "%@ テーマ";
 "settings.appearance.theme.description" = "BoBeのカラーテーマを選択します。アバターとすべてのUI要素に適用されます。";
 "settings.appearance.theme.title" = "テーマ";
-"settings.behavior.capture.description" = "BoBeが状況把握のために画面を定期的にキャプチャします";
-"settings.behavior.capture.interval" = "キャプチャ間隔";
+"settings.behavior.capture.description" = "BoBeが状況把握のために画面を定期的に確認します";
+"settings.behavior.capture.interval" = "認識間隔";
 "settings.behavior.capture.permission_missing" = "画面収録の権限が許可されていません。";
-"settings.behavior.capture.title" = "画面キャプチャ";
+"settings.behavior.capture.title" = "画面認識";
 "settings.behavior.checkins.action.add" = "追加";
 "settings.behavior.checkins.description" = "1日の中で定期的に行うプロアクティブなチェックイン";
 "settings.behavior.checkins.jitter" = "ジッター";
@@ -374,13 +376,13 @@
 "settings.window.overview.card.can_do.heading" = "BoBeにできること";
 "settings.window.overview.card.remembers.body" = "メモリ、会話履歴、BoBeがやり取りから学ぶ方法を管理します。";
 "settings.window.overview.card.remembers.heading" = "BoBeが覚えること";
-"settings.window.overview.card.sees.body" = "画面キャプチャ、コンテキスト範囲、BoBeがアクセスできる情報を管理します。";
+"settings.window.overview.card.sees.body" = "画面認識、コンテキスト範囲、BoBeがアクセスできる情報を管理します。";
 "settings.window.overview.card.sees.heading" = "BoBeが見るもの";
 "settings.window.overview.card.sounds.body" = "BoBeの話し方を決める個性テンプレートを選んでカスタマイズします。";
 "settings.window.overview.card.sounds.heading" = "BoBeの話し方";
 "settings.window.overview.card.speaks.body" = "チェックイン頻度、プロアクティブメッセージ、通知を設定します。";
 "settings.window.overview.card.speaks.heading" = "BoBeが話しかけるタイミング";
-"settings.window.overview.description" = "BoBeは個性（Soul）、あなたのゴール、メモリを使って文脈に沿ったプロアクティブ支援を行います。ここで体験をカスタマイズできます。";
+"settings.window.overview.description" = "BoBeは個性（Soul）、あなたのゴール、そして蓄積した記憶を使って文脈に沿ったプロアクティブ支援を行います。ここで体験をカスタマイズできます。";
 "settings.window.overview.footer" = "サイドバーからすべての設定を確認できます。すべてMac上でローカル実行されます。";
 "settings.window.overview.title" = "BoBeの設定方法";
 "settings.window.sidebar_title" = "BOBE チューニング";

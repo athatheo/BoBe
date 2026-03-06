@@ -1,3 +1,5 @@
+/* Machine-translated. Contributions and corrections from native speakers welcome. */
+
 "setup.window.title" = "Configuração do BoBe";
 "setup.welcome.title" = "Bem-vindo ao BoBe";
 "setup.welcome.subtitle" = "Seu companheiro de IA proativo para Mac";
@@ -46,10 +48,10 @@
 "setup.capture.permission.grant_to_continue" = "Conceda a permissão para continuar.";
 "setup.capture.privacy.local" = "As capturas de tela nunca saem da sua máquina — toda a análise acontece localmente.";
 "setup.capture.privacy.cloud" = "As capturas de tela são enviadas ao provedor cloud que você selecionou para análise.";
-"setup.capture.skip" = "Pular — desativar captura de tela";
+"setup.capture.skip" = "Pular — desativar percepção de tela";
 "setup.complete.title" = "Configuração concluída!";
 "setup.complete.subtitle" = "Você sempre pode alterar essas configurações depois.";
-"setup.complete.details" = "Clique no ícone do BoBe na barra de menus → Ajustes do BoBe para gerenciar seu modelo de IA, Souls, Metas, captura de tela e todas as preferências.";
+"setup.complete.details" = "Clique no ícone do BoBe na barra de menus → Ajustes do BoBe para gerenciar seu modelo de IA, Souls, Metas, percepção de tela e todas as preferências.";
 "setup.complete.finishing" = "Finalizando...";
 "setup.complete.get_started" = "Começar";
 "setup.permission_status.granted" = "✓ Concedido";
@@ -76,8 +78,8 @@
 "tray.state.shutting_down" = "Encerrando...";
 "tray.show" = "Mostrar BoBe";
 "tray.hide" = "Ocultar BoBe";
-"tray.capture.start" = "Iniciar captura";
-"tray.capture.stop" = "Parar captura";
+"tray.capture.enable" = "Ativar percepção";
+"tray.capture.disable" = "Desativar percepção";
 "tray.settings" = "Ajustes...";
 "tray.check_updates" = "Verificar atualizações...";
 "tray.about" = "Sobre o BoBe";
@@ -107,7 +109,7 @@
 /* Wave 2 frontend settings/overlay localization */
 "overlay.avatar.accessibility_format" = "Avatar do BoBe, %@";
 "overlay.avatar.brand_label" = "BoBe";
-"overlay.avatar.state.capturing" = "capturando";
+"overlay.avatar.state.capturing" = "observando";
 "overlay.avatar.state.error" = "erro";
 "overlay.avatar.state.idle" = "ocioso";
 "overlay.avatar.state.loading" = "carregando";
@@ -130,8 +132,8 @@
 "overlay.input.send.accessibility" = "Enviar mensagem";
 "overlay.input.waiting" = "aguardando...";
 "overlay.reconnecting" = "Reconectando...";
-"overlay.status.capture_permission_needed" = "Permissão de captura necessária";
-"overlay.status.capturing" = "Capturando";
+"overlay.status.capture_permission_needed" = "Permissão de percepção de tela necessária";
+"overlay.status.capturing" = "Observando";
 "overlay.status.loading" = "Carregando";
 "overlay.status.offline" = "Sem conexão";
 "overlay.status.shutting_down" = "Tchau!";
@@ -200,10 +202,10 @@
 "settings.appearance.theme.accessibility_format" = "Tema %@";
 "settings.appearance.theme.description" = "Escolha um tema de cores para o BoBe. Isso afeta o avatar e todos os elementos da interface.";
 "settings.appearance.theme.title" = "Tema";
-"settings.behavior.capture.description" = "O BoBe captura sua tela de tempos em tempos pra ter mais contexto";
-"settings.behavior.capture.interval" = "Intervalo de captura";
+"settings.behavior.capture.description" = "O BoBe observa sua tela de tempos em tempos pra ter mais contexto";
+"settings.behavior.capture.interval" = "Intervalo de percepção";
 "settings.behavior.capture.permission_missing" = "Permissão de Gravação de Tela não concedida.";
-"settings.behavior.capture.title" = "Captura de tela";
+"settings.behavior.capture.title" = "Percepção de tela";
 "settings.behavior.checkins.action.add" = "Adicionar";
 "settings.behavior.checkins.description" = "Check-ins proativos agendados ao longo do dia";
 "settings.behavior.checkins.jitter" = "Jitter";
@@ -374,13 +376,13 @@
 "settings.window.overview.card.can_do.heading" = "O que o BoBe pode fazer";
 "settings.window.overview.card.remembers.body" = "Gerencie memórias, histórico de conversas e como o BoBe aprende com as interações.";
 "settings.window.overview.card.remembers.heading" = "O que o BoBe lembra";
-"settings.window.overview.card.sees.body" = "Controle a captura de tela, a janela de contexto e quais informações o BoBe pode acessar.";
+"settings.window.overview.card.sees.body" = "Controle a percepção de tela, a janela de contexto e quais informações o BoBe pode acessar.";
 "settings.window.overview.card.sees.heading" = "O que o BoBe vê";
 "settings.window.overview.card.sounds.body" = "Escolha e personalize modelos de personalidade que definem o jeito do BoBe se comunicar.";
 "settings.window.overview.card.sounds.heading" = "Como o BoBe soa";
 "settings.window.overview.card.speaks.body" = "Configure frequência de check-ins, mensagens proativas e preferências de notificação.";
 "settings.window.overview.card.speaks.heading" = "Quando o BoBe fala";
-"settings.window.overview.description" = "O BoBe usa uma personalidade (Soul), suas metas e memórias pra te dar assistência contextual e proativa. Veja como personalizar sua experiência.";
+"settings.window.overview.description" = "O BoBe usa uma personalidade (Soul), suas metas e as memórias que ele acumulou pra te dar assistência contextual e proativa. Veja como personalizar sua experiência.";
 "settings.window.overview.footer" = "Use a barra lateral para explorar todos os ajustes. Tudo roda localmente no seu Mac.";
 "settings.window.overview.title" = "Como ajustar o BoBe";
 "settings.window.sidebar_title" = "AJUSTES DO BOBE";
