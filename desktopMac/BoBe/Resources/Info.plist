@@ -40,7 +40,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2024-2026 Ioannis Kozaris and Athanasios Theocharis. All rights reserved.</string>
+	<string>Copyright © 2024-2026 The BoBe Authors. All rights reserved.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>BoBe captures your screen to understand your context and provide proactive assistance.</string>
 	<key>NSSupportsAutomaticTermination</key>
