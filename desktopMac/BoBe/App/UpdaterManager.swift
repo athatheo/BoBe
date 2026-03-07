@@ -10,7 +10,7 @@ final class UpdaterManager: NSObject, SPUUpdaterDelegate {
     static let shared = UpdaterManager()
 
     private lazy var controller = SPUStandardUpdaterController(
-        startingUpdater: true,
+        startingUpdater: false,
         updaterDelegate: self,
         userDriverDelegate: nil
     )
@@ -30,13 +30,35 @@ final class UpdaterManager: NSObject, SPUUpdaterDelegate {
     func setup() {
         _ = self.controller
         self.controller.updater.clearFeedURLFromUserDefaults()
+
+        guard self.isConfigured else {
+            updaterLogger.info("Sparkle disabled: no valid SUFeedURL configured")
+            return
+        }
+
+        do {
+            try self.controller.updater.start()
+        } catch {
+            updaterLogger.warning("Sparkle failed to start: \(error.localizedDescription)")
+        }
     }
 
     func checkForUpdates() {
-        guard self.canCheckForUpdates else {
-            if !self.isConfigured {
-                updaterLogger.warning("Updates not configured: missing or placeholder SUFeedURL")
+        guard self.isConfigured else {
+            updaterLogger.warning("Updates not configured: missing or placeholder SUFeedURL")
+            return
+        }
+
+        if !self.controller.updater.sessionInProgress {
+            do {
+                try self.controller.updater.start()
+            } catch {
+                updaterLogger.warning("Sparkle failed to start: \(error.localizedDescription)")
+                return
             }
+        }
+
+        guard self.controller.updater.canCheckForUpdates else {
             return
         }
         self.controller.checkForUpdates(nil)
@@ -44,6 +66,16 @@ final class UpdaterManager: NSObject, SPUUpdaterDelegate {
 
     func feedURLString(for updater: SPUUpdater) -> String? {
         self.feedURLString
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        let nsError = error as NSError
+        // Silently log network errors — no internet or unreachable feed is not worth an alert
+        if nsError.domain == NSURLErrorDomain {
+            updaterLogger.info("Update check skipped (network): \(error.localizedDescription)")
+            return
+        }
+        updaterLogger.warning("Sparkle error: \(error.localizedDescription)")
     }
 
     private var feedURLString: String? {
