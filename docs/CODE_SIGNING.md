@@ -8,13 +8,13 @@ Sign inside-out — embedded binaries first, then the app bundle.
 # 1. Sign the Rust backend
 codesign -s "Developer ID Application: YOUR_TEAM_NAME (TEAM_ID)" \
   --options runtime --timestamp \
-  --entitlements desktopMac/entitlements.plist \
+  --entitlements BoBeMacUI/entitlements.plist \
   BoBe.app/Contents/MacOS/bobe-daemon
 
 # 2. Sign the app bundle
 codesign -s "Developer ID Application: YOUR_TEAM_NAME (TEAM_ID)" \
   --options runtime --timestamp \
-  --entitlements desktopMac/entitlements.plist \
+  --entitlements BoBeMacUI/entitlements.plist \
   --force \
   BoBe.app
 ```
@@ -23,7 +23,7 @@ codesign -s "Developer ID Application: YOUR_TEAM_NAME (TEAM_ID)" \
 
 ## Entitlements
 
-File: `desktopMac/entitlements.plist`
+File: `BoBeMacUI/entitlements.plist`
 
 | Entitlement | Value | Reason |
 | ------------- | ------- | -------- |

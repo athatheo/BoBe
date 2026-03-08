@@ -1,17 +1,35 @@
-/BoBeService/target
-.worktrees/
+# Rust build artifacts (covers root and BoBeService/)
+**/target/
+
+# SwiftPM build cache
+**/.build/
+
+# Xcode user state
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/
+
+# macOS
 **/.DS_Store
+
+# Build output
 build/
 
-.vscode/settings.json
+# Git worktrees
+.worktrees/
 
-# SwiftPM local build cache
-BoBeMacUI/.build/
+# IDE / editor config (local-only)
+.vscode/
+.idea/
 
 # Sparkle signing keys
 sparkle_private_key
 sparkle_private_key.pem
 *.sparkle_private_key
 
-# Snyk Security Extension - AI Rules (auto-generated)
+# AI assistant config files (local-only)
+CLAUDE.md
+.github/copilot-instructions.md
+
+# Snyk Security Extension
 .github/instructions/snyk_rules.instructions.md

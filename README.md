@@ -1,14 +1,15 @@
+<h1 align="center">BoBe</h1>
+
 <p align="center">
-  <strong>BoBe</strong><br>
   <em>A local-first proactive AI companion for macOS</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/johnkozaris/Bobe/actions/workflows/ci.yml"><img src="https://github.com/johnkozaris/Bobe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/johnkozaris/Bobe/actions/workflows/release.yml"><img src="https://github.com/johnkozaris/Bobe/actions/workflows/release.yml/badge.svg" alt="Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple" alt="macOS 14+">
-  <img src="https://img.shields.io/badge/arch-Apple%20Silicon%20%7C%20Intel-orange" alt="Apple Silicon | Intel">
+  <img src="https://img.shields.io/badge/arch-Apple%20Silicon-orange" alt="Apple Silicon">
 </p>
 
 ---
@@ -31,12 +32,12 @@ Everything runs locally by default. Your data never leaves your machine unless y
 
 ## Supported Platforms
 
-| Platform | Architecture | Minimum Version |
-|----------|-------------|-----------------|
-| macOS    | Apple Silicon (arm64) | macOS 14 Sonoma |
-| macOS    | Intel (x86_64) | macOS 14 Sonoma |
+| Platform | Architecture | Minimum Version | Status |
+|----------|-------------|-----------------|--------|
+| macOS    | Apple Silicon (arm64) | macOS 14 Sonoma | ✅ Supported |
+| Windows  | x86_64 / arm64 | — | 🚧 In development |
 
-> **Note:** BoBe is macOS-only. Linux, Windows, and iOS are not currently supported.
+> **Note:** Linux and iOS are not currently planned.
 
 ## Quick Start
 
@@ -110,4 +111,4 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[MIT License](LICENSE)

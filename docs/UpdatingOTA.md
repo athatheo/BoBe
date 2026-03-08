@@ -39,7 +39,7 @@ There are two different automation lanes and they must stay separate.
 ## Configuration (already done)
 
 - Sparkle keypair generated (private key in Keychain)
-- `SUPublicEDKey` and `SUFeedURL` set in `desktopMac/BoBe/Resources/Info.plist`
+- `SUPublicEDKey` and `SUFeedURL` set in `BoBeMacUI/BoBe/Resources/Info.plist`
 - Feed URL: `https://bobebot.com/updates/macos/appcast.xml`
 
 ## CI / release model
@@ -75,8 +75,8 @@ cargo test --locked -q
 cargo deny check
 cargo vet --locked
 cargo machete
-cd desktopMac && swiftlint lint --quiet
-cd desktopMac && swift build -c debug
+cd BoBeMacUI && swiftlint lint --quiet
+cd BoBeMacUI && swift build -c debug
 ```
 
 Important notes:
@@ -238,8 +238,8 @@ These protections live in GitHub, not in the repository contents:
   - `.github/workflows/**`
   - `justfile`
   - `docs/UpdatingOTA.md`
-  - `desktopMac/entitlements.plist`
-  - `desktopMac/BoBe/Resources/Info.plist`
+  - `BoBeMacUI/entitlements.plist`
+  - `BoBeMacUI/BoBe/Resources/Info.plist`
 
 These settings are not stored in the repository and must be configured manually in GitHub.
 
