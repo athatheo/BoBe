@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
   push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -25,6 +26,18 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
+
+      - name: Cache Rust dependencies and tools
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            BoBeService/target/
+          key: rust-${{ runner.os }}-${{ hashFiles('BoBeService/Cargo.lock') }}
+          restore-keys: rust-${{ runner.os }}-
 
       - name: Install CI tools
         env:
