@@ -24,7 +24,8 @@ enum L10n {
 
     private static func resolveBundle(for localeId: String?) -> Bundle? {
         guard let localeId, !localeId.isEmpty else { return nil }
-        let candidates = [localeId, String(localeId.prefix(2))]
+        // SPM .process() lowercases lproj directory names, so try multiple casings.
+        let candidates = [localeId, localeId.lowercased(), String(localeId.prefix(2))]
         for candidate in candidates {
             if let url = Bundle.appResources.url(forResource: candidate, withExtension: "lproj"),
                let bundle = Bundle(url: url) {

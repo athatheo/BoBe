@@ -10,6 +10,11 @@ final class TrayManager: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let store: BobeStore
 
+    /// Backend locale IDs used when daemon settings haven't loaded yet.
+    private static let fallbackLocales = [
+        "en-US", "el-GR", "zh-CN", "de-DE", "es-ES", "pt-BR", "ko-KR", "ja-JP", "fr-FR",
+    ]
+
     init(store: BobeStore) {
         self.store = store
         super.init()
@@ -33,11 +38,22 @@ final class TrayManager: NSObject, NSMenuDelegate {
             }
         }
 
-        self.updateMenu()
+        let menu = NSMenu()
+        menu.delegate = self
+        self.statusItem?.menu = menu
+        self.rebuildMenu()
     }
 
     func updateMenu() {
-        let menu = NSMenu()
+        self.rebuildMenu()
+    }
+
+    /// Clears and rebuilds all items in the existing menu.
+    /// Because we mutate the same NSMenu instance (rather than replacing it),
+    /// changes are visible immediately — even inside `menuWillOpen`.
+    private func rebuildMenu() {
+        guard let menu = self.statusItem?.menu else { return }
+        menu.removeAllItems()
 
         let statusText = switch self.store.stateType {
         case .loading: L10n.tr("tray.state.connecting")
@@ -63,19 +79,25 @@ final class TrayManager: NSObject, NSMenuDelegate {
         let showHideTitle = overlayVisible ? L10n.tr("tray.hide") : L10n.tr("tray.show")
         let showHideItem = NSMenuItem(title: showHideTitle, action: #selector(toggleOverlay), keyEquivalent: "b")
         showHideItem.target = self
+        showHideItem.image = NSImage(systemSymbolName: overlayVisible ? "eye.slash" : "eye",
+                                     accessibilityDescription: showHideTitle)
         menu.addItem(showHideItem)
 
-        let captureTitle = self.store.isCapturing ? L10n.tr("tray.capture.stop") : L10n.tr("tray.capture.start")
+        let capturing = self.store.isCapturing
+        let captureTitle = capturing ? L10n.tr("tray.capture.disable") : L10n.tr("tray.capture.enable")
         let captureItem = NSMenuItem(title: captureTitle, action: #selector(toggleCapture), keyEquivalent: "")
         captureItem.target = self
-        captureItem.state = self.store.isCapturing ? .on : .off
+        captureItem.image = NSImage(systemSymbolName: capturing ? "video.slash" : "video",
+                                    accessibilityDescription: captureTitle)
         menu.addItem(captureItem)
 
         let settingsItem = NSMenuItem(title: L10n.tr("tray.settings"), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
+        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         menu.addItem(settingsItem)
 
         let languageItem = NSMenuItem(title: L10n.tr("tray.language"), action: nil, keyEquivalent: "")
+        languageItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         languageItem.submenu = buildLanguageSubmenu()
         menu.addItem(languageItem)
 
@@ -85,6 +107,7 @@ final class TrayManager: NSObject, NSMenuDelegate {
             keyEquivalent: ""
         )
         checkUpdatesItem.target = self
+        checkUpdatesItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
         checkUpdatesItem.isEnabled = UpdaterManager.shared.canCheckForUpdates
         menu.addItem(checkUpdatesItem)
 
@@ -101,14 +124,11 @@ final class TrayManager: NSObject, NSMenuDelegate {
         let quitItem = NSMenuItem(title: L10n.tr("tray.quit"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
-
-        self.statusItem?.menu = menu
-        menu.delegate = self
     }
 
     nonisolated func menuWillOpen(_ menu: NSMenu) {
-        Task { @MainActor in
-            self.updateMenu()
+        MainActor.assumeIsolated {
+            self.rebuildMenu()
         }
     }
 
@@ -168,7 +188,11 @@ final class TrayManager: NSObject, NSMenuDelegate {
 
         submenu.addItem(.separator())
 
-        for localeId in self.store.supportedLocales {
+        let locales = self.store.supportedLocales.isEmpty
+            ? Self.fallbackLocales
+            : self.store.supportedLocales
+
+        for localeId in locales {
             let locale = Locale(identifier: localeId)
             let nativeName = locale.localizedString(forLanguageCode: localeId)?
                 .prefix(1).uppercased()

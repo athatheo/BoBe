@@ -82,6 +82,7 @@ enum SettingsCategoryGroup: String, CaseIterable {
 struct SettingsWindow: View {
     @State private var selectedCategory: SettingsCategory?
     @State private var themeStore = ThemeStore.shared
+    private let store = BobeStore.shared
 
     private var theme: ThemeConfig {
         self.themeStore.currentTheme
@@ -113,6 +114,7 @@ struct SettingsWindow: View {
         .background(self.theme.colors.background)
         .ignoresSafeArea(.container, edges: .top)
         .toolbar(removing: .sidebarToggle)
+        .id(self.store.localeVersion)
     }
 
     private var settingsSidebar: some View {

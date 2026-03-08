@@ -11,6 +11,7 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
 
     func show() {
         if let window {
+            window.title = L10n.tr("settings.window.title")
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
