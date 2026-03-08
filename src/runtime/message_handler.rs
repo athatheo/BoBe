@@ -88,36 +88,15 @@ impl MessageHandler {
     }
 
     async fn ensure_active_conversation(&self, user_content: &str) -> Option<ConversationId> {
-        let existing = self.conversation.get_pending_or_active().await.ok()?;
-
-        if let Some(conv) = existing {
-            if conv.is_pending()
-                && let Err(e) = self.conversation.activate(conv.id).await
-            {
-                warn!(error = %e, conversation_id = %conv.id, "message_handler.activate_failed");
-            }
-
-            match self
-                .conversation
-                .add_turn(conv.id, TurnRole::User, user_content)
-                .await
-            {
-                Ok(Some(_)) => Some(conv.id),
-                _ => match self.conversation.create_active(user_content).await {
-                    Ok(new_conv) => Some(new_conv.id),
-                    Err(e) => {
-                        error!(error = %e, "message_handler.create_conversation_failed");
-                        None
-                    }
-                },
-            }
-        } else {
-            match self.conversation.create_active(user_content).await {
-                Ok(new_conv) => Some(new_conv.id),
-                Err(e) => {
-                    error!(error = %e, "message_handler.create_conversation_failed");
-                    None
-                }
+        match self
+            .conversation
+            .append_user_turn_or_create_active(user_content)
+            .await
+        {
+            Ok(conversation) => Some(conversation.id),
+            Err(e) => {
+                error!(error = %e, "message_handler.create_conversation_failed");
+                None
             }
         }
     }

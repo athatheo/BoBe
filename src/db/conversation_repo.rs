@@ -1,7 +1,7 @@
 use crate::db::ConversationRepository;
 use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
-use crate::models::ids::ConversationId;
+use crate::models::ids::{ConversationId, ConversationTurnId};
 use crate::models::types::{ConversationState, TurnRole};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -204,6 +204,50 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(turn.clone())
     }
 
+    async fn update_turn_content(
+        &self,
+        turn_id: ConversationTurnId,
+        content: &str,
+    ) -> Result<Option<ConversationTurn>, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
+        let now = Utc::now();
+
+        let conversation_id: Option<(ConversationId,)> =
+            sqlx::query_as("SELECT conversation_id FROM conversation_turns WHERE id = ?1")
+                .bind(turn_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+
+        let Some((conversation_id,)) = conversation_id else {
+            warn!(turn_id = %turn_id, "conversation_repo.update_turn_content.not_found");
+            return Ok(None);
+        };
+
+        sqlx::query(r"UPDATE conversation_turns SET content = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(content)
+            .bind(now)
+            .bind(turn_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+
+        sqlx::query("UPDATE conversations SET updated_at = ?1 WHERE id = ?2")
+            .bind(now)
+            .bind(conversation_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+
+        tx.commit().await.map_err(AppError::Database)?;
+
+        sqlx::query_as::<_, ConversationTurn>("SELECT * FROM conversation_turns WHERE id = ?1")
+            .bind(turn_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::Database)
+    }
+
     async fn get_turns(
         &self,
         conversation_id: ConversationId,
@@ -234,20 +278,5 @@ impl ConversationRepository for SqliteConversationRepo {
         .await
         .map_err(AppError::Database)?;
         Ok(rows.into_iter().map(|(c,)| c).collect())
-    }
-
-    async fn delete(&self, id: ConversationId) -> Result<bool, AppError> {
-        let result = sqlx::query("DELETE FROM conversations WHERE id = ?1")
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
-
-        if result.rows_affected() > 0 {
-            info!(conversation_id = %id, "conversation_repo.deleted");
-            Ok(true)
-        } else {
-            Ok(false)
-        }
     }
 }

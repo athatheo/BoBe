@@ -223,12 +223,8 @@ actor DaemonClient {
 
     // MARK: - Messages
 
-    func sendMessage(_ content: String) async throws -> SendMessageResponse {
-        try await self.fetch("/message", method: "POST", body: SendMessageRequest(content: content))
-    }
-
-    func dismissMessage() async throws {
-        try await self.fetchVoid("/message/dismiss")
+    func sendMessage(_ content: String) async throws {
+        try await self.fetchVoid("/message", body: SendMessageRequest(content: content))
     }
 
     // MARK: - Goals

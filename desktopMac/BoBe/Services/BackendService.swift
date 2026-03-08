@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import OSLog
 
@@ -5,6 +6,13 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "BackendService
 
 enum ServiceState: Sendable {
     case stopped, starting, ready, crashed, fatal
+}
+
+private enum ManagedProcessIdentity {
+    case verifiedDaemon(path: String)
+    case otherProcess(path: String)
+    case notRunning
+    case unverifiable
 }
 
 actor BackendService {
@@ -231,17 +239,67 @@ actor BackendService {
             return
         }
 
-        if kill(pid, 0) == 0 {
-            logger.info("Cleaning stale process (PID: \(pid))")
+        switch self.inspectManagedProcess(pid: pid) {
+        case .verifiedDaemon(let path):
+            logger.info("Cleaning stale bobe daemon (PID: \(pid), path: \(path))")
             kill(pid, SIGTERM)
             try? await Task.sleep(for: .seconds(2))
             if kill(pid, 0) == 0 {
                 kill(pid, SIGKILL)
             }
-        } else if self.isPortInUse(DaemonConfig.port) {
-            logger.warning("Port \(DaemonConfig.port) in use but PID \(pid) from PID file is not running — stale PID file")
+        case .otherProcess(let path):
+            logger.warning(
+                "PID file points to a different live process (PID: \(pid), path: \(path)); refusing to terminate it"
+            )
+            if self.isPortInUse(DaemonConfig.port) {
+                logger.warning("Port \(DaemonConfig.port) remains in use by another process")
+            }
+        case .notRunning:
+            if self.isPortInUse(DaemonConfig.port) {
+                logger.warning("Port \(DaemonConfig.port) in use but PID \(pid) from PID file is not running — stale PID file")
+            }
+        case .unverifiable:
+            logger.warning("Could not verify PID \(pid) from PID file as bobe-daemon; refusing to terminate it")
+            if self.isPortInUse(DaemonConfig.port) {
+                logger.warning("Port \(DaemonConfig.port) remains in use by another process")
+            }
         }
         try? FileManager.default.removeItem(at: self.pidFilePath)
+    }
+
+    private func inspectManagedProcess(pid: Int32) -> ManagedProcessIdentity {
+        guard kill(pid, 0) == 0 else { return .notRunning }
+        guard let path = self.processPath(for: pid) else { return .unverifiable }
+        return self.isManagedDaemonPath(path) ? .verifiedDaemon(path: path) : .otherProcess(path: path)
+    }
+
+    private func processPath(for pid: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let written = buffer.withUnsafeMutableBytes { rawBuffer in
+            proc_pidpath(pid, rawBuffer.baseAddress, UInt32(rawBuffer.count))
+        }
+        guard written > 0 else { return nil }
+        let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    private func isManagedDaemonPath(_ path: String) -> Bool {
+        guard
+            let standardized = self.canonicalizedPath(path),
+            let binaryPath = self.findBinaryPath(),
+            let managedPath = self.canonicalizedPath(binaryPath)
+        else {
+            return false
+        }
+
+        return standardized == managedPath
+    }
+
+    private func canonicalizedPath(_ path: String) -> String? {
+        URL(fileURLWithPath: path)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
     }
 
     private func isPortInUse(_ port: Int) -> Bool {

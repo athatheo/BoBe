@@ -5,7 +5,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use super::security::{validate_mcp_command, validate_mcp_env};
+use super::security::{validate_mcp_command_with_args, validate_mcp_env};
 use crate::error::AppError;
 
 const DEFAULT_MCP_CONFIG_JSON: &str = include_str!("../../assets/defaults/mcp_servers.json");
@@ -122,10 +122,7 @@ pub(crate) fn parse_enabled_servers(
             continue;
         }
 
-        validate_mcp_env(&entry.env, dangerous_env_keys)?;
-
         let command = resolve_value(&entry.command)?;
-        validate_mcp_command(&command, blocked_commands)?;
         let args = entry
             .args
             .iter()
@@ -136,6 +133,9 @@ pub(crate) fn parse_enabled_servers(
             .iter()
             .map(|(k, v)| resolve_value(v).map(|resolved| (k.clone(), resolved)))
             .collect::<Result<HashMap<_, _>, _>>()?;
+
+        validate_mcp_env(&env, dangerous_env_keys)?;
+        validate_mcp_command_with_args(&command, &args, blocked_commands)?;
 
         servers.push(McpParsedServer {
             name,

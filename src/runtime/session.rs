@@ -234,27 +234,16 @@ impl RuntimeSession {
             return Ok(());
         }
 
-        // Re-fetch to avoid race with concurrent message handling
-        let refetched = self.conversation.get_conversation(existing.id).await?;
-        let Some(refetched) = refetched else {
-            return Ok(());
-        };
-
-        let turns = self
+        if let Some(turn_count) = self
             .conversation
-            .get_conversation_turns(refetched.id, 100)
-            .await?;
-        if !refetched.is_stale(cfg.conversation.auto_close_minutes as i64, &turns) {
-            return Ok(());
+            .close_if_stale(existing.id, cfg.conversation.auto_close_minutes as i64, 100)
+            .await?
+        {
+            info!(
+                conversation_id = &existing.id.to_string()[..8],
+                turn_count, "runtime_session.auto_closing_stale_conversation"
+            );
         }
-
-        info!(
-            conversation_id = &refetched.id.to_string()[..8],
-            turn_count = turns.len(),
-            "runtime_session.auto_closing_stale_conversation"
-        );
-
-        self.conversation.close(refetched.id).await?;
         Ok(())
     }
 

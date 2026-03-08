@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct MessageInput: View {
+    @Binding var text: String
     let onSend: (String) -> Void
     let onClose: () -> Void
     var isThinking = false
 
-    @State private var text = ""
     @FocusState private var isFocused: Bool
     @Environment(\.theme) private var theme
 
@@ -126,7 +126,7 @@ struct MessageInput: View {
 
 #if !SPM_BUILD
 #Preview("Message Input") {
-    MessageInput(onSend: { _ in }, onClose: {})
+    MessageInput(text: .constant(""), onSend: { _ in }, onClose: {})
         .environment(\.theme, allThemes[0])
         .frame(width: 500)
         .padding()
@@ -134,7 +134,7 @@ struct MessageInput: View {
 }
 
 #Preview("Message Input - Thinking") {
-    MessageInput(onSend: { _ in }, onClose: {}, isThinking: true)
+    MessageInput(text: .constant(""), onSend: { _ in }, onClose: {}, isThinking: true)
         .environment(\.theme, allThemes[0])
         .frame(width: 500)
         .padding()

@@ -5,7 +5,7 @@ use super::types::{ConversationState, TurnRole};
 
 /// Dialogue session. States: PENDING → ACTIVE → CLOSED.
 ///
-/// Invariant: only one conversation can be ACTIVE at a time.
+/// Invariant: only one conversation should be open (`PENDING` or `ACTIVE`) at a time.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Conversation {
     pub(crate) id: ConversationId,
@@ -77,14 +77,33 @@ pub(crate) struct ConversationTurn {
 
 impl ConversationTurn {
     pub(crate) fn new(conversation_id: ConversationId, role: TurnRole, content: String) -> Self {
+        Self::new_with_id(ConversationTurnId::new(), conversation_id, role, content)
+    }
+
+    pub(crate) fn new_with_id(
+        id: ConversationTurnId,
+        conversation_id: ConversationId,
+        role: TurnRole,
+        content: String,
+    ) -> Self {
         let now = Utc::now();
         Self {
-            id: ConversationTurnId::new(),
+            id,
             role,
             content,
             conversation_id,
             created_at: now,
             updated_at: now,
         }
+    }
+
+    pub(crate) fn append_content(&mut self, delta: &str) {
+        self.content.push_str(delta);
+        self.updated_at = Utc::now();
+    }
+
+    pub(crate) fn replace_content(&mut self, content: String) {
+        self.content = content;
+        self.updated_at = Utc::now();
     }
 }

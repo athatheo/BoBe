@@ -16,7 +16,7 @@ use tracing::warn;
 use crate::app_state::AppState;
 use crate::error::AppError;
 use crate::tools::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
-use crate::tools::mcp::security::{validate_mcp_command, validate_mcp_env};
+use crate::tools::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
 
 // ── Response / request DTOs ────────────────────────────────────────────────
 
@@ -225,7 +225,7 @@ fn parse_and_validate(
                 "MCP server '{name}' command must not be empty"
             )));
         }
-        validate_mcp_command(&entry.command, blocked_commands)?;
+        validate_mcp_command_with_args(&entry.command, &entry.args, blocked_commands)?;
         validate_mcp_env(&entry.env, dangerous_env_keys)?;
     }
 

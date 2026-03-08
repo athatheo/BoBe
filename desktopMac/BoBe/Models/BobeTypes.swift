@@ -34,6 +34,11 @@ enum MessageSender: String, Sendable {
     case bobe
 }
 
+struct FailedSendRecovery: Identifiable, Sendable {
+    let id: String
+    let content: String
+}
+
 struct ChatMessage: Identifiable, Sendable {
     let id: String
     let sender: MessageSender
@@ -90,8 +95,8 @@ struct BobeContext: Sendable {
     var lastMessage: String?
     var errorMessage: String?
     var currentMessage = ""
-    var currentMessageId: String?
     var messages: [ChatMessage] = []
+    var failedSendRecoveries: [FailedSendRecovery] = []
     var activeIndicator: IndicatorType?
     var capturePermissionMissing = false
     var toolExecutions: [ToolExecution] = []

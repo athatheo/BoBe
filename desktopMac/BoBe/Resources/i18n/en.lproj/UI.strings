@@ -76,8 +76,8 @@
 "tray.state.shutting_down" = "Shutting down...";
 "tray.show" = "Show BoBe";
 "tray.hide" = "Hide BoBe";
-"tray.capture.start" = "Start Capture";
-"tray.capture.stop" = "Stop Capture";
+"tray.capture.enable" = "Enable Capture";
+"tray.capture.disable" = "Disable Capture";
 "tray.settings" = "Settings...";
 "tray.check_updates" = "Check for Updates...";
 "tray.about" = "About BoBe";

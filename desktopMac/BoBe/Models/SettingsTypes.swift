@@ -211,14 +211,6 @@ struct SendMessageRequest: Codable, Sendable {
     let content: String
 }
 
-struct SendMessageResponse: Codable, Sendable {
-    let messageId: String
-
-    enum CodingKeys: String, CodingKey {
-        case messageId = "message_id"
-    }
-}
-
 struct HealthResponse: Codable, Sendable {
     let status: String
     let setupCompleted: Bool?

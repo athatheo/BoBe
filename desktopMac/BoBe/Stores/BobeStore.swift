@@ -49,6 +49,10 @@ final class BobeStore {
         self.context.messages
     }
 
+    var failedSendRecoveries: [FailedSendRecovery] {
+        self.context.failedSendRecoveries
+    }
+
     var errorMessage: String? {
         self.context.errorMessage
     }
@@ -71,6 +75,7 @@ final class BobeStore {
     private var streamingMessage = ""
     private var streamingMessageId: String?
     private var lastMessageTimer: Task<Void, Never>?
+    private var conversationClearTask: Task<Void, Never>?
     private var textDeltaFlushTask: Task<Void, Never>?
     private var captureStartupTask: Task<Void, Never>?
     private var appNapActivity: NSObjectProtocol?
@@ -170,6 +175,7 @@ final class BobeStore {
     func disconnect() {
         self.textDeltaFlushTask?.cancel()
         self.lastMessageTimer?.cancel()
+        self.conversationClearTask?.cancel()
         self.captureStartupTask?.cancel()
         self.backendObserverTask?.cancel()
         for observer in self.sleepWakeObservers {
@@ -231,33 +237,61 @@ final class BobeStore {
         }
     }
 
-    func sendMessage(_ content: String) async -> String? {
+    func sendMessage(_ content: String) async {
+        self.cancelConversationClear()
         let userMessage = ChatMessage(
             id: "user-\(Int(Date().timeIntervalSince1970 * 1000))",
             sender: .user,
             content: content,
             isPending: true
         )
-        self.updateState { $0.messages.append(userMessage) }
+        self.updateState { ctx in
+            ctx.errorMessage = nil
+            ctx.messages.append(userMessage)
+        }
 
         do {
-            let response = try await client.sendMessage(content)
-            return response.messageId
+            try await client.sendMessage(content)
+            self.updateState { ctx in
+                Self.markMessageSent(userMessage.id, messages: &ctx.messages)
+            }
         } catch {
             logger.error("sendMessage failed: \(error.localizedDescription)")
             self.updateState { ctx in
-                Self.normalizePendingMessages(&ctx.messages)
+                Self.removeMessage(userMessage.id, messages: &ctx.messages)
+                ctx.failedSendRecoveries.append(
+                    FailedSendRecovery(id: userMessage.id, content: content)
+                )
+                ctx.errorMessage = error.localizedDescription
+                ctx.daemonError = false
             }
-            return nil
         }
     }
 
+    func dismissFailedSendRecovery(_ recoveryId: String) {
+        self.updateState { ctx in
+            ctx.failedSendRecoveries.removeAll { $0.id == recoveryId }
+        }
+    }
+
+    func retryFailedSendRecovery(_ recoveryId: String) async {
+        guard let recovery = self.context.failedSendRecoveries.first(where: { $0.id == recoveryId }) else {
+            return
+        }
+
+        self.updateState { ctx in
+            ctx.failedSendRecoveries.removeAll { $0.id == recoveryId }
+        }
+
+        await self.sendMessage(recovery.content)
+    }
+
     func clearMessages() {
+        self.cancelConversationClear()
         self.updateState {
             $0.messages = []
             $0.lastMessage = nil
             $0.currentMessage = ""
-            $0.currentMessageId = nil
         }
         self.streamingMessage = ""
         self.streamingMessageId = nil
@@ -342,6 +376,7 @@ final class BobeStore {
     }
 
     private func handleTextDelta(_ payload: TextDeltaPayload, messageId: String) {
+        self.cancelConversationClear()
         if self.streamingMessageId != messageId {
             self.streamingMessage = ""
             self.streamingMessageId = messageId
@@ -374,11 +409,11 @@ final class BobeStore {
         self.textDeltaFlushTask = nil
 
         self.updateState { ctx in
-            Self.normalizePendingMessages(&ctx.messages)
-
-            if let idx = ctx.messages.firstIndex(where: { $0.id == messageId && $0.isStreaming }) {
-                ctx.messages[idx].content = self.streamingMessage
-            } else {
+            let updated = Self.updateMessage(messageId, messages: &ctx.messages) { message in
+                message.content = self.streamingMessage
+                message.isStreaming = true
+            }
+            if !updated {
                 ctx.messages.append(
                     ChatMessage(
                         id: messageId, sender: .bobe, content: self.streamingMessage,
@@ -388,7 +423,6 @@ final class BobeStore {
             }
 
             ctx.currentMessage = self.streamingMessage
-            ctx.currentMessageId = messageId
             let hasVisibleText = self.hasVisibleGlyphs(self.streamingMessage)
             ctx.thinking = !hasVisibleText
             ctx.speaking = hasVisibleText
@@ -402,17 +436,14 @@ final class BobeStore {
         guard let msgId = streamingMessageId else { return }
 
         self.updateState { ctx in
-            ctx.messages = ctx.messages.map {
-                $0.id == msgId
-                    ? ChatMessage(
-                        id: $0.id, sender: $0.sender, content: self.streamingMessage,
-                        timestamp: $0.timestamp, isStreaming: false, isPending: false
-                    ) : $0
+            Self.updateMessage(msgId, messages: &ctx.messages) { message in
+                message.content = self.streamingMessage
+                message.isStreaming = false
+                message.isPending = false
             }
 
             ctx.lastMessage = self.streamingMessage
             ctx.currentMessage = ""
-            ctx.currentMessageId = nil
             ctx.thinking = false
             ctx.speaking = false
             ctx.activeIndicator = nil
@@ -442,10 +473,7 @@ final class BobeStore {
             $0.activeIndicator = nil
             $0.toolExecutions = []
         }
-        Task {
-            try? await Task.sleep(for: .seconds(StoreTiming.conversationClearSeconds))
-            self.clearMessages()
-        }
+        self.scheduleConversationClear()
     }
 
     private func synchronizeCaptureStartup() {
@@ -511,18 +539,43 @@ final class BobeStore {
         })
     }
 
-    private static func normalizePendingMessages(_ messages: inout [ChatMessage]) {
-        messages = messages.map { message in
-            guard message.isPending else { return message }
-            return ChatMessage(
-                id: message.id,
-                sender: message.sender,
-                content: message.content,
-                timestamp: message.timestamp,
-                isStreaming: false,
-                isPending: false
-            )
+    private func scheduleConversationClear() {
+        self.cancelConversationClear()
+        self.conversationClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(StoreTiming.conversationClearSeconds))
+            guard let self, !Task.isCancelled else { return }
+            self.clearMessages()
         }
+    }
+
+    private func cancelConversationClear() {
+        self.conversationClearTask?.cancel()
+        self.conversationClearTask = nil
+    }
+
+    private static func markMessageSent(_ messageId: String, messages: inout [ChatMessage]) {
+        Self.updateMessage(messageId, messages: &messages) { message in
+            message.isStreaming = false
+            message.isPending = false
+        }
+    }
+
+    private static func removeMessage(_ messageId: String, messages: inout [ChatMessage]) {
+        messages.removeAll { $0.id == messageId }
+    }
+
+    @discardableResult
+    private static func updateMessage(
+        _ messageId: String,
+        messages: inout [ChatMessage],
+        mutate: (inout ChatMessage) -> Void
+    ) -> Bool {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else {
+            return false
+        }
+
+        mutate(&messages[idx])
+        return true
     }
 
     private func updateState(_ block: (inout BobeContext) -> Void) {

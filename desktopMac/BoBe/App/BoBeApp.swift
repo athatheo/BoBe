@@ -16,6 +16,14 @@ struct BoBeApp: App {
         Settings {
             EmptyView()
         }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button(L10n.tr("tray.settings")) {
+                    SettingsWindowManager.shared.show()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
     }
 }
 
@@ -160,6 +168,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private enum StartupRoute {
+        case overlay
+        case setup
+    }
+
     @MainActor
     private func startApp() async {
         defer { self.isStartingUp = false }
@@ -191,29 +204,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("Dev mode: skipping service management (run `bobe serve` manually)")
         }
 
-        if forceOnboarding {
-            logger.info("BOBE_FORCE_ONBOARDING=1 — forcing wizard")
-            self.showSetupWizard()
+        guard let route = await self.resolveStartupRoute(forceOnboarding: forceOnboarding) else {
+            NSApp.terminate(nil)
             return
         }
 
-        do {
-            let status = try await DaemonClient.shared.getOnboardingStatus()
-            if status.needsOnboarding {
-                self.showSetupWizard()
-                return
-            }
-        } catch {
-            logger.error("Could not check onboarding status: \(error.localizedDescription)")
-            let shouldRetry = await showBackendErrorDialog(message: error.localizedDescription)
-            if !shouldRetry {
-                NSApp.terminate(nil)
-                return
-            }
+        switch route {
+        case .setup:
+            self.showSetupWizard()
+        case .overlay:
+            self.showOverlay()
+            self.store.connect()
+        }
+    }
+
+    @MainActor
+    private func resolveStartupRoute(forceOnboarding: Bool) async -> StartupRoute? {
+        if forceOnboarding {
+            logger.info("BOBE_FORCE_ONBOARDING=1 — forcing wizard")
+            return .setup
         }
 
-        self.showOverlay()
-        self.store.connect()
+        while true {
+            do {
+                let status = try await DaemonClient.shared.getOnboardingStatus()
+                return status.needsOnboarding ? .setup : .overlay
+            } catch {
+                logger.error("Could not check onboarding status: \(error.localizedDescription)")
+                let shouldRetry = await self.showBackendErrorDialog(message: error.localizedDescription)
+                if !shouldRetry {
+                    return nil
+                }
+            }
+        }
     }
 
     @MainActor

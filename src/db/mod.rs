@@ -81,6 +81,13 @@ pub(crate) trait ConversationRepository: Send + Sync {
     async fn add_turn(&self, _turn: &ConversationTurn) -> Result<ConversationTurn, AppError> {
         unimplemented!("ConversationRepository::add_turn")
     }
+    async fn update_turn_content(
+        &self,
+        _turn_id: crate::models::ids::ConversationTurnId,
+        _content: &str,
+    ) -> Result<Option<ConversationTurn>, AppError> {
+        unimplemented!("ConversationRepository::update_turn_content")
+    }
     async fn get_turns(
         &self,
         _conversation_id: ConversationId,
@@ -94,9 +101,6 @@ pub(crate) trait ConversationRepository: Send + Sync {
         _limit: i64,
     ) -> Result<Vec<String>, AppError> {
         unimplemented!("ConversationRepository::get_recent_turns_by_role")
-    }
-    async fn delete(&self, _id: ConversationId) -> Result<bool, AppError> {
-        unimplemented!("ConversationRepository::delete")
     }
 }
 

@@ -92,10 +92,8 @@ struct AdvancedPanel: View {
                 suffix: L10n.tr("settings.units.seconds")
             ) {
                 DebouncedNumberInput(
-                    value: Binding(
-                        get: { Int(self.settings?.goalCheckIntervalSeconds ?? 300) },
-                        set: { newVal in self.settings?.goalCheckIntervalSeconds = Double(newVal) }
-                    ), range: 60 ... 7200
+                    value: self.intBinding(\.goalCheckIntervalSeconds, fallback: 300),
+                    range: 60 ... 7200
                 )
             }
         }
@@ -182,6 +180,23 @@ struct AdvancedPanel: View {
             set: { newValue in
                 guard var current = settings else { return }
                 current[keyPath: keyPath] = newValue
+                self.settings = current
+                self.debounceSave()
+            }
+        )
+    }
+
+    private func intBinding(
+        _ keyPath: WritableKeyPath<DaemonSettings, Double>,
+        fallback: @autoclosure @escaping () -> Int
+    ) -> Binding<Int> {
+        Binding(
+            get: {
+                Int((self.settings?[keyPath: keyPath] ?? Double(fallback())).rounded())
+            },
+            set: { newValue in
+                guard var current = self.settings else { return }
+                current[keyPath: keyPath] = Double(newValue)
                 self.settings = current
                 self.debounceSave()
             }

@@ -11,10 +11,11 @@ use crate::config::Config;
 use crate::db::CooldownRepository;
 use crate::llm::LlmProvider;
 use crate::models::conversation::Conversation;
-use crate::models::types::TurnRole;
 use crate::runtime::prompts::response::ProactiveResponsePrompt;
 use crate::runtime::prompts::summary::ConversationSummaryPrompt;
-use crate::runtime::response_streamer::{stream_llm_response, stream_response};
+use crate::runtime::response_streamer::{
+    stream_llm_response_with_text_observer, stream_response_with_text_observer,
+};
 use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
 use crate::services::conversation_service::ConversationService;
 use crate::tools::registry::ToolRegistry;
@@ -64,6 +65,18 @@ impl ProactiveGenerator {
         context_summary: Option<String>,
     ) {
         let (target, previous_summary) = self.ensure_conversation(auto_close_minutes).await;
+        let target = match self
+            .conversation
+            .begin_proactive_stream(target.as_ref())
+            .await
+        {
+            Ok(target) => Some(target),
+            Err(e) => {
+                error!(error = %e, "proactive_generator.begin_stream_failed");
+                target
+            }
+        };
+
         self.generate_response(target, previous_summary, context_summary)
             .await;
     }
@@ -174,10 +187,26 @@ impl ProactiveGenerator {
             vec![]
         };
 
+        let Some(target_conversation) = target_conversation.as_ref() else {
+            warn!("proactive_generator.missing_target_conversation");
+            self.event_queue.set_indicator(IndicatorType::Idle);
+            return;
+        };
+
+        let conversation_id = target_conversation.id;
         let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
             let tool_stream =
                 tcl.stream(messages, tools, prompt_config.temperature, max_tokens, None);
-            stream_response(tool_stream, &self.event_queue, Some(&msg_id)).await
+            stream_response_with_text_observer(
+                tool_stream,
+                &self.event_queue,
+                Some(&msg_id),
+                |delta| {
+                    self.conversation
+                        .push_proactive_stream_delta(conversation_id, delta);
+                },
+            )
+            .await
         } else {
             let stream = self.llm.stream(
                 messages,
@@ -186,13 +215,33 @@ impl ProactiveGenerator {
                 prompt_config.temperature,
                 max_tokens,
             );
-            stream_llm_response(stream, &self.event_queue, Some(&msg_id)).await
+            stream_llm_response_with_text_observer(
+                stream,
+                &self.event_queue,
+                Some(&msg_id),
+                |delta| {
+                    self.conversation
+                        .push_proactive_stream_delta(conversation_id, delta);
+                },
+            )
+            .await
         };
 
-        if result.success && !result.full_response.is_empty() {
-            self.persist_proactive_response(&result, target_conversation.as_ref())
+        if result.full_response.is_empty() {
+            self.conversation.discard_proactive_stream(conversation_id);
+        } else {
+            self.persist_proactive_response(&result, target_conversation)
                 .await;
-            self.record_engagement().await;
+            if result.success {
+                self.record_engagement().await;
+            }
+        }
+
+        if !result.success {
+            warn!(
+                conversation_id = %conversation_id,
+                "proactive_generator.stream_incomplete"
+            );
         }
 
         self.event_queue.set_indicator(IndicatorType::Idle);
@@ -201,7 +250,7 @@ impl ProactiveGenerator {
     async fn persist_proactive_response(
         &self,
         result: &crate::runtime::response_streamer::StreamResult,
-        target: Option<&Conversation>,
+        target: &Conversation,
     ) {
         let chunks_per_sec = if result.duration_ms > 0.0 {
             result.chunk_count as f64 / (result.duration_ms / 1000.0)
@@ -209,53 +258,27 @@ impl ProactiveGenerator {
             0.0
         };
 
-        if let Some(target) = target {
-            match self.conversation.get_conversation(target.id).await {
-                Ok(Some(conv)) if !conv.is_closed() => {
-                    match self
-                        .conversation
-                        .add_turn(target.id, TurnRole::Assistant, &result.full_response)
-                        .await
-                    {
-                        Ok(Some(_)) => {
-                            info!(
-                                chunks = result.chunk_count,
-                                ms = result.duration_ms as u64,
-                                cps = format!("{chunks_per_sec:.1}"),
-                                first_token_ms = ?result.first_token_ms.map(|v| v as u64),
-                                "proactive_generator.complete"
-                            );
-                        }
-                        Ok(None) => warn!("proactive_generator.turn_failed"),
-                        Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
-                    }
-                }
-                Ok(Some(_)) => {
-                    warn!(
-                        conversation_id = %target.id,
-                        "proactive_generator.conversation_closed_before_persist"
-                    );
-                }
-                Ok(None) => {
-                    error!(conversation_id = %target.id, "proactive_generator.conversation_not_found");
-                }
-                Err(e) => error!(error = %e, "proactive_generator.conversation_refetch_failed"),
+        match self
+            .conversation
+            .finalize_proactive_stream(target.id, &result.full_response)
+            .await
+        {
+            Ok(Some(_)) => {
+                info!(
+                    chunks = result.chunk_count,
+                    ms = result.duration_ms as u64,
+                    cps = format!("{chunks_per_sec:.1}"),
+                    first_token_ms = ?result.first_token_ms.map(|v| v as u64),
+                    "proactive_generator.complete"
+                );
             }
-        } else {
-            match self
-                .conversation
-                .create_pending(&result.full_response)
-                .await
-            {
-                Ok(conv) => {
-                    info!(
-                        conversation_id = &conv.id.to_string()[..8],
-                        chunks = result.chunk_count,
-                        "proactive_generator.conversation_created"
-                    );
-                }
-                Err(e) => error!(error = %e, "proactive_generator.create_failed"),
+            Ok(None) => {
+                warn!(
+                    conversation_id = %target.id,
+                    "proactive_generator.turn_finalize_skipped"
+                );
             }
+            Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
         }
     }
 

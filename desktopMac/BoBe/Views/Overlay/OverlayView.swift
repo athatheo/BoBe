@@ -5,6 +5,7 @@ struct OverlayView: View {
     @State private var store: BobeStore
     @State private var themeStore: ThemeStore
     @State private var showChat = false
+    @State private var draftMessage = ""
     @State private var lastMessageActivity: Date = .now
     @State private var measuredContentSize: CGSize = .zero
     @State private var inactivityTimer: Task<Void, Never>?
@@ -33,7 +34,27 @@ struct OverlayView: View {
                 }
 
                 if self.showChat {
+                    if !self.store.failedSendRecoveries.isEmpty {
+                        VStack(spacing: 8) {
+                            ForEach(self.store.failedSendRecoveries) { recovery in
+                                FailedSendRecoveryBanner(
+                                    recovery: recovery,
+                                    onRetry: {
+                                        Task { await self.store.retryFailedSendRecovery(recovery.id) }
+                                    },
+                                    onDismiss: {
+                                        self.store.dismissFailedSendRecovery(recovery.id)
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
                     MessageInput(
+                        text: self.$draftMessage,
                         onSend: self.handleSendMessage,
                         onClose: {
                             withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
@@ -178,7 +199,9 @@ struct OverlayView: View {
 
     private func handleSendMessage(_ content: String) {
         self.lastMessageActivity = .now
-        Task { _ = await self.store.sendMessage(content) }
+        Task {
+            await self.store.sendMessage(content)
+        }
     }
 
     private func handleMessagesChange(oldCount: Int, newCount: Int) {
@@ -257,6 +280,53 @@ struct OverlayView: View {
                 }
             }
         }
+    }
+}
+
+private struct FailedSendRecoveryBanner: View {
+    let recovery: FailedSendRecovery
+    let onRetry: () -> Void
+    let onDismiss: () -> Void
+
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.arrow.trianglehead.counterclockwise")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(self.theme.colors.primary)
+                .padding(.top, 2)
+
+            Text(self.recovery.content)
+                .font(.system(size: 12))
+                .foregroundStyle(self.theme.colors.text)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(L10n.tr("app.common.retry"), action: self.onRetry)
+                .font(.system(size: 11, weight: .semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(self.theme.colors.primary)
+
+            Button(action: self.onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(self.theme.colors.textMuted)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(self.theme.colors.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(self.theme.colors.border, lineWidth: 1)
+        )
     }
 }
 

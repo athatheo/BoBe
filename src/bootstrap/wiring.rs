@@ -458,9 +458,9 @@ fn build_native_tools(
         Arc::new(check_coding_agent::CheckCodingAgentTool::new(Arc::clone(
             &repos.agent_job_repo,
         ))),
-        Arc::new(cancel_coding_agent::CancelCodingAgentTool::new(Arc::clone(
-            &repos.agent_job_repo,
-        ))),
+        Arc::new(cancel_coding_agent::CancelCodingAgentTool::new(
+            agent_mgr.cloned(),
+        )),
         Arc::new(list_coding_agents::ListCodingAgentsTool::new(Arc::clone(
             &repos.agent_job_repo,
         ))),

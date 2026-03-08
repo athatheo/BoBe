@@ -38,7 +38,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         .route("/status", get(handlers::health::get_status))
         .route("/events", get(handlers::events::stream_events))
         .route("/message", post(handlers::conversation::send_message))
-        .route("/message/dismiss", post(handlers::conversation::dismiss_message))
         .route("/capture/start", post(handlers::capture::start_capture))
         .route("/capture/stop", post(handlers::capture::stop_capture))
         .route("/capture/once", post(handlers::capture::capture_once))

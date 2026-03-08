@@ -40,8 +40,3 @@ pub(crate) async fn send_message(
 
     Ok(Json(ConversationMessageResponse { message_id }))
 }
-
-/// No-op; frontend handles dismiss locally.
-pub(crate) async fn dismiss_message() -> axum::http::StatusCode {
-    axum::http::StatusCode::OK
-}

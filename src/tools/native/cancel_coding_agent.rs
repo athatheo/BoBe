@@ -1,7 +1,7 @@
 use super::base::NativeTool;
-use crate::db::AgentJobRepository;
 use crate::error::AppError;
 use crate::models::ids::AgentJobId;
+use crate::services::agent_job_manager::AgentJobManager;
 use crate::tools::ToolExecutionContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -9,12 +9,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(crate) struct CancelCodingAgentTool {
-    agent_job_repo: Arc<dyn AgentJobRepository>,
+    manager: Option<Arc<AgentJobManager>>,
 }
 
 impl CancelCodingAgentTool {
-    pub(crate) fn new(agent_job_repo: Arc<dyn AgentJobRepository>) -> Self {
-        Self { agent_job_repo }
+    pub(crate) fn new(manager: Option<Arc<AgentJobManager>>) -> Self {
+        Self { manager }
     }
 }
 
@@ -55,30 +55,19 @@ impl NativeTool for CancelCodingAgentTool {
             .parse()
             .map_err(|_| AppError::Validation(format!("Invalid UUID: {job_id_str}")))?;
 
-        let job = self
-            .agent_job_repo
-            .get_by_id(job_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Job {job_id} not found")))?;
+        let manager = self
+            .manager
+            .as_ref()
+            .ok_or_else(|| AppError::Validation("Coding agents are disabled".into()))?;
+        let job = manager.cancel(job_id).await?;
 
-        if job.is_terminal() {
+        if job.status.is_terminal() && job.status != crate::models::types::AgentJobStatus::Cancelled
+        {
             return Ok(format!(
                 "Job {} is already in terminal state: {}",
                 job_id, job.status
             ));
         }
-
-        if let Some(pid) = job.pid {
-            drop(
-                std::process::Command::new("kill")
-                    .arg(pid.to_string())
-                    .status(),
-            );
-        }
-
-        let mut cancelled = job;
-        cancelled.mark_cancelled(Some("Cancelled by user".into()));
-        self.agent_job_repo.save(&cancelled).await?;
 
         Ok(format!("Job {job_id} cancelled."))
     }

@@ -15,7 +15,6 @@ pub(crate) async fn stream_events(
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let connection_manager = Arc::clone(&state.connection_manager);
     let queue = Arc::clone(&state.event_queue);
-    let runtime_session = Arc::clone(&state.runtime_session);
 
     let conn_id = connection_manager.connect().await;
     tracing::info!(connection_id = %conn_id, "sse.connected");
@@ -24,7 +23,6 @@ pub(crate) async fn stream_events(
 
     let conn_id_inner = conn_id.clone();
     let cm = Arc::clone(&connection_manager);
-    let rs = Arc::clone(&runtime_session);
     tokio::spawn(async move {
         loop {
             if !cm.is_active_connection(&conn_id_inner).await {
@@ -32,7 +30,6 @@ pub(crate) async fn stream_events(
                     connection_id = %conn_id_inner,
                     "sse.connection_replaced"
                 );
-                rs.on_disconnection().await;
                 break;
             }
 
@@ -55,7 +52,6 @@ pub(crate) async fn stream_events(
                         "sse.client_disconnected"
                     );
                     cm.disconnect(Some(&conn_id_inner)).await;
-                    rs.on_disconnection().await;
                     break;
                 }
             }
