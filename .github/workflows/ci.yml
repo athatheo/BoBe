@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vet-and-validate:
+    name: Vet and validate
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+
+      - name: Install CI tools
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          if ! command -v swiftlint >/dev/null 2>&1; then
+            brew install swiftlint
+          fi
+          if ! just --version 2>/dev/null | grep -qx 'just 1.46.0'; then
+            cargo install --locked just --version 1.46.0
+          fi
+          if ! cargo deny --version 2>/dev/null | grep -qx 'cargo-deny 0.19.0'; then
+            cargo install --locked cargo-deny --version 0.19.0
+          fi
+          if ! cargo machete --version 2>/dev/null | grep -qx '0.9.1'; then
+            cargo install --locked cargo-machete --version 0.9.1
+          fi
+          if ! cargo vet --version 2>/dev/null | grep -qx 'cargo-vet 0.10.2'; then
+            cargo install --locked cargo-vet --version 0.10.2
+          fi
+
+      - name: Run deterministic validation and supply-chain checks
+        run: just check-ci

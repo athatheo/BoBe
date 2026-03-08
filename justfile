@@ -101,6 +101,21 @@ notarize version="1.0.0" apple-id="" team-id="" password="":
         --wait
     echo "Notarization complete"
 
+# Notarize using an App Store Connect API key (CI-friendly)
+notarize-api-key version="1.0.0" key-path="" key-id="" issuer="":
+    #!/bin/bash
+    set -euo pipefail
+    if [[ -z "{{ key-path }}" || -z "{{ key-id }}" || -z "{{ issuer }}" ]]; then
+        echo "notarize-api-key requires key-path, key-id, and issuer" >&2
+        exit 1
+    fi
+    xcrun notarytool submit "build/BoBe-{{ version }}.dmg" \
+        --key "{{ key-path }}" \
+        --key-id "{{ key-id }}" \
+        --issuer "{{ issuer }}" \
+        --wait
+    echo "Notarization complete"
+
 # Staple the notarization ticket
 staple version="1.0.0":
     xcrun stapler staple "build/BoBe-{{ version }}.dmg"
@@ -110,6 +125,7 @@ staple version="1.0.0":
 release version="1.0.0" identity="Developer ID Application": (build version) (sign identity) (dmg version) (sign-dmg identity version)
     echo "Release build complete: build/BoBe-{{ version }}.dmg"
     echo "Next: just notarize {{ version }} apple-id=... team-id=... password=..."
+    echo "   or: just notarize-api-key {{ version }} key-path=... key-id=... issuer=..."
     echo "Then: just staple {{ version }}"
 
 # Create Sparkle-friendly ZIP archive of the signed app bundle
@@ -118,7 +134,7 @@ sparkle-zip version="1.0.0":
     echo "Sparkle archive created: build/BoBe-{{ version }}.zip"
 
 # Sign Sparkle update archive (prints enclosure attributes)
-sparkle-sign-update version="1.0.0":
+sparkle-sign-update version="1.0.0" private-key-file="":
     #!/bin/bash
     set -euo pipefail
     SPARKLE_BIN="desktopMac/.build/artifacts/sparkle/Sparkle/bin"
@@ -126,7 +142,11 @@ sparkle-sign-update version="1.0.0":
         echo "Sparkle tools not found. Run: cd desktopMac && swift package resolve"
         exit 1
     fi
-    "$SPARKLE_BIN/sign_update" "build/BoBe-{{ version }}.zip"
+    ARGS=()
+    if [[ -n "{{ private-key-file }}" ]]; then
+        ARGS+=(-f "{{ private-key-file }}")
+    fi
+    "$SPARKLE_BIN/sign_update" "${ARGS[@]}" "build/BoBe-{{ version }}.zip"
 
 # Generate/update appcast.xml from staged Sparkle archives
 sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" link="":
@@ -191,6 +211,17 @@ check:
     cargo clippy -q
     cargo test -q
     cargo deny check
+    cargo machete
+    cd desktopMac && swiftlint lint --quiet
+    cd desktopMac && swift build -c debug
+
+# CI vetting: deterministic Rust + supply-chain + Swift
+check-ci:
+    cargo fmt --check
+    cargo clippy --locked -q
+    cargo test --locked -q
+    cargo deny check
+    cargo vet --locked
     cargo machete
     cd desktopMac && swiftlint lint --quiet
     cd desktopMac && swift build -c debug

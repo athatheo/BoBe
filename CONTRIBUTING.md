@@ -23,7 +23,9 @@ cd bobe
 just check
 ```
 
-`just check` runs: `cargo fmt --check`, `cargo clippy`, `cargo test`, `swiftlint`, and `swift build`.
+`just check` runs: `cargo fmt --check`, `cargo clippy`, `cargo test`, `cargo deny check`, `cargo machete`, `swiftlint`, and `swift build`.
+
+`just check-ci` is the stricter CI-facing variant: it uses `--locked` for Cargo resolution and runs `cargo vet --locked`.
 
 ### Build Commands
 
@@ -41,6 +43,30 @@ just check          # Full lint + test suite
 2. **Make your changes** following the coding conventions below
 3. **Run `just check`** to verify everything passes
 4. **Submit a pull request** with a clear description
+
+### Dependency Review Expectations
+
+Dependency-changing pull requests get extra scrutiny. Call out any new or materially changed:
+
+- proc-macro crates,
+- `build.rs` crates,
+- `-sys` / FFI crates,
+- git dependencies,
+- new registries,
+- crates with broad network, filesystem, archive, parser, or subprocess reach.
+
+For supply-chain-sensitive changes, expect CI to enforce `cargo vet`, `cargo deny`, and deterministic Cargo resolution.
+
+### CI and Release Model
+
+BoBe uses two lanes:
+
+- **Public vetting CI**: PR/push validation with no release secrets.
+- **Protected release workflow**: macOS signing, notarization, Sparkle signing, and update publishing.
+
+Release secrets must never be used in normal CI. Workflow files, release scripts, OTA docs, and entitlements should be reviewed carefully because they sit on the release control plane.
+
+Maintainers should read [docs/UpdatingOTA.md](docs/UpdatingOTA.md) before changing CI, release scripts, signing, notarization, or Sparkle publishing behavior.
 
 ## Project Structure
 
@@ -117,6 +143,7 @@ BoBe handles screen captures and LLM API keys. Please be mindful of:
 - File tool access uses `canonicalize()` + ancestry checks
 - MCP commands are validated against a blocklist
 - API keys go through macOS Keychain, never logged or persisted in plaintext
+- Release signing, notarization, Sparkle, and update-host credentials belong only in protected CI environments
 
 ## License
 
