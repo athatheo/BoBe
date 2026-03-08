@@ -75,6 +75,7 @@ The **Swift app** is a native macOS overlay — a floating avatar with chat bubb
 ### Backend Commands (Rust)
 
 ```bash
+cd BoBeService
 cargo fetch          # Download Rust dependencies
 cargo build          # Debug build
 cargo build --release
@@ -87,7 +88,7 @@ cargo test -q        # Run backend tests
 ### Frontend Commands (Swift)
 
 ```bash
-cd desktopMac
+cd BoBeMacUI
 swift package resolve      # Resolve Swift dependencies
 swift build -c debug       # Debug build
 swift build -c release     # Release build
@@ -99,25 +100,30 @@ swiftformat BoBe           # Apply formatting
 ## Project Structure
 
 ```
-src/                          # Rust backend (bobe-daemon)
-  main.rs                     # CLI entrypoint (serve, version)
-  api/                        # Axum routes and handlers
-  app_state.rs                # Arc-wrapped DI container
-  binary_manager/             # Ollama binary download/extraction
-  bootstrap/                  # Dependency wiring and startup
-  config.rs                   # Configuration (BOBE_* env vars)
-  config_manager/             # Runtime hot-swap config
-  db/                         # SQLite repositories (sqlx)
-  i18n/                       # Internationalization (Fluent)
-  llm/                        # LLM provider abstraction
-  models/                     # Domain structs
-  runtime/                    # Session state, learners, triggers, prompts
-  secrets.rs                  # macOS Keychain integration
-  services/                   # Business logic layer
-  tools/                      # Native tools + MCP integration
-  util/                       # SSE, capture, tokens, text utils
+BoBeService/                  # Rust backend (bobe-daemon)
+  Cargo.toml                  # Rust dependencies and build config
+  src/
+    main.rs                   # CLI entrypoint (serve, version)
+    api/                      # Axum routes and handlers
+    app_state.rs              # Arc-wrapped DI container
+    binary_manager/           # Ollama binary download/extraction
+    bootstrap/                # Dependency wiring and startup
+    config.rs                 # Configuration (BOBE_* env vars)
+    config_manager/           # Runtime hot-swap config
+    db/                       # SQLite repositories (sqlx)
+    i18n/                     # Internationalization (Fluent)
+    llm/                      # LLM provider abstraction
+    models/                   # Domain structs
+    runtime/                  # Session state, learners, triggers, prompts
+    secrets.rs                # macOS Keychain integration
+    services/                 # Business logic layer
+    tools/                    # Native tools + MCP integration
+    util/                     # SSE, capture, tokens, text utils
+  migrations/                 # SQLite schema (auto-run on startup)
+  supply-chain/               # cargo-vet audits and config
+  deny.toml                   # cargo-deny license/ban policy
 
-desktopMac/                   # Swift macOS app (BoBe.app)
+BoBeMacUI/                    # Swift macOS app (BoBe.app)
   BoBe/App/                   # App delegate, overlay panel, tray
   BoBe/Features/Settings/     # Settings panels (AI model, behavior, etc.)
   BoBe/Models/                # API DTOs, entity types
@@ -126,7 +132,6 @@ desktopMac/                   # Swift macOS app (BoBe.app)
   BoBe/Theme/                 # Theme configuration
   BoBe/Views/                 # Overlay UI + setup wizard
 
-migrations/                   # SQLite schema (auto-run on startup)
 docs/                         # Additional documentation
 ```
 
@@ -145,7 +150,7 @@ docs/                         # Additional documentation
 ### Swift
 
 - Swift 6.0, macOS 14+ target
-- **SwiftLint** enforced (see `desktopMac/.swiftlint.yml`)
+- **SwiftLint** enforced (see `BoBeMacUI/.swiftlint.yml`)
 - `sorted_imports` required, `force_unwrapping` discouraged
 - Split large views into focused subviews
 

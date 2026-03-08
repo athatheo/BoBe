@@ -29,7 +29,7 @@ We will acknowledge receipt within 48 hours and aim to provide a fix or mitigati
 The following are in scope:
 
 - **Rust backend** (`src/`) — API handlers, LLM orchestration, tool execution, file access, config/secrets handling
-- **Swift frontend** (`desktopMac/`) — backend communication, credential handling
+- **Swift frontend** (`BoBeMacUI/`) — backend communication, credential handling
 - **Build and release pipeline** — CI workflows, code signing, notarization, update distribution
 - **MCP server integration** — command validation, environment handling
 

@@ -4,11 +4,11 @@ default:
 
 # Build Rust backend (release)
 build-backend:
-    cargo build --release
+    cd BoBeService && cargo build --release
 
 # Build Swift frontend (release)
 build-frontend:
-    cd desktopMac && swift build -c release
+    cd BoBeMacUI && swift build -c release
 
 # Assemble .app bundle
 bundle version="1.0.0":
@@ -21,16 +21,16 @@ bundle version="1.0.0":
 
     # Copy binaries (ditto preserves symlinks per Apple docs)
     # Backend named "bobe-daemon" to avoid case-insensitive collision with "BoBe" on APFS
-    ditto target/release/bobe "$APP/Contents/MacOS/bobe-daemon"
-    ditto desktopMac/.build/release/BoBe "$APP/Contents/MacOS/BoBe"
+    ditto BoBeService/target/release/bobe "$APP/Contents/MacOS/bobe-daemon"
+    ditto BoBeMacUI/.build/release/BoBe "$APP/Contents/MacOS/BoBe"
 
     # Copy Info.plist and update version
-    cp desktopMac/BoBe/Resources/Info.plist "$APP/Contents/Info.plist"
+    cp BoBeMacUI/BoBe/Resources/Info.plist "$APP/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion {{ version }}" "$APP/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{ version }}" "$APP/Contents/Info.plist"
 
     # Copy all resources (icons, images)
-    cp -r desktopMac/BoBe/Resources/ "$APP/Contents/Resources/" 2>/dev/null || true
+    cp -r BoBeMacUI/BoBe/Resources/ "$APP/Contents/Resources/" 2>/dev/null || true
     rm -f "$APP/Contents/Resources/Info.plist"
 
     # Strip debug symbols for smaller binary
@@ -52,12 +52,12 @@ sign identity="Developer ID Application":
 
     # 1. Sign the embedded backend binary first (non-bundled main executable)
     codesign -s "{{ identity }}" --options runtime --timestamp \
-        --entitlements desktopMac/entitlements.plist \
+        --entitlements BoBeMacUI/entitlements.plist \
         "$APP/Contents/MacOS/bobe-daemon"
 
     # 2. Sign the app bundle (signs the frontend binary + seals the bundle)
     codesign -s "{{ identity }}" --options runtime --timestamp --force \
-        --entitlements desktopMac/entitlements.plist \
+        --entitlements BoBeMacUI/entitlements.plist \
         "$APP"
 
     # 3. Verify
@@ -137,9 +137,9 @@ sparkle-zip version="1.0.0":
 sparkle-sign-update version="1.0.0" private-key-file="":
     #!/bin/bash
     set -euo pipefail
-    SPARKLE_BIN="desktopMac/.build/artifacts/sparkle/Sparkle/bin"
+    SPARKLE_BIN="BoBeMacUI/.build/artifacts/sparkle/Sparkle/bin"
     if [[ ! -x "$SPARKLE_BIN/sign_update" ]]; then
-        echo "Sparkle tools not found. Run: cd desktopMac && swift package resolve"
+        echo "Sparkle tools not found. Run: cd BoBeMacUI && swift package resolve"
         exit 1
     fi
     ARGS=()
@@ -152,9 +152,9 @@ sparkle-sign-update version="1.0.0" private-key-file="":
 sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" link="":
     #!/bin/bash
     set -euo pipefail
-    SPARKLE_BIN="desktopMac/.build/artifacts/sparkle/Sparkle/bin"
+    SPARKLE_BIN="BoBeMacUI/.build/artifacts/sparkle/Sparkle/bin"
     if [[ ! -x "$SPARKLE_BIN/generate_appcast" ]]; then
-        echo "Sparkle tools not found. Run: cd desktopMac && swift package resolve"
+        echo "Sparkle tools not found. Run: cd BoBeMacUI && swift package resolve"
         exit 1
     fi
     mkdir -p "{{ archives_dir }}"
@@ -172,59 +172,60 @@ sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" lin
 run:
     #!/bin/bash
     set -euo pipefail
-    cargo build
-    (cd desktopMac && swift build -c debug)
+    cd BoBeService && cargo build
+    cd ../BoBeMacUI && swift build -c debug
+    cd ..
     # Place backend where BackendService.findBinaryPath() discovers it
-    mkdir -p desktopMac/.build/debug
-    cp target/debug/bobe desktopMac/.build/debug/bobe-daemon
+    mkdir -p BoBeMacUI/.build/debug
+    cp BoBeService/target/debug/bobe BoBeMacUI/.build/debug/bobe-daemon
     echo "Launching BoBe..."
-    desktopMac/.build/debug/BoBe
+    BoBeMacUI/.build/debug/BoBe
 
 # Run backend only (use when running frontend from Xcode)
 backend:
-    cargo run -- serve
+    cd BoBeService && cargo run -- serve
 
 # Alias for backend
 run-backend: backend
 
 # Clean all build artifacts
 clean:
-    cargo clean --workspace
-    cd desktopMac && swift package clean
+    cd BoBeService && cargo clean --workspace
+    cd BoBeMacUI && swift package clean
     rm -rf build/
 
 # Generate Xcode project (for previews/debugging)
 xcode:
-    cd desktopMac && xcodegen generate
+    cd BoBeMacUI && xcodegen generate
 
 # Format Swift frontend source files
 format-swift:
-    cd desktopMac && swiftformat BoBe
+    cd BoBeMacUI && swiftformat BoBe
 
 # Check Swift frontend formatting
 check-swift-format:
-    cd desktopMac && swiftformat --lint BoBe
+    cd BoBeMacUI && swiftformat --lint BoBe
 
 # fmt + clippy + test + deny + machete + swiftlint + swift build
 check:
-    cargo fmt --check
-    cargo clippy -q
-    cargo test -q
-    cargo deny check
-    cargo machete
-    cd desktopMac && swiftlint lint --quiet
-    cd desktopMac && swift build -c debug
+    cd BoBeService && cargo fmt --check
+    cd BoBeService && cargo clippy -q
+    cd BoBeService && cargo test -q
+    cd BoBeService && cargo deny check
+    cd BoBeService && cargo machete
+    cd BoBeMacUI && swiftlint lint --quiet
+    cd BoBeMacUI && swift build -c debug
 
 # CI vetting: deterministic Rust + supply-chain + Swift
 check-ci:
-    cargo fmt --check
-    cargo clippy --locked -q
-    cargo test --locked -q
-    cargo deny check
-    cargo vet --locked
-    cargo machete
-    cd desktopMac && swiftlint lint --quiet
-    cd desktopMac && swift build -c debug
+    cd BoBeService && cargo fmt --check
+    cd BoBeService && cargo clippy --locked -q
+    cd BoBeService && cargo test --locked -q
+    cd BoBeService && cargo deny check
+    cd BoBeService && cargo vet --locked
+    cd BoBeService && cargo machete
+    cd BoBeMacUI && swiftlint lint --quiet
+    cd BoBeMacUI && swift build -c debug
 
 # Alias for check (muscle memory)
 test: check
@@ -237,8 +238,8 @@ ship version apple-id team-id password identity="Developer ID Application":
     just clean
 
     echo "=== Resolve dependencies ==="
-    cargo fetch
-    (cd desktopMac && swift package resolve)
+    (cd BoBeService && cargo fetch)
+    (cd BoBeMacUI && swift package resolve)
 
     echo "=== Build + Bundle + Sign + DMG ==="
     just release {{ version }} {{ identity }}

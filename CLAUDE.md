@@ -31,7 +31,7 @@ bobe-daemon (Rust/Axum, :8766)  ←── SSE + HTTP ──→  BoBe.app (Swift/
    (Ollama/OpenAI/Azure/llama.cpp)                + settings + tray
 ```
 
-### Rust Backend (`src/`)
+### Rust Backend (`BoBeService/src/`)
 
 `main.rs` — clap CLI (`serve`, `version`). `serve` boots Axum on `127.0.0.1:8766`, spawns background tasks (SSE heartbeat, RuntimeSession triggers, LearningLoop, GoalWorkerManager), graceful shutdown via `ctrl_c()`.
 
@@ -54,7 +54,7 @@ bobe-daemon (Rust/Axum, :8766)  ←── SSE + HTTP ──→  BoBe.app (Swift/
 
 **DI:** No framework. Constructor injection via `AppState` (Arc-wrapped, Axum State extractor).
 
-### Swift macOS App (`desktopMac/`)
+### Swift macOS App (`BoBeMacUI/`)
 
 Swift 6.0, macOS 14+ (Sonoma), SPM.
 
@@ -98,7 +98,7 @@ To add a new allow: add it to `Cargo.toml` with a comment explaining why. Prefer
 
 ### Swift
 
-- SwiftLint: see `desktopMac/.swiftlint.yml`
+- SwiftLint: see `BoBeMacUI/.swiftlint.yml`
 - `sorted_imports` enforced, `force_unwrapping` opt-in (avoid)
 - Split large views into subviews
 

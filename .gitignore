@@ -1,4 +1,4 @@
-/target
+/BoBeService/target
 .worktrees/
 **/.DS_Store
 build/
@@ -6,7 +6,7 @@ build/
 .vscode/settings.json
 
 # SwiftPM local build cache
-desktopMac/.build/
+BoBeMacUI/.build/
 
 # Sparkle signing keys
 sparkle_private_key

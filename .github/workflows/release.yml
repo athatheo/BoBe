@@ -109,8 +109,8 @@ jobs:
 
       - name: Resolve dependencies
         run: |
-          cargo fetch --locked
-          (cd desktopMac && swift package resolve)
+          (cd BoBeService && cargo fetch --locked)
+          (cd BoBeMacUI && swift package resolve)
 
       - name: Build, sign, notarize, and create Sparkle archive
         env:
@@ -191,7 +191,7 @@ jobs:
 
       - name: Resolve Sparkle tools
         run: |
-          (cd desktopMac && swift package resolve)
+          (cd BoBeMacUI && swift package resolve)
 
       - name: Generate appcast from local archive history
         run: |

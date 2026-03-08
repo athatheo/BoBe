@@ -8,17 +8,17 @@ docs/UpdatingOTA.md @johnkozaris
 docs/CODE_SIGNING.md @johnkozaris
 
 # macOS app signing and packaging
-desktopMac/entitlements.plist @johnkozaris
-desktopMac/BoBe/Resources/Info.plist @johnkozaris
-desktopMac/Package.swift @johnkozaris
-desktopMac/Package.resolved @johnkozaris
+BoBeMacUI/entitlements.plist @johnkozaris
+BoBeMacUI/BoBe/Resources/Info.plist @johnkozaris
+BoBeMacUI/Package.swift @johnkozaris
+BoBeMacUI/Package.resolved @johnkozaris
 
 # Supply chain and dependency policy
-supply-chain/ @johnkozaris
-deny.toml @johnkozaris
-Cargo.lock @johnkozaris
+BoBeService/supply-chain/ @johnkozaris
+BoBeService/deny.toml @johnkozaris
+BoBeService/Cargo.lock @johnkozaris
 
 # Security-sensitive code
-src/secrets.rs @johnkozaris
-src/tools/mcp/security.rs @johnkozaris
+BoBeService/src/secrets.rs @johnkozaris
+BoBeService/src/tools/mcp/security.rs @johnkozaris
 SECURITY.md @johnkozaris
