@@ -32,6 +32,11 @@
 "setup.cloud.model" = "Μοντέλο";
 "setup.local.title" = "Ρύθμιση Τοπικού AI";
 "setup.local.subtitle" = "Κατέβασε και τρέξε AI εξ ολοκλήρου στο Mac σου. Δεν χρειάζεται internet μετά τη ρύθμιση.";
+"setup.local_vision.title" = "Να ενεργοποιηθεί η τοπική αντίληψη οθόνης;";
+"setup.local_vision.description" = "Η βασική τοπική ρύθμιση του BoBe ολοκληρώθηκε. Αν το ενεργοποιήσετε, το BoBe θα ζητήσει άδεια εγγραφής οθόνης και θα κατεβάσει ένα ακόμη τοπικό μοντέλο όρασης για να καταλαβαίνει τι υπάρχει στην οθόνη σας.";
+"setup.local_vision.enable" = "Ενεργοποίηση αντίληψης οθόνης";
+"setup.local_vision.skip" = "Όχι τώρα";
+"setup.capture.local_vision_download_hint" = "Μετά τη χορήγηση πρόσβασης, το BoBe θα κατεβάσει το τοπικό μοντέλο όρασης (~4 GB).";
 "setup.local.disk_estimate_format" = "~%.0f GB";
 "setup.common.setting_up" = "Γίνεται ρύθμιση...";
 "setup.common.continue" = "Συνέχεια";
@@ -189,6 +194,7 @@
 "settings.ai_model.ollama.installed_models.title" = "Εγκατεστημένα μοντέλα";
 "settings.ai_model.ollama.model_name.placeholder" = "Όνομα μοντέλου (π.χ. llama3.2)";
 "settings.ai_model.ollama.no_models" = "Δεν υπάρχουν εγκατεστημένα μοντέλα — εκτελείται το Ollama;";
+"settings.ai_model.ollama.unavailable_format" = "Το Ollama δεν είναι διαθέσιμο: %@";
 "settings.ai_model.openai.api_key" = "Κλειδί API";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
 "settings.ai_model.openai.model" = "Μοντέλο";

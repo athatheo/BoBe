@@ -32,6 +32,11 @@
 "setup.cloud.model" = "Modèle";
 "setup.local.title" = "Configuration IA locale";
 "setup.local.subtitle" = "Téléchargez et exécutez l'IA entièrement sur votre Mac. Pas d'Internet nécessaire après la configuration.";
+"setup.local_vision.title" = "Activer la vision locale de l’écran ?";
+"setup.local_vision.description" = "La configuration locale de base de BoBe est terminée. Si vous l’activez, BoBe demandera l’autorisation d’enregistrement d’écran et téléchargera un modèle de vision local supplémentaire pour comprendre ce qu’il y a sur votre écran.";
+"setup.local_vision.enable" = "Activer la vision de l’écran";
+"setup.local_vision.skip" = "Pas maintenant";
+"setup.capture.local_vision_download_hint" = "Après avoir accordé l'accès, BoBe téléchargera le modèle de vision local (~4 Go).";
 "setup.local.disk_estimate_format" = "~%.0f Go";
 "setup.common.setting_up" = "Configuration en cours...";
 "setup.common.continue" = "Continuer";
@@ -189,6 +194,7 @@
 "settings.ai_model.ollama.installed_models.title" = "Modèles installés";
 "settings.ai_model.ollama.model_name.placeholder" = "Nom du modèle (p. ex. llama3.2)";
 "settings.ai_model.ollama.no_models" = "Aucun modèle installé — Ollama est lancé ?";
+"settings.ai_model.ollama.unavailable_format" = "Ollama indisponible : %@";
 "settings.ai_model.openai.api_key" = "Clé API";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
 "settings.ai_model.openai.model" = "Modèle";

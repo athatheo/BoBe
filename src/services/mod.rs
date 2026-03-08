@@ -5,5 +5,6 @@ pub(crate) mod conversation_service;
 pub(crate) mod goal_worker;
 pub(crate) mod goals;
 pub(crate) mod mcp_config_service;
+pub(crate) mod ollama_runtime_service;
 pub(crate) mod setup_service;
 pub(crate) mod soul_service;

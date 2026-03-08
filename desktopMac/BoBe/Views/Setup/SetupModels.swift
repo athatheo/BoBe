@@ -6,6 +6,7 @@ enum SetupStep {
     case cloudConfig
     case localConfig
     case setupInProgress
+    case localVisionChoice
     case captureSetup
     case complete
     case error
@@ -14,6 +15,12 @@ enum SetupStep {
 enum SetupMode {
     case local
     case online
+}
+
+enum SetupJobKind {
+    case cloud
+    case localBase
+    case localVision
 }
 
 enum ScreenPermissionStatus: String, Sendable {

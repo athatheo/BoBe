@@ -5,7 +5,10 @@
 mod download;
 mod extract;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
 
 use tokio::sync::watch;
@@ -33,40 +36,21 @@ impl BinaryManager {
         }
     }
 
-    pub(crate) fn find_ollama(&self) -> Option<PathBuf> {
+    pub(crate) fn find_managed_ollama(&self) -> Option<PathBuf> {
         let managed = self.managed_binary_path();
         if managed.exists() {
             info!(path = %managed.display(), "binary_manager.found_managed");
             return Some(managed);
         }
 
-        let system_paths = [
-            "/opt/homebrew/bin/ollama",
-            "/usr/local/bin/ollama",
-            "/usr/bin/ollama",
-        ];
-
-        for path in &system_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                info!(path = %p.display(), "binary_manager.found_system");
-                return Some(p);
-            }
-        }
-
-        if let Ok(path) = which::which("ollama") {
-            info!(path = %path.display(), "binary_manager.found_in_path");
-            return Some(path);
-        }
-
         None
     }
 
-    pub(crate) async fn ensure_ollama(
+    pub(crate) async fn ensure_managed_ollama(
         &self,
         progress_tx: &watch::Sender<DownloadProgress>,
     ) -> Result<PathBuf, AppError> {
-        if let Some(path) = self.find_ollama() {
+        if let Some(path) = self.find_managed_ollama() {
             progress_tx
                 .send(DownloadProgress {
                     current_bytes: 0,
@@ -120,7 +104,11 @@ impl BinaryManager {
             })
             .ok();
 
-        extract::extract_ollama_archive(&archive_path, &target_path)?;
+        if let Err(error) = extract::extract_ollama_archive(&archive_path, &target_path) {
+            let _ignored = std::fs::remove_file(&archive_path);
+            let _ignored = std::fs::remove_file(&target_path);
+            return Err(error);
+        }
         let _ignored = std::fs::remove_file(&archive_path);
 
         progress_tx
@@ -135,7 +123,141 @@ impl BinaryManager {
         Ok(target_path)
     }
 
-    fn managed_binary_path(&self) -> PathBuf {
+    pub(crate) async fn validate_ollama_binary(&self, path: &Path) -> Result<(), AppError> {
+        let metadata = tokio::fs::metadata(path)
+            .await
+            .map_err(|e| AppError::Config(format!("Managed Ollama binary missing: {e}")))?;
+
+        if !metadata.is_file() {
+            return Err(AppError::Config(format!(
+                "Managed Ollama path is not a file: {}",
+                path.display()
+            )));
+        }
+
+        #[cfg(unix)]
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err(AppError::Config(format!(
+                "Managed Ollama binary is not executable: {}",
+                path.display()
+            )));
+        }
+
+        let output = tokio::process::Command::new(path)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| AppError::Config(format!("Failed to invoke managed Ollama: {e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::Config(format!(
+                "Managed Ollama failed validation (status {}): {}",
+                output.status,
+                stderr.trim()
+            )));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn managed_binary_path(&self) -> PathBuf {
         self.data_dir.join("ollama").join("bin").join("ollama")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BinaryManager;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "bobe-binary-manager-{name}-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir should be created");
+        dir
+    }
+
+    #[tokio::test]
+    async fn validate_ollama_binary_accepts_executable() {
+        let dir = temp_dir("valid");
+        let binary_path = dir.join("ollama");
+        std::fs::write(
+            &binary_path,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo 'ollama version test'\n  exit 0\nfi\nexit 1\n",
+        )
+        .expect("test binary should be written");
+        #[cfg(unix)]
+        {
+            let perms = std::fs::Permissions::from_mode(0o755);
+            std::fs::set_permissions(&binary_path, perms).expect("permissions should be set");
+        }
+
+        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        manager
+            .validate_ollama_binary(&binary_path)
+            .await
+            .expect("validation should pass");
+    }
+
+    #[tokio::test]
+    async fn validate_ollama_binary_rejects_non_executable_file() {
+        let dir = temp_dir("non-executable");
+        let binary_path = dir.join("ollama");
+        std::fs::write(&binary_path, "not executable").expect("test file should be written");
+        #[cfg(unix)]
+        {
+            let perms = std::fs::Permissions::from_mode(0o644);
+            std::fs::set_permissions(&binary_path, perms).expect("permissions should be set");
+        }
+
+        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        let error = manager
+            .validate_ollama_binary(&binary_path)
+            .await
+            .expect_err("validation should fail");
+
+        assert!(error.to_string().contains("not executable"));
+    }
+
+    // ── find_managed_ollama ───────────────────────────────────────────────────
+
+    #[test]
+    fn find_managed_ollama_returns_none_for_fresh_data_dir() {
+        let dir = temp_dir("find-absent");
+        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        assert_eq!(
+            manager.find_managed_ollama(),
+            None,
+            "should return None when the managed binary does not exist"
+        );
+    }
+
+    #[test]
+    fn find_managed_ollama_returns_path_when_binary_exists() {
+        let dir = temp_dir("find-present");
+        // Place a file at the expected managed path
+        let bin_dir = dir.join("ollama").join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir should be created");
+        std::fs::write(bin_dir.join("ollama"), "fake").expect("fake binary should be written");
+
+        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        let result = manager.find_managed_ollama();
+        assert!(
+            result.is_some(),
+            "should return the managed path when the binary exists"
+        );
+        assert_eq!(
+            result.unwrap(),
+            dir.join("ollama").join("bin").join("ollama")
+        );
     }
 }

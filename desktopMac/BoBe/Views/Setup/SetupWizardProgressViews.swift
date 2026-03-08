@@ -32,6 +32,34 @@ extension SetupWizard {
         .frame(maxWidth: 420)
     }
 
+    var localVisionChoiceView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(L10n.tr("setup.local_vision.title"))
+                .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(theme.colors.text)
+
+            Text(L10n.tr("setup.local_vision.description"))
+                .font(.system(size: 14))
+                .foregroundStyle(theme.colors.textMuted)
+                .lineSpacing(2)
+
+            Text(L10n.tr("setup.capture.privacy.local"))
+                .font(.system(size: 12))
+                .foregroundStyle(theme.colors.textMuted)
+                .italic()
+
+            HStack(spacing: 10) {
+                Button(L10n.tr("setup.local_vision.skip")) { skipLocalVision() }
+                    .bobeButton(.secondary, size: .regular)
+                    .foregroundStyle(theme.colors.textMuted)
+                Spacer()
+                Button(L10n.tr("setup.local_vision.enable")) { enableLocalVision() }
+                    .bobeButton(.primary, size: .regular)
+            }
+        }
+        .frame(maxWidth: 440)
+    }
+
     var captureSetupView: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(L10n.tr("setup.capture.title"))
@@ -70,6 +98,18 @@ extension SetupWizard {
                     : L10n.tr("setup.capture.privacy.cloud")
             )
             .font(.system(size: 12)).foregroundStyle(theme.colors.textMuted).italic()
+
+            // When coming from local-vision opt-in, remind the user a model
+            // download will follow the permission grant.
+            if setupMode == .local, localVisionRequested {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundStyle(theme.colors.textMuted)
+                    Text(L10n.tr("setup.capture.local_vision_download_hint"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(theme.colors.textMuted)
+                }
+            }
 
             HStack(spacing: 10) {
                 Button(L10n.tr("setup.capture.skip")) { skipCapture() }

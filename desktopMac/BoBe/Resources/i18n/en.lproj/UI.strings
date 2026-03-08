@@ -30,6 +30,11 @@
 "setup.cloud.model" = "Model";
 "setup.local.title" = "Local AI Setup";
 "setup.local.subtitle" = "Download and run AI entirely on your Mac. No internet needed after setup.";
+"setup.local_vision.title" = "Enable local screen awareness?";
+"setup.local_vision.description" = "BoBe's core local setup is ready. If you turn this on, BoBe will ask for Screen Recording permission and download one more local vision model so it can understand what's on your screen.";
+"setup.local_vision.enable" = "Enable Screen Awareness";
+"setup.local_vision.skip" = "Not now";
+"setup.capture.local_vision_download_hint" = "After granting access, BoBe will download the local vision model (~4 GB).";
 "setup.local.disk_estimate_format" = "~%.0f GB";
 "setup.common.setting_up" = "Setting up...";
 "setup.common.continue" = "Continue";
@@ -187,6 +192,7 @@
 "settings.ai_model.ollama.installed_models.title" = "Installed Models";
 "settings.ai_model.ollama.model_name.placeholder" = "Model name (e.g. llama3.2)";
 "settings.ai_model.ollama.no_models" = "No models installed — is Ollama running?";
+"settings.ai_model.ollama.unavailable_format" = "Ollama unavailable: %@";
 "settings.ai_model.openai.api_key" = "API Key";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
 "settings.ai_model.openai.model" = "Model";

@@ -39,6 +39,8 @@ extension SetupWizard {
         if provider?.needsDeployment == true, trimmedDeployment.isEmpty { return }
 
         busy = true
+        setupJobKind = .cloud
+        localVisionRequested = false
         setupMode = .online
         var request = SetupRequest(mode: "cloud")
         request.provider = selectedProvider
@@ -52,8 +54,29 @@ extension SetupWizard {
     func handleLocalSetup() {
         guard !busy else { return }
         busy = true
+        setupJobKind = .localBase
+        localVisionRequested = false
         setupMode = .local
         var request = SetupRequest(mode: "local")
+        request.tier = selectedTier
+        self.startSetupJob(request)
+    }
+
+    func enableLocalVision() {
+        localVisionRequested = true
+        step = .captureSetup
+    }
+
+    func skipLocalVision() {
+        localVisionRequested = false
+        step = .complete
+    }
+
+    func startLocalVisionSetup() {
+        guard !busy else { return }
+        busy = true
+        setupJobKind = .localVision
+        var request = SetupRequest(mode: "local_vision")
         request.tier = selectedTier
         self.startSetupJob(request)
     }
@@ -89,7 +112,7 @@ extension SetupWizard {
                     consecutiveFailures = 0
                     await MainActor.run {
                         setupJob = job
-                        progressPercent = job.overallPercent
+                        progressPercent = max(progressPercent, job.overallPercent)
                         if let current = job.steps.first(where: { $0.status == .inProgress }) {
                             progressMessage = current.message ?? L10n.tr("setup.progress.working")
                         }
@@ -120,7 +143,15 @@ extension SetupWizard {
         switch job.status {
         case .succeeded:
             apiKey = ""
-            step = .captureSetup
+            switch setupJobKind {
+            case .localBase:
+                step = .localVisionChoice
+            case .localVision:
+                localVisionRequested = false
+                step = .complete
+            case .cloud, nil:
+                step = .captureSetup
+            }
         case .failed:
             errorMessage = job.error ?? L10n.tr("setup.error.title")
             step = .error
@@ -132,11 +163,18 @@ extension SetupWizard {
     }
 
     func skipCapture() {
+        if setupMode == .local {
+            localVisionRequested = false
+        }
         step = .complete
     }
 
     func continueFromCapture() {
-        step = .complete
+        if setupMode == .local, localVisionRequested {
+            startLocalVisionSetup()
+        } else {
+            step = .complete
+        }
     }
 
     func completeSetup() {

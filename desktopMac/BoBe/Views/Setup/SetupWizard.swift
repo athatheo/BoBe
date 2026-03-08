@@ -12,12 +12,14 @@ struct SetupWizard: View {
     @State var endpoint = ""
     @State var deployment = ""
     @State var setupJob: SetupJobState?
+    @State var setupJobKind: SetupJobKind?
     @State var pollTask: Task<Void, Never>?
     @State var progressPercent: Double = 0
     @State var progressMessage = ""
     @State var errorMessage = ""
     @State var busy = false
     @State var isFinishingSetup = false
+    @State var localVisionRequested = false
     @State var screenPermission: ScreenPermissionStatus = .notDetermined
     @State var hasRequestedCaptureAccess = false
     @State var permissionPollTask: Task<Void, Never>?
@@ -50,6 +52,7 @@ struct SetupWizard: View {
                 case .cloudConfig: cloudConfigView
                 case .localConfig: localConfigView
                 case .setupInProgress: setupProgressView
+                case .localVisionChoice: localVisionChoiceView
                 case .captureSetup: captureSetupView
                 case .complete: completeView
                 case .error: self.errorView
@@ -171,6 +174,9 @@ struct SetupWizard: View {
                 .multilineTextAlignment(.center)
             Button(L10n.tr("setup.error.retry")) {
                 self.step = .chooseMode
+                self.setupJob = nil
+                self.setupJobKind = nil
+                self.localVisionRequested = false
                 self.errorMessage = ""
                 self.progressPercent = 0
                 self.progressMessage = ""

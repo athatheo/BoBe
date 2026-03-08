@@ -4,12 +4,14 @@ enum DaemonError: Error, LocalizedError {
     case invalidResponse
     case httpError(statusCode: Int, message: String)
     case connectionFailed
+    case operationFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: "Invalid response from daemon"
         case let .httpError(code, msg): "HTTP \(code): \(msg)"
         case .connectionFailed: "Failed to connect to daemon"
+        case let .operationFailed(message): message
         }
     }
 }
@@ -82,7 +84,7 @@ extension DaemonClient {
     }
 
     func pullModel(_ name: String) async throws {
-        try await fetchVoid("/models/pull", method: "POST", body: ["model": name])
+        try await performModelPull(named: name)
     }
 
     func deleteModel(_ name: String) async throws {

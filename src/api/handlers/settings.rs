@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::AppState;
 use crate::config::LlmBackend;
 use crate::error::AppError;
+use crate::services::ollama_runtime_service::OllamaRuntimeService;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct SettingsResponse {
@@ -290,7 +291,6 @@ async fn validate_llm_settings_update(
         cfg.llm.backend
     };
 
-    let ollama_url = cfg.ollama.url.clone();
     let llama_url = cfg.llm.llama_url.clone();
     let openai_key = body
         .openai_api_key
@@ -313,18 +313,12 @@ async fn validate_llm_settings_update(
     let client = &state.http_client;
     match backend {
         LlmBackend::Ollama => {
-            let url = format!("{}/api/tags", ollama_url.trim_end_matches('/'));
-            let resp = client
-                .get(&url)
-                .send()
+            OllamaRuntimeService::from(state)
+                .ensure_configured_runtime_ready()
                 .await
-                .map_err(|e| AppError::Validation(format!("Cannot reach Ollama: {e}")))?;
-            if !resp.status().is_success() {
-                return Err(AppError::Validation(format!(
-                    "Ollama validation failed: HTTP {}",
-                    resp.status()
-                )));
-            }
+                .map_err(|e| AppError::Validation(format!("Cannot prepare Ollama: {e}")))?;
+            // ensure_configured_runtime_ready already confirmed the daemon is
+            // reachable via /api/tags — no need to repeat the check here.
         }
         LlmBackend::Openai => {
             if openai_key.trim().is_empty() {

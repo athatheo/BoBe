@@ -32,6 +32,11 @@
 "setup.cloud.model" = "모델";
 "setup.local.title" = "로컬 AI 설정";
 "setup.local.subtitle" = "AI 모델을 Mac에 다운로드해서 완전히 로컬로 실행해요. 설정 후에는 인터넷이 필요 없어요.";
+"setup.local_vision.title" = "로컬 화면 인식을 켤까요?";
+"setup.local_vision.description" = "BoBe의 기본 로컬 설정은 끝났어요. 이 기능을 켜면 화면 기록 권한을 요청하고, 화면 내용을 이해할 수 있도록 로컬 비전 모델을 하나 더 다운로드해요.";
+"setup.local_vision.enable" = "화면 인식 켜기";
+"setup.local_vision.skip" = "나중에 할래요";
+"setup.capture.local_vision_download_hint" = "권한을 허용하면 BoBe가 로컬 비전 모델을 다운로드해요 (~4 GB).";
 "setup.local.disk_estimate_format" = "약 %.0f GB";
 "setup.common.setting_up" = "설정 중...";
 "setup.common.continue" = "계속";
@@ -189,6 +194,7 @@
 "settings.ai_model.ollama.installed_models.title" = "설치된 모델";
 "settings.ai_model.ollama.model_name.placeholder" = "모델 이름 (예: llama3.2)";
 "settings.ai_model.ollama.no_models" = "설치된 모델이 없어요 — Ollama가 실행 중인가요?";
+"settings.ai_model.ollama.unavailable_format" = "Ollama에 연결할 수 없어요: %@";
 "settings.ai_model.openai.api_key" = "API 키";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
 "settings.ai_model.openai.model" = "모델";

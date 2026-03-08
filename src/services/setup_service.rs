@@ -19,6 +19,7 @@ use crate::config::LlmBackend;
 use crate::error::AppError;
 use crate::i18n::{t, t_vars};
 use crate::llm::factory::LlmProviderFactory;
+use crate::services::ollama_runtime_service::OllamaRuntimeService;
 
 // ── Shared job state ────────────────────────────────────────────────────────
 
@@ -182,6 +183,8 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
+    let ollama_runtime = OllamaRuntimeService::from(&state);
+
     update_step("engine", StepStatus::InProgress, None).await;
     let (progress_tx, mut progress_rx) =
         tokio::sync::watch::channel(crate::binary_manager::DownloadProgress {
@@ -205,7 +208,10 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         }
     });
 
-    let binary_path = match state.binary_manager.ensure_ollama(&progress_tx).await {
+    let binary_path = match ollama_runtime
+        .prepare_managed_local_runtime(&progress_tx)
+        .await
+    {
         Ok(path) => {
             update_step(
                 "engine",
@@ -230,10 +236,6 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
     if is_canceled().await {
         finish_job(JobStatus::Canceled, None).await;
         return;
-    }
-
-    if let Err(e) = state.ollama_manager.ensure_running().await {
-        warn!(error = %e, "setup.ollama_start_failed");
     }
 
     update_step(
@@ -261,46 +263,6 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
             update_step("text_model", StepStatus::Failed, Some(e.to_string())).await;
             finish_job(JobStatus::Failed, Some(e.to_string())).await;
             return;
-        }
-    }
-
-    if is_canceled().await {
-        finish_job(JobStatus::Canceled, None).await;
-        return;
-    }
-
-    update_step(
-        "vision_model",
-        StepStatus::InProgress,
-        Some(localizer.vars(
-            "setup-step-model-pulling",
-            &[("model", models.vision.to_owned())],
-        )),
-    )
-    .await;
-    match pull_model(&state, models.vision).await {
-        Ok(()) => {
-            update_step(
-                "vision_model",
-                StepStatus::Succeeded,
-                Some(localizer.vars(
-                    "setup-step-model-ready",
-                    &[("model", models.vision.to_owned())],
-                )),
-            )
-            .await;
-        }
-        Err(e) => {
-            warn!(error = %e, "setup.vision_model_pull_failed");
-            update_step(
-                "vision_model",
-                StepStatus::Failed,
-                Some(localizer.vars(
-                    "setup-step-vision-model-pull-failed-non-fatal",
-                    &[("error", e.to_string())],
-                )),
-            )
-            .await;
         }
     }
 
@@ -349,8 +311,8 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         Some(localizer.text("setup-step-embedding-loading")),
     )
     .await;
-    match state.embedding_provider.embed("warmup").await {
-        Ok(_) => {
+    match test_local_embedding(&state).await {
+        Ok(()) => {
             update_step(
                 "embedding_warmup",
                 StepStatus::Succeeded,
@@ -387,19 +349,96 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
     );
     changes.insert(
         "vision.backend".to_string(),
-        serde_json::Value::String("ollama".into()),
+        serde_json::Value::String("none".into()),
     );
     changes.insert(
         "vision.ollama_model".to_string(),
         serde_json::Value::String(models.vision.into()),
     );
-    changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
+    changes.insert(
+        "capture.enabled".to_string(),
+        serde_json::Value::Bool(false),
+    );
 
     if !persist_config(&state, changes, &localizer).await {
         return;
     }
 
     info!("setup.local_complete");
+    finish_job(JobStatus::Succeeded, None).await;
+}
+
+pub(crate) async fn run_local_vision_setup(state: Arc<AppState>, body: SetupRequest) {
+    {
+        let mut lock = job_state().write().await;
+        if let Some(ref mut job) = *lock {
+            job.status = JobStatus::InProgress;
+        }
+    }
+
+    let localizer = SetupLocalizer::from_state(&state);
+    let tier = body.tier.as_deref().unwrap_or("large");
+    let models = tier_models(tier);
+    let ollama_runtime = OllamaRuntimeService::from(&state);
+
+    update_step(
+        "vision_model",
+        StepStatus::InProgress,
+        Some(localizer.vars(
+            "setup-step-model-pulling",
+            &[("model", models.vision.to_owned())],
+        )),
+    )
+    .await;
+    match ollama_runtime
+        .ensure_model_ready(models.vision, || {
+            SETUP_JOB
+                .get()
+                .and_then(|s| s.try_read().ok())
+                .and_then(|lock| lock.as_ref().map(|j| j.status == JobStatus::Canceled))
+                .unwrap_or(false)
+        })
+        .await
+    {
+        Ok(()) => {
+            update_step(
+                "vision_model",
+                StepStatus::Succeeded,
+                Some(localizer.vars(
+                    "setup-step-model-ready",
+                    &[("model", models.vision.to_owned())],
+                )),
+            )
+            .await;
+        }
+        Err(e) => {
+            update_step("vision_model", StepStatus::Failed, Some(e.to_string())).await;
+            finish_job(JobStatus::Failed, Some(e.to_string())).await;
+            return;
+        }
+    }
+
+    if is_canceled().await {
+        finish_job(JobStatus::Canceled, None).await;
+        return;
+    }
+
+    let mut changes = HashMap::new();
+    changes.insert(
+        "vision.backend".to_string(),
+        serde_json::Value::String("ollama".into()),
+    );
+    changes.insert(
+        "vision.ollama_model".to_string(),
+        serde_json::Value::String(models.vision.into()),
+    );
+    changes.insert("capture.enabled".to_string(), serde_json::Value::Bool(true));
+
+    if !persist_config(&state, changes, &localizer).await {
+        return;
+    }
+
+    info!("setup.local_vision_complete");
     finish_job(JobStatus::Succeeded, None).await;
 }
 
@@ -726,23 +765,34 @@ async fn test_azure_embedding(
     embedding.embed("warmup").await.map(|_| ())
 }
 
-async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> {
-    if state.ollama_manager.has_model(model).await {
-        info!(model, "setup.model_already_exists");
-        return Ok(());
-    }
+/// Warmup-test the local Ollama embedding provider against a candidate config
+/// that has `llm.backend = ollama`.  Note: embeddings use `embedding.model`
+/// (default `BAAI/bge-small-en-v1.5`), not the text LLM model.
+async fn test_local_embedding(state: &Arc<AppState>) -> Result<(), AppError> {
+    let current = state.config();
+    let mut candidate = (**current).clone();
+    drop(current);
 
-    state
-        .ollama_manager
-        .pull_model(model, || {
+    candidate.llm.backend = LlmBackend::Ollama;
+
+    let factory = LlmProviderFactory::new(
+        state.http_client.clone(),
+        Arc::new(ArcSwap::from_pointee(candidate)),
+    );
+    let embedding = factory.create_embedding()?;
+    embedding.embed("warmup").await.map(|_| ())
+}
+
+async fn pull_model(state: &Arc<AppState>, model: &str) -> Result<(), AppError> {
+    OllamaRuntimeService::from(state)
+        .ensure_model_ready(model, || {
             SETUP_JOB
                 .get()
                 .and_then(|s| s.try_read().ok())
                 .and_then(|lock| lock.as_ref().map(|j| j.status == JobStatus::Canceled))
                 .unwrap_or(false)
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 async fn available_disk_space(path: &std::path::Path) -> Option<u64> {

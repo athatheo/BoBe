@@ -32,6 +32,11 @@
 "setup.cloud.model" = "Modell";
 "setup.local.title" = "Lokale KI-Einrichtung";
 "setup.local.subtitle" = "Lade KI herunter und führe sie vollständig auf deinem Mac aus. Nach der Einrichtung ist kein Internet mehr nötig.";
+"setup.local_vision.title" = "Lokale Bildschirmerkennung aktivieren?";
+"setup.local_vision.description" = "Die grundlegende lokale Einrichtung von BoBe ist fertig. Wenn du das aktivierst, fragt BoBe nach der Berechtigung für Bildschirmaufnahmen und lädt noch ein lokales Vision-Modell herunter, damit es versteht, was auf deinem Bildschirm zu sehen ist.";
+"setup.local_vision.enable" = "Bildschirmerkennung aktivieren";
+"setup.local_vision.skip" = "Jetzt nicht";
+"setup.capture.local_vision_download_hint" = "Nach der Genehmigung lädt BoBe das lokale Vision-Modell herunter (~4 GB).";
 "setup.local.disk_estimate_format" = "~%.0f GB";
 "setup.common.setting_up" = "Wird eingerichtet...";
 "setup.common.continue" = "Weiter";
@@ -189,6 +194,7 @@
 "settings.ai_model.ollama.installed_models.title" = "Installierte Modelle";
 "settings.ai_model.ollama.model_name.placeholder" = "Modellname (z. B. llama3.2)";
 "settings.ai_model.ollama.no_models" = "Keine Modelle installiert — läuft Ollama?";
+"settings.ai_model.ollama.unavailable_format" = "Ollama nicht erreichbar: %@";
 "settings.ai_model.openai.api_key" = "API-Schlüssel";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
 "settings.ai_model.openai.model" = "Modell";

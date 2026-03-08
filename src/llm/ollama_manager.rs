@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Mutex;
 
@@ -10,6 +11,7 @@ use crate::error::AppError;
 
 /// Ollama's compiled-in default when no `num_ctx` is configured.
 const OLLAMA_DEFAULT_CONTEXT: u32 = 4_096;
+const OLLAMA_PULL_TIMEOUT: std::time::Duration = std::time::Duration::from_hours(2);
 
 /// Manages Ollama process lifecycle and model availability.
 ///
@@ -79,17 +81,7 @@ impl OllamaManager {
 
     /// Ensure Ollama is running and the configured model is available.
     pub(crate) async fn ensure_running(&self) -> Result<(), AppError> {
-        if self.health_check().await {
-            info!("ollama.already_running");
-        } else if self.auto_start {
-            info!("ollama.starting");
-            self.start_ollama().await?;
-            info!("ollama.started");
-        } else {
-            return Err(AppError::LlmUnavailable(
-                "Ollama is not running and auto_start is disabled".into(),
-            ));
-        }
+        self.ensure_daemon_running(None, self.auto_start).await?;
 
         if self.has_model(&self.model).await {
             info!(model = %self.model, "ollama.model_available");
@@ -104,6 +96,30 @@ impl OllamaManager {
             )));
         }
 
+        Ok(())
+    }
+
+    /// Ensure only the Ollama daemon is reachable, optionally starting it with
+    /// a caller-provided binary path.
+    pub(crate) async fn ensure_daemon_running(
+        &self,
+        binary_path: Option<&Path>,
+        auto_start: bool,
+    ) -> Result<(), AppError> {
+        if self.health_check().await {
+            info!("ollama.already_running");
+            return Ok(());
+        }
+
+        if !auto_start {
+            return Err(AppError::LlmUnavailable(
+                "Ollama is not running and auto_start is disabled".into(),
+            ));
+        }
+
+        info!("ollama.starting");
+        self.start_ollama(binary_path).await?;
+        info!("ollama.started");
         Ok(())
     }
 
@@ -259,6 +275,7 @@ impl OllamaManager {
             .client
             .post(&url)
             .json(&serde_json::json!({"name": model_name}))
+            .timeout(OLLAMA_PULL_TIMEOUT)
             .send()
             .await
             .map_err(|e| AppError::LlmUnavailable(format!("Ollama pull request failed: {e}")))?;
@@ -328,16 +345,8 @@ impl OllamaManager {
     }
 
     /// Start Ollama serve process.
-    async fn start_ollama(&self) -> Result<(), AppError> {
-        let ollama_path = self
-            .binary_path
-            .clone()
-            .filter(|p| !p.trim().is_empty())
-            .ok_or_else(|| {
-                AppError::LlmUnavailable(
-                    "Ollama binary path is not configured (set BOBE_OLLAMA_BINARY_PATH)".into(),
-                )
-            })?;
+    async fn start_ollama(&self, binary_path: Option<&Path>) -> Result<(), AppError> {
+        let ollama_path = self.resolve_binary_path(binary_path)?;
 
         let child = tokio::process::Command::new(&ollama_path)
             .arg("serve")
@@ -364,6 +373,22 @@ impl OllamaManager {
         Err(AppError::LlmUnavailable(
             "Ollama startup timeout (30s)".into(),
         ))
+    }
+
+    fn resolve_binary_path(&self, override_path: Option<&Path>) -> Result<PathBuf, AppError> {
+        override_path
+            .map(Path::to_path_buf)
+            .or_else(|| {
+                self.binary_path
+                    .clone()
+                    .filter(|p| !p.trim().is_empty())
+                    .map(PathBuf::from)
+            })
+            .ok_or_else(|| {
+                AppError::LlmUnavailable(
+                    "Ollama binary path is not configured (set BOBE_OLLAMA_BINARY_PATH)".into(),
+                )
+            })
     }
 
     /// Stop Ollama if we started it.
@@ -439,4 +464,45 @@ fn extract_context_length(model_info: &serde_json::Value) -> Option<u32> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OllamaManager;
+
+    #[test]
+    fn resolve_binary_path_prefers_override() {
+        let manager = OllamaManager::new(
+            reqwest::Client::new(),
+            "http://localhost:11434",
+            "qwen3:4b",
+            true,
+            true,
+            Some("/tmp/configured-ollama".into()),
+        );
+
+        let path = manager
+            .resolve_binary_path(Some(std::path::Path::new("/tmp/override-ollama")))
+            .expect("override path should resolve");
+
+        assert_eq!(path, std::path::PathBuf::from("/tmp/override-ollama"));
+    }
+
+    #[test]
+    fn resolve_binary_path_falls_back_to_configured_path() {
+        let manager = OllamaManager::new(
+            reqwest::Client::new(),
+            "http://localhost:11434",
+            "qwen3:4b",
+            true,
+            true,
+            Some("/tmp/configured-ollama".into()),
+        );
+
+        let path = manager
+            .resolve_binary_path(None)
+            .expect("configured path should resolve");
+
+        assert_eq!(path, std::path::PathBuf::from("/tmp/configured-ollama"));
+    }
 }

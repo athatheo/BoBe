@@ -205,6 +205,63 @@ actor DaemonClient {
         }
     }
 
+    func performModelPull(named name: String) async throws {
+        let url = self.endpointURL("models/pull")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.httpBody = try self.encoder.encode(["name": name])
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 60 * 60 * 2
+        let pullSession = URLSession(configuration: config)
+
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await pullSession.bytes(for: request)
+        } catch {
+            logger.error("POST /models/pull: network error — \(error.localizedDescription)")
+            throw error
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            logger.error("POST /models/pull: invalid response (not HTTP)")
+            throw DaemonError.invalidResponse
+        }
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            throw DaemonError.httpError(
+                statusCode: httpResponse.statusCode,
+                message: "Model pull failed"
+            )
+        }
+
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            guard
+                let data = payload.data(using: .utf8),
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let status = json["status"] as? String
+            else {
+                continue
+            }
+
+            if status == "error" {
+                let detail = json["detail"] as? String ?? "Model pull failed"
+                throw DaemonError.operationFailed(detail)
+            }
+
+            if status == "complete" || status == "success" {
+                return
+            }
+        }
+
+        throw DaemonError.operationFailed("Model pull ended before completion")
+    }
+
     // MARK: - Health & Status
 
     func health() async throws -> HealthResponse {

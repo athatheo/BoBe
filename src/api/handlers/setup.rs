@@ -10,7 +10,7 @@ use crate::app_state::AppState;
 use crate::error::AppError;
 use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::services::setup_service::{
-    job_state, run_cloud_setup, run_local_setup, tier_disk_estimate,
+    job_state, run_cloud_setup, run_local_setup, run_local_vision_setup, tier_disk_estimate,
 };
 
 #[derive(Debug, Serialize)]
@@ -192,11 +192,11 @@ pub(crate) async fn create_setup_job(
             step("validate"),
             step("engine"),
             step("text_model"),
-            step("vision_model"),
             step("embedding_model"),
             step("embedding_warmup"),
             step("persist"),
         ],
+        "local_vision" => vec![step("vision_model"), step("persist")],
         "cloud" => vec![step("validate"), step("embedding_warmup"), step("persist")],
         other => {
             return Err(AppError::Validation(t_vars(
@@ -230,6 +230,7 @@ pub(crate) async fn create_setup_job(
     tokio::spawn(async move {
         match body.mode.as_str() {
             "local" => run_local_setup(state_clone, body).await,
+            "local_vision" => run_local_vision_setup(state_clone, body).await,
             "cloud" => run_cloud_setup(state_clone, body).await,
             _ => {} // Already validated above
         }

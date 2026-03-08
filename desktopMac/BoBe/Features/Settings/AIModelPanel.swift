@@ -11,6 +11,7 @@ struct AIModelPanel: View {
     @State private var azureApiKey = ""
     @State private var onboardingOptions: OnboardingOptions?
     @State private var models: [ModelInfo] = []
+    @State private var ollamaUnavailableReason: String?
     @State private var pullModelName = ""
     @State private var isPulling = false
     @State private var isLoading = false
@@ -120,9 +121,19 @@ struct AIModelPanel: View {
                 description: L10n.tr("settings.ai_model.ollama.active_model.description")
             ) {
                 if self.models.isEmpty {
-                    Text(L10n.tr("settings.ai_model.ollama.no_models"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(self.theme.colors.textMuted)
+                    if let reason = self.ollamaUnavailableReason {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.circle")
+                                .foregroundStyle(self.theme.colors.primary)
+                            Text(L10n.tr("settings.ai_model.ollama.unavailable_format", reason))
+                                .font(.system(size: 12))
+                                .foregroundStyle(self.theme.colors.primary)
+                        }
+                    } else {
+                        Text(L10n.tr("settings.ai_model.ollama.no_models"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                    }
                 } else {
                     BobeMenuPicker(
                         selection: self.$ollamaModel,
@@ -278,6 +289,7 @@ struct AIModelPanel: View {
             self.onboardingOptions = try? await DaemonClient.shared.getOnboardingOptions()
             let modelsResp = try await DaemonClient.shared.listModels()
             self.models = modelsResp.models
+            self.ollamaUnavailableReason = modelsResp.ollamaError
             self.isDirty = false
         } catch {
             self.error = error.localizedDescription
@@ -298,8 +310,10 @@ struct AIModelPanel: View {
                 req.azureOpenaiDeployment = self.azureDeployment
                 if !self.azureApiKey.isEmpty { req.azureOpenaiApiKey = self.azureApiKey }
                 _ = try await DaemonClient.shared.updateSettings(req)
-                self.isDirty = false
+                self.openaiApiKey = ""
+                self.azureApiKey = ""
                 self.error = nil
+                await self.loadSettings()
             } catch {
                 self.error = error.localizedDescription
             }

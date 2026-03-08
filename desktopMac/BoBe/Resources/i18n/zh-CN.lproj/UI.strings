@@ -32,6 +32,11 @@
 "setup.cloud.model" = "模型";
 "setup.local.title" = "本地 AI 设置";
 "setup.local.subtitle" = "在你的 Mac 上下载并运行 AI。设置完成后无需联网。";
+"setup.local_vision.title" = "要启用本地屏幕感知吗？";
+"setup.local_vision.description" = "BoBe 的基础本地设置已经完成。开启后，BoBe 会请求屏幕录制权限，并额外下载一个本地视觉模型，这样它才能理解你屏幕上的内容。";
+"setup.local_vision.enable" = "启用屏幕感知";
+"setup.local_vision.skip" = "暂不启用";
+"setup.capture.local_vision_download_hint" = "授权后，BoBe 将下载本地视觉模型（约 4 GB）。";
 "setup.local.disk_estimate_format" = "~%.0f GB";
 "setup.common.setting_up" = "正在设置...";
 "setup.common.continue" = "继续";
@@ -189,6 +194,7 @@
 "settings.ai_model.ollama.installed_models.title" = "已安装模型";
 "settings.ai_model.ollama.model_name.placeholder" = "模型名称（例如：llama3.2）";
 "settings.ai_model.ollama.no_models" = "未安装模型——Ollama 是否正在运行？";
+"settings.ai_model.ollama.unavailable_format" = "Ollama 不可用：%@";
 "settings.ai_model.openai.api_key" = "API 密钥";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
 "settings.ai_model.openai.model" = "模型";

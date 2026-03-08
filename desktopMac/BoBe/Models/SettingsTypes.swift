@@ -198,10 +198,13 @@ struct ModelsListResponse: Codable, Sendable {
     let backend: String
     let models: [ModelInfo]
     let supportsPull: Bool
+    /// Set when Ollama is unavailable; models will be empty in that case.
+    let ollamaError: String?
 
     enum CodingKeys: String, CodingKey {
         case backend, models
         case supportsPull = "supports_pull"
+        case ollamaError = "ollama_error"
     }
 }
 

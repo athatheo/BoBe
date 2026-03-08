@@ -34,6 +34,14 @@ jobs:
       SPARKLE_PRIVATE_KEY_PATH: ${{ runner.temp }}/sparkle-private-key
 
     steps:
+      - name: Validate version input
+        run: |
+          if ! echo "$VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?'; then
+            echo "::error::Invalid version format: '$VERSION'"
+            echo "Version must match semver (e.g., 0.1.0, 1.2.3-alpha.1)"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -128,6 +136,11 @@ jobs:
           cp "build/BoBe-$VERSION.dmg" build/release-artifacts/
           cp "build/BoBe-$VERSION.zip" build/release-artifacts/
 
+      - name: Compute artifact checksums
+        run: |
+          cd build/release-artifacts
+          shasum -a 256 BoBe-*.dmg BoBe-*.zip > SHA256SUMS
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -148,13 +161,16 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     environment: release-publish
+    permissions:
+      contents: write
     env:
       VERSION: ${{ inputs.version }}
-      UPDATE_DOWNLOAD_URL_PREFIX: https://bobebot.com/updates/macos
 
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: true
 
       - name: Install publish tools
         run: |
@@ -168,70 +184,55 @@ jobs:
           name: signed-release-${{ inputs.version }}
           path: build/release-artifacts
 
-      - name: Configure publish SSH access
-        env:
-          UPDATE_HOST: ${{ secrets.UPDATE_HOST }}
-          UPDATE_SSH_KEY_B64: ${{ secrets.UPDATE_SSH_KEY_B64 }}
+      - name: Verify artifact integrity
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          python3 - <<'PY'
-          import base64
-          import pathlib
-          import os
-
-          pathlib.Path.home().joinpath(".ssh", "release-update-key").write_bytes(
-              base64.b64decode(os.environ["UPDATE_SSH_KEY_B64"])
-          )
-          PY
-          chmod 600 ~/.ssh/release-update-key
-          ssh-keyscan -H "$UPDATE_HOST" >> ~/.ssh/known_hosts
+          cd build/release-artifacts
+          shasum -a 256 -c SHA256SUMS
 
       - name: Resolve Sparkle tools
         run: |
           (cd desktopMac && swift package resolve)
 
-      - name: Regenerate appcast from remote archive history
-        env:
-          UPDATE_HOST: ${{ secrets.UPDATE_HOST }}
-          UPDATE_PATH: ${{ secrets.UPDATE_PATH }}
-          UPDATE_USER: ${{ secrets.UPDATE_USER }}
+      - name: Generate appcast from local archive history
         run: |
-          mkdir -p build/remote-updates build/sparkle
-          rsync -av \
-            -e "ssh -i ~/.ssh/release-update-key" \
-            "${UPDATE_USER}@${UPDATE_HOST}:${UPDATE_PATH}/" \
-            build/remote-updates/ || true
-          find build/remote-updates -maxdepth 1 -name 'BoBe-*.zip' -exec cp {} build/sparkle/ \;
+          mkdir -p build/sparkle
+          find . -maxdepth 1 -name 'BoBe-*.zip' -exec cp {} build/sparkle/ \;
           cp "build/release-artifacts/BoBe-$VERSION.zip" "build/sparkle/BoBe-$VERSION.zip"
           just sparkle-generate-appcast \
             archives_dir=build/sparkle \
-            download_url_prefix="$UPDATE_DOWNLOAD_URL_PREFIX"
+            download_url_prefix="https://github.com/johnkozaris/bobrust/releases/download/v${VERSION}/"
 
-      - name: Publish Sparkle ZIP and appcast
+      - name: Create GitHub Release and upload assets
         env:
-          UPDATE_HOST: ${{ secrets.UPDATE_HOST }}
-          UPDATE_PATH: ${{ secrets.UPDATE_PATH }}
-          UPDATE_USER: ${{ secrets.UPDATE_USER }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          rsync -av \
-            -e "ssh -i ~/.ssh/release-update-key" \
-            "build/release-artifacts/BoBe-$VERSION.zip" \
-            "${UPDATE_USER}@${UPDATE_HOST}:${UPDATE_PATH}/"
-          rsync -av \
-            -e "ssh -i ~/.ssh/release-update-key" \
-            "build/sparkle/appcast.xml" \
-            "${UPDATE_USER}@${UPDATE_HOST}:${UPDATE_PATH}/appcast.xml.next"
-          ssh -i ~/.ssh/release-update-key \
-            "${UPDATE_USER}@${UPDATE_HOST}" \
-            "mv '${UPDATE_PATH}/appcast.xml.next' '${UPDATE_PATH}/appcast.xml'"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists, uploading assets"
+            gh release upload "v$VERSION" \
+              "build/release-artifacts/BoBe-$VERSION.dmg" \
+              "build/release-artifacts/BoBe-$VERSION.zip" --clobber
+          else
+            gh release create "v$VERSION" \
+              --title "BoBe v$VERSION" \
+              --notes "Release v$VERSION. See repository for changelog." \
+              "build/release-artifacts/BoBe-$VERSION.dmg" \
+              "build/release-artifacts/BoBe-$VERSION.zip"
+          fi
 
-      - name: Verify published update
+      - name: Commit appcast to repo
         run: |
-          curl -fL "$UPDATE_DOWNLOAD_URL_PREFIX/appcast.xml" | head -n 40
-          curl -fI "$UPDATE_DOWNLOAD_URL_PREFIX/BoBe-$VERSION.zip"
+          cp build/sparkle/appcast.xml appcast.xml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git diff --cached --quiet && echo "No appcast changes" && exit 0
+          git commit -m "chore: update appcast for v$VERSION"
+          git pull --rebase
+          git push
 
-      - name: Clean up publish key
-        if: always()
+      - name: Verify appcast is valid
         run: |
-          rm -f ~/.ssh/release-update-key
+          xmllint --noout appcast.xml
+          grep -q "sparkle:version" appcast.xml
+          grep -q "$VERSION" appcast.xml
+          echo "Appcast valid for v$VERSION"
