@@ -16,7 +16,7 @@ Thanks for your interest in contributing! BoBe is an open-source project and we 
 ### Setup
 
 ```bash
-git clone https://github.com/johnkozaris/Bobe.git
+git clone https://github.com/athatheo/BoBe.git
 cd Bobe
 
 # Check everything builds and passes

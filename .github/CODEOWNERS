@@ -1,24 +1,24 @@
 # Default — all changes require maintainer review
-* @johnkozaris
+* @athatheo
 
 # Release control plane — extra scrutiny
-.github/workflows/ @johnkozaris
-justfile @johnkozaris
-docs/UpdatingOTA.md @johnkozaris
-docs/CODE_SIGNING.md @johnkozaris
+.github/workflows/ @athatheo
+justfile @athatheo
+docs/UpdatingOTA.md @athatheo
+docs/CODE_SIGNING.md @athatheo
 
 # macOS app signing and packaging
-BoBeMacUI/entitlements.plist @johnkozaris
-BoBeMacUI/BoBe/Resources/Info.plist @johnkozaris
-BoBeMacUI/Package.swift @johnkozaris
-BoBeMacUI/Package.resolved @johnkozaris
+BoBeMacUI/entitlements.plist @athatheo
+BoBeMacUI/BoBe/Resources/Info.plist @athatheo
+BoBeMacUI/Package.swift @athatheo
+BoBeMacUI/Package.resolved @athatheo
 
 # Supply chain and dependency policy
-BoBeService/supply-chain/ @johnkozaris
-BoBeService/deny.toml @johnkozaris
-BoBeService/Cargo.lock @johnkozaris
+BoBeService/supply-chain/ @athatheo
+BoBeService/deny.toml @athatheo
+BoBeService/Cargo.lock @athatheo
 
 # Security-sensitive code
-BoBeService/src/secrets.rs @johnkozaris
-BoBeService/src/tools/mcp/security.rs @johnkozaris
-SECURITY.md @johnkozaris
+BoBeService/src/secrets.rs @athatheo
+BoBeService/src/tools/mcp/security.rs @athatheo
+SECURITY.md @athatheo

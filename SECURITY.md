@@ -13,7 +13,7 @@ Only the latest release receives security updates.
 
 **Please do not open a public issue for security vulnerabilities.**
 
-Instead, report them privately via **[GitHub Security Advisories](https://github.com/johnkozaris/Bobe/security/advisories/new)**.
+Instead, report them privately via **[GitHub Security Advisories](https://github.com/athatheo/BoBe/security/advisories/new)**.
 
 Include:
 

@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/johnkozaris/Bobe/actions/workflows/ci.yml"><img src="https://github.com/johnkozaris/Bobe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/johnkozaris/Bobe/actions/workflows/release.yml"><img src="https://github.com/johnkozaris/Bobe/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="https://github.com/athatheo/BoBe/actions/workflows/ci.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/athatheo/BoBe/actions/workflows/release.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple" alt="macOS 14+">
   <img src="https://img.shields.io/badge/arch-Apple%20Silicon-orange" alt="Apple Silicon">
@@ -43,12 +43,12 @@ Everything runs locally by default. Your data never leaves your machine unless y
 
 ### Option A: Download a Release
 
-Download the latest `BoBe.dmg` from the [Releases](https://github.com/johnkozaris/Bobe/releases) page, drag BoBe to Applications, and launch it.
+Download the latest `BoBe.dmg` from the [Releases](https://github.com/athatheo/BoBe/releases) page, drag BoBe to Applications, and launch it.
 
 ### Option B: Build from Source
 
 ```bash
-git clone https://github.com/johnkozaris/Bobe.git
+git clone https://github.com/athatheo/BoBe.git
 cd Bobe
 just run
 ```

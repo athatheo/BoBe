@@ -200,7 +200,7 @@ jobs:
           cp "build/release-artifacts/BoBe-$VERSION.zip" "build/sparkle/BoBe-$VERSION.zip"
           just sparkle-generate-appcast \
             archives_dir=build/sparkle \
-            download_url_prefix="https://github.com/johnkozaris/bobrust/releases/download/v${VERSION}/"
+            download_url_prefix="https://github.com/athatheo/BoBe/releases/download/v${VERSION}/"
 
       - name: Create GitHub Release and upload assets
         env:
