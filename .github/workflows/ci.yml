@@ -38,7 +38,15 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('BoBeService/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      - name: Cache CI tool binaries
+        id: tool-cache
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ~/.cargo/bin/
+          key: ci-tools-${{ runner.os }}-just1.46.0-deny0.19.0-machete0.9.1-vet0.10.2
+
       - name: Install CI tools
+        if: steps.tool-cache.outputs.cache-hit != 'true'
         run: |
           cargo install --locked just --version 1.46.0
           cargo install --locked cargo-deny --version 0.19.0
