@@ -4,6 +4,7 @@
 # Release control plane — extra scrutiny
 .github/workflows/ @athatheo
 justfile @athatheo
+.gitignore @athatheo
 docs/UpdatingOTA.md @athatheo
 docs/CODE_SIGNING.md @athatheo
 

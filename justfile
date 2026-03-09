@@ -92,12 +92,18 @@ sign-dmg identity="Developer ID Application" version="1.0.0":
         "build/BoBe-{{ version }}.dmg"
     echo "DMG signed"
 
-# Notarize (requires Apple ID credentials)
-notarize version="1.0.0" apple-id="" team-id="" password="":
+# Notarize via env vars (avoids credentials leaking into shell history / ps output)
+# Requires: NOTARIZE_APPLE_ID, NOTARIZE_TEAM_ID, NOTARIZE_PASSWORD
+notarize version="1.0.0":
+    #!/bin/bash
+    set -euo pipefail
+    : "${NOTARIZE_APPLE_ID:?Set NOTARIZE_APPLE_ID env var}"
+    : "${NOTARIZE_TEAM_ID:?Set NOTARIZE_TEAM_ID env var}"
+    : "${NOTARIZE_PASSWORD:?Set NOTARIZE_PASSWORD env var (app-specific password)}"
     xcrun notarytool submit "build/BoBe-{{ version }}.dmg" \
-        --apple-id "{{ apple-id }}" \
-        --team-id "{{ team-id }}" \
-        --password "{{ password }}" \
+        --apple-id "$NOTARIZE_APPLE_ID" \
+        --team-id "$NOTARIZE_TEAM_ID" \
+        --password "$NOTARIZE_PASSWORD" \
         --wait
     echo "Notarization complete"
 
@@ -231,7 +237,8 @@ check-ci:
 test: check
 
 # Full ship: clean → resolve deps → build → sign → DMG → notarize → staple → Sparkle zip
-ship version apple-id team-id password identity="Developer ID Application":
+# Requires env vars: NOTARIZE_APPLE_ID, NOTARIZE_TEAM_ID, NOTARIZE_PASSWORD
+ship version identity="Developer ID Application":
     #!/bin/bash
     set -euo pipefail
     echo "=== Clean ==="
@@ -245,7 +252,7 @@ ship version apple-id team-id password identity="Developer ID Application":
     just release {{ version }} {{ identity }}
 
     echo "=== Notarize ==="
-    just notarize {{ version }} apple-id={{ apple-id }} team-id={{ team-id }} password={{ password }}
+    just notarize {{ version }}
 
     echo "=== Staple ==="
     just staple {{ version }}
