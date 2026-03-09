@@ -35,8 +35,8 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             BoBeService/target/
-          key: cargo-${{ runner.os }}-${{ hashFiles('BoBeService/Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: v1-cargo-${{ runner.os }}-${{ hashFiles('BoBeService/Cargo.lock') }}
+          restore-keys: v1-cargo-${{ runner.os }}-
 
       - name: Cache CI tool binaries
         id: tool-cache
@@ -62,4 +62,6 @@ jobs:
           fi
 
       - name: Run deterministic validation and supply-chain checks
+        env:
+          CARGO_INCREMENTAL: "0"
         run: just check-ci
