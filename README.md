@@ -10,6 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple" alt="macOS 14+">
   <img src="https://img.shields.io/badge/arch-Apple%20Silicon-orange" alt="Apple Silicon">
+  <a href="https://www.bobebot.com"><img src="https://img.shields.io/badge/web-bobebot.com-purple" alt="Website"></a>
 </p>
 
 ---
