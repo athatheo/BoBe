@@ -523,11 +523,12 @@ pub(crate) struct Config {
 
 impl Config {
     pub(crate) fn load() -> Result<Self, crate::error::AppError> {
-        let data_dir = resolve_data_dir();
-        let config_path = PathBuf::from(&data_dir).join("config.toml");
+        let data_dir = crate::util::paths::bobe_data_dir();
+        let config_path = data_dir.join("config.toml");
+        let data_dir_str = data_dir.to_string_lossy().into_owned();
 
         let defaults = Self {
-            data_dir,
+            data_dir: data_dir_str,
             ..Self::default()
         };
 
@@ -539,7 +540,10 @@ impl Config {
             .map_err(|e| crate::error::AppError::Config(e.to_string()))?;
 
         if config.database.url.contains('~') {
-            config.database.url = expand_tilde(&config.database.url);
+            config.database.url =
+                crate::util::paths::expand_tilde(&config.database.url)
+                    .to_string_lossy()
+                    .into_owned();
         }
 
         let secrets = crate::secrets::load_secrets();
@@ -576,14 +580,17 @@ impl Config {
         } else {
             self.goal_worker.projects_dir.clone()
         };
-        PathBuf::from(expand_tilde(&raw))
+        crate::util::paths::expand_tilde(&raw)
     }
 
     pub(crate) fn resolved_data_dir(&self) -> PathBuf {
-        PathBuf::from(expand_tilde(&self.data_dir))
+        crate::util::paths::expand_tilde(&self.data_dir)
     }
 
-    /// Effective locale: config override → system locale → `en-US`.
+    /// Effective locale: config override → `en-US`.
+    ///
+    /// The frontend is responsible for detecting the system locale and persisting
+    /// it as `locale_override` on startup.
     pub(crate) fn effective_locale(&self) -> String {
         if let Some(locale) = self
             .locale_override
@@ -592,10 +599,6 @@ impl Config {
             .filter(|value| !value.is_empty())
         {
             return crate::i18n::resolve_supported_locale(locale);
-        }
-
-        if let Some(system_locale) = sys_locale::get_locale() {
-            return crate::i18n::resolve_supported_locale(&system_locale);
         }
 
         crate::i18n::FALLBACK_LOCALE.to_string()
@@ -618,17 +621,3 @@ impl Config {
     }
 }
 
-fn resolve_data_dir() -> String {
-    std::env::var("BOBE_DATA_DIR").unwrap_or_else(|_| {
-        let home = home_dir();
-        format!("{home}/.bobe")
-    })
-}
-
-fn home_dir() -> String {
-    std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())
-}
-
-fn expand_tilde(s: &str) -> String {
-    s.replace('~', &home_dir())
-}

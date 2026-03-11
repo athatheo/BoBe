@@ -486,7 +486,19 @@ final class BobeStore {
                 // Apply locale from daemon settings
                 self.effectiveLocale = settings.effectiveLocale
                 self.supportedLocales = settings.supportedLocales
-                let override = settings.localeOverride ?? ""
+                var override = settings.localeOverride ?? ""
+
+                // Auto-detect system locale and persist when no override is set
+                if override.isEmpty {
+                    let systemLocale = Locale.current.identifier.replacingOccurrences(of: "_", with: "-")
+                    var req = SettingsUpdateRequest()
+                    req.localeOverride = systemLocale
+                    _ = try? await self.client.updateSettings(req)
+                    let refreshed = try await self.client.getSettings()
+                    self.effectiveLocale = refreshed.effectiveLocale
+                    override = refreshed.localeOverride ?? ""
+                }
+
                 self.localeOverride = override
                 L10n.setLocaleOverride(override.isEmpty ? nil : override)
 

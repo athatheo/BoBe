@@ -45,8 +45,8 @@ pub(crate) async fn connect_and_apply_schema(db_url: &str) -> Result<SqlitePool,
 
 fn normalize_sqlite_url(db_url: &str) -> String {
     if let Some(path) = db_url.strip_prefix("sqlite:") {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        return format!("sqlite:{}", path.replace('~', &home));
+        let expanded = crate::util::paths::expand_tilde(path);
+        return format!("sqlite:{}", expanded.display());
     }
     db_url.to_string()
 }

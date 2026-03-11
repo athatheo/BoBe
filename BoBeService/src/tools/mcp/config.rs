@@ -55,7 +55,7 @@ pub(crate) fn resolve_mcp_config_path(config_file: Option<&str>) -> Result<PathB
     if let Some(path) = config_file
         && !path.trim().is_empty()
     {
-        return Ok(expand_tilde(path));
+        return Ok(crate::util::paths::expand_tilde(path));
     }
 
     let home = dirs::home_dir()
@@ -188,15 +188,6 @@ fn resolve_secret(account: &str) -> Result<String, AppError> {
     }
     crate::secrets::read_secret(account)
         .ok_or_else(|| AppError::Config(format!("Missing MCP secret for account '{account}'")))
-}
-
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir()
-    {
-        return home.join(rest);
-    }
-    PathBuf::from(path)
 }
 
 fn expand_env_templates(input: &str) -> Result<String, AppError> {

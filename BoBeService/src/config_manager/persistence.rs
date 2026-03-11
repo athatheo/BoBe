@@ -1,12 +1,11 @@
 //! Atomic `config.toml` persistence via temp-write + rename.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use tracing::{error, info};
 
 pub(crate) fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
-    let dir = bobe_dir();
+    let dir = crate::util::paths::bobe_data_dir();
     if let Err(e) = std::fs::create_dir_all(&dir) {
         error!(error = %e, "config_persistence.mkdir_failed");
         return false;
@@ -111,8 +110,3 @@ fn json_to_toml_item(value: &serde_json::Value) -> toml_edit::Item {
     }
 }
 
-fn bobe_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let data_dir = std::env::var("BOBE_DATA_DIR").unwrap_or_else(|_| format!("{home}/.bobe"));
-    PathBuf::from(data_dir)
-}
