@@ -175,11 +175,23 @@ run:
     cd BoBeService && cargo build
     cd ../BoBeMacUI && swift build -c debug
     cd ..
-    # Place backend where BackendService.findBinaryPath() discovers it
-    mkdir -p BoBeMacUI/.build/debug
-    cp BoBeService/target/debug/bobe BoBeMacUI/.build/debug/bobe-daemon
+
+    # Create a proper .app bundle so macOS shows it in Privacy settings
+    # (Screen Recording, etc.) — bare executables are invisible to TCC.
+    APP="build/debug/BoBe.app"
+    rm -rf "$APP"
+    mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+    cp BoBeMacUI/.build/debug/BoBe "$APP/Contents/MacOS/BoBe"
+    cp BoBeService/target/debug/bobe "$APP/Contents/MacOS/bobe-daemon"
+    cp BoBeMacUI/BoBe/Resources/Info.plist "$APP/Contents/Info.plist"
+    cp -r BoBeMacUI/BoBe/Resources/ "$APP/Contents/Resources/" 2>/dev/null || true
+    rm -f "$APP/Contents/Resources/Info.plist"
+
+    # Ad-hoc sign so macOS TCC recognizes the bundle identity
+    codesign -s - --force --deep "$APP" 2>/dev/null || true
+
     echo "Launching BoBe..."
-    BoBeMacUI/.build/debug/BoBe
+    open "$APP"
 
 # Run backend only (use when running frontend from Xcode)
 backend:
