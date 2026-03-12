@@ -67,10 +67,7 @@ struct ChatStack: View {
                         }
                     }
                 }
-                .frame(
-                    minHeight: WindowSizes.heightChatViewportMin,
-                    maxHeight: self.maxViewportHeight
-                )
+                .frame(maxHeight: self.maxViewportHeight)
             }
 
             if self.shouldShowToggle {

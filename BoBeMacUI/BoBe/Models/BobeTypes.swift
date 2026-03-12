@@ -129,7 +129,7 @@ enum WindowSizes {
     static let heightAvatar: CGFloat = 180
     static let heightInput: CGFloat = 70
     static let heightExpandedChrome: CGFloat = 56
-    static let heightChatViewportMin: CGFloat = 120
+    static let heightChatViewportMin: CGFloat = 0
     static let heightChatViewportMax: CGFloat = 560
     static let heightMax: CGFloat = 900
     static let margin: CGFloat = 16

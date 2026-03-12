@@ -180,12 +180,21 @@ run:
     # (Screen Recording, etc.) — bare executables are invisible to TCC.
     APP="build/debug/BoBe.app"
     rm -rf "$APP"
-    mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+    mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
     cp BoBeMacUI/.build/debug/BoBe "$APP/Contents/MacOS/BoBe"
     cp BoBeService/target/debug/bobe "$APP/Contents/MacOS/bobe-daemon"
     cp BoBeMacUI/BoBe/Resources/Info.plist "$APP/Contents/Info.plist"
     cp -r BoBeMacUI/BoBe/Resources/ "$APP/Contents/Resources/" 2>/dev/null || true
     rm -f "$APP/Contents/Resources/Info.plist"
+
+    # Copy Sparkle framework (required dynamic dependency)
+    ditto BoBeMacUI/.build/arm64-apple-macosx/debug/Sparkle.framework \
+          "$APP/Contents/Frameworks/Sparkle.framework"
+
+    # SPM debug builds set @rpath to @loader_path (Contents/MacOS/);
+    # add the standard Frameworks rpath so Sparkle is found.
+    install_name_tool -add_rpath @executable_path/../Frameworks \
+          "$APP/Contents/MacOS/BoBe" 2>/dev/null || true
 
     # Ad-hoc sign so macOS TCC recognizes the bundle identity
     codesign -s - --force --deep "$APP" 2>/dev/null || true
