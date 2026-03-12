@@ -166,7 +166,7 @@ pub(crate) struct EmbeddingConfig {
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
-            model: "BAAI/bge-small-en-v1.5".into(),
+            model: "all-minilm".into(),
             dimension: 384,
         }
     }

@@ -271,7 +271,7 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
-    let embedding_model = "BAAI/bge-small-en-v1.5";
+    let embedding_model = "all-minilm";
     update_step(
         "embedding_model",
         StepStatus::InProgress,
