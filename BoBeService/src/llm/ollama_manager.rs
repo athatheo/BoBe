@@ -338,6 +338,23 @@ impl OllamaManager {
             }
         }
 
+        // Process any remaining content in the buffer (final line may lack trailing newline)
+        let trailing = buf.trim();
+        if !trailing.is_empty() {
+            if let Ok(progress) = serde_json::from_str::<PullProgress>(trailing)
+                && let Some(status) = &progress.status
+            {
+                if status == "success" {
+                    return Ok(());
+                }
+                if let Some(err) = &progress.error {
+                    return Err(AppError::LlmUnavailable(format!(
+                        "Ollama pull error: {err}"
+                    )));
+                }
+            }
+        }
+
         Err(AppError::LlmUnavailable(
             "Model pull ended without success confirmation (possible network interruption)"
                 .to_string(),
