@@ -6,6 +6,7 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "App")
 
 extension Notification.Name {
     static let bobeSetupCompleted = Notification.Name("bobe.setupCompleted")
+    static let bobeCaptureStateChanged = Notification.Name("bobe.captureStateChanged")
 }
 
 @main

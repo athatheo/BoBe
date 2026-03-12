@@ -38,6 +38,7 @@
 "setup.local_vision.skip" = "Jetzt nicht";
 "setup.capture.local_vision_download_hint" = "Nach der Genehmigung lädt BoBe das lokale Vision-Modell herunter (~4 GB).";
 "setup.local.disk_estimate_format" = "~%.0f GB";
+"setup.local.change_later_hint" = "Du kannst die Modellgröße später in den Einstellungen ändern.";
 "setup.common.setting_up" = "Wird eingerichtet...";
 "setup.common.continue" = "Weiter";
 "setup.common.back" = "Zurück";
@@ -185,8 +186,12 @@
 "settings.ai_model.ollama.action.pull" = "Pull";
 "settings.ai_model.ollama.action.use" = "Verwenden";
 "settings.ai_model.ollama.active_badge" = "Aktiv";
+"settings.ai_model.ollama.embedding_badge" = "Einbettung";
+"settings.ai_model.ollama.vision_badge" = "Vision";
 "settings.ai_model.ollama.active_model.description" = "Das Modell, das BoBe für alle KI-Operationen verwendet";
 "settings.ai_model.ollama.active_model.title" = "Aktives Modell";
+"settings.ai_model.ollama.capture_model.description" = "Das Vision-Modell für die Bildschirmaufnahme-Analyse";
+"settings.ai_model.ollama.capture_model.title" = "Aufnahme-Modell";
 "settings.ai_model.ollama.download.description" = "Lade ein Modell aus der Ollama-Registry herunter";
 "settings.ai_model.ollama.download.title" = "Modell herunterladen";
 "settings.ai_model.ollama.downloading_format" = "%@ wird heruntergeladen...";
@@ -194,6 +199,7 @@
 "settings.ai_model.ollama.installed_models.title" = "Installierte Modelle";
 "settings.ai_model.ollama.model_name.placeholder" = "Modellname (z. B. llama3.2)";
 "settings.ai_model.ollama.no_models" = "Keine Modelle installiert — läuft Ollama?";
+"settings.ai_model.ollama.popular_models" = "Beliebte Modelle";
 "settings.ai_model.ollama.unavailable_format" = "Ollama nicht erreichbar: %@";
 "settings.ai_model.openai.api_key" = "API-Schlüssel";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
@@ -344,7 +350,7 @@
 "settings.privacy.danger.status.success" = "Alle lokalen Daten wurden gelöscht.";
 "settings.privacy.danger.title" = "Gefahrenbereich";
 "settings.privacy.storage.description" = "BoBe speichert Daten lokal auf diesem Mac. Souls, Ziele, Erinnerungen, Benutzerprofil und Laufzeiteinstellungen bleiben auf dem Mac.";
-"settings.privacy.storage.included.list" = "• Souls und Ziele\\n• Erinnerungen und Beobachtungen\\n• Benutzerprofil und Einstellungen\\n• Metadaten lokaler Modelle";
+"settings.privacy.storage.included.list" = "• Souls und Ziele\n• Erinnerungen und Beobachtungen\n• Benutzerprofil und Einstellungen\n• Metadaten lokaler Modelle";
 "settings.privacy.storage.included.title" = "Im lokalen Speicher enthalten";
 "settings.privacy.storage.title" = "Lokaler Speicher";
 "settings.souls.delete.accessibility" = "Soul löschen";

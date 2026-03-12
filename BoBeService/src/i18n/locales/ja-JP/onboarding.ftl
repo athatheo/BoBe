@@ -11,6 +11,18 @@ onboarding-cloud-provider-openai-model-gpt-5-mini-label = GPT-5 Mini
 onboarding-cloud-provider-openai-model-gpt-5-nano-label = GPT-5 Nano
 onboarding-cloud-provider-openai-model-gpt-5-2-label = GPT-5.2
 
+setup-label-validate = システムを検証
+setup-label-engine = エンジンを起動
+setup-label-text-model = テキストモデルをダウンロード
+setup-label-embedding-model = エンベディングモデルをダウンロード
+setup-label-embedding-warmup = エンベディングをテスト
+setup-label-vision-model = ビジョンモデルをダウンロード
+setup-label-persist = 設定を保存
+
+setup-step-validating = システムを検証中…
+setup-step-engine-starting = Ollamaを起動中…
+setup-step-persisting = 設定を保存中…
+
 setup-error-create-data-directory = データディレクトリを作成できません: { $error }
 setup-error-not-enough-disk-space = ディスク容量が不足しています: 約{ $needed_gb } GB 必要、空き { $available_gb } GB
 setup-error-unknown-provider = 不明なプロバイダー: { $provider }

@@ -26,7 +26,7 @@ struct GoalsEditor: View {
                         HStack(spacing: 6) {
                             Button(L10n.tr("settings.editor.action.create")) { self.createGoal() }
                                 .bobeButton(.primary, size: .small)
-                            .disabled(self.newContent.isEmpty)
+                            .disabled(self.newContent.count < 5)
                             Button(L10n.tr("settings.editor.action.cancel")) {
                                 self.editorState.setCreating(false)
                                 self.newContent = ""
@@ -34,6 +34,10 @@ struct GoalsEditor: View {
                             .bobeButton(.secondary, size: .small)
                         }
                     }
+                }
+
+                if self.editorState.isCreating, let errorMessage = self.editorState.errorMessage {
+                    SettingsEditorErrorText(message: errorMessage)
                 }
 
                 if self.editorState.isLoading, self.goals.isEmpty {
@@ -351,7 +355,7 @@ struct GoalsEditor: View {
     private func deleteGoal(_ goal: Goal) {
         Task {
             do {
-                _ = try await DaemonClient.shared.deleteGoal(goal.id)
+                try await DaemonClient.shared.deleteGoal(goal.id)
                 self.goals.removeAll { $0.id == goal.id }
                 if self.editorState.selectedId == goal.id {
                     self.editorState.select(self.goals.first?.id)

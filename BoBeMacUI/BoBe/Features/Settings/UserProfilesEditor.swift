@@ -35,6 +35,10 @@ struct UserProfilesEditor: View {
                     }
                 }
 
+                if self.editorState.isCreating, let errorMessage = self.editorState.errorMessage {
+                    SettingsEditorErrorText(message: errorMessage)
+                }
+
                 if self.editorState.isLoading, self.profiles.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
@@ -214,7 +218,7 @@ struct UserProfilesEditor: View {
         Task {
             do {
                 let profile = try await DaemonClient.shared.createUserProfile(
-                    UserProfileCreateRequest(name: self.newName.lowercased(), content: "# \(self.newName)\n\n")
+                    UserProfileCreateRequest(name: self.newName.lowercased(), content: "# \(self.newName)\n\nDescribe this profile here.\n")
                 )
                 self.profiles.append(profile)
                 self.editorState.select(profile.id)
@@ -246,7 +250,7 @@ struct UserProfilesEditor: View {
     private func deleteProfile(_ profile: UserProfile) {
         Task {
             do {
-                _ = try await DaemonClient.shared.deleteUserProfile(profile.id)
+                try await DaemonClient.shared.deleteUserProfile(profile.id)
                 self.profiles.removeAll { $0.id == profile.id }
                 if self.editorState.selectedId == profile.id {
                     self.editorState.select(self.profiles.first?.id)

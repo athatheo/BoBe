@@ -324,8 +324,8 @@ actor DaemonClient {
         try await self.fetch("/souls/\(id)", method: "PATCH", body: request)
     }
 
-    func deleteSoul(_ id: String) async throws -> SoulActionResponse {
-        try await self.fetch("/souls/\(id)", method: "DELETE")
+    func deleteSoul(_ id: String) async throws {
+        try await self.fetchVoid("/souls/\(id)", method: "DELETE")
     }
 
     func enableSoul(_ id: String) async throws -> SoulActionResponse {
@@ -350,8 +350,8 @@ actor DaemonClient {
         try await self.fetch("/user-profiles/\(id)", method: "PATCH", body: request)
     }
 
-    func deleteUserProfile(_ id: String) async throws -> UserProfileActionResponse {
-        try await self.fetch("/user-profiles/\(id)", method: "DELETE")
+    func deleteUserProfile(_ id: String) async throws {
+        try await self.fetchVoid("/user-profiles/\(id)", method: "DELETE")
     }
 
     func enableUserProfile(_ id: String) async throws -> UserProfileActionResponse {
@@ -416,8 +416,8 @@ actor DaemonClient {
         try await self.fetch("/memories/\(id)", method: "PATCH", body: request)
     }
 
-    func deleteMemory(_ id: String) async throws -> MemoryActionResponse {
-        try await self.fetch("/memories/\(id)", method: "DELETE")
+    func deleteMemory(_ id: String) async throws {
+        try await self.fetchVoid("/memories/\(id)", method: "DELETE")
     }
 
     func enableMemory(_ id: String) async throws -> MemoryActionResponse {

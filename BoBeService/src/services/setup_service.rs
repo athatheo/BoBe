@@ -141,7 +141,12 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
     let tier = body.tier.as_deref().unwrap_or("large");
     let models = tier_models(tier);
 
-    update_step("validate", StepStatus::InProgress, None).await;
+    update_step(
+        "validate",
+        StepStatus::InProgress,
+        Some(localizer.text("setup-step-validating")),
+    )
+    .await;
     let data_dir = state.config().resolved_data_dir();
     if let Err(e) = tokio::fs::create_dir_all(&data_dir).await {
         let msg = localizer.vars(
@@ -185,7 +190,12 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
 
     let ollama_runtime = OllamaRuntimeService::from(&state);
 
-    update_step("engine", StepStatus::InProgress, None).await;
+    update_step(
+        "engine",
+        StepStatus::InProgress,
+        Some(localizer.text("setup-step-engine-starting")),
+    )
+    .await;
     let (progress_tx, mut progress_rx) =
         tokio::sync::watch::channel(crate::binary_manager::DownloadProgress {
             current_bytes: 0,
@@ -271,7 +281,7 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         return;
     }
 
-    let embedding_model = "BAAI/bge-small-en-v1.5";
+    let embedding_model = "nomic-embed-text";
     update_step(
         "embedding_model",
         StepStatus::InProgress,
@@ -452,7 +462,12 @@ pub(crate) async fn run_cloud_setup(state: Arc<AppState>, body: SetupRequest) {
 
     let provider = body.provider.as_deref().unwrap_or("openai");
     let localizer = SetupLocalizer::from_state(&state);
-    update_step("validate", StepStatus::InProgress, None).await;
+    update_step(
+        "validate",
+        StepStatus::InProgress,
+        Some(localizer.text("setup-step-validating")),
+    )
+    .await;
 
     match provider {
         "openai" => run_openai_setup(&state, &body).await,
@@ -703,7 +718,12 @@ async fn persist_config(
     changes: HashMap<String, serde_json::Value>,
     localizer: &SetupLocalizer,
 ) -> bool {
-    update_step("persist", StepStatus::InProgress, None).await;
+    update_step(
+        "persist",
+        StepStatus::InProgress,
+        Some(localizer.text("setup-step-persisting")),
+    )
+    .await;
     let update = state.config_manager.update(&changes);
     if update.persist_failed {
         let msg = localizer.text("setup-error-persist-failed");
@@ -767,7 +787,7 @@ async fn test_azure_embedding(
 
 /// Warmup-test the local Ollama embedding provider against a candidate config
 /// that has `llm.backend = ollama`.  Note: embeddings use `embedding.model`
-/// (default `BAAI/bge-small-en-v1.5`), not the text LLM model.
+/// (default `nomic-embed-text`), not the text LLM model.
 async fn test_local_embedding(state: &Arc<AppState>) -> Result<(), AppError> {
     let current = state.config();
     let mut candidate = (**current).clone();

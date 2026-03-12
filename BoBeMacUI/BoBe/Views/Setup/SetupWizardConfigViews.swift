@@ -116,6 +116,11 @@ extension SetupWizard {
                 }
             }
 
+            Text(L10n.tr("setup.local.change_later_hint"))
+                .font(.system(size: 12))
+                .foregroundStyle(theme.colors.textMuted)
+                .frame(maxWidth: .infinity, alignment: .center)
+
             Button(busy ? L10n.tr("setup.common.setting_up") : L10n.tr("setup.common.continue")) {
                 handleLocalSetup()
             }

@@ -11,6 +11,18 @@ onboarding-cloud-provider-openai-model-gpt-5-mini-label = GPT-5 Mini
 onboarding-cloud-provider-openai-model-gpt-5-nano-label = GPT-5 Nano
 onboarding-cloud-provider-openai-model-gpt-5-2-label = GPT-5.2
 
+setup-label-validate = 验证系统
+setup-label-engine = 启动引擎
+setup-label-text-model = 下载文本模型
+setup-label-embedding-model = 下载嵌入模型
+setup-label-embedding-warmup = 测试嵌入
+setup-label-vision-model = 下载视觉模型
+setup-label-persist = 保存配置
+
+setup-step-validating = 正在验证系统…
+setup-step-engine-starting = 正在启动 Ollama…
+setup-step-persisting = 正在保存配置…
+
 setup-error-create-data-directory = 无法创建数据目录：{ $error }
 setup-error-not-enough-disk-space = 磁盘空间不足：需要 ~{ $needed_gb } GB，可用 { $available_gb } GB
 setup-error-unknown-provider = 未知提供商：{ $provider }

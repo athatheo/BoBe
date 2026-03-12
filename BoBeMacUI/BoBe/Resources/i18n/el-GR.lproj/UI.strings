@@ -38,6 +38,7 @@
 "setup.local_vision.skip" = "Όχι τώρα";
 "setup.capture.local_vision_download_hint" = "Μετά τη χορήγηση πρόσβασης, το BoBe θα κατεβάσει το τοπικό μοντέλο όρασης (~4 GB).";
 "setup.local.disk_estimate_format" = "~%.0f GB";
+"setup.local.change_later_hint" = "Μπορείς να αλλάξεις το μέγεθος μοντέλου αργότερα στις ρυθμίσεις.";
 "setup.common.setting_up" = "Γίνεται ρύθμιση...";
 "setup.common.continue" = "Συνέχεια";
 "setup.common.back" = "Πίσω";
@@ -185,8 +186,12 @@
 "settings.ai_model.ollama.action.pull" = "Pull";
 "settings.ai_model.ollama.action.use" = "Χρήση";
 "settings.ai_model.ollama.active_badge" = "Ενεργό";
+"settings.ai_model.ollama.embedding_badge" = "Embedding";
+"settings.ai_model.ollama.vision_badge" = "Vision";
 "settings.ai_model.ollama.active_model.description" = "Το μοντέλο που χρησιμοποιεί το BoBe για όλες τις λειτουργίες AI";
 "settings.ai_model.ollama.active_model.title" = "Ενεργό μοντέλο";
+"settings.ai_model.ollama.capture_model.description" = "Το μοντέλο vision που χρησιμοποιείται για ανάλυση λήψης οθόνης";
+"settings.ai_model.ollama.capture_model.title" = "Μοντέλο λήψης";
 "settings.ai_model.ollama.download.description" = "Κάντε pull ένα μοντέλο από το Ollama registry";
 "settings.ai_model.ollama.download.title" = "Λήψη μοντέλου";
 "settings.ai_model.ollama.downloading_format" = "Λήψη %@...";
@@ -194,6 +199,7 @@
 "settings.ai_model.ollama.installed_models.title" = "Εγκατεστημένα μοντέλα";
 "settings.ai_model.ollama.model_name.placeholder" = "Όνομα μοντέλου (π.χ. llama3.2)";
 "settings.ai_model.ollama.no_models" = "Δεν υπάρχουν εγκατεστημένα μοντέλα — εκτελείται το Ollama;";
+"settings.ai_model.ollama.popular_models" = "Δημοφιλή μοντέλα";
 "settings.ai_model.ollama.unavailable_format" = "Το Ollama δεν είναι διαθέσιμο: %@";
 "settings.ai_model.openai.api_key" = "Κλειδί API";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
@@ -344,7 +350,7 @@
 "settings.privacy.danger.status.success" = "Όλα τα τοπικά δεδομένα διαγράφηκαν.";
 "settings.privacy.danger.title" = "Επικίνδυνη ζώνη";
 "settings.privacy.storage.description" = "Το BoBe αποθηκεύει δεδομένα τοπικά σε αυτό το Mac. Ψυχές, στόχοι, μνήμες, προφίλ χρήστη και ρυθμίσεις εκτέλεσης παραμένουν στη συσκευή.";
-"settings.privacy.storage.included.list" = "• Ψυχές και στόχοι\\n• Μνήμες και παρατηρήσεις\\n• Προφίλ χρήστη και ρυθμίσεις\\n• Μεταδεδομένα τοπικών μοντέλων";
+"settings.privacy.storage.included.list" = "• Ψυχές και στόχοι\n• Μνήμες και παρατηρήσεις\n• Προφίλ χρήστη και ρυθμίσεις\n• Μεταδεδομένα τοπικών μοντέλων";
 "settings.privacy.storage.included.title" = "Περιλαμβάνονται στην τοπική κατάσταση";
 "settings.privacy.storage.title" = "Τοπική αποθήκευση";
 "settings.souls.delete.accessibility" = "Διαγραφή ψυχής";

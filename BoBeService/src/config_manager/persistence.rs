@@ -109,4 +109,3 @@ fn json_to_toml_item(value: &serde_json::Value) -> toml_edit::Item {
         serde_json::Value::Null | serde_json::Value::Object(_) => toml_edit::value(""),
     }
 }
-

@@ -120,7 +120,7 @@ struct PrivacyPanel: View {
             let goals = try await DaemonClient.shared.listGoals().goals
             for goal in goals {
                 do {
-                    _ = try await DaemonClient.shared.deleteGoal(goal.id)
+                    try await DaemonClient.shared.deleteGoal(goal.id)
                 } catch {
                     errors.append(L10n.tr("settings.privacy.danger.error.goal_format", goal.id))
                 }
@@ -133,7 +133,7 @@ struct PrivacyPanel: View {
             let memories = try await DaemonClient.shared.listMemories().memories
             for memory in memories {
                 do {
-                    _ = try await DaemonClient.shared.deleteMemory(memory.id)
+                    try await DaemonClient.shared.deleteMemory(memory.id)
                 } catch {
                     errors.append(L10n.tr("settings.privacy.danger.error.memory_format", memory.id))
                 }
@@ -146,7 +146,7 @@ struct PrivacyPanel: View {
             let souls = try await DaemonClient.shared.listSouls().souls.filter { !$0.isDefault }
             for soul in souls {
                 do {
-                    _ = try await DaemonClient.shared.deleteSoul(soul.id)
+                    try await DaemonClient.shared.deleteSoul(soul.id)
                 } catch {
                     errors.append(L10n.tr("settings.privacy.danger.error.soul_format", soul.name))
                 }
@@ -160,7 +160,7 @@ struct PrivacyPanel: View {
                 .filter { !$0.isDefault }
             for profile in profiles {
                 do {
-                    _ = try await DaemonClient.shared.deleteUserProfile(profile.id)
+                    try await DaemonClient.shared.deleteUserProfile(profile.id)
                 } catch {
                     errors.append(L10n.tr("settings.privacy.danger.error.profile_format", profile.name))
                 }

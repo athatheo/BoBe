@@ -36,6 +36,10 @@ struct SoulsEditor: View {
                     }
                 }
 
+                if self.editorState.isCreating, let errorMessage = self.editorState.errorMessage {
+                    SettingsEditorErrorText(message: errorMessage)
+                }
+
                 if self.editorState.isLoading, self.souls.isEmpty {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
@@ -214,7 +218,7 @@ struct SoulsEditor: View {
         Task {
             do {
                 let soul = try await DaemonClient.shared.createSoul(
-                    SoulCreateRequest(name: self.newName.lowercased(), content: "# \(self.newName)\n\n")
+                    SoulCreateRequest(name: self.newName.lowercased(), content: "# \(self.newName)\n\nDescribe this soul here.\n")
                 )
                 self.souls.append(soul)
                 self.editorState.select(soul.id)
@@ -246,7 +250,7 @@ struct SoulsEditor: View {
     private func deleteSoul(_ soul: Soul) {
         Task {
             do {
-                _ = try await DaemonClient.shared.deleteSoul(soul.id)
+                try await DaemonClient.shared.deleteSoul(soul.id)
                 self.souls.removeAll { $0.id == soul.id }
                 if self.editorState.selectedId == soul.id {
                     self.editorState.select(self.souls.first?.id)

@@ -189,15 +189,31 @@ pub(crate) async fn create_setup_job(
 
     let steps = match body.mode.as_str() {
         "local" => vec![
-            step("validate"),
-            step("engine"),
-            step("text_model"),
-            step("embedding_model"),
-            step("embedding_warmup"),
-            step("persist"),
+            step("validate", &t(&locale, "setup-label-validate")),
+            step("engine", &t(&locale, "setup-label-engine")),
+            step("text_model", &t(&locale, "setup-label-text-model")),
+            step(
+                "embedding_model",
+                &t(&locale, "setup-label-embedding-model"),
+            ),
+            step(
+                "embedding_warmup",
+                &t(&locale, "setup-label-embedding-warmup"),
+            ),
+            step("persist", &t(&locale, "setup-label-persist")),
         ],
-        "local_vision" => vec![step("vision_model"), step("persist")],
-        "cloud" => vec![step("validate"), step("embedding_warmup"), step("persist")],
+        "local_vision" => vec![
+            step("vision_model", &t(&locale, "setup-label-vision-model")),
+            step("persist", &t(&locale, "setup-label-persist")),
+        ],
+        "cloud" => vec![
+            step("validate", &t(&locale, "setup-label-validate")),
+            step(
+                "embedding_warmup",
+                &t(&locale, "setup-label-embedding-warmup"),
+            ),
+            step("persist", &t(&locale, "setup-label-persist")),
+        ],
         other => {
             return Err(AppError::Validation(t_vars(
                 &locale,
@@ -274,11 +290,11 @@ pub(crate) async fn cancel_setup_job(
     }
 }
 
-fn step(id: &str) -> SetupStep {
+fn step(id: &str, label: &str) -> SetupStep {
     SetupStep {
         id: id.into(),
         status: StepStatus::Pending,
-        message: None,
+        message: Some(label.into()),
         progress: None,
     }
 }

@@ -36,6 +36,7 @@
 "setup.local_vision.skip" = "Not now";
 "setup.capture.local_vision_download_hint" = "After granting access, BoBe will download the local vision model (~4 GB).";
 "setup.local.disk_estimate_format" = "~%.0f GB";
+"setup.local.change_later_hint" = "You can change the model size in settings later.";
 "setup.common.setting_up" = "Setting up...";
 "setup.common.continue" = "Continue";
 "setup.common.back" = "Back";
@@ -183,8 +184,12 @@
 "settings.ai_model.ollama.action.pull" = "Pull";
 "settings.ai_model.ollama.action.use" = "Use";
 "settings.ai_model.ollama.active_badge" = "Active";
+"settings.ai_model.ollama.embedding_badge" = "Embedding";
+"settings.ai_model.ollama.vision_badge" = "Vision";
 "settings.ai_model.ollama.active_model.description" = "The model BoBe uses for all AI operations";
 "settings.ai_model.ollama.active_model.title" = "Active Model";
+"settings.ai_model.ollama.capture_model.description" = "The vision model used for screen capture analysis";
+"settings.ai_model.ollama.capture_model.title" = "Capture Model";
 "settings.ai_model.ollama.download.description" = "Pull a model from the Ollama registry";
 "settings.ai_model.ollama.download.title" = "Download Model";
 "settings.ai_model.ollama.downloading_format" = "Downloading %@...";
@@ -192,6 +197,7 @@
 "settings.ai_model.ollama.installed_models.title" = "Installed Models";
 "settings.ai_model.ollama.model_name.placeholder" = "Model name (e.g. llama3.2)";
 "settings.ai_model.ollama.no_models" = "No models installed — is Ollama running?";
+"settings.ai_model.ollama.popular_models" = "Popular models";
 "settings.ai_model.ollama.unavailable_format" = "Ollama unavailable: %@";
 "settings.ai_model.openai.api_key" = "API Key";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
@@ -342,7 +348,7 @@
 "settings.privacy.danger.status.success" = "All local data was deleted.";
 "settings.privacy.danger.title" = "Danger Zone";
 "settings.privacy.storage.description" = "BoBe stores data locally on this Mac. Souls, goals, memories, user profile, and runtime settings remain on-device.";
-"settings.privacy.storage.included.list" = "• Souls and goals\\n• Memories and observations\\n• User profile and settings\\n• Local model metadata";
+"settings.privacy.storage.included.list" = "• Souls and goals\n• Memories and observations\n• User profile and settings\n• Local model metadata";
 "settings.privacy.storage.included.title" = "Included in local state";
 "settings.privacy.storage.title" = "Local Storage";
 "settings.souls.delete.accessibility" = "Delete soul";

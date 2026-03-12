@@ -106,7 +106,7 @@ struct MemoriesEditor: View {
                         HStack(spacing: 6) {
                             Button(L10n.tr("settings.editor.action.create")) { self.createMemory() }
                                 .bobeButton(.primary, size: .small)
-                            .disabled(self.newContent.isEmpty)
+                            .disabled(self.newContent.count < 5)
                             Button(L10n.tr("settings.editor.action.cancel")) {
                                 self.editorState.setCreating(false)
                                 self.newContent = ""
@@ -346,7 +346,7 @@ struct MemoriesEditor: View {
     private func deleteMemory(_ memory: Memory) {
         Task {
             do {
-                _ = try await DaemonClient.shared.deleteMemory(memory.id)
+                try await DaemonClient.shared.deleteMemory(memory.id)
                 self.memories.removeAll { $0.id == memory.id }
                 if self.editorState.selectedId == memory.id {
                     self.editorState.select(self.memories.first?.id)

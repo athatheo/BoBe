@@ -11,6 +11,18 @@ onboarding-cloud-provider-openai-model-gpt-5-mini-label = GPT-5 Mini
 onboarding-cloud-provider-openai-model-gpt-5-nano-label = GPT-5 Nano
 onboarding-cloud-provider-openai-model-gpt-5-2-label = GPT-5.2
 
+setup-label-validate = Vérifier le système
+setup-label-engine = Démarrer le moteur
+setup-label-text-model = Télécharger le modèle texte
+setup-label-embedding-model = Télécharger le modèle d'embedding
+setup-label-embedding-warmup = Tester les embeddings
+setup-label-vision-model = Télécharger le modèle de vision
+setup-label-persist = Enregistrer la configuration
+
+setup-step-validating = Vérification du système…
+setup-step-engine-starting = Démarrage d'Ollama…
+setup-step-persisting = Enregistrement de la configuration…
+
 setup-error-create-data-directory = Impossible de créer le répertoire de données : { $error }
 setup-error-not-enough-disk-space = Espace disque insuffisant : ~{ $needed_gb } Go requis, { $available_gb } Go disponibles
 setup-error-unknown-provider = Fournisseur inconnu : { $provider }

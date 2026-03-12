@@ -12,13 +12,45 @@ struct AIModelPanel: View {
     @State private var onboardingOptions: OnboardingOptions?
     @State private var models: [ModelInfo] = []
     @State private var ollamaUnavailableReason: String?
+    @State private var visionModel = ""
     @State private var pullModelName = ""
     @State private var isPulling = false
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var isDirty = false
     @State private var error: String?
+    @State private var popularModels: [String] = []
     @Environment(\.theme) private var theme
+
+    private static let embeddingPatterns = ["embed", "bge", "minilm", "nomic-embed"]
+    private static let visionPatterns = ["-vl", "-vision", "llava", "bakllava", "minicpm-v"]
+
+    private var textModelOptions: [String] {
+        self.models.map(\.name).filter { name in
+            let lower = name.lowercased()
+            return !Self.embeddingPatterns.contains(where: { lower.contains($0) })
+                && !Self.visionPatterns.contains(where: { lower.contains($0) })
+        }
+    }
+
+    private var visionModelOptions: [String] {
+        self.models.map(\.name).filter { name in
+            let lower = name.lowercased()
+            return Self.visionPatterns.contains(where: { lower.contains($0) })
+        }
+    }
+
+    private func modelRole(_ name: String) -> ModelRole {
+        if name == self.ollamaModel { return .active }
+        if name == self.visionModel { return .vision }
+        let lower = name.lowercased()
+        if Self.embeddingPatterns.contains(where: { lower.contains($0) }) { return .embedding }
+        return .none
+    }
+
+    private enum ModelRole {
+        case active, vision, embedding, none
+    }
 
     private var openAIProvider: CloudProvider? {
         self.onboardingOptions?.cloudProviders.first(where: { $0.id == "openai" })
@@ -137,11 +169,27 @@ struct AIModelPanel: View {
                 } else {
                     BobeMenuPicker(
                         selection: self.$ollamaModel,
-                        options: self.models.map(\.name),
+                        options: self.textModelOptions,
                         label: { $0 },
                         width: 260
                     )
                     .onChange(of: self.ollamaModel) { _, _ in self.isDirty = true }
+                }
+            }
+
+            if !self.visionModelOptions.isEmpty {
+                CollapsibleSection(
+                    title: L10n.tr("settings.ai_model.ollama.capture_model.title"),
+                    icon: "eye",
+                    description: L10n.tr("settings.ai_model.ollama.capture_model.description")
+                ) {
+                    BobeMenuPicker(
+                        selection: self.$visionModel,
+                        options: self.visionModelOptions,
+                        label: { $0 },
+                        width: 260
+                    )
+                    .onChange(of: self.visionModel) { _, _ in self.isDirty = true }
                 }
             }
 
@@ -156,13 +204,15 @@ struct AIModelPanel: View {
                             Text(model.name)
                                 .font(.system(size: 13, weight: .medium))
 
-                            if model.name == self.ollamaModel {
-                                Text(L10n.tr("settings.ai_model.ollama.active_badge"))
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(self.theme.colors.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Capsule().fill(self.theme.colors.secondary.opacity(0.15)))
+                            switch self.modelRole(model.name) {
+                            case .active:
+                                self.roleBadge(L10n.tr("settings.ai_model.ollama.active_badge"), color: self.theme.colors.secondary)
+                            case .vision:
+                                self.roleBadge(L10n.tr("settings.ai_model.ollama.vision_badge"), color: self.theme.colors.tertiary)
+                            case .embedding:
+                                self.roleBadge(L10n.tr("settings.ai_model.ollama.embedding_badge"), color: self.theme.colors.textMuted)
+                            case .none:
+                                EmptyView()
                             }
 
                             Spacer()
@@ -171,11 +221,13 @@ struct AIModelPanel: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(self.theme.colors.textMuted)
 
-                            Button(L10n.tr("settings.ai_model.ollama.action.use")) {
-                                self.ollamaModel = model.name
-                                self.isDirty = true
+                            if self.modelRole(model.name) == .none {
+                                Button(L10n.tr("settings.ai_model.ollama.action.use")) {
+                                    self.ollamaModel = model.name
+                                    self.isDirty = true
+                                }
+                                .bobeButton(.secondary, size: .mini)
                             }
-                            .bobeButton(.secondary, size: .mini)
 
                             Button {
                                 Task { await self.deleteModel(model.name) }
@@ -211,6 +263,23 @@ struct AIModelPanel: View {
                         }
                         .bobeButton(.secondary, size: .small)
                         .disabled(self.pullModelName.isEmpty)
+                    }
+
+                    if !self.popularModels.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(L10n.tr("settings.ai_model.ollama.popular_models"))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(self.theme.colors.textMuted)
+
+                            FlowLayout(spacing: 6) {
+                                ForEach(self.popularModels, id: \.self) { name in
+                                    Button(name) {
+                                        self.pullModelName = name
+                                    }
+                                    .bobeButton(.secondary, size: .mini)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -282,6 +351,7 @@ struct AIModelPanel: View {
             self.settings = s
             self.selectedProvider = ["ollama", "openai", "azure_openai"].contains(s.llmBackend) ? s.llmBackend : "ollama"
             self.ollamaModel = s.ollamaModel
+            self.visionModel = s.visionOllamaModel
             self.openaiModel = s.openaiModel
             self.azureEndpoint = s.azureOpenaiEndpoint
             self.azureDeployment = s.azureOpenaiDeployment
@@ -291,6 +361,8 @@ struct AIModelPanel: View {
             self.models = modelsResp.models
             self.ollamaUnavailableReason = modelsResp.ollamaError
             self.isDirty = false
+
+            Task { await self.fetchPopularModels() }
         } catch {
             self.error = error.localizedDescription
         }
@@ -304,6 +376,7 @@ struct AIModelPanel: View {
                 var req = SettingsUpdateRequest()
                 req.llmBackend = self.selectedProvider
                 req.ollamaModel = self.ollamaModel
+                req.visionOllamaModel = self.visionModel
                 req.openaiModel = self.openaiModel
                 if !self.openaiApiKey.isEmpty { req.openaiApiKey = self.openaiApiKey }
                 req.azureOpenaiEndpoint = self.azureEndpoint
@@ -324,6 +397,7 @@ struct AIModelPanel: View {
         guard let s = settings else { return }
         self.selectedProvider = ["ollama", "openai", "azure_openai"].contains(s.llmBackend) ? s.llmBackend : "ollama"
         self.ollamaModel = s.ollamaModel
+        self.visionModel = s.visionOllamaModel
         self.openaiModel = s.openaiModel
         self.azureEndpoint = s.azureOpenaiEndpoint
         self.azureDeployment = s.azureOpenaiDeployment
@@ -353,6 +427,57 @@ struct AIModelPanel: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func fetchPopularModels() async {
+        do {
+            guard let url = URL(string: "https://ollama.com/api/tags") else { return }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 10
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200 ... 299).contains(httpResponse.statusCode)
+            else { return }
+
+            struct OllamaTag: Decodable {
+                let name: String
+                let size: Int?
+
+                enum CodingKeys: String, CodingKey {
+                    case name, size
+                }
+            }
+            struct OllamaTagsResponse: Decodable {
+                let models: [OllamaTag]
+            }
+
+            let decoded = try JSONDecoder().decode(OllamaTagsResponse.self, from: data)
+            let maxSize: Int = 20_000_000_000
+            let installedNames = Set(self.models.map(\.name))
+            let filtered = decoded.models
+                .filter { tag in
+                    let lower = tag.name.lowercased()
+                    let withinSize = tag.size.map { $0 < maxSize } ?? true
+                    let notEmbed = !Self.embeddingPatterns.contains(where: { lower.contains($0) })
+                    let notVision = !Self.visionPatterns.contains(where: { lower.contains($0) })
+                    let notInstalled = !installedNames.contains(tag.name)
+                    return withinSize && notEmbed && notVision && notInstalled
+                }
+                .prefix(12)
+                .map(\.name)
+            self.popularModels = Array(filtered)
+        } catch {
+            // Silently ignore — suggestions are optional
+        }
+    }
+
+    private func roleBadge(_ label: String, color: Color) -> some View {
+        Text(label)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.15)))
     }
 
     private func providerLabel(for provider: String) -> String {

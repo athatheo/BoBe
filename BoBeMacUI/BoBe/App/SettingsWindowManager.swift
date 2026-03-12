@@ -20,8 +20,12 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
         let theme = ThemeStore.shared.currentTheme
         let settingsView = SettingsWindow()
 
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let width = min(max(screen.width * 0.72, 900), 1400)
+        let height = min(max(screen.height * 0.78, 600), 1000)
+
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false

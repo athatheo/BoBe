@@ -166,8 +166,8 @@ pub(crate) struct EmbeddingConfig {
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
-            model: "BAAI/bge-small-en-v1.5".into(),
-            dimension: 384,
+            model: "nomic-embed-text".into(),
+            dimension: 768,
         }
     }
 }
@@ -540,10 +540,9 @@ impl Config {
             .map_err(|e| crate::error::AppError::Config(e.to_string()))?;
 
         if config.database.url.contains('~') {
-            config.database.url =
-                crate::util::paths::expand_tilde(&config.database.url)
-                    .to_string_lossy()
-                    .into_owned();
+            config.database.url = crate::util::paths::expand_tilde(&config.database.url)
+                .to_string_lossy()
+                .into_owned();
         }
 
         let secrets = crate::secrets::load_secrets();
@@ -620,4 +619,3 @@ impl Config {
         &self.server.cors_origins
     }
 }
-

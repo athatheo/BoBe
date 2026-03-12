@@ -15,6 +15,8 @@ final class TrayManager: NSObject, NSMenuDelegate {
         "en-US", "el-GR", "zh-CN", "de-DE", "es-ES", "pt-BR", "ko-KR", "ja-JP", "fr-FR",
     ]
 
+    private var captureObserver: NSObjectProtocol?
+
     init(store: BobeStore) {
         self.store = store
         super.init()
@@ -42,6 +44,16 @@ final class TrayManager: NSObject, NSMenuDelegate {
         menu.delegate = self
         self.statusItem?.menu = menu
         self.rebuildMenu()
+
+        self.captureObserver = NotificationCenter.default.addObserver(
+            forName: .bobeCaptureStateChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateMenu()
+            }
+        }
     }
 
     func updateMenu() {

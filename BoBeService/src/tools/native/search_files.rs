@@ -180,7 +180,10 @@ fn search_directory(
     max_results: usize,
 ) -> Vec<(String, usize, String)> {
     let mut results = Vec::new();
-    let walker = walkdir::WalkDir::new(dir).max_depth(10).follow_links(false).into_iter();
+    let walker = walkdir::WalkDir::new(dir)
+        .max_depth(10)
+        .follow_links(false)
+        .into_iter();
 
     for entry in walker.filter_map(Result::ok) {
         if results.len() >= max_results {

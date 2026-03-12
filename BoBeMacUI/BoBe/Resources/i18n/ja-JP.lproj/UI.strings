@@ -38,6 +38,7 @@
 "setup.local_vision.skip" = "今はしない";
 "setup.capture.local_vision_download_hint" = "アクセスを許可した後、BoBe はローカルのビジョンモデルをダウンロードします（約4 GB）。";
 "setup.local.disk_estimate_format" = "~%.0f GB";
+"setup.local.change_later_hint" = "モデルのサイズは後で設定から変更できます。";
 "setup.common.setting_up" = "設定中...";
 "setup.common.continue" = "続ける";
 "setup.common.back" = "戻る";
@@ -185,8 +186,12 @@
 "settings.ai_model.ollama.action.pull" = "プル";
 "settings.ai_model.ollama.action.use" = "使用";
 "settings.ai_model.ollama.active_badge" = "使用中";
+"settings.ai_model.ollama.embedding_badge" = "エンベディング";
+"settings.ai_model.ollama.vision_badge" = "ビジョン";
 "settings.ai_model.ollama.active_model.description" = "BoBeがすべてのAI処理で使用するモデル";
 "settings.ai_model.ollama.active_model.title" = "使用中モデル";
+"settings.ai_model.ollama.capture_model.description" = "画面キャプチャ解析に使用するビジョンモデル";
+"settings.ai_model.ollama.capture_model.title" = "キャプチャモデル";
 "settings.ai_model.ollama.download.description" = "Ollamaレジストリからモデルをプル";
 "settings.ai_model.ollama.download.title" = "モデルをダウンロード";
 "settings.ai_model.ollama.downloading_format" = "%@ をダウンロード中...";
@@ -194,6 +199,7 @@
 "settings.ai_model.ollama.installed_models.title" = "インストール済みモデル";
 "settings.ai_model.ollama.model_name.placeholder" = "モデル名（例: llama3.2）";
 "settings.ai_model.ollama.no_models" = "モデルがインストールされていません — Ollamaは起動していますか？";
+"settings.ai_model.ollama.popular_models" = "人気のモデル";
 "settings.ai_model.ollama.unavailable_format" = "Ollamaに接続できません: %@";
 "settings.ai_model.openai.api_key" = "APIキー";
 "settings.ai_model.openai.api_key.placeholder" = "sk-...";
@@ -344,7 +350,7 @@
 "settings.privacy.danger.status.success" = "ローカルデータをすべて削除しました。";
 "settings.privacy.danger.title" = "危険ゾーン";
 "settings.privacy.storage.description" = "BoBeはこのMacにデータをローカル保存します。ソウル、ゴール、メモリ、ユーザープロファイル、実行時設定は端末内に保持されます。";
-"settings.privacy.storage.included.list" = "• ソウルとゴール\\n• メモリと観察\\n• ユーザープロファイルと設定\\n• ローカルモデルのメタデータ";
+"settings.privacy.storage.included.list" = "• ソウルとゴール\n• メモリと観察\n• ユーザープロファイルと設定\n• ローカルモデルのメタデータ";
 "settings.privacy.storage.included.title" = "ローカル保存に含まれる項目";
 "settings.privacy.storage.title" = "ローカルストレージ";
 "settings.souls.delete.accessibility" = "ソウルを削除";

@@ -591,9 +591,13 @@ final class BobeStore {
     }
 
     private func updateState(_ block: (inout BobeContext) -> Void) {
+        let oldCapturing = self.context.capturing
         var ctx = self.context
         block(&ctx)
         ctx.stateType = deriveStateType(from: ctx)
         self.context = ctx
+        if ctx.capturing != oldCapturing {
+            NotificationCenter.default.post(name: .bobeCaptureStateChanged, object: nil)
+        }
     }
 }

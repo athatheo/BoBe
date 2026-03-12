@@ -125,6 +125,7 @@ struct SettingsEditorListPane<Content: View>: View {
             .frame(maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
             .padding(.top, BobeMetrics.paneTopPadding)
+            .padding(.bottom, BobeMetrics.paneTopPadding)
     }
 }
 
@@ -140,6 +141,7 @@ struct SettingsEditorDetailPane<Content: View>: View {
             .frame(maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, BobeMetrics.paneHorizontalPadding)
             .padding(.top, BobeMetrics.paneTopPadding)
+            .padding(.bottom, BobeMetrics.paneTopPadding)
     }
 }
 
