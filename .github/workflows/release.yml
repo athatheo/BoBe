@@ -42,8 +42,11 @@ jobs:
           S3: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
           S4: ${{ secrets.APPLE_API_KEY_ID }}
           S5: ${{ secrets.APPLE_API_ISSUER_ID }}
+          S6: ${{ secrets.APPLE_CERTIFICATE_P12_B64 }}
+          S7: ${{ secrets.APPLE_API_KEY_P8_B64 }}
+          S8: ${{ secrets.SPARKLE_PRIVATE_KEY_B64 }}
         run: |
-          for v in "$S1" "$S2" "$S3" "$S4" "$S5"; do
+          for v in "$S1" "$S2" "$S3" "$S4" "$S5" "$S6" "$S7" "$S8"; do
             echo "::add-mask::$v"
           done
 
@@ -181,11 +184,6 @@ jobs:
       VERSION: ${{ inputs.version }}
 
     steps:
-      - name: Mask version input in logs
-        env:
-          V: ${{ inputs.version }}
-        run: echo "::add-mask::$V"
-
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

@@ -12,8 +12,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.check.outputs.rust }}
+      swift: ${{ steps.check.outputs.swift }}
+    steps:
+      - name: Check changed paths
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          echo "rust=false" >> "$GITHUB_OUTPUT"
+          echo "swift=false" >> "$GITHUB_OUTPUT"
+          if echo "$FILES" | grep -qE '^(BoBeService/|\.github/workflows/ci\.yml)'; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$FILES" | grep -qE '^(BoBeMacUI/|\.github/workflows/ci\.yml)'; then
+            echo "swift=true" >> "$GITHUB_OUTPUT"
+          fi
+
   rust-checks:
     name: Rust checks
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: macos-latest
     timeout-minutes: 45
 
@@ -70,6 +97,8 @@ jobs:
 
   swift-checks:
     name: Swift checks
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
 
