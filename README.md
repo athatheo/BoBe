@@ -2,15 +2,16 @@
 
 <p align="center">
   <em>A local-first proactive AI companion for macOS</em>
+  <br>
+  <a href="https://www.bobebot.com">Website — BoBeBot.com</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/athatheo/BoBe/actions/workflows/ci.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/athatheo/BoBe/actions/workflows/ci.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/athatheo/BoBe/actions/workflows/release.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/release.yml/badge.svg?event=workflow_dispatch" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple" alt="macOS 14+">
   <img src="https://img.shields.io/badge/arch-Apple%20Silicon-orange" alt="Apple Silicon">
-  <a href="https://www.bobebot.com"><img src="https://img.shields.io/badge/web-bobebot.com-purple" alt="Website"></a>
 </p>
 
 ---

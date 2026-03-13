@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -26,7 +28,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          # On push to main, run everything; on PRs, filter by changed paths
+          if [ "$EVENT_NAME" = "push" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "swift=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
           echo "rust=false" >> "$GITHUB_OUTPUT"
           echo "swift=false" >> "$GITHUB_OUTPUT"
