@@ -87,7 +87,7 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          brew install swiftlint
+          brew list swiftlint &>/dev/null || brew install swiftlint
           swiftlint version
 
       - name: Lint Swift
