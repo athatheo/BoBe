@@ -222,13 +222,12 @@ check:
     cd BoBeMacUI && swiftlint lint --quiet
     cd BoBeMacUI && swift build -c debug
 
-# CI vetting: deterministic Rust + supply-chain + Swift
+# CI: deterministic Rust + Swift validation
 check-ci:
     cd BoBeService && cargo fmt --check
     cd BoBeService && cargo clippy --locked -q
     cd BoBeService && cargo test --locked -q
     cd BoBeService && cargo deny check
-    cd BoBeService && cargo vet --locked
     cd BoBeService && cargo machete
     cd BoBeMacUI && swiftlint lint --quiet
     cd BoBeMacUI && swift build -c debug

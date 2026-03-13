@@ -25,7 +25,7 @@ just check
 
 `just check` runs: `cargo fmt --check`, `cargo clippy`, `cargo test`, `cargo deny check`, `cargo machete`, `swiftlint`, and `swift build`.
 
-`just check-ci` is the stricter CI-facing variant: it uses `--locked` for Cargo resolution and runs `cargo vet --locked`.
+`just check-ci` is the stricter CI-facing variant: it uses `--locked` for Cargo resolution.
 
 ## Architecture
 
@@ -120,7 +120,6 @@ BoBeService/                  # Rust backend (bobe-daemon)
     tools/                    # Native tools + MCP integration
     util/                     # SSE, capture, tokens, text utils
   migrations/                 # SQLite schema (auto-run on startup)
-  supply-chain/               # cargo-vet audits and config
   deny.toml                   # cargo-deny license/ban policy
 
 BoBeMacUI/                    # Swift macOS app (BoBe.app)
@@ -223,7 +222,7 @@ Dependency-changing pull requests get extra scrutiny. Call out any new or materi
 - git dependencies or new registries
 - crates with broad network, filesystem, archive, parser, or subprocess reach
 
-For supply-chain-sensitive changes, CI enforces `cargo vet`, `cargo deny`, and deterministic Cargo resolution.
+For supply-chain-sensitive changes, CI enforces `cargo deny` and deterministic Cargo resolution.
 
 ### CI and Release Model
 
