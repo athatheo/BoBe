@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.version }}
+  group: release-${{ inputs.version || 'noop' }}
   cancel-in-progress: false
 
 jobs:
@@ -35,6 +35,18 @@ jobs:
       SPARKLE_PRIVATE_KEY_PATH: ${{ runner.temp }}/sparkle-private-key
 
     steps:
+      - name: Mask all secrets in logs
+        env:
+          S1: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          S2: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          S3: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          S4: ${{ secrets.APPLE_API_KEY_ID }}
+          S5: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          for v in "$S1" "$S2" "$S3" "$S4" "$S5"; do
+            echo "::add-mask::$v"
+          done
+
       - name: Validate version input
         run: |
           if ! echo "$VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?'; then
