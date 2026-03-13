@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   build-sign-notarize:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     name: Build, sign, and notarize
     runs-on: macos-latest
     timeout-minutes: 120
