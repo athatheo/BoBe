@@ -14,8 +14,7 @@ BoBeMacUI/BoBe/Resources/Info.plist @athatheo @johnkozaris
 BoBeMacUI/Package.swift @athatheo @johnkozaris
 BoBeMacUI/Package.resolved @athatheo @johnkozaris
 
-# Supply chain and dependency policy
-BoBeService/supply-chain/ @athatheo @johnkozaris
+# Dependency policy
 BoBeService/deny.toml @athatheo @johnkozaris
 BoBeService/Cargo.lock @athatheo @johnkozaris
 

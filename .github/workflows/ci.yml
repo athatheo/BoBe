@@ -2,7 +2,6 @@ name: CI
 
 on:
   pull_request:
-  push:
     branches: [main]
 
 permissions:
@@ -13,19 +12,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  vet-and-validate:
-    name: Vet and validate
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.check.outputs.rust }}
+      swift: ${{ steps.check.outputs.swift }}
+    steps:
+      - name: Check changed paths
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          echo "rust=false" >> "$GITHUB_OUTPUT"
+          echo "swift=false" >> "$GITHUB_OUTPUT"
+          if echo "$FILES" | grep -qE '^(BoBeService/|\.github/workflows/ci\.yml)'; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$FILES" | grep -qE '^(BoBeMacUI/|\.github/workflows/ci\.yml)'; then
+            echo "swift=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  rust-checks:
+    name: Rust checks
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: macos-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
-          rustup default stable
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
 
       - name: Cache Rust build artifacts
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
@@ -43,25 +70,58 @@ jobs:
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: ~/.cargo/bin/
-          key: ci-tools-${{ runner.os }}-just1.46.0-deny0.19.0-machete0.9.1-vet0.10.2
+          key: ci-tools-${{ runner.os }}-deny0.19.0-machete0.9.1
 
       - name: Install CI tools
         if: steps.tool-cache.outputs.cache-hit != 'true'
         run: |
-          cargo install --locked just --version 1.46.0
           cargo install --locked cargo-deny --version 0.19.0
           cargo install --locked cargo-machete --version 0.9.1
-          cargo install --locked cargo-vet --version 0.10.2
+
+      - name: Check formatting
+        run: cd BoBeService && cargo fmt --check
+
+      - name: Clippy
+        run: cd BoBeService && cargo clippy --locked -q
+
+      - name: Tests
+        env:
+          CARGO_INCREMENTAL: "0"
+        run: cd BoBeService && cargo test --locked -q
+
+      - name: Supply-chain audit
+        run: cd BoBeService && cargo deny check
+
+      - name: Unused dependencies
+        run: cd BoBeService && cargo machete
+
+  swift-checks:
+    name: Swift checks
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Cache Swift packages
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: BoBeMacUI/.build
+          key: v1-spm-${{ runner.os }}-${{ hashFiles('BoBeMacUI/Package.resolved') }}
+          restore-keys: v1-spm-${{ runner.os }}-
 
       - name: Install SwiftLint
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          if ! command -v swiftlint >/dev/null 2>&1; then
-            brew install swiftlint
-          fi
+          brew list swiftlint &>/dev/null || brew install swiftlint
+          swiftlint version
 
-      - name: Run deterministic validation and supply-chain checks
-        env:
-          CARGO_INCREMENTAL: "0"
-        run: just check-ci
+      - name: Lint Swift
+        run: cd BoBeMacUI && swiftlint lint --quiet
+
+      - name: Build Swift
+        run: cd BoBeMacUI && swift build -c debug

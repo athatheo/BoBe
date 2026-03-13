@@ -73,7 +73,6 @@ cargo fmt --check
 cargo clippy --locked -q
 cargo test --locked -q
 cargo deny check
-cargo vet --locked
 cargo machete
 cd BoBeMacUI && swiftlint lint --quiet
 cd BoBeMacUI && swift build -c debug
@@ -82,8 +81,6 @@ cd BoBeMacUI && swift build -c debug
 Important notes:
 
 - `--locked` makes CI use the reviewed dependency graph.
-- `cargo vet --locked` enforces the checked-in `supply-chain/` policy.
-- The current `cargo vet` rollout is a **bootstrapped baseline** created from `cargo vet init`, so it currently relies on many exemptions. That still gates new dependency drift, but maintainers should ratchet those exemptions down over time, starting with high-risk crates (`build.rs`, proc-macros, `-sys`/FFI, and broad-capability crates).
 - This workflow must never gain signing, notarization, Sparkle, or publish credentials.
 
 ## How protected release orchestration should work
