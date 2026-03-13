@@ -22,6 +22,10 @@ build/
 .vscode/
 .idea/
 
+# Environment files
+.env
+.env.*
+
 # Sparkle signing keys
 sparkle_private_key
 sparkle_private_key.pem
