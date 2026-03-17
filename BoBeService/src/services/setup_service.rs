@@ -369,6 +369,7 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         "capture.enabled".to_string(),
         serde_json::Value::Bool(false),
     );
+    changes.insert("setup_completed".to_string(), serde_json::Value::Bool(true));
 
     if !persist_config(&state, changes, &localizer).await {
         return;
