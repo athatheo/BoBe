@@ -348,11 +348,16 @@ impl OllamaManager {
     async fn start_ollama(&self, binary_path: Option<&Path>) -> Result<(), AppError> {
         let ollama_path = self.resolve_binary_path(binary_path)?;
 
+        let ollama_host = self
+            .base_url
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_end_matches('/');
         let child = tokio::process::Command::new(&ollama_path)
             .arg("serve")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .env("OLLAMA_HOST", "127.0.0.1:11434")
+            .env("OLLAMA_HOST", ollama_host)
             .env("OLLAMA_ORIGINS", "http://127.0.0.1:*")
             .spawn()
             .map_err(|e| AppError::LlmUnavailable(format!("Failed to start ollama: {e}")))?;

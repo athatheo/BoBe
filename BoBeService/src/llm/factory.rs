@@ -68,7 +68,7 @@ impl LlmProviderFactory {
             }
             _ => {
                 let model = if config.embedding.model.trim().is_empty() {
-                    "nomic-embed-text"
+                    "all-minilm"
                 } else {
                     &config.embedding.model
                 };

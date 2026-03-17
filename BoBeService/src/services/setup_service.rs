@@ -344,6 +344,11 @@ pub(crate) async fn run_local_setup(state: Arc<AppState>, body: SetupRequest) {
         }
     }
 
+    if is_canceled().await {
+        finish_job(JobStatus::Canceled, None).await;
+        return;
+    }
+
     let mut changes = HashMap::new();
     changes.insert(
         "llm.backend".to_string(),
