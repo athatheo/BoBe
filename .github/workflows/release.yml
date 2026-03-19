@@ -147,17 +147,17 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
-          just release version="$VERSION" identity="$APPLE_SIGNING_IDENTITY"
+          just release "$VERSION" "$APPLE_SIGNING_IDENTITY"
           just notarize-api-key \
-            version="$VERSION" \
-            key-path="$APPLE_API_KEY_PATH" \
-            key-id="$APPLE_API_KEY_ID" \
-            issuer="$APPLE_API_ISSUER_ID"
-          just staple version="$VERSION"
-          just sparkle-zip version="$VERSION"
+            "$VERSION" \
+            "$APPLE_API_KEY_PATH" \
+            "$APPLE_API_KEY_ID" \
+            "$APPLE_API_ISSUER_ID"
+          just staple "$VERSION"
+          just sparkle-zip "$VERSION"
           just sparkle-sign-update \
-            version="$VERSION" \
-            private-key-file="$SPARKLE_PRIVATE_KEY_PATH"
+            "$VERSION" \
+            "$SPARKLE_PRIVATE_KEY_PATH"
 
       - name: Stage release artifacts
         run: |
@@ -229,8 +229,8 @@ jobs:
           find . -maxdepth 1 -name 'BoBe-*.zip' -exec cp {} build/sparkle/ \;
           cp "build/release-artifacts/BoBe-$VERSION.zip" "build/sparkle/BoBe-$VERSION.zip"
           just sparkle-generate-appcast \
-            archives_dir=build/sparkle \
-            download_url_prefix="https://github.com/athatheo/BoBe/releases/download/v${VERSION}/"
+            "build/sparkle" \
+            "https://github.com/athatheo/BoBe/releases/download/v${VERSION}/"
 
       - name: Create GitHub Release and upload assets
         env:
