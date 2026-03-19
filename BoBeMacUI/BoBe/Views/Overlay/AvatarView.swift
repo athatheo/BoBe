@@ -7,9 +7,9 @@ struct AvatarView: View {
     let hasMessage: Bool
     var showInput: Bool = false
     var statusOverride: String?
+    var isAvatarActionEnabled = false
     var onClick: (() -> Void)?
     var onToggleCapture: (() -> Void)?
-    var onToggleInput: (() -> Void)?
 
     @Environment(\.theme) private var theme
     @State private var isHovered = false
@@ -25,9 +25,6 @@ struct AvatarView: View {
                                 .offset(y: -14)
                         }
                     }
-
-                ChatToggleButton(isActive: showInput, action: onToggleInput ?? {})
-                    .offset(x: -52, y: -52)
 
                 ConnectionDot(isConnected: isConnected)
                     .offset(x: 30, y: 30)
@@ -47,6 +44,7 @@ struct AvatarView: View {
         .task(id: shouldBreathe) {
             breathingExpanded = false
             guard shouldBreathe else { return }
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             while !Task.isCancelled {
                 withAnimation(OverlayMotionRuntime.animation(for: .breathing)) {
                     breathingExpanded.toggle()
@@ -71,8 +69,9 @@ struct AvatarView: View {
         return hoverScale * breathingScale
     }
 
+    @ViewBuilder
     private var avatarCard: some View {
-        ZStack {
+        let base = ZStack {
             Circle()
                 .fill(theme.colors.background)
                 .frame(width: 116, height: 116)
@@ -96,10 +95,16 @@ struct AvatarView: View {
             innerFace
         }
         .contentShape(Circle())
-        .onTapGesture { onClick?() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(L10n.tr("overlay.avatar.accessibility_format", self.stateAccessibilityText))
-        .accessibilityAddTraits(.isButton)
+
+        if self.isAvatarActionEnabled, self.onClick != nil {
+            base
+                .onTapGesture { self.onClick?() }
+                .accessibilityAddTraits(.isButton)
+        } else {
+            base
+        }
     }
 
     private var innerFace: some View {
@@ -194,6 +199,10 @@ struct MessageBadge: View {
             .frame(width: 20, height: 20)
             .scaleEffect(scale)
             .onAppear {
+                guard OverlayMotionRuntime.shouldAnimate else {
+                    scale = 1.0
+                    return
+                }
                 withAnimation(OverlayMotionRuntime.animation(for: .badgePulse).repeatForever(autoreverses: true)) {
                     scale = 1.1
                 }
@@ -208,22 +217,28 @@ struct ChatToggleButton: View {
     let action: () -> Void
     @Environment(\.theme) private var theme
 
+    private let bubbleDiameter: CGFloat = 32
+
     var body: some View {
         Button(action: action) {
-            Image(systemName: "message.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(isActive ? theme.colors.background : theme.colors.text)
+            ZStack {
+                Circle()
+                    .fill(isActive ? theme.colors.secondary : theme.colors.border)
+                    .frame(width: self.bubbleDiameter, height: self.bubbleDiameter)
+
+                Circle()
+                    .stroke(theme.colors.background, lineWidth: 2)
+                    .frame(width: self.bubbleDiameter, height: self.bubbleDiameter)
+
+                Image(systemName: "message.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isActive ? theme.colors.background : theme.colors.text)
+            }
         }
         .buttonStyle(.plain)
-        .frame(width: 28, height: 28)
-        .background(
-            Circle()
-                .fill(isActive ? theme.colors.secondary : theme.colors.border)
-        )
-        .overlay(
-            Circle().stroke(theme.colors.background, lineWidth: 2)
-        )
         .shadow(color: Color.black.opacity(0.1), radius: 3, y: 1)
+        .frame(width: self.bubbleDiameter, height: self.bubbleDiameter)
+        .contentShape(Circle())
         .accessibilityLabel(
             self.isActive
                 ? L10n.tr("overlay.chat_toggle.hide.accessibility")
@@ -239,7 +254,7 @@ struct BobeLabel: View {
 
     var body: some View {
         Text(L10n.tr("overlay.avatar.brand_label"))
-            .font(.system(size: 11, weight: .bold))
+            .bobeTextStyle(.brandLabel)
             .tracking(1.5)
             .foregroundStyle(theme.colors.primary)
             .padding(.horizontal, 7)

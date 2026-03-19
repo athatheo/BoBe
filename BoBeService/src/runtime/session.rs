@@ -1,6 +1,7 @@
 //! Top-level lifecycle manager for triggers, capture, and message handling.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use arc_swap::ArcSwap;
@@ -30,6 +31,17 @@ pub(crate) struct RuntimeSession {
     agent_job_trigger: Option<Arc<AgentJobTrigger>>,
     running: std::sync::atomic::AtomicBool,
     capture_enabled: std::sync::atomic::AtomicBool,
+    user_message_in_flight: Arc<AtomicBool>,
+}
+
+pub(crate) struct UserMessageGuard {
+    user_message_in_flight: Arc<AtomicBool>,
+}
+
+impl Drop for UserMessageGuard {
+    fn drop(&mut self) {
+        self.user_message_in_flight.store(false, Ordering::Release);
+    }
 }
 
 impl RuntimeSession {
@@ -56,6 +68,7 @@ impl RuntimeSession {
             agent_job_trigger,
             running: std::sync::atomic::AtomicBool::new(false),
             capture_enabled: std::sync::atomic::AtomicBool::new(false),
+            user_message_in_flight: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -264,10 +277,38 @@ impl RuntimeSession {
             .await;
     }
 
+    pub(crate) fn try_begin_user_message(&self) -> Result<UserMessageGuard, &'static str> {
+        if self
+            .user_message_in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err("BoBe is still finishing the previous message");
+        }
+
+        let indicator = self.event_queue.current_indicator();
+        if indicator != IndicatorType::Idle {
+            self.user_message_in_flight.store(false, Ordering::Release);
+            return Err(match indicator {
+                IndicatorType::ScreenCapture => "BoBe is finishing capture work",
+                IndicatorType::Thinking => "BoBe is still thinking",
+                IndicatorType::ToolCalling => "BoBe is still using tools",
+                IndicatorType::Streaming => "BoBe is still responding",
+                IndicatorType::Idle => "BoBe is still finishing the previous message",
+            });
+        }
+
+        Ok(UserMessageGuard {
+            user_message_in_flight: Arc::clone(&self.user_message_in_flight),
+        })
+    }
+
     pub(crate) fn get_status(&self) -> serde_json::Value {
         serde_json::json!({
             "indicator": self.event_queue.current_indicator().as_str(),
             "capturing": self.capture_enabled.load(std::sync::atomic::Ordering::Acquire),
+            "accepting_user_messages": self.event_queue.current_indicator() == IndicatorType::Idle
+                && !self.user_message_in_flight.load(Ordering::Acquire),
         })
     }
 

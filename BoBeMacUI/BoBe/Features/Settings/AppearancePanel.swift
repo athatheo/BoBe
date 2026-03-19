@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AppearancePanel: View {
-    @State private var themeStore = ThemeStore.shared
+    private let themeStore = ThemeStore.shared
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -125,7 +125,7 @@ struct ThemeCard: View {
         .accessibilityLabel(L10n.tr("settings.appearance.theme.accessibility_format", self.themeConfig.name))
         .accessibilityAddTraits(self.isSelected ? .isSelected : [])
         .scaleEffect(self.isHovered ? 1.02 : 1.0)
-        .animation(.easeOut(duration: 0.15), value: self.isHovered)
+        .animation(OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.15), value: self.isHovered)
         .onHover { self.isHovered = $0 }
     }
 }

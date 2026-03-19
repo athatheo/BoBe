@@ -124,6 +124,7 @@
 "overlay.avatar.state.thinking" = "생각 중";
 "overlay.avatar.state.wants_to_speak" = "할 말이 있음";
 "overlay.chat.action.collapse" = "접기";
+"overlay.chat.action.read_more" = "더보기…";
 "overlay.chat.hidden_messages_format" = "+%d개 숨긴 메시지";
 "overlay.chat.pending_suffix" = " - 전송 중...";
 "overlay.chat.sender.bobe" = "BoBe";
@@ -137,6 +138,12 @@
 "overlay.input.placeholder.thinking" = "BoBe가 생각 중…";
 "overlay.input.send.accessibility" = "메시지 보내기";
 "overlay.input.waiting" = "대기 중...";
+"overlay.input.waiting_for_starting" = "BoBe가 시작을 마칠 때까지 기다려 주세요.";
+"overlay.input.waiting_for_reconnecting" = "BoBe가 재연결을 마칠 때까지 기다려 주세요.";
+"overlay.input.waiting_for_thinking" = "BoBe가 생각을 마칠 때까지 기다려 주세요.";
+"overlay.input.waiting_for_speaking" = "BoBe가 말하기를 마칠 때까지 기다려 주세요.";
+"overlay.input.waiting_for_capturing" = "BoBe가 인식을 마칠 때까지 기다려 주세요.";
+"overlay.input.waiting_for_tool_format" = "BoBe가 %@ 사용을 마칠 때까지 기다려 주세요.";
 "overlay.reconnecting" = "재연결 중...";
 "overlay.status.capture_permission_needed" = "화면 인식 권한 필요";
 "overlay.status.capturing" = "인식 중";

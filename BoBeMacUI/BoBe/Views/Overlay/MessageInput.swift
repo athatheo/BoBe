@@ -2,12 +2,14 @@ import SwiftUI
 
 struct MessageInput: View {
     @Binding var text: String
-    let onSend: (String) -> Void
+    let onSend: (String) -> Bool
     let onClose: () -> Void
-    var isThinking = false
+    var feedbackMessage: String?
+    var isBusy = false
 
     @FocusState private var isFocused: Bool
     @Environment(\.theme) private var theme
+    @State private var isCloseHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,68 +18,90 @@ struct MessageInput: View {
                     .fill(self.theme.colors.secondary)
                     .frame(height: 3)
 
-                HStack(alignment: .bottom, spacing: 8) {
-                    TextField(
-                        "",
-                        text: self.$text,
-                        prompt: Text(
-                            self.isThinking
-                                ? L10n.tr("overlay.input.placeholder.thinking")
-                                : L10n.tr("overlay.input.placeholder.default")
+                VStack(alignment: .leading, spacing: 8) {
+                    if let feedbackMessage {
+                        HStack(spacing: 6) {
+                            Image(systemName: self.isBusy ? "hourglass" : "info.circle")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(self.theme.colors.primary)
+
+                            Text(feedbackMessage)
+                                .bobeTextStyle(.helper)
+                                .foregroundStyle(self.theme.colors.textMuted)
+                                .lineLimit(2)
+
+                            Spacer(minLength: 0)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
+                    HStack(alignment: .bottom, spacing: 8) {
+                        TextField(
+                            "",
+                            text: self.$text,
+                            prompt: Text(L10n.tr("overlay.input.placeholder.default"))
+                                .foregroundStyle(self.placeholderColor),
+                            axis: .vertical
                         )
-                            .foregroundStyle(self.placeholderColor),
-                        axis: .vertical
-                    )
-                    .padding(EdgeInsets(top: 0, leading: 2, bottom: 6, trailing: 0))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .lineSpacing(2)
-                    .foregroundStyle(self.inputTextColor)
-                    .tint(self.theme.colors.primary)
-                    .lineLimit(1 ... 4)
-                    .focused(self.$isFocused)
-                    .onSubmit { self.handleSubmit() }
-                    .onKeyPress(.escape) {
-                        self.onClose()
-                        return .handled
-                    }
+                        .padding(EdgeInsets(top: 0, leading: 2, bottom: 6, trailing: 0))
+                        .textFieldStyle(.plain)
+                        .bobeTextStyle(.inputField)
+                        .lineSpacing(2)
+                        .foregroundStyle(self.inputTextColor)
+                        .tint(self.theme.colors.primary)
+                        .lineLimit(1 ... 4)
+                        .focused(self.$isFocused)
+                        .onSubmit { self.handleSubmit() }
+                        .onKeyPress(.escape) {
+                            self.onClose()
+                            return .handled
+                        }
 
-                    if self.isThinking, !self.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(L10n.tr("overlay.input.waiting"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(self.theme.colors.textMuted)
-                            .lineLimit(1)
-                    }
+                        Button(action: self.handleSubmit) {
+                            ZStack {
+                                Circle()
+                                    .fill(self.hasText ? self.theme.colors.secondary : self.theme.colors.border)
+                                    .frame(width: 40, height: 40)
 
-                    Button(action: self.handleSubmit) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(
-                                self.canSend ? self.theme.colors.background : self.theme.colors.textMuted
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.tr("overlay.input.send.accessibility"))
-                    .frame(width: 32, height: 32)
-                    .background(
-                        Circle()
-                            .fill(self.canSend ? self.theme.colors.secondary : self.theme.colors.border)
-                    )
-                    .disabled(!self.canSend)
+                                Image(systemName: self.isBusy && self.hasText ? "hourglass" : "arrow.up")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(
+                                        self.hasText ? self.theme.colors.background : self.theme.colors.textMuted
+                                    )
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.tr("overlay.input.send.accessibility"))
+                        .frame(width: 40, height: 40)
+                        .contentShape(Circle())
+                        .disabled(!self.hasText)
 
-                    Button(action: self.onClose) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(self.theme.colors.textMuted)
+                        Button(action: self.onClose) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        self.isCloseHovered
+                                            ? self.theme.colors.background.opacity(self.theme.isDark ? 0.9 : 0.98)
+                                            : self.theme.colors.background.opacity(self.theme.isDark ? 0.14 : 0.08)
+                                    )
+
+                                Circle()
+                                    .stroke(self.theme.colors.border.opacity(self.isCloseHovered ? 0.9 : 0.65), lineWidth: 1)
+
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(self.theme.colors.textMuted)
+                            }
+                            .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                        .onHover { hovering in
+                            self.isCloseHovered = hovering
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
-                    .frame(width: 24, height: 24)
-                    .background(
-                        Circle()
-                            .fill(Color.clear)
-                    )
-                    .contentShape(Circle())
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -88,29 +112,36 @@ struct MessageInput: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(self.theme.colors.border, lineWidth: 1.5)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    self.isFocused = true
+                }
+            )
             .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
         }
         .frame(maxWidth: .infinity)
-        .padding(.leading, 16)
         .padding(.bottom, 4)
         .onAppear { self.isFocused = true }
         .transition(
-            .asymmetric(
-                insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomTrailing)),
-                removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.95, anchor: .bottomTrailing))
-            )
+            OverlayMotionRuntime.reduceMotion
+                ? .opacity
+                : .asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .bottomTrailing)),
+                    removal: .opacity
+                )
         )
     }
 
-    private var canSend: Bool {
-        !self.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !self.isThinking
+    private var hasText: Bool {
+        self.text.contains(where: { !$0.isWhitespace })
     }
 
     private func handleSubmit() {
-        guard self.canSend else { return }
+        guard self.hasText else { return }
         let trimmed = self.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard self.onSend(trimmed) else { return }
         self.text = ""
-        self.onSend(trimmed)
     }
 
     private var placeholderColor: Color {
@@ -126,15 +157,21 @@ struct MessageInput: View {
 
 #if !SPM_BUILD
 #Preview("Message Input") {
-    MessageInput(text: .constant(""), onSend: { _ in }, onClose: {})
+    MessageInput(text: .constant(""), onSend: { _ in true }, onClose: {})
         .environment(\.theme, allThemes[0])
         .frame(width: 500)
         .padding()
         .background(Color.gray.opacity(0.1))
 }
 
-#Preview("Message Input - Thinking") {
-    MessageInput(text: .constant(""), onSend: { _ in }, onClose: {}, isThinking: true)
+#Preview("Message Input - With Text") {
+    MessageInput(
+        text: .constant("Some draft text"),
+        onSend: { _ in true },
+        onClose: {},
+        feedbackMessage: "Waiting for BoBe to finish thinking.",
+        isBusy: true
+    )
         .environment(\.theme, allThemes[0])
         .frame(width: 500)
         .padding()

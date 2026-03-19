@@ -139,7 +139,7 @@ struct AIModelPanel: View {
                         .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.easeOut(duration: 0.2), value: self.isDirty)
+                .animation(OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.2), value: self.isDirty)
             }
         }
         .task { await self.loadSettings() }

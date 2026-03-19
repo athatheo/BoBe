@@ -69,6 +69,29 @@ final class BobeStore {
         self.context.capturePermissionMissing
     }
 
+    var isInitialConnectionPending: Bool {
+        !self.hasConnectedOnce && !self.context.daemonConnected && !self.isBackendFatal
+    }
+
+    var composerBlockReason: MessageComposerBlockReason? {
+        if !self.context.daemonConnected {
+            return self.hasConnectedOnce ? .reconnecting : .starting
+        }
+        if let tool = self.runningTools.first {
+            return .usingTool(tool.toolName)
+        }
+        if self.context.speaking {
+            return .speaking
+        }
+        if self.context.thinking {
+            return .thinking
+        }
+        if self.context.captureInProgress {
+            return .capturing
+        }
+        return nil
+    }
+
     // MARK: - Private
 
     private let client = DaemonClient.shared
@@ -81,6 +104,8 @@ final class BobeStore {
     private var appNapActivity: NSObjectProtocol?
     private var backendObserverTask: Task<Void, Never>?
     private var sleepWakeObservers: [NSObjectProtocol] = []
+    @ObservationIgnored
+    private var reconnectStatusTask: Task<Void, Never>?
     @ObservationIgnored
     private lazy var toolExecutionController = ToolExecutionController { [weak self] mutation in
         self?.updateState(mutation)
@@ -96,6 +121,7 @@ final class BobeStore {
                 await MainActor.run { [weak self] in
                     switch state {
                     case .fatal:
+                        self?.cancelReconnectStatusTransition()
                         self?.isBackendFatal = true
                         self?.isReconnecting = false
                         self?.updateState { ctx in
@@ -103,11 +129,12 @@ final class BobeStore {
                             ctx.daemonError = true
                         }
                     case .ready:
+                        self?.cancelReconnectStatusTransition()
                         self?.isBackendFatal = false
                         self?.isReconnecting = false
                         self?.updateState { $0.daemonError = false }
                     case .crashed:
-                        self?.isReconnecting = true
+                        self?.scheduleReconnectStatusTransition()
                     default:
                         break
                     }
@@ -155,17 +182,7 @@ final class BobeStore {
                 },
                 onConnectionChange: { [weak self] connected in
                     Task { @MainActor in
-                        self?.updateState { ctx in
-                            ctx.daemonConnected = connected
-                            if connected { ctx.daemonError = false }
-                        }
-                        if connected {
-                            self?.isReconnecting = false
-                            self?.hasConnectedOnce = true
-                            self?.synchronizeCaptureStartup()
-                        } else if self?.hasConnectedOnce == true {
-                            self?.isReconnecting = true
-                        }
+                        self?.handleConnectionChange(connected)
                     }
                 }
             )
@@ -178,6 +195,7 @@ final class BobeStore {
         self.conversationClearTask?.cancel()
         self.captureStartupTask?.cancel()
         self.backendObserverTask?.cancel()
+        self.reconnectStatusTask?.cancel()
         for observer in self.sleepWakeObservers {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -543,6 +561,38 @@ final class BobeStore {
                 logger.warning("Capture startup sync skipped: \(error.localizedDescription)")
             }
         }
+    }
+
+    private func handleConnectionChange(_ connected: Bool) {
+        self.updateState { ctx in
+            ctx.daemonConnected = connected
+            if connected { ctx.daemonError = false }
+        }
+
+        if connected {
+            self.cancelReconnectStatusTransition()
+            self.isReconnecting = false
+            self.hasConnectedOnce = true
+            self.synchronizeCaptureStartup()
+            return
+        }
+
+        guard self.hasConnectedOnce else { return }
+        self.scheduleReconnectStatusTransition()
+    }
+
+    private func scheduleReconnectStatusTransition() {
+        self.reconnectStatusTask?.cancel()
+        self.reconnectStatusTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(StoreTiming.reconnectStatusDelayMilliseconds))
+            guard let self, !Task.isCancelled, !self.context.daemonConnected else { return }
+            self.isReconnecting = true
+        }
+    }
+
+    private func cancelReconnectStatusTransition() {
+        self.reconnectStatusTask?.cancel()
+        self.reconnectStatusTask = nil
     }
 
     private func hasVisibleGlyphs(_ text: String) -> Bool {

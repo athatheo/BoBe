@@ -84,6 +84,15 @@ enum ToolExecutionStatus: String, Sendable {
     case error
 }
 
+enum MessageComposerBlockReason: Sendable, Equatable {
+    case starting
+    case reconnecting
+    case thinking
+    case speaking
+    case capturing
+    case usingTool(String)
+}
+
 struct BobeContext: Sendable {
     var daemonConnected = false
     var daemonError = false
@@ -129,7 +138,7 @@ enum WindowSizes {
     static let heightAvatar: CGFloat = 180
     static let heightInput: CGFloat = 70
     static let heightExpandedChrome: CGFloat = 56
-    static let heightChatViewportMin: CGFloat = 120
+    static let heightChatViewportMin: CGFloat = 48
     static let heightChatViewportMax: CGFloat = 560
     static let heightMax: CGFloat = 900
     static let margin: CGFloat = 16
@@ -141,7 +150,10 @@ enum StoreTiming {
     static let toolCompletionLingerSeconds: TimeInterval = 5
     static let conversationClearSeconds: TimeInterval = 3
     static let captureRetryBaseMilliseconds = 350
+    static let reconnectStatusDelayMilliseconds = 600
 }
 
-let inactivityTimeoutSeconds: TimeInterval = 10 * 60
-let inactivityCheckIntervalSeconds: TimeInterval = 30
+enum InactivityTiming {
+    static let timeoutSeconds: TimeInterval = 10 * 60
+    static let checkIntervalSeconds: TimeInterval = 30
+}

@@ -98,7 +98,10 @@ struct UserProfilesEditor: View {
                                         )
                                     }
                                 )
-                                .onTapGesture { self.editorState.select(profile.id) }
+                                .overlay {
+                                    Button { self.editorState.select(profile.id) } label: { Color.clear }
+                                        .buttonStyle(.plain)
+                                }
                             }
                         }
                     }

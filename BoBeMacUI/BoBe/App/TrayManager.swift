@@ -105,11 +105,11 @@ final class TrayManager: NSObject, NSMenuDelegate {
 
         let settingsItem = NSMenuItem(title: L10n.tr("tray.settings"), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
-        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: L10n.tr("tray.settings"))
         menu.addItem(settingsItem)
 
         let languageItem = NSMenuItem(title: L10n.tr("tray.language"), action: nil, keyEquivalent: "")
-        languageItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        languageItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: L10n.tr("tray.language"))
         languageItem.submenu = buildLanguageSubmenu()
         menu.addItem(languageItem)
 
@@ -119,7 +119,7 @@ final class TrayManager: NSObject, NSMenuDelegate {
             keyEquivalent: ""
         )
         checkUpdatesItem.target = self
-        checkUpdatesItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        checkUpdatesItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: L10n.tr("tray.check_updates"))
         checkUpdatesItem.isEnabled = UpdaterManager.shared.canCheckForUpdates
         menu.addItem(checkUpdatesItem)
 

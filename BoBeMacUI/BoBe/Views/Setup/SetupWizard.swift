@@ -89,12 +89,12 @@ struct SetupWizard: View {
             }
 
             Text(L10n.tr("setup.welcome.title"))
-                .font(.system(size: 26, weight: .bold))
+                .bobeTextStyle(.setupTitle)
                 .foregroundStyle(self.theme.colors.text)
                 .padding(.bottom, 4)
 
             Text(L10n.tr("setup.welcome.subtitle"))
-                .font(.system(size: 15))
+                .bobeTextStyle(.setupSubtitle)
                 .foregroundStyle(self.theme.colors.textMuted)
                 .padding(.bottom, 24)
 
@@ -131,12 +131,12 @@ struct SetupWizard: View {
     private var chooseModeView: some View {
         VStack(spacing: 0) {
             Text(L10n.tr("setup.choose_mode.title"))
-                .font(.system(size: 26, weight: .bold))
+                .bobeTextStyle(.setupTitle)
                 .foregroundStyle(self.theme.colors.text)
                 .padding(.bottom, 4)
 
             Text(L10n.tr("setup.choose_mode.subtitle"))
-                .font(.system(size: 15))
+                .bobeTextStyle(.setupSubtitle)
                 .foregroundStyle(self.theme.colors.textMuted)
                 .padding(.bottom, 24)
 
@@ -167,10 +167,10 @@ struct SetupWizard: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 40)).foregroundStyle(self.theme.colors.primary)
             Text(L10n.tr("setup.error.title"))
-                .font(.system(size: 26, weight: .bold))
+                .bobeTextStyle(.setupTitle)
                 .foregroundStyle(self.theme.colors.text)
             Text(self.errorMessage)
-                .font(.system(size: 14)).foregroundStyle(self.theme.colors.textMuted)
+                .bobeTextStyle(.setupBody).foregroundStyle(self.theme.colors.textMuted)
                 .multilineTextAlignment(.center)
             Button(L10n.tr("setup.error.retry")) {
                 self.step = .chooseMode

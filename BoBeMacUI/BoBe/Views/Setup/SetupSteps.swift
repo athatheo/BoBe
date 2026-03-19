@@ -15,10 +15,10 @@ struct ConceptCard: View {
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(self.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .bobeTextStyle(.setupHeading)
                     .foregroundStyle(self.theme.colors.text)
                 Text(self.description)
-                    .font(.system(size: 13))
+                    .bobeTextStyle(.inputField)
                     .foregroundStyle(self.theme.colors.textMuted)
                     .lineSpacing(2)
             }
@@ -48,10 +48,10 @@ struct AIChoiceCard: View {
                     .font(.system(size: 32))
                     .foregroundStyle(self.theme.colors.primary)
                 Text(self.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .bobeTextStyle(.setupHeading)
                     .foregroundStyle(self.theme.colors.text)
                 Text(self.subtitle)
-                    .font(.system(size: 12))
+                    .bobeTextStyle(.body)
                     .foregroundStyle(self.theme.colors.textMuted)
                     .multilineTextAlignment(.center)
             }
@@ -70,7 +70,7 @@ struct AIChoiceCard: View {
         .buttonStyle(.plain)
         .onHover { self.isHovered = $0 }
         .scaleEffect(self.isHovered ? 1.01 : 1.0)
-        .animation(.easeOut(duration: 0.12), value: self.isHovered)
+        .animation(OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.12), value: self.isHovered)
     }
 }
 

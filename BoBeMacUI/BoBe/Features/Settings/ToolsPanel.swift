@@ -116,7 +116,7 @@ struct ToolsPanel: View {
                             if self.expandedTool != tool.name {
                                 Button {
                                     guard tool.description.count > 80 else { return }
-                                    withAnimation(.easeOut(duration: 0.15)) {
+                                    withAnimation(OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.15)) {
                                         self.expandedTool = tool.name
                                     }
                                 } label: {
@@ -167,7 +167,7 @@ struct ToolsPanel: View {
                                 .background(RoundedRectangle(cornerRadius: 6).fill(self.theme.colors.surface))
 
                             Button {
-                                withAnimation(.easeOut(duration: 0.15)) {
+                                withAnimation(OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.15)) {
                                     self.expandedTool = nil
                                 }
                             } label: {

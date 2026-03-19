@@ -2,13 +2,16 @@ import AppKit
 import SwiftUI
 
 struct OverlayView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var store: BobeStore
     @State private var themeStore: ThemeStore
-    @State private var showChat = false
+    @State private var chatPresentation: ChatPresentation = .collapsed
     @State private var draftMessage = ""
     @State private var lastMessageActivity: Date = .now
     @State private var measuredContentSize: CGSize = .zero
     @State private var inactivityTimer: Task<Void, Never>?
+    @State private var resizeTask: Task<Void, Never>?
+    @State private var composerFeedback: String?
 
     init(store: BobeStore, themeStore: ThemeStore = .shared) {
         self._store = State(initialValue: store)
@@ -19,116 +22,7 @@ struct OverlayView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            VStack(spacing: 0) {
-                if self.showChat, !self.store.messages.isEmpty {
-                    ChatStack(
-                        messages: self.store.messages,
-                        maxViewportHeight: self.chatViewportMaxHeight
-                    )
-                    .padding(.horizontal, 12)
-                    .transition(
-                        .move(edge: .bottom)
-                            .combined(with: .opacity)
-                            .combined(with: .scale(scale: 0.96, anchor: .bottomTrailing))
-                    )
-                }
-
-                if self.showChat {
-                    if !self.store.failedSendRecoveries.isEmpty {
-                        VStack(spacing: 8) {
-                            ForEach(self.store.failedSendRecoveries) { recovery in
-                                FailedSendRecoveryBanner(
-                                    recovery: recovery,
-                                    onRetry: {
-                                        Task { await self.store.retryFailedSendRecovery(recovery.id) }
-                                    },
-                                    onDismiss: {
-                                        self.store.dismissFailedSendRecovery(recovery.id)
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-
-                    MessageInput(
-                        text: self.$draftMessage,
-                        onSend: self.handleSendMessage,
-                        onClose: {
-                            withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-                                self.showChat = false
-                            }
-                        },
-                        isThinking: self.store.isThinking
-                    )
-                    .padding(.horizontal, 12)
-                    .zIndex(2)
-                    .transition(
-                        .move(edge: .bottom)
-                            .combined(with: .opacity)
-                            .combined(with: .scale(scale: 0.94, anchor: .bottomTrailing))
-                    )
-                }
-
-                if let error = store.errorMessage {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 10))
-                        Text(error)
-                            .font(.system(size: 10))
-                            .lineLimit(2)
-                        Spacer()
-                        Button {
-                            self.store.dismissError()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
-                    .padding(.horizontal, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-
-                    VStack(spacing: 4) {
-                        AvatarView(
-                            stateType: self.store.stateType,
-                            isCapturing: self.store.isCapturing,
-                            isConnected: self.store.isConnected,
-                            hasMessage: self.hasUnreadMessages,
-                            showInput: self.showChat,
-                            statusOverride: self.statusTextOverride,
-                            onClick: self.handleAvatarClick,
-                            onToggleCapture: { Task { _ = await self.store.toggleCapture() } },
-                            onToggleInput: {
-                                withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-                                    self.showChat.toggle()
-                                }
-                            }
-                        )
-
-                        if self.store.isReconnecting {
-                            Text(L10n.tr("overlay.reconnecting"))
-                                .font(.system(size: 10))
-                                .foregroundStyle(self.themeStore.currentTheme.colors.textMuted)
-                                .transition(.opacity)
-                        }
-                    }
-                }
-                .padding(.trailing, 12)
-                .padding(.bottom, 8)
-                .padding(.top, self.showChat ? 6 : 0)
-                .zIndex(1)
-            }
+            self.overlayContent
             .background(
                 GeometryReader { geo in
                     Color.clear
@@ -139,10 +33,12 @@ struct OverlayView: View {
                 }
             )
             .onPreferenceChange(OverlayContentSizePreferenceKey.self) { newSize in
-                if newSize.width > 0, newSize.height > 0,
-                   abs(newSize.width - self.measuredContentSize.width) > 0.5 || abs(newSize.height - self.measuredContentSize.height) > 0.5 {
+                let sizeChanged =
+                    abs(newSize.width - self.measuredContentSize.width) > 0.5
+                    || abs(newSize.height - self.measuredContentSize.height) > 0.5
+                if newSize.width > 0, newSize.height > 0, sizeChanged {
                     self.measuredContentSize = newSize
-                    self.resizeWindow()
+                    self.scheduleResizeWindow()
                 }
             }
         }
@@ -150,96 +46,213 @@ struct OverlayView: View {
         .environment(\.theme, self.themeStore.currentTheme)
         .onChange(of: self.store.messages.count) { oldCount, newCount in
             self.handleMessagesChange(oldCount: oldCount, newCount: newCount)
-            self.resizeWindow()
+            self.scheduleResizeWindow()
         }
-        .onChange(of: self.showChat) { _, _ in
-            self.resizeWindow()
+        .onChange(of: self.isChatVisible) { _, _ in
+            self.scheduleResizeWindow()
         }
         .onChange(of: self.store.toolExecutions.count) { _, _ in
-            self.resizeWindow()
+            self.scheduleResizeWindow()
+        }
+        .onChange(of: self.store.composerBlockReason) { _, newReason in
+            if let newReason, self.composerFeedback != nil {
+                self.composerFeedback = self.waitingMessage(for: newReason)
+            } else if newReason == nil {
+                self.composerFeedback = nil
+            }
+        }
+        .onChange(of: self.draftMessage) { _, newValue in
+            if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.composerFeedback = nil
+            }
+        }
+        .onChange(of: self.reduceMotion, initial: true) { _, new in
+            OverlayMotionRuntime.reduceMotion = new
         }
         .onAppear {
-            self.resizeWindow()
+            self.scheduleResizeWindow()
             self.startInactivityTimer()
         }
         .onDisappear {
             self.inactivityTimer?.cancel()
+            self.resizeTask?.cancel()
         }
     }
 
     // MARK: - Derived State
 
+    private var isChatVisible: Bool {
+        self.chatPresentation.isExpanded
+    }
+
+    private var overlayContent: some View {
+        VStack(spacing: 0) {
+            self.chatHistorySection
+            self.recoverySection
+            self.composerSection
+            self.errorBannerSection
+            self.avatarSection
+        }
+    }
+
+    @ViewBuilder
+    private var chatHistorySection: some View {
+        if self.isChatVisible, !self.store.messages.isEmpty {
+            ChatStack(
+                messages: self.store.messages,
+                maxViewportHeight: self.chatViewportMaxHeight
+            )
+            .padding(.horizontal, 12)
+            .transition(self.overlaySectionTransition)
+        }
+    }
+
+    @ViewBuilder
+    private var recoverySection: some View {
+        if self.isChatVisible, !self.store.failedSendRecoveries.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(self.store.failedSendRecoveries) { recovery in
+                    FailedSendRecoveryBanner(
+                        recovery: recovery,
+                        onRetry: {
+                            Task { await self.store.retryFailedSendRecovery(recovery.id) }
+                        },
+                        onDismiss: {
+                            self.store.dismissFailedSendRecovery(recovery.id)
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .transition(self.overlaySectionTransition)
+        }
+    }
+
+    @ViewBuilder
+    private var composerSection: some View {
+        if self.isChatVisible {
+            MessageInput(
+                text: self.$draftMessage,
+                onSend: self.handleSendMessage,
+                onClose: { self.closeChat(userInitiated: true) },
+                feedbackMessage: self.composerFeedback,
+                isBusy: self.store.composerBlockReason != nil
+            )
+            .padding(.horizontal, 12)
+            .zIndex(1)
+            .transition(self.overlaySectionTransition)
+        }
+    }
+
+    @ViewBuilder
+    private var errorBannerSection: some View {
+        if let error = self.store.errorMessage {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                Text(error)
+                    .bobeTextStyle(.overlayStatus)
+                    .lineLimit(2)
+                Spacer()
+                Button {
+                    self.store.dismissError()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
+            .padding(.horizontal, 12)
+            .transition(self.overlaySectionTransition)
+        }
+    }
+
+    @ViewBuilder
+    private var avatarSection: some View {
+        HStack(spacing: 12) {
+            Spacer()
+
+            ZStack(alignment: .topLeading) {
+                ChatToggleButton(isActive: self.isChatVisible, action: self.toggleChatFromBubble)
+                    .padding(.leading, 11)
+                    .padding(.top, 23)
+                    .zIndex(4)
+
+                AvatarView(
+                    stateType: self.avatarStateType,
+                    isCapturing: self.store.isCapturing,
+                    isConnected: self.store.isConnected,
+                    hasMessage: self.hasUnreadMessages,
+                    showInput: self.isChatVisible,
+                    statusOverride: self.statusTextOverride,
+                    isAvatarActionEnabled: self.canAvatarToggleChat,
+                    onClick: self.avatarClickAction,
+                    onToggleCapture: self.handleCaptureToggle
+                )
+                .padding(.top, 18)
+                .padding(.leading, 16)
+            }
+            .frame(width: 148, height: 164, alignment: .topLeading)
+        }
+        .padding(.trailing, 12)
+        .padding(.bottom, 8)
+        .padding(.top, 0)
+        .zIndex(3)
+    }
+
     private var hasUnreadMessages: Bool {
-        !self.store.messages.isEmpty && !self.showChat
+        !self.store.messages.isEmpty && !self.isChatVisible
+    }
+
+    private var overlaySectionTransition: AnyTransition {
+        if OverlayMotionRuntime.reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomTrailing)),
+            removal: .opacity
+        )
+    }
+
+    private var canAvatarToggleChat: Bool {
+        self.store.stateType == .wantsToSpeak
+    }
+
+    private var avatarClickAction: (() -> Void)? {
+        guard self.canAvatarToggleChat else { return nil }
+        return { self.handleAvatarClick() }
+    }
+
+    private var avatarStateType: BobeStateType {
+        if self.store.isInitialConnectionPending {
+            return .loading
+        }
+        if !self.store.isConnected && !self.store.isBackendFatal {
+            return .idle
+        }
+        return self.store.stateType
     }
 
     private var statusTextOverride: String? {
-        if self.store.stateType == .loading {
-            return L10n.tr("overlay.status.starting")
-        }
         if self.store.isReconnecting {
             return L10n.tr("overlay.reconnecting")
+        }
+        if self.store.isInitialConnectionPending {
+            return L10n.tr("overlay.status.starting")
         }
         if self.store.capturePermissionMissing, self.store.stateType == .idle {
             return L10n.tr("overlay.status.capture_permission_needed")
         }
-        if let tool = store.runningTools.first {
+        if let tool = self.store.runningTools.first {
             return L10n.tr("overlay.status.using_tool_format", tool.toolName)
         }
         return nil
-    }
-
-    // MARK: - Actions
-
-    private func handleAvatarClick() {
-        withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-            self.showChat.toggle()
-        }
-    }
-
-    private func handleSendMessage(_ content: String) {
-        self.lastMessageActivity = .now
-        Task {
-            await self.store.sendMessage(content)
-        }
-    }
-
-    private func handleMessagesChange(oldCount: Int, newCount: Int) {
-        if newCount > oldCount, !self.showChat {
-            if let last = store.messages.last, last.sender == .bobe {
-                withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) { self.showChat = true }
-            }
-        }
-        self.lastMessageActivity = .now
-    }
-
-    // MARK: - Window Sizing
-
-    private func resizeWindow() {
-        let size = self.calculateWindowSize()
-        OverlayWindowManager.shared.resize(width: size.width, height: size.height)
-    }
-
-    private func calculateWindowSize() -> CGSize {
-        let maxAllowedHeight = min(WindowSizes.heightMax, self.maxAllowedWindowHeight)
-        let measuredWidth = max(WindowSizes.widthCollapsed, self.measuredContentSize.width)
-        let measuredHeight = max(WindowSizes.heightCollapsed, self.measuredContentSize.height)
-
-        if !self.showChat {
-            return CGSize(
-                width: WindowSizes.widthCollapsed,
-                height: min(measuredHeight, maxAllowedHeight)
-            )
-        }
-
-        let minExpandedHeight =
-            WindowSizes.heightAvatar
-                + WindowSizes.heightInput
-                + WindowSizes.heightExpandedChrome
-                + (self.store.messages.isEmpty ? 0 : WindowSizes.heightChatViewportMin)
-        let measured = max(measuredContentSize.height, minExpandedHeight)
-        let clampedHeight = min(measured, maxAllowedHeight)
-        return CGSize(width: max(WindowSizes.widthExpanded, measuredWidth), height: clampedHeight)
     }
 
     private var maxAllowedWindowHeight: CGFloat {
@@ -264,23 +277,176 @@ struct OverlayView: View {
         )
     }
 
+    private var chatViewportFloorHeight: CGFloat {
+        self.store.messages.contains(where: { $0.sender == .bobe }) ? WindowSizes.heightChatViewportMin : 0
+    }
+
+    // MARK: - Actions
+
+    private func handleAvatarClick() {
+        guard self.canAvatarToggleChat else { return }
+        self.toggleChatManually()
+    }
+
+    private func handleCaptureToggle() {
+        Task {
+            _ = await self.store.toggleCapture()
+        }
+    }
+
+    @discardableResult
+    private func handleSendMessage(_ content: String) -> Bool {
+        self.lastMessageActivity = .now
+
+        if let blockReason = self.store.composerBlockReason {
+            self.composerFeedback = self.waitingMessage(for: blockReason)
+            return false
+        }
+
+        self.composerFeedback = nil
+        Task {
+            await self.store.sendMessage(content)
+        }
+        return true
+    }
+
+    private func handleMessagesChange(oldCount: Int, newCount: Int) {
+        if newCount > oldCount, !self.isChatVisible, self.chatPresentation.allowsAutoOpen {
+            if let last = self.store.messages.last, last.sender == .bobe {
+                self.openChatAutomatically()
+            }
+        }
+        if newCount == 0 {
+            self.chatPresentation = .collapsed
+            self.composerFeedback = nil
+        }
+        self.lastMessageActivity = .now
+    }
+
+    private func toggleChatFromBubble() {
+        self.toggleChatManually()
+    }
+
+    private func toggleChatManually() {
+        if self.isChatVisible {
+            self.closeChat(userInitiated: true)
+        } else {
+            self.openChatManually()
+        }
+    }
+
+    private func openChatManually() {
+        self.setChatPresentation(.expanded(.manual))
+    }
+
+    private func openChatAutomatically() {
+        guard self.chatPresentation.allowsAutoOpen else { return }
+        self.setChatPresentation(.expanded(.automatic))
+    }
+
+    private func closeChat(userInitiated: Bool) {
+        self.setChatPresentation(userInitiated ? .collapsedDismissed : .collapsed)
+    }
+
+    private func setChatPresentation(_ presentation: ChatPresentation) {
+        guard self.chatPresentation != presentation else { return }
+        self.chatPresentation = presentation
+    }
+
+    // MARK: - Window Sizing
+
+    private func scheduleResizeWindow() {
+        self.resizeTask?.cancel()
+        self.resizeTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(40))
+            guard !Task.isCancelled else { return }
+            self.resizeWindow()
+        }
+    }
+
+    private func resizeWindow() {
+        let size = self.calculateWindowSize()
+        OverlayWindowManager.shared.resize(width: size.width, height: size.height)
+    }
+
+    private func calculateWindowSize() -> CGSize {
+        let maxAllowedHeight = min(WindowSizes.heightMax, self.maxAllowedWindowHeight)
+        let measuredWidth = max(WindowSizes.widthCollapsed, self.measuredContentSize.width)
+        let measuredHeight = max(WindowSizes.heightCollapsed, self.measuredContentSize.height)
+
+        if !self.isChatVisible {
+            return CGSize(
+                width: WindowSizes.widthCollapsed,
+                height: min(measuredHeight, maxAllowedHeight)
+            )
+        }
+
+        let minExpandedHeight =
+            WindowSizes.heightAvatar
+                + WindowSizes.heightInput
+                + WindowSizes.heightExpandedChrome
+                + self.chatViewportFloorHeight
+        let measured = max(measuredContentSize.height, minExpandedHeight)
+        let clampedHeight = min(measured, maxAllowedHeight)
+        return CGSize(width: max(WindowSizes.widthExpanded, measuredWidth), height: clampedHeight)
+    }
+
     // MARK: - Inactivity Timer
 
     private func startInactivityTimer() {
         self.inactivityTimer?.cancel()
         self.inactivityTimer = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(inactivityCheckIntervalSeconds))
+                try? await Task.sleep(for: .seconds(InactivityTiming.checkIntervalSeconds))
                 guard !Task.isCancelled else { return }
                 let elapsed = Date().timeIntervalSince(self.lastMessageActivity)
-                if elapsed > inactivityTimeoutSeconds, self.showChat, self.store.stateType == .idle {
+                if elapsed > InactivityTiming.timeoutSeconds, self.isChatVisible, self.store.stateType == .idle {
                     await MainActor.run {
-                        withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) { self.showChat = false }
+                        self.closeChat(userInitiated: false)
                     }
                 }
             }
         }
     }
+
+    private func waitingMessage(for reason: MessageComposerBlockReason) -> String {
+        switch reason {
+        case .starting:
+            return L10n.tr("overlay.input.waiting_for_starting")
+        case .reconnecting:
+            return L10n.tr("overlay.input.waiting_for_reconnecting")
+        case .thinking:
+            return L10n.tr("overlay.input.waiting_for_thinking")
+        case .speaking:
+            return L10n.tr("overlay.input.waiting_for_speaking")
+        case .capturing:
+            return L10n.tr("overlay.input.waiting_for_capturing")
+        case .usingTool(let toolName):
+            return L10n.tr("overlay.input.waiting_for_tool_format", toolName)
+        }
+    }
+}
+
+private enum ChatPresentation: Equatable {
+    case collapsed
+    case collapsedDismissed
+    case expanded(ChatPresentationSource)
+
+    var isExpanded: Bool {
+        if case .expanded = self {
+            return true
+        }
+        return false
+    }
+
+    var allowsAutoOpen: Bool {
+        self != .collapsedDismissed
+    }
+}
+
+private enum ChatPresentationSource: Equatable {
+    case automatic
+    case manual
 }
 
 private struct FailedSendRecoveryBanner: View {
@@ -298,14 +464,14 @@ private struct FailedSendRecoveryBanner: View {
                 .padding(.top, 2)
 
             Text(self.recovery.content)
-                .font(.system(size: 12))
+                .bobeTextStyle(.chatBody)
                 .foregroundStyle(self.theme.colors.text)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(L10n.tr("app.common.retry"), action: self.onRetry)
-                .font(.system(size: 11, weight: .semibold))
+                .bobeTextStyle(.rowMeta)
                 .buttonStyle(.plain)
                 .foregroundStyle(self.theme.colors.primary)
 

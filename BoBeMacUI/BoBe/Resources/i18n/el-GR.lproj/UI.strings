@@ -124,6 +124,7 @@
 "overlay.avatar.state.thinking" = "σκέφτεται";
 "overlay.avatar.state.wants_to_speak" = "θέλει να μιλήσει";
 "overlay.chat.action.collapse" = "σύμπτυξη";
+"overlay.chat.action.read_more" = "περισσότερα…";
 "overlay.chat.hidden_messages_format" = "+%d κρυφά μηνύματα";
 "overlay.chat.pending_suffix" = " - αποστολή...";
 "overlay.chat.sender.bobe" = "BoBe";
@@ -137,6 +138,12 @@
 "overlay.input.placeholder.thinking" = "Το BoBe σκέφτεται…";
 "overlay.input.send.accessibility" = "Αποστολή μηνύματος";
 "overlay.input.waiting" = "αναμονή...";
+"overlay.input.waiting_for_starting" = "Περίμενε να ολοκληρώσει το BoBe την εκκίνηση.";
+"overlay.input.waiting_for_reconnecting" = "Περίμενε να ολοκληρώσει το BoBe την επανασύνδεση.";
+"overlay.input.waiting_for_thinking" = "Περίμενε να ολοκληρώσει το BoBe τη σκέψη.";
+"overlay.input.waiting_for_speaking" = "Περίμενε να ολοκληρώσει το BoBe την απάντηση.";
+"overlay.input.waiting_for_capturing" = "Περίμενε να ολοκληρώσει το BoBe την αντίληψη.";
+"overlay.input.waiting_for_tool_format" = "Περίμενε να ολοκληρώσει το BoBe τη χρήση του %@.";
 "overlay.reconnecting" = "Επανασύνδεση...";
 "overlay.status.capture_permission_needed" = "Η αντίληψη οθόνης χρειάζεται άδεια";
 "overlay.status.capturing" = "Αντίληψη";

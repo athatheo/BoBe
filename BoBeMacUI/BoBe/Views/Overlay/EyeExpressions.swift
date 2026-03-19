@@ -76,6 +76,7 @@ struct CapturingEyes: View {
                 .offset(y: scanOffset)
         }
         .onAppear {
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) { pupilOffset = 1.5 }
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { bracketOpacity = 0.8 }
             withAnimation(.linear(duration: 3).repeatForever(autoreverses: true)) { scanOffset = 4 }
@@ -101,6 +102,7 @@ struct ThinkingEyes: View {
                 .frame(width: 5, height: 4)
         }
         .onAppear {
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { lookUpOffset = 0 }
         }
     }
@@ -124,6 +126,7 @@ struct SpeakingEyes: View {
                 .scaleEffect(y: mouthScaleY)
         }
         .task {
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             // Match Electron: scaleY [1, 1.75, 0.75, 1.5, 1] over 0.5s
             let frames: [CGFloat] = [1, 1.75, 0.75, 1.5, 1]
             var i = 0
@@ -170,6 +173,7 @@ struct EagerEyes: View {
                 .frame(width: 10, height: 4)
         }
         .onAppear {
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) { browOffset = -1 }
         }
     }
@@ -187,6 +191,7 @@ struct AttentiveEyes: View {
             EyeUnit(theme: theme.colors, irisOffset: CGPoint(x: 0, y: irisNudge), showHighlight: true)
         }
         .onAppear {
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
                 irisNudge = -0.3
             }

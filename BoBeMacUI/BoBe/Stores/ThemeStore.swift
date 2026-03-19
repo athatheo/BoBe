@@ -7,7 +7,7 @@ final class ThemeStore {
     static let shared = ThemeStore()
 
     private(set) var currentTheme: ThemeConfig
-    private let userDefaultsKey = "bobe_theme_id"
+    private static let themeDefaultsKey = "bobe_theme_id"
 
     var themeId: ThemeId {
         get { self.currentTheme.themeId }
@@ -16,13 +16,13 @@ final class ThemeStore {
 
     private init() {
         let savedId =
-            UserDefaults.standard.string(forKey: "bobe_theme_id")
+            UserDefaults.standard.string(forKey: Self.themeDefaultsKey)
                 .flatMap { ThemeId(rawValue: $0) } ?? .bauhaus
         self.currentTheme = themeById(savedId)
     }
 
     func setTheme(_ id: ThemeId) {
         self.currentTheme = themeById(id)
-        UserDefaults.standard.set(id.rawValue, forKey: self.userDefaultsKey)
+        UserDefaults.standard.set(id.rawValue, forKey: Self.themeDefaultsKey)
     }
 }

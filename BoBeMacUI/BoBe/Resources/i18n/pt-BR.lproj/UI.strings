@@ -124,6 +124,7 @@
 "overlay.avatar.state.thinking" = "pensando";
 "overlay.avatar.state.wants_to_speak" = "quer falar";
 "overlay.chat.action.collapse" = "recolher";
+"overlay.chat.action.read_more" = "mais…";
 "overlay.chat.hidden_messages_format" = "+%d mensagens ocultas";
 "overlay.chat.pending_suffix" = " - enviando...";
 "overlay.chat.sender.bobe" = "bobe";
@@ -137,6 +138,12 @@
 "overlay.input.placeholder.thinking" = "BoBe está pensando…";
 "overlay.input.send.accessibility" = "Enviar mensagem";
 "overlay.input.waiting" = "aguardando...";
+"overlay.input.waiting_for_starting" = "Espere o BoBe terminar de iniciar.";
+"overlay.input.waiting_for_reconnecting" = "Espere o BoBe terminar de se reconectar.";
+"overlay.input.waiting_for_thinking" = "Espere o BoBe terminar de pensar.";
+"overlay.input.waiting_for_speaking" = "Espere o BoBe terminar de responder.";
+"overlay.input.waiting_for_capturing" = "Espere o BoBe terminar de observar.";
+"overlay.input.waiting_for_tool_format" = "Espere o BoBe terminar de usar %@.";
 "overlay.reconnecting" = "Reconectando...";
 "overlay.status.capture_permission_needed" = "Permissão de percepção de tela necessária";
 "overlay.status.capturing" = "Observando";
