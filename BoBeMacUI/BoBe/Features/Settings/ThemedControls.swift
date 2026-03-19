@@ -48,6 +48,24 @@ enum BobeTextStyle {
     case body
     case badge
 
+    // Overlay
+    case overlayStatus
+    case chatSender
+    case chatPending
+    case chatBody
+    case chatMeta
+    case brandLabel
+
+    // Setup
+    case setupTitle
+    case setupSubtitle
+    case setupBody
+    case setupHeading
+
+    // Settings (panels that still hardcode)
+    case inputField
+    case heading
+
     var font: Font {
         switch self {
         case .windowTitle:
@@ -64,6 +82,30 @@ enum BobeTextStyle {
             .system(size: 12)
         case .badge:
             .system(size: 9, weight: .medium)
+        case .overlayStatus:
+            .system(size: 10)
+        case .chatSender:
+            .system(size: 9, weight: .semibold)
+        case .chatPending:
+            .system(size: 8)
+        case .chatBody:
+            .system(size: 12)
+        case .chatMeta:
+            .system(size: 10, weight: .medium)
+        case .brandLabel:
+            .system(size: 11, weight: .bold)
+        case .setupTitle:
+            .system(size: 26, weight: .bold)
+        case .setupSubtitle:
+            .system(size: 15)
+        case .setupBody:
+            .system(size: 14)
+        case .setupHeading:
+            .system(size: 14, weight: .semibold)
+        case .inputField:
+            .system(size: 13)
+        case .heading:
+            .system(size: 14, weight: .semibold)
         }
     }
 }
@@ -118,7 +160,7 @@ struct BobeButtonStyle: ButtonStyle {
                     .stroke(self.borderColor(isPressed: isPressed).opacity(disabledOpacity), lineWidth: 1)
             )
             .opacity(isPressed ? 0.9 : 1)
-            .animation(.easeOut(duration: 0.12), value: isPressed)
+            .animation(OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.12), value: isPressed)
     }
 
     private var foregroundColor: Color {
@@ -442,7 +484,7 @@ struct BobeSpinner: View {
                     style: StrokeStyle(lineWidth: self.lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(self.spinning ? 360 : 0))
-                .animation(.linear(duration: 0.85).repeatForever(autoreverses: false), value: self.spinning)
+                .animation(OverlayMotionRuntime.reduceMotion ? nil : .linear(duration: 0.85).repeatForever(autoreverses: false), value: self.spinning)
         }
         .frame(width: self.size, height: self.size)
         .onAppear { self.spinning = true }

@@ -167,7 +167,10 @@ struct MemoriesEditor: View {
                                         }
                                     }
                                 )
-                                .onTapGesture { self.editorState.select(memory.id) }
+                                .overlay {
+                                    Button { self.editorState.select(memory.id) } label: { Color.clear }
+                                        .buttonStyle(.plain)
+                                }
                             }
                         }
                     }

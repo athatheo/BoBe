@@ -23,13 +23,13 @@ struct StatusLabel: View {
             if !targetText.isEmpty || isTyping {
                 HStack(spacing: 0) {
                     Text(displayedText)
-                        .font(.system(size: 11, weight: .bold))
+                        .bobeTextStyle(.brandLabel)
                         .tracking(0.5)
                         .foregroundStyle(theme.colors.primary)
 
                     if isTyping || !displayedText.isEmpty {
                         Text("|")
-                            .font(.system(size: 11, weight: .bold))
+                            .bobeTextStyle(.brandLabel)
                             .foregroundStyle(theme.colors.primary)
                             .opacity(showCursor ? 1 : 0)
                     }
@@ -67,6 +67,7 @@ struct StatusLabel: View {
         }
         .task {
             startTypewriter(effectiveText(for: stateType))
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(0.3))
                 showCursor.toggle()
@@ -160,6 +161,10 @@ private struct BubblingChar: View {
             .offset(x: xPos, y: yOffset)
             .opacity(charOpacity)
             .task {
+                guard OverlayMotionRuntime.shouldAnimate else {
+                    charOpacity = 0
+                    return
+                }
                 xPos = Self.randomX()
                 let delay = Double(index) * 0.4
                 try? await Task.sleep(for: .seconds(delay))
@@ -215,6 +220,10 @@ private struct SpeakingBar: View {
             .offset(y: -52)
             .rotationEffect(.degrees(angle))
             .task {
+                guard OverlayMotionRuntime.shouldAnimate else {
+                    scaleY = 0.6
+                    return
+                }
                 try? await Task.sleep(for: .seconds(delay))
                 let frames: [CGFloat] = [0.3, 1.0, 0.5, 0.8, 0.3]
                 var i = 0
@@ -243,6 +252,11 @@ struct AttentionPulse: View {
             .scaleEffect(scale)
             .opacity(opacity)
             .onAppear {
+                guard OverlayMotionRuntime.shouldAnimate else {
+                    scale = 1.04
+                    opacity = 0.85
+                    return
+                }
                 withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
                     scale = 1.08
                     opacity = 1.0

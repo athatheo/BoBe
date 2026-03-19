@@ -98,7 +98,10 @@ struct SoulsEditor: View {
                                         )
                                     }
                                 )
-                                .onTapGesture { self.editorState.select(soul.id) }
+                                .overlay {
+                                    Button { self.editorState.select(soul.id) } label: { Color.clear }
+                                        .buttonStyle(.plain)
+                                }
                             }
                         }
                     }

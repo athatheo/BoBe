@@ -5,7 +5,7 @@ extension SetupWizard {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 Text(L10n.tr("setup.cloud.title"))
-                    .font(.system(size: 26, weight: .bold))
+                    .bobeTextStyle(.setupTitle)
                     .foregroundStyle(theme.colors.text)
                     .frame(maxWidth: .infinity, alignment: .center)
 
@@ -98,12 +98,12 @@ extension SetupWizard {
     var localConfigView: some View {
         VStack(alignment: .leading, spacing: 16) {
                 Text(L10n.tr("setup.local.title"))
-                    .font(.system(size: 26, weight: .bold))
+                    .bobeTextStyle(.setupTitle)
                     .foregroundStyle(theme.colors.text)
                     .frame(maxWidth: .infinity, alignment: .center)
 
             Text(L10n.tr("setup.local.subtitle"))
-                .font(.system(size: 15))
+                .bobeTextStyle(.setupSubtitle)
                 .foregroundStyle(theme.colors.textMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)

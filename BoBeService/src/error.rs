@@ -26,6 +26,9 @@ pub(crate) enum AppError {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -60,6 +63,7 @@ impl axum::response::IntoResponse for AppError {
 
         let (status, code) = match &self {
             AppError::Validation(_) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
+            AppError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT"),
             AppError::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
             AppError::Tool(message) if is_access_denied(message) => {
                 (StatusCode::FORBIDDEN, "FORBIDDEN")

@@ -80,8 +80,9 @@ enum SettingsCategoryGroup: String, CaseIterable {
 }
 
 struct SettingsWindow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedCategory: SettingsCategory?
-    @State private var themeStore = ThemeStore.shared
+    private let themeStore = ThemeStore.shared
     private let store = BobeStore.shared
 
     private var theme: ThemeConfig {
@@ -114,6 +115,9 @@ struct SettingsWindow: View {
         .background(self.theme.colors.background)
         .ignoresSafeArea(.container, edges: .top)
         .toolbar(removing: .sidebarToggle)
+        .onChange(of: self.reduceMotion, initial: true) { _, new in
+            OverlayMotionRuntime.reduceMotion = new
+        }
         .id(self.store.localeVersion)
     }
 
@@ -127,9 +131,9 @@ struct SettingsWindow: View {
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
-            .frame(height: 80)
+            .frame(height: 44)
             .background(self.headerGradient)
             .overlay(alignment: .bottom) {
                 Rectangle()
@@ -141,9 +145,11 @@ struct SettingsWindow: View {
                 ForEach(SettingsCategoryGroup.allCases, id: \.self) { group in
                     Section {
                         ForEach(group.categories) { category in
-                            self.sidebarRow(for: category)
-                                .onTapGesture { self.selectedCategory = category }
-                                .listRowInsets(.init(top: 2, leading: 8, bottom: 2, trailing: 8))
+                            Button { self.selectedCategory = category } label: {
+                                self.sidebarRow(for: category)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(.init(top: 2, leading: 8, bottom: 2, trailing: 8))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                         }
@@ -158,6 +164,7 @@ struct SettingsWindow: View {
             .listStyle(.sidebar)
             .tint(self.theme.colors.primary)
             .scrollContentBackground(.hidden)
+            .padding(.top, 6)
         }
         .background(self.theme.colors.background)
     }
@@ -203,8 +210,8 @@ struct SettingsWindow: View {
             .disabled(!UpdaterManager.shared.canCheckForUpdates)
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 12)
-        .frame(height: 80)
+        .padding(.bottom, 8)
+        .frame(height: 44)
         .background(self.headerGradient)
         .overlay(alignment: .bottom) {
             Rectangle()

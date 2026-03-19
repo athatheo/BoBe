@@ -124,6 +124,7 @@
 "overlay.avatar.state.thinking" = "思考中";
 "overlay.avatar.state.wants_to_speak" = "話したいことがあります";
 "overlay.chat.action.collapse" = "折りたたむ";
+"overlay.chat.action.read_more" = "続き…";
 "overlay.chat.hidden_messages_format" = "+%d 件の非表示メッセージ";
 "overlay.chat.pending_suffix" = " - 送信中...";
 "overlay.chat.sender.bobe" = "BoBe";
@@ -137,6 +138,12 @@
 "overlay.input.placeholder.thinking" = "BoBeが考え中…";
 "overlay.input.send.accessibility" = "メッセージを送信";
 "overlay.input.waiting" = "待機中...";
+"overlay.input.waiting_for_starting" = "BoBe が起動を終えるまで待ってください。";
+"overlay.input.waiting_for_reconnecting" = "BoBe が再接続を終えるまで待ってください。";
+"overlay.input.waiting_for_thinking" = "BoBe が考え終えるまで待ってください。";
+"overlay.input.waiting_for_speaking" = "BoBe が話し終えるまで待ってください。";
+"overlay.input.waiting_for_capturing" = "BoBe が認識を終えるまで待ってください。";
+"overlay.input.waiting_for_tool_format" = "BoBe が %@ の使用を終えるまで待ってください。";
 "overlay.reconnecting" = "再接続中...";
 "overlay.status.capture_permission_needed" = "画面認識には権限が必要です";
 "overlay.status.capturing" = "認識中";

@@ -124,6 +124,7 @@
 "overlay.avatar.state.thinking" = "思考中";
 "overlay.avatar.state.wants_to_speak" = "想说点什么";
 "overlay.chat.action.collapse" = "收起";
+"overlay.chat.action.read_more" = "更多…";
 "overlay.chat.hidden_messages_format" = "+%d 条隐藏消息";
 "overlay.chat.pending_suffix" = " - 发送中...";
 "overlay.chat.sender.bobe" = "BoBe";
@@ -137,6 +138,12 @@
 "overlay.input.placeholder.thinking" = "BoBe 正在思考…";
 "overlay.input.send.accessibility" = "发送消息";
 "overlay.input.waiting" = "等待中...";
+"overlay.input.waiting_for_starting" = "请等待 BoBe 完成启动。";
+"overlay.input.waiting_for_reconnecting" = "请等待 BoBe 完成重新连接。";
+"overlay.input.waiting_for_thinking" = "请等待 BoBe 完成思考。";
+"overlay.input.waiting_for_speaking" = "请等待 BoBe 完成回复。";
+"overlay.input.waiting_for_capturing" = "请等待 BoBe 完成感知。";
+"overlay.input.waiting_for_tool_format" = "请等待 BoBe 完成使用 %@。";
 "overlay.reconnecting" = "正在重连...";
 "overlay.status.capture_permission_needed" = "需要屏幕录制权限";
 "overlay.status.capturing" = "感知中";

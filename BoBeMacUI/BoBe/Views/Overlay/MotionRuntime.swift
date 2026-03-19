@@ -10,6 +10,12 @@ enum OverlayMotionPrimitive {
 }
 
 enum OverlayMotionRuntime {
+    @MainActor static var reduceMotion = false
+
+    @MainActor static var shouldAnimate: Bool {
+        !reduceMotion
+    }
+
     static func animation(for primitive: OverlayMotionPrimitive) -> Animation {
         switch primitive {
         case .hover:
@@ -25,15 +31,18 @@ enum OverlayMotionRuntime {
         }
     }
 
-    static func breathingScale(isExpanded: Bool) -> CGFloat {
-        isExpanded ? 1.012 : 0.994
+    @MainActor static func breathingScale(isExpanded: Bool) -> CGFloat {
+        guard shouldAnimate else { return 1.0 }
+        return isExpanded ? 1.012 : 0.994
     }
 
-    static func hoverScale(isHovered: Bool) -> CGFloat {
-        isHovered ? 1.06 : 1.0
+    @MainActor static func hoverScale(isHovered: Bool) -> CGFloat {
+        guard shouldAnimate else { return 1.0 }
+        return isHovered ? 1.06 : 1.0
     }
 
-    static func hoverYOffset(isHovered: Bool) -> CGFloat {
-        isHovered ? -1.0 : 0
+    @MainActor static func hoverYOffset(isHovered: Bool) -> CGFloat {
+        guard shouldAnimate else { return 0 }
+        return isHovered ? -1.0 : 0
     }
 }

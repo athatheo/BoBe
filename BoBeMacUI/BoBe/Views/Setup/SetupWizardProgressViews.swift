@@ -5,7 +5,7 @@ extension SetupWizard {
     var setupProgressView: some View {
         VStack(spacing: 16) {
             Text(L10n.tr("setup.progress.title"))
-                .font(.system(size: 26, weight: .bold))
+                .bobeTextStyle(.setupTitle)
                 .foregroundStyle(theme.colors.text)
 
             if let job = setupJob {
@@ -24,7 +24,7 @@ extension SetupWizard {
                 .foregroundStyle(theme.colors.primary)
 
             Text(progressMessage)
-                .font(.system(size: 14))
+                .bobeTextStyle(.setupBody)
                 .foregroundStyle(theme.colors.textMuted)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -35,11 +35,11 @@ extension SetupWizard {
     var localVisionChoiceView: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(L10n.tr("setup.local_vision.title"))
-                .font(.system(size: 26, weight: .bold))
+                .bobeTextStyle(.setupTitle)
                 .foregroundStyle(theme.colors.text)
 
             Text(L10n.tr("setup.local_vision.description"))
-                .font(.system(size: 14))
+                .bobeTextStyle(.setupBody)
                 .foregroundStyle(theme.colors.textMuted)
                 .lineSpacing(2)
 
@@ -63,11 +63,11 @@ extension SetupWizard {
     var captureSetupView: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(L10n.tr("setup.capture.title"))
-                .font(.system(size: 26, weight: .bold))
+                .bobeTextStyle(.setupTitle)
                 .foregroundStyle(theme.colors.text)
 
             Text(L10n.tr("setup.capture.description"))
-            .font(.system(size: 14)).foregroundStyle(theme.colors.textMuted)
+            .bobeTextStyle(.setupBody).foregroundStyle(theme.colors.textMuted)
             .lineSpacing(2)
 
             PermissionCard(title: L10n.tr("setup.capture.permission.title"), badge: screenPermission) {
@@ -131,15 +131,15 @@ extension SetupWizard {
                 .foregroundStyle(theme.colors.secondary)
 
             Text(L10n.tr("setup.complete.title"))
-                .font(.system(size: 26, weight: .bold))
+                .bobeTextStyle(.setupTitle)
                 .foregroundStyle(theme.colors.text)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(L10n.tr("setup.complete.subtitle"))
-                    .font(.system(size: 14, weight: .medium))
+                    .bobeTextStyle(.setupHeading)
                     .foregroundStyle(theme.colors.text)
                 Text(L10n.tr("setup.complete.details"))
-                .font(.system(size: 14))
+                .bobeTextStyle(.setupBody)
                 .foregroundStyle(theme.colors.textMuted).lineSpacing(2)
             }
             .padding(12)

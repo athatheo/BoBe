@@ -3,6 +3,14 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "DaemonClient")
 
+private struct DaemonErrorEnvelope: Decodable {
+    let error: DaemonErrorBody
+}
+
+private struct DaemonErrorBody: Decodable {
+    let message: String
+}
+
 actor DaemonClient {
     static let shared = DaemonClient()
 
@@ -159,7 +167,7 @@ actor DaemonClient {
             throw DaemonError.invalidResponse
         }
         guard (200 ... 299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let message = self.errorMessage(from: data)
             logger.error("\(method) \(path) failed: HTTP \(httpResponse.statusCode) — \(message)")
             throw DaemonError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
@@ -199,10 +207,17 @@ actor DaemonClient {
             throw DaemonError.invalidResponse
         }
         guard (200 ... 299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let message = self.errorMessage(from: data)
             logger.error("\(method) \(path) failed: HTTP \(httpResponse.statusCode) — \(message)")
             throw DaemonError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
+    }
+
+    private func errorMessage(from data: Data) -> String {
+        if let envelope = try? self.decoder.decode(DaemonErrorEnvelope.self, from: data) {
+            return envelope.error.message
+        }
+        return String(data: data, encoding: .utf8) ?? "Unknown error"
     }
 
     func performModelPull(named name: String) async throws {

@@ -101,7 +101,10 @@ struct GoalsEditor: View {
                                         }
                                     }
                                 )
-                                .onTapGesture { self.editorState.select(goal.id) }
+                                .overlay {
+                                    Button { self.editorState.select(goal.id) } label: { Color.clear }
+                                        .buttonStyle(.plain)
+                                }
                             }
                         }
                     }

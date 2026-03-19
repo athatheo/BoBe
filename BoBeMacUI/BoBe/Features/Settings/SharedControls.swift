@@ -218,7 +218,7 @@ struct CollapsibleSection<Content: View>: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(self.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .bobeTextStyle(.heading)
                         .foregroundStyle(self.theme.colors.text)
                     if let description {
                         Text(description)
@@ -244,7 +244,7 @@ struct CollapsibleSection<Content: View>: View {
             )
         }
         .tint(self.theme.colors.primary)
-        .animation(.easeInOut(duration: 0.2), value: self.isExpanded)
+        .animation(OverlayMotionRuntime.reduceMotion ? nil : .easeInOut(duration: 0.2), value: self.isExpanded)
     }
 }
 

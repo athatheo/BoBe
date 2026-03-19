@@ -127,7 +127,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !self.isQuitting else { return .terminateNow }
         self.isQuitting = true
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(20))
             logger.warning("Hard shutdown timeout — forcing exit")
             exit(0)
         }
