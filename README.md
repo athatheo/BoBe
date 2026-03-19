@@ -3,7 +3,7 @@
 <p align="center">
   <em>A local-first proactive AI companion for macOS</em>
   <br>
-  <a href="https://www.bobebot.com">Website — BoBeBot.com</a>
+  <a href="https://www.bobebot.com">BoBeBot.com</a>
 </p>
 
 <p align="center">
