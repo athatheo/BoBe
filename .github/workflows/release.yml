@@ -86,8 +86,13 @@ jobs:
           import os
           import pathlib
 
+          def b64decode_padded(s):
+              s = s.strip()
+              s += "=" * (-len(s) % 4)
+              return base64.b64decode(s)
+
           pathlib.Path(os.environ["CERTIFICATE_PATH"]).write_bytes(
-              base64.b64decode(os.environ["APPLE_CERTIFICATE_P12_B64"])
+              b64decode_padded(os.environ["APPLE_CERTIFICATE_P12_B64"])
           )
           PY
           security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -117,11 +122,16 @@ jobs:
           import os
           import pathlib
 
+          def b64decode_padded(s):
+              s = s.strip()
+              s += "=" * (-len(s) % 4)
+              return base64.b64decode(s)
+
           pathlib.Path(os.environ["APPLE_API_KEY_PATH"]).write_bytes(
-              base64.b64decode(os.environ["APPLE_API_KEY_P8_B64"])
+              b64decode_padded(os.environ["APPLE_API_KEY_P8_B64"])
           )
           pathlib.Path(os.environ["SPARKLE_PRIVATE_KEY_PATH"]).write_bytes(
-              base64.b64decode(os.environ["SPARKLE_PRIVATE_KEY_B64"])
+              b64decode_padded(os.environ["SPARKLE_PRIVATE_KEY_B64"])
           )
           PY
           chmod 600 "$APPLE_API_KEY_PATH" "$SPARKLE_PRIVATE_KEY_PATH"
