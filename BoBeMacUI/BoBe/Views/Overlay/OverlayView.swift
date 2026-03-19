@@ -202,7 +202,7 @@ struct OverlayView: View {
         }
         .padding(.trailing, 12)
         .padding(.bottom, 8)
-        .padding(.top, self.isChatVisible ? 6 : 0)
+        .padding(.top, 0)
         .zIndex(3)
     }
 
@@ -350,9 +350,7 @@ struct OverlayView: View {
 
     private func setChatPresentation(_ presentation: ChatPresentation) {
         guard self.chatPresentation != presentation else { return }
-        withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-            self.chatPresentation = presentation
-        }
+        self.chatPresentation = presentation
     }
 
     // MARK: - Window Sizing
