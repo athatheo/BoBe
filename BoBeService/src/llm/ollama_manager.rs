@@ -270,6 +270,8 @@ impl OllamaManager {
         model_name: &str,
         is_canceled: impl Fn() -> bool,
     ) -> Result<(), AppError> {
+        ensure_ollama_key_pair();
+
         let url = format!("{}/api/pull", self.base_url);
         let resp = self
             .client
@@ -427,6 +429,34 @@ fn lock_or_recover<'a, T>(
             warn!(lock = lock_name, "mutex poisoned, recovering");
             poisoned.into_inner()
         }
+    }
+}
+
+/// Ensure `~/.ollama/id_ed25519` exists. Ollama requires this key pair to
+/// authenticate with the model registry; without it every pull fails with
+/// "open ~/.ollama/id_ed25519: no such file or directory".
+pub(crate) fn ensure_ollama_key_pair() {
+    let ollama_dir = match dirs::home_dir() {
+        Some(home) => home.join(".ollama"),
+        None => return,
+    };
+    let key_path = ollama_dir.join("id_ed25519");
+    if key_path.exists() {
+        return;
+    }
+    if std::fs::create_dir_all(&ollama_dir).is_err() {
+        warn!("ollama.failed_to_create_dir: {}", ollama_dir.display());
+        return;
+    }
+    let status = std::process::Command::new("ssh-keygen")
+        .args(["-t", "ed25519", "-f"])
+        .arg(&key_path)
+        .args(["-N", "", "-q"])
+        .status();
+    match status {
+        Ok(s) if s.success() => info!("ollama.generated_registry_key"),
+        Ok(s) => warn!("ollama.keygen_failed: exit {s}"),
+        Err(e) => warn!("ollama.keygen_failed: {e}"),
     }
 }
 
