@@ -117,6 +117,8 @@ pub(crate) async fn pull_model(
             return;
         }
 
+        crate::llm::ollama_manager::ensure_ollama_key_pair().await;
+
         let url = format!("{ollama_url}/api/pull");
         match client.post(&url)
             .json(&serde_json::json!({"name": model_name, "stream": true}))
