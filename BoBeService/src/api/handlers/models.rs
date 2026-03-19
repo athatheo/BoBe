@@ -117,7 +117,7 @@ pub(crate) async fn pull_model(
             return;
         }
 
-        crate::llm::ollama_manager::ensure_ollama_key_pair();
+        crate::llm::ollama_manager::ensure_ollama_key_pair().await;
 
         let url = format!("{ollama_url}/api/pull");
         match client.post(&url)

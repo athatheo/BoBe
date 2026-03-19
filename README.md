@@ -3,7 +3,7 @@
 <p align="center">
   <em>A local-first proactive AI companion for macOS</em>
   <br>
-  <a href="https://www.bobebot.com">Website , BoBeBot.com</a>
+  <a href="https://www.bobebot.com">Website — BoBeBot.com</a>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 
 ---
 
-BoBe lives on your desktop as a transparent overlay. It watches what you're working on, builds memories over time, tracks your goals, and reaches out when it thinks it can help , like a thoughtful colleague who actually pays attention.
+BoBe lives on your desktop as a transparent overlay. It watches what you're working on, builds memories over time, tracks your goals, and reaches out when it thinks it can help — like a thoughtful colleague who actually pays attention.
 
 Everything runs locally by default. Your data never leaves your machine unless you choose a cloud LLM provider.
 
@@ -27,7 +27,7 @@ Everything runs locally by default. Your data never leaves your machine unless y
 | **Observes your work** | Periodic screen captures analyzed by a vision model to understand context |
 | **Remembers you** | Short-term and long-term memory from conversations and observations |
 | **Tracks your goals** | Extracts goals from conversation, persists them, references them proactively |
-| **Reaches out proactively** | A decision engine evaluates when help is valuable , not a chatbot waiting for input |
+| **Reaches out proactively** | A decision engine evaluates when help is valuable — not a chatbot waiting for input |
 | **Respects your flow** | Cooldown logic and engagement awareness prevent interruptions |
 | **Uses tools** | File access, memory search, and extensible [MCP](https://modelcontextprotocol.io/) server integration |
 | **Customizable personality** | Soul documents shape how BoBe communicates |
@@ -37,7 +37,7 @@ Everything runs locally by default. Your data never leaves your machine unless y
 | Platform | Architecture | Minimum Version | Status |
 |----------|-------------|-----------------|--------|
 | macOS    | Apple Silicon (arm64) | macOS 14 Sonoma | ✅ Supported |
-| Windows  | x86_64 / arm64 | , | 🚧 In development |
+| Windows  | x86_64 / arm64 | — | 🚧 In development |
 
 > **Note:** Linux and iOS are not currently planned.
 
@@ -61,10 +61,10 @@ just run
 
 On first launch, BoBe's setup wizard walks you through:
 
-1. **Choose your AI** , local (Ollama, runs on your Mac) or cloud (OpenAI / Azure)
-2. **Local setup** , BoBe downloads and manages a local Ollama installation + models automatically
-3. **Cloud setup** , paste your API key and pick a model
-4. **Screen awareness** (optional) , grant Screen Recording permission so BoBe can observe what you're working on
+1. **Choose your AI** — local (Ollama, runs on your Mac) or cloud (OpenAI / Azure)
+2. **Local setup** — BoBe downloads and manages a local Ollama installation + models automatically
+3. **Cloud setup** — paste your API key and pick a model
+4. **Screen awareness** (optional) — grant Screen Recording permission so BoBe can observe what you're working on
 
 After setup, BoBe appears as a floating overlay on your desktop with a menu bar icon.
 
@@ -89,7 +89,7 @@ BOBE_CAPTURE__ENABLED=false
 BOBE_CAPTURE__INTERVAL_SECONDS=30
 ```
 
-Data is stored at `~/.bobe/` , SQLite database, configuration, goals, and MCP server config.
+Data is stored at `~/.bobe/` — SQLite database, configuration, goals, and MCP server config.
 
 ## Security
 
@@ -97,7 +97,7 @@ BoBe handles sensitive data including screen captures and API keys. See [SECURIT
 
 Key security properties:
 
-- **Localhost only** , all endpoints bind to `127.0.0.1`, never exposed to the network
+- **Localhost only** — all endpoints bind to `127.0.0.1`, never exposed to the network
 - **API keys** stored in macOS Keychain, handled in-memory with the `secrecy` crate
 - **File tools** use path canonicalization + ancestry checks
 - **MCP commands** validated against a configurable blocklist
