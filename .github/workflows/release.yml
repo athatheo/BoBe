@@ -29,12 +29,15 @@ jobs:
     environment: release-signing
     env:
       VERSION: ${{ inputs.version }}
-      KEYCHAIN_PATH: ${{ runner.temp }}/release-signing.keychain-db
-      CERTIFICATE_PATH: ${{ runner.temp }}/developer-id-application.p12
-      APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
-      SPARKLE_PRIVATE_KEY_PATH: ${{ runner.temp }}/sparkle-private-key
 
     steps:
+      - name: Set runner-local paths
+        run: |
+          echo "KEYCHAIN_PATH=$RUNNER_TEMP/release-signing.keychain-db" >> "$GITHUB_ENV"
+          echo "CERTIFICATE_PATH=$RUNNER_TEMP/developer-id-application.p12" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/apple-api-key.p8" >> "$GITHUB_ENV"
+          echo "SPARKLE_PRIVATE_KEY_PATH=$RUNNER_TEMP/sparkle-private-key" >> "$GITHUB_ENV"
+
       - name: Mask all secrets in logs
         env:
           S1: ${{ secrets.APPLE_SIGNING_IDENTITY }}
