@@ -166,7 +166,7 @@ sparkle-sign-update version="1.0.0" private-key-file="":
     fi
     ARGS=()
     if [[ -n "$private_key_file" ]]; then
-        if [[ ! -f "$private_key_file" ]]; then
+        if [[ "$private_key_file" != "-" && ! -f "$private_key_file" ]]; then
             echo "Sparkle private key file not found: $private_key_file"
             exit 1
         fi
@@ -175,7 +175,7 @@ sparkle-sign-update version="1.0.0" private-key-file="":
     "$SPARKLE_BIN/sign_update" "${ARGS[@]}" "$archive"
 
 # Generate/update appcast.xml from staged Sparkle archives
-sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" ed-dsa-key-file="" link="":
+sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" ed-key-file="" link="" ed-dsa-key-file="":
     #!/bin/bash
     set -euo pipefail
     normalize_named_arg() {
@@ -189,16 +189,27 @@ sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" ed-
     }
     archives_dir="$(normalize_named_arg "archives_dir" "{{ archives_dir }}")"
     download_url_prefix="$(normalize_named_arg "download_url_prefix" "{{ download_url_prefix }}")"
-    ed_dsa_key_file="$(normalize_named_arg "ed-dsa-key-file" "{{ ed-dsa-key-file }}")"
+    ed_key_file="$(normalize_named_arg "ed-key-file" "{{ ed-key-file }}")"
+    ed_key_file="$(normalize_named_arg "ed-dsa-key-file" "$ed_key_file")"
+    legacy_ed_dsa_key_file="$(normalize_named_arg "ed-dsa-key-file" "{{ ed-dsa-key-file }}")"
+    legacy_ed_dsa_key_file="$(normalize_named_arg "ed-key-file" "$legacy_ed_dsa_key_file")"
     link="$(normalize_named_arg "link" "{{ link }}")"
+    if [[ -n "$ed_key_file" && -n "$legacy_ed_dsa_key_file" && "$ed_key_file" != "$legacy_ed_dsa_key_file" ]]; then
+        echo "Conflicting Sparkle key file arguments: ed-key-file and ed-dsa-key-file"
+        exit 1
+    fi
+    sparkle_key_file="$ed_key_file"
+    if [[ -z "$sparkle_key_file" ]]; then
+        sparkle_key_file="$legacy_ed_dsa_key_file"
+    fi
     SPARKLE_BIN="BoBeMacUI/.build/artifacts/sparkle/Sparkle/bin"
     if [[ ! -x "$SPARKLE_BIN/generate_appcast" ]]; then
         echo "Sparkle tools not found. Run: cd BoBeMacUI && swift package resolve"
         exit 1
     fi
     mkdir -p "$archives_dir"
-    if [[ -n "$ed_dsa_key_file" && ! -f "$ed_dsa_key_file" ]]; then
-        echo "Sparkle private key file not found: $ed_dsa_key_file"
+    if [[ -n "$sparkle_key_file" && "$sparkle_key_file" != "-" && ! -f "$sparkle_key_file" ]]; then
+        echo "Sparkle private key file not found: $sparkle_key_file"
         exit 1
     fi
     shopt -s nullglob
@@ -207,12 +218,11 @@ sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" ed-
         "$archives_dir"/*.tar
         "$archives_dir"/*.tar.gz
         "$archives_dir"/*.tgz
-        "$archives_dir"/*.pkg
         "$archives_dir"/*.dmg
     )
     if (( ${#archives[@]} == 0 )); then
         echo "No staged Sparkle archives found in $archives_dir"
-        echo "Stage a ZIP, PKG, DMG, or tarball there before running generate_appcast"
+        echo "Stage a ZIP, DMG, or tarball there before running generate_appcast"
         exit 1
     fi
     ARGS=()
@@ -222,8 +232,8 @@ sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" ed-
     if [[ -n "$link" ]]; then
         ARGS+=(--link "$link")
     fi
-    if [[ -n "$ed_dsa_key_file" ]]; then
-        ARGS+=(--ed-dsa-key-file "$ed_dsa_key_file")
+    if [[ -n "$sparkle_key_file" ]]; then
+        ARGS+=(--ed-key-file "$sparkle_key_file")
     fi
     "$SPARKLE_BIN/generate_appcast" "${ARGS[@]}" "$archives_dir"
     echo "Generated appcast at $archives_dir/appcast.xml"
