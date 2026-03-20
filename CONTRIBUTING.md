@@ -62,15 +62,15 @@ The **Swift app** is a native macOS overlay — a floating avatar with chat bubb
 | `just backend` / `just run-backend` | Run only the Rust daemon (`cargo run -- serve`) |
 | `just build` | Build release binaries and bundle `build/BoBe.app` |
 | `just release 1.0.0` | Build + sign app + create/sign DMG |
-| `just ship <ver> <apple-id> <team> <pw>` | End-to-end ship flow (clean → build → sign → DMG → notarize → staple → Sparkle) |
+| `just ship 1.0.0 "Developer ID Application"` | End-to-end ship flow (clean → build → sign → DMG → notarize → staple → Sparkle) |
 | `just clean` | Clean cargo, SwiftPM, and `build/` artifacts |
 | `just check` / `just test` | Run Rust + Swift checks (fmt, clippy, tests, SwiftLint, Swift build) |
 | `just format-swift` | Format Swift sources with SwiftFormat |
 | `just check-swift-format` | Lint Swift formatting without rewriting files |
 | `just xcode` | Regenerate Xcode project files via XcodeGen |
-| `just sparkle-zip version=1.0.0` | Create Sparkle update zip from `build/BoBe.app` |
-| `just sparkle-sign-update version=1.0.0` | Sign Sparkle zip archive with private Sparkle key |
-| `just sparkle-generate-appcast ...` | Generate/update Sparkle `appcast.xml` |
+| `just sparkle-zip 1.0.0` | Create Sparkle update zip from `build/BoBe.app` |
+| `just sparkle-sign-update 1.0.0 /path/to/sparkle-private-key` | Sign Sparkle zip archive with private Sparkle key |
+| `just sparkle-generate-appcast build/sparkle https://example.com/updates /path/to/sparkle-private-key` | Generate/update Sparkle `appcast.xml` |
 
 ### Backend Commands (Rust)
 

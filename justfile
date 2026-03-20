@@ -130,8 +130,8 @@ staple version="1.0.0":
 # Full release: build → sign app → create DMG → sign DMG
 release version="1.0.0" identity="Developer ID Application": (build version) (sign identity) (dmg version) (sign-dmg identity version)
     echo "Release build complete: build/BoBe-{{ version }}.dmg"
-    echo "Next: just notarize {{ version }} apple-id=... team-id=... password=..."
-    echo "   or: just notarize-api-key {{ version }} key-path=... key-id=... issuer=..."
+    echo "Next: set NOTARIZE_APPLE_ID / NOTARIZE_TEAM_ID / NOTARIZE_PASSWORD, then run: just notarize {{ version }}"
+    echo "   or: just notarize-api-key {{ version }} /path/to/AuthKey.p8 KEY_ID ISSUER_ID"
     echo "Then: just staple {{ version }}"
 
 # Create Sparkle-friendly ZIP archive of the signed app bundle
@@ -143,39 +143,90 @@ sparkle-zip version="1.0.0":
 sparkle-sign-update version="1.0.0" private-key-file="":
     #!/bin/bash
     set -euo pipefail
+    normalize_named_arg() {
+        local parameter_name="$1"
+        local value="$2"
+        if [[ "$value" == "${parameter_name}="* ]]; then
+            printf '%s\n' "${value#"${parameter_name}="}"
+            return
+        fi
+        printf '%s\n' "$value"
+    }
+    version="$(normalize_named_arg "version" "{{ version }}")"
+    private_key_file="$(normalize_named_arg "private-key-file" "{{ private-key-file }}")"
     SPARKLE_BIN="BoBeMacUI/.build/artifacts/sparkle/Sparkle/bin"
     if [[ ! -x "$SPARKLE_BIN/sign_update" ]]; then
         echo "Sparkle tools not found. Run: cd BoBeMacUI && swift package resolve"
         exit 1
     fi
-    ARGS=()
-    if [[ -n "{{ private-key-file }}" ]]; then
-        ARGS+=(-f "{{ private-key-file }}")
+    archive="build/BoBe-$version.zip"
+    if [[ ! -f "$archive" ]]; then
+        echo "Sparkle archive not found: $archive. Run: just sparkle-zip $version"
+        exit 1
     fi
-    "$SPARKLE_BIN/sign_update" "${ARGS[@]}" "build/BoBe-{{ version }}.zip"
+    ARGS=()
+    if [[ -n "$private_key_file" ]]; then
+        if [[ ! -f "$private_key_file" ]]; then
+            echo "Sparkle private key file not found: $private_key_file"
+            exit 1
+        fi
+        ARGS+=(-f "$private_key_file")
+    fi
+    "$SPARKLE_BIN/sign_update" "${ARGS[@]}" "$archive"
 
 # Generate/update appcast.xml from staged Sparkle archives
-sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" link="" ed-dsa-key-file="":
+sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" ed-dsa-key-file="" link="":
     #!/bin/bash
     set -euo pipefail
+    normalize_named_arg() {
+        local parameter_name="$1"
+        local value="$2"
+        if [[ "$value" == "${parameter_name}="* ]]; then
+            printf '%s\n' "${value#"${parameter_name}="}"
+            return
+        fi
+        printf '%s\n' "$value"
+    }
+    archives_dir="$(normalize_named_arg "archives_dir" "{{ archives_dir }}")"
+    download_url_prefix="$(normalize_named_arg "download_url_prefix" "{{ download_url_prefix }}")"
+    ed_dsa_key_file="$(normalize_named_arg "ed-dsa-key-file" "{{ ed-dsa-key-file }}")"
+    link="$(normalize_named_arg "link" "{{ link }}")"
     SPARKLE_BIN="BoBeMacUI/.build/artifacts/sparkle/Sparkle/bin"
     if [[ ! -x "$SPARKLE_BIN/generate_appcast" ]]; then
         echo "Sparkle tools not found. Run: cd BoBeMacUI && swift package resolve"
         exit 1
     fi
-    mkdir -p "{{ archives_dir }}"
+    mkdir -p "$archives_dir"
+    if [[ -n "$ed_dsa_key_file" && ! -f "$ed_dsa_key_file" ]]; then
+        echo "Sparkle private key file not found: $ed_dsa_key_file"
+        exit 1
+    fi
+    shopt -s nullglob
+    archives=(
+        "$archives_dir"/*.zip
+        "$archives_dir"/*.tar
+        "$archives_dir"/*.tar.gz
+        "$archives_dir"/*.tgz
+        "$archives_dir"/*.pkg
+        "$archives_dir"/*.dmg
+    )
+    if (( ${#archives[@]} == 0 )); then
+        echo "No staged Sparkle archives found in $archives_dir"
+        echo "Stage a ZIP, PKG, DMG, or tarball there before running generate_appcast"
+        exit 1
+    fi
     ARGS=()
-    if [[ -n "{{ download_url_prefix }}" ]]; then
-        ARGS+=(--download-url-prefix "{{ download_url_prefix }}")
+    if [[ -n "$download_url_prefix" ]]; then
+        ARGS+=(--download-url-prefix "$download_url_prefix")
     fi
-    if [[ -n "{{ link }}" ]]; then
-        ARGS+=(--link "{{ link }}")
+    if [[ -n "$link" ]]; then
+        ARGS+=(--link "$link")
     fi
-    if [[ -n "{{ ed-dsa-key-file }}" ]]; then
-        ARGS+=(--ed-dsa-key-file "{{ ed-dsa-key-file }}")
+    if [[ -n "$ed_dsa_key_file" ]]; then
+        ARGS+=(--ed-dsa-key-file "$ed_dsa_key_file")
     fi
-    "$SPARKLE_BIN/generate_appcast" "${ARGS[@]}" "{{ archives_dir }}"
-    echo "Generated appcast at {{ archives_dir }}/appcast.xml"
+    "$SPARKLE_BIN/generate_appcast" "${ARGS[@]}" "$archives_dir"
+    echo "Generated appcast at $archives_dir/appcast.xml"
 
 # Build debug + launch app (Swift app manages backend lifecycle)
 run:
