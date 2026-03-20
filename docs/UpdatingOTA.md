@@ -133,19 +133,20 @@ Important notes:
 
 ```bash
 # 1. Build, sign, notarize as usual
-just build version=X.Y.Z
-just sign identity="Developer ID Application"
+just build X.Y.Z
+just sign "Developer ID Application"
 
 # 2. Create + sign Sparkle update archive
-just sparkle-zip version=X.Y.Z
-just sparkle-sign-update version=X.Y.Z
+just sparkle-zip X.Y.Z
+just sparkle-sign-update X.Y.Z /path/to/sparkle-private-key
 
 # 3. Generate appcast
 mkdir -p build/sparkle
 cp "build/BoBe-X.Y.Z.zip" build/sparkle/
 just sparkle-generate-appcast \
-  archives_dir=build/sparkle \
-  download_url_prefix=https://bobebot.com/updates/macos
+  build/sparkle \
+  https://bobebot.com/updates/macos \
+  /path/to/sparkle-private-key
 
 # 4. Upload ZIP first, then appcast (so clients don't see a broken update)
 rsync -av "build/sparkle/BoBe-X.Y.Z.zip" "$HOST:$PATH/"
@@ -193,10 +194,10 @@ For CI, prefer an App Store Connect API key over Apple ID password flows:
 
 ```bash
 just notarize-api-key \
-  version=X.Y.Z \
-  key-path=/path/to/AuthKey_ABC123DEFG.p8 \
-  key-id=ABC123DEFG \
-  issuer=11223344-5566-7788-9900-aabbccddeeff
+  X.Y.Z \
+  /path/to/AuthKey_ABC123DEFG.p8 \
+  ABC123DEFG \
+  11223344-5566-7788-9900-aabbccddeeff
 ```
 
 ## Recommended GitHub environments

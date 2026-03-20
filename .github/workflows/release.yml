@@ -165,14 +165,16 @@ jobs:
           mkdir -p build/sparkle
           cp "build/BoBe-$VERSION.zip" "build/sparkle/BoBe-$VERSION.zip"
           just sparkle-generate-appcast \
-            archives_dir=build/sparkle \
-            download_url_prefix="https://github.com/athatheo/BoBe/releases/download/v${VERSION}/" \
-            ed-dsa-key-file="$SPARKLE_PRIVATE_KEY_PATH"
+            "build/sparkle" \
+            "https://github.com/athatheo/BoBe/releases/download/v${VERSION}/" \
+            "$SPARKLE_PRIVATE_KEY_PATH"
 
       - name: Verify appcast is valid
         run: |
           xmllint --noout build/sparkle/appcast.xml
           grep -q "sparkle:version" build/sparkle/appcast.xml
+          grep -q "sparkle:edSignature" build/sparkle/appcast.xml
+          grep -q "BoBe-$VERSION.zip" build/sparkle/appcast.xml
           grep -q "$VERSION" build/sparkle/appcast.xml
           echo "Appcast valid for v$VERSION"
 
