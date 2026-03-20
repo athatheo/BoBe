@@ -216,7 +216,7 @@ Split release secrets so one workflow compromise does not expose everything at o
 
 ### `release-publish`
 
-- `WEBSITE_DEPLOY_TOKEN` (fine-grained PAT with `contents: write` on `johnkozaris/BoBeWebsite`)
+- `WEBSITE_DEPLOY_TOKEN` (fine-grained PAT with `contents: write` and `pull_requests: write` on `johnkozaris/BoBeWebsite`)
 - `UPDATE_HOST` (reserved for future direct deploy)
 - `UPDATE_PATH`
 - `UPDATE_USER`

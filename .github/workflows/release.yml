@@ -211,8 +211,8 @@ jobs:
     name: Publish release and Sparkle update
     if: ${{ inputs.publish_update }}
     needs: build-sign-notarize
-    runs-on: macos-latest
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: release-publish
     permissions:
       contents: write
@@ -275,7 +275,7 @@ jobs:
           mkdir -p "$(dirname "$DEST_PATH")"
           cp "$GITHUB_WORKSPACE/build/appcast/appcast.xml" "$DEST_PATH"
 
-          if git diff --quiet "$DEST_PATH" 2>/dev/null; then
+          if git diff --quiet -- "$DEST_PATH" 2>/dev/null && ! git ls-files --others --exclude-standard | grep -q "$(basename "$DEST_PATH")"; then
             echo "No appcast changes"
             exit 0
           fi
