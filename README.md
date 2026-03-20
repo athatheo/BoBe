@@ -37,7 +37,7 @@ Everything runs locally by default. Your data never leaves your machine unless y
 | Platform | Architecture | Minimum Version | Status |
 |----------|-------------|-----------------|--------|
 | macOS    | Apple Silicon (arm64) | macOS 14 Sonoma | ✅ Supported |
-| Windows  | x86_64 / arm64 | — | 🚧 In development |
+| Windows  | x86_64 / arm64 | — | 🚧 TBD |
 
 > **Note:** Linux and iOS are not currently planned.
 

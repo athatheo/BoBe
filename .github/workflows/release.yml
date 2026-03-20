@@ -86,6 +86,7 @@ jobs:
           import os
           import pathlib
 
+
           def b64decode_padded(s):
               s = s.strip()
               s += "=" * (-len(s) % 4)
