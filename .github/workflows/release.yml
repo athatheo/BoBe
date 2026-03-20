@@ -160,6 +160,22 @@ jobs:
             "$VERSION" \
             "$SPARKLE_PRIVATE_KEY_PATH"
 
+      - name: Generate appcast
+        run: |
+          mkdir -p build/sparkle
+          cp "build/BoBe-$VERSION.zip" "build/sparkle/BoBe-$VERSION.zip"
+          just sparkle-generate-appcast \
+            archives_dir=build/sparkle \
+            download_url_prefix="https://github.com/athatheo/BoBe/releases/download/v${VERSION}/" \
+            ed-dsa-key-file="$SPARKLE_PRIVATE_KEY_PATH"
+
+      - name: Verify appcast is valid
+        run: |
+          xmllint --noout build/sparkle/appcast.xml
+          grep -q "sparkle:version" build/sparkle/appcast.xml
+          grep -q "$VERSION" build/sparkle/appcast.xml
+          echo "Appcast valid for v$VERSION"
+
       - name: Stage release artifacts
         run: |
           mkdir -p build/release-artifacts
@@ -178,6 +194,13 @@ jobs:
           path: build/release-artifacts/*
           if-no-files-found: error
 
+      - name: Upload appcast
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: appcast-${{ inputs.version }}
+          path: build/sparkle/appcast.xml
+          if-no-files-found: error
+
       - name: Clean up signing material
         if: always()
         run: |
@@ -185,11 +208,11 @@ jobs:
           security delete-keychain "$KEYCHAIN_PATH" || true
 
   publish-update:
-    name: Publish Sparkle update
+    name: Publish release and Sparkle update
     if: ${{ inputs.publish_update }}
     needs: build-sign-notarize
-    runs-on: macos-latest
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: release-publish
     permissions:
       contents: write
@@ -203,35 +226,22 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Install publish tools
-        run: |
-          if ! just --version 2>/dev/null | grep -qx 'just 1.46.0'; then
-            cargo install --locked just --version 1.46.0
-          fi
-
       - name: Download signed release artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: signed-release-${{ inputs.version }}
           path: build/release-artifacts
 
+      - name: Download appcast
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: appcast-${{ inputs.version }}
+          path: build/appcast
+
       - name: Verify artifact integrity
         run: |
           cd build/release-artifacts
           shasum -a 256 -c SHA256SUMS
-
-      - name: Resolve Sparkle tools
-        run: |
-          (cd BoBeMacUI && swift package resolve)
-
-      - name: Generate appcast from local archive history
-        run: |
-          mkdir -p build/sparkle
-          find . -maxdepth 1 -name 'BoBe-*.zip' -exec cp {} build/sparkle/ \;
-          cp "build/release-artifacts/BoBe-$VERSION.zip" "build/sparkle/BoBe-$VERSION.zip"
-          just sparkle-generate-appcast \
-            "build/sparkle" \
-            "https://github.com/athatheo/BoBe/releases/download/v${VERSION}/"
 
       - name: Create GitHub Release and upload assets
         env:
@@ -250,34 +260,39 @@ jobs:
               "build/release-artifacts/BoBe-$VERSION.zip"
           fi
 
-      - name: Update appcast via pull request
+      - name: Deploy appcast to website repo
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN }}
         run: |
-          cp build/sparkle/appcast.xml appcast.xml
-          if git diff --quiet appcast.xml; then
+          WEBSITE_REPO="johnkozaris/BoBeWebsite"
+          BRANCH="chore/appcast-v$VERSION"
+          DEST_PATH="public/updates/macos/appcast.xml"
+
+          # Clone website repo (shallow, just need to commit)
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${WEBSITE_REPO}.git" /tmp/website
+          cd /tmp/website
+
+          mkdir -p "$(dirname "$DEST_PATH")"
+          cp "$GITHUB_WORKSPACE/build/appcast/appcast.xml" "$DEST_PATH"
+
+          if git diff --quiet -- "$DEST_PATH" 2>/dev/null && ! git ls-files --others --exclude-standard | grep -q "$(basename "$DEST_PATH")"; then
             echo "No appcast changes"
             exit 0
           fi
-          BRANCH="chore/appcast-v$VERSION"
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add appcast.xml
+          git add "$DEST_PATH"
           git commit -m "chore: update appcast for v$VERSION"
           git push --force-with-lease -u origin "$BRANCH"
-          if gh pr view "$BRANCH" >/dev/null 2>&1; then
-            echo "PR for $BRANCH already exists, updated via force push"
-          else
-            gh pr create \
-              --title "chore: update appcast for v$VERSION" \
-              --body "Auto-generated by the release workflow for v$VERSION." \
-              --base main
-          fi
 
-      - name: Verify appcast is valid
-        run: |
-          xmllint --noout appcast.xml
-          grep -q "sparkle:version" appcast.xml
-          grep -q "$VERSION" appcast.xml
-          echo "Appcast valid for v$VERSION"
+          # Create PR on the website repo
+          cd "$GITHUB_WORKSPACE"
+          GH_REPO="$WEBSITE_REPO" gh pr view "$BRANCH" >/dev/null 2>&1 || \
+            GH_REPO="$WEBSITE_REPO" gh pr create \
+              --repo "$WEBSITE_REPO" \
+              --title "chore: update appcast for v$VERSION" \
+              --body "Auto-generated by the BoBe release workflow for v$VERSION." \
+              --base main \
+              --head "$BRANCH"

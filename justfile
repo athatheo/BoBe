@@ -155,7 +155,7 @@ sparkle-sign-update version="1.0.0" private-key-file="":
     "$SPARKLE_BIN/sign_update" "${ARGS[@]}" "build/BoBe-{{ version }}.zip"
 
 # Generate/update appcast.xml from staged Sparkle archives
-sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" link="":
+sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" link="" ed-dsa-key-file="":
     #!/bin/bash
     set -euo pipefail
     SPARKLE_BIN="BoBeMacUI/.build/artifacts/sparkle/Sparkle/bin"
@@ -170,6 +170,9 @@ sparkle-generate-appcast archives_dir="build/sparkle" download_url_prefix="" lin
     fi
     if [[ -n "{{ link }}" ]]; then
         ARGS+=(--link "{{ link }}")
+    fi
+    if [[ -n "{{ ed-dsa-key-file }}" ]]; then
+        ARGS+=(--ed-dsa-key-file "{{ ed-dsa-key-file }}")
     fi
     "$SPARKLE_BIN/generate_appcast" "${ARGS[@]}" "{{ archives_dir }}"
     echo "Generated appcast at {{ archives_dir }}/appcast.xml"
