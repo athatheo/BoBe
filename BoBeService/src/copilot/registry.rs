@@ -27,11 +27,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::Local;
+use chrono::{Local, NaiveDate};
 use github_copilot_sdk::generated::api_types::{ModeSetRequest, SessionMode};
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::types::{InfiniteSessionConfig, ResumeSessionConfig, SessionConfig};
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex, OnceCell};
 
 use crate::error::AppError;
 
@@ -57,7 +57,16 @@ pub(crate) struct WorkerRegistry {
     observe: OnceCell<Arc<BatchWorker>>,
     consolidate: OnceCell<Arc<BatchWorker>>,
     vision: OnceCell<Arc<VisionWorker>>,
-    chat: OnceCell<Arc<CopilotChatWorker>>,
+    /// Chat is keyed by local date so the cache invalidates at the
+    /// midnight boundary — a `OnceCell` would pin the first day's
+    /// session forever. The mutex is contended only at session-spawn
+    /// time, not on every `send`.
+    chat: Mutex<Option<DatedChatWorker>>,
+}
+
+struct DatedChatWorker {
+    date: NaiveDate,
+    worker: Arc<CopilotChatWorker>,
 }
 
 impl WorkerRegistry {
@@ -72,7 +81,7 @@ impl WorkerRegistry {
             observe: OnceCell::new(),
             consolidate: OnceCell::new(),
             vision: OnceCell::new(),
-            chat: OnceCell::new(),
+            chat: Mutex::new(None),
         })
     }
 
@@ -121,13 +130,42 @@ impl WorkerRegistry {
     }
 
     pub(crate) async fn chat(&self) -> Result<Arc<CopilotChatWorker>, AppError> {
-        self.chat
-            .get_or_try_init(|| async {
-                let session = self.create_or_resume(WorkerClass::Chat).await?;
-                Ok::<_, AppError>(CopilotChatWorker::new(session))
-            })
-            .await
-            .cloned()
+        // Date-keyed cache: at local midnight the previous day's worker
+        // is dropped (its `Drop` calls `disconnect`, preserving on-disk
+        // state) and a new one is spawned against today's persistent ID.
+        let today = Local::now().date_naive();
+        let mut guard = self.chat.lock().await;
+
+        if let Some(existing) = guard.as_ref()
+            && existing.date == today
+        {
+            return Ok(Arc::clone(&existing.worker));
+        }
+
+        // Either no chat worker, or yesterday's. Spawn fresh for today.
+        if let Some(stale) = guard.take() {
+            tracing::info!(
+                old_date = %stale.date,
+                new_date = %today,
+                "chat worker rotating across local-date boundary"
+            );
+            // Best-effort disconnect of yesterday's session so it
+            // releases its idle_waiter slot and the SDK can clean up
+            // promptly. The on-disk session state is preserved by
+            // disconnect (vs destroy), so the prior day's history is
+            // still queryable via the SDK if we ever want to.
+            if let Err(e) = stale.worker.shutdown().await {
+                tracing::warn!(err = %e, "chat rotation: stale shutdown failed");
+            }
+        }
+
+        let session = self.create_or_resume(WorkerClass::Chat).await?;
+        let worker = CopilotChatWorker::new(session);
+        *guard = Some(DatedChatWorker {
+            date: today,
+            worker: Arc::clone(&worker),
+        });
+        Ok(worker)
     }
 
     /// Best-effort shutdown of every spawned session, then the shared
@@ -146,8 +184,8 @@ impl WorkerRegistry {
         if let Some(w) = self.vision.get() {
             log_shutdown("vision", w.shutdown().await);
         }
-        if let Some(w) = self.chat.get() {
-            log_shutdown("chat", w.shutdown().await);
+        if let Some(dated) = self.chat.lock().await.take() {
+            log_shutdown("chat", dated.worker.shutdown().await);
         }
         self.client.stop().await;
     }
@@ -196,10 +234,25 @@ impl WorkerRegistry {
             }
             match client.resume_session(resume_cfg).await {
                 Ok(session) => {
-                    apply_runtime_mode(&session, class).await;
+                    apply_runtime_mode(&session, class).await?;
+                    // The CLI may reassign the session id on resume (per the
+                    // SDK docstring on `Session::resume`). If so, re-save so
+                    // the next daemon start resumes the *current* id rather
+                    // than a stale one — otherwise resume silently fails
+                    // and we lose accumulated context every restart.
+                    let live_id = session.id().clone();
+                    if live_id != saved {
+                        tracing::info!(
+                            class = %class.name(),
+                            old_id = %saved,
+                            new_id = %live_id,
+                            "CLI reassigned session id on resume; updating store"
+                        );
+                        self.session_store.save(class, now, &live_id).await?;
+                    }
                     tracing::info!(
                         class = %class.name(),
-                        session_id = %saved,
+                        session_id = %live_id,
                         "resumed copilot session from disk"
                     );
                     return Ok(Arc::new(session));
@@ -221,7 +274,7 @@ impl WorkerRegistry {
             .create_session(cfg_template())
             .await
             .map_err(|e| AppError::Internal(format!("create_session {}: {e}", class.name())))?;
-        apply_runtime_mode(&session, class).await;
+        apply_runtime_mode(&session, class).await?;
         let id = session.id().clone();
         self.session_store.save(class, now, &id).await?;
         tracing::info!(
@@ -250,10 +303,15 @@ fn log_shutdown(class: &str, result: Result<(), super::error::WorkerError>) {
 }
 
 /// Apply the worker class's mode (autopilot / interactive / plan) to a
-/// freshly-created or resumed `Session`. Wire method:
-/// `session.mode.set`. Logged warnings only — failure means the SDK
-/// refused the requested mode; the session still works in its default.
-async fn apply_runtime_mode(session: &Session, class: WorkerClass) {
+/// freshly-created or resumed `Session`. Wire method: `session.mode.set`.
+///
+/// **Failure policy:** for non-chat classes, mode mismatch is functionally
+/// fatal — autopilot is what makes batch jobs auto-loop to
+/// `task_complete`; without it `send_and_wait` hangs until the per-class
+/// turn timeout (3-15 minutes). We propagate the error so consumers see
+/// it immediately. Chat's default mode is interactive anyway, so a
+/// failed `set("interactive")` is recoverable; we log + continue.
+async fn apply_runtime_mode(session: &Session, class: WorkerClass) -> Result<(), AppError> {
     let mode = match class.mode() {
         "interactive" => SessionMode::Interactive,
         "plan" => SessionMode::Plan,
@@ -264,20 +322,26 @@ async fn apply_runtime_mode(session: &Session, class: WorkerClass) {
                 mode = other,
                 "unknown session mode; leaving session at default"
             );
-            return;
+            return Ok(());
         }
     };
-    if let Err(e) = session
-        .rpc()
-        .mode()
-        .set(ModeSetRequest { mode })
-        .await
-    {
-        tracing::warn!(
-            class = %class.name(),
-            requested_mode = %class.mode(),
-            err = %e,
-            "session.mode.set failed; continuing with default mode"
-        );
+    match session.rpc().mode().set(ModeSetRequest { mode }).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            if class == WorkerClass::Chat {
+                tracing::warn!(
+                    class = %class.name(),
+                    err = %e,
+                    "chat session.mode.set failed; default mode is interactive — continuing"
+                );
+                Ok(())
+            } else {
+                Err(AppError::Internal(format!(
+                    "session.mode.set({}) failed for {}: {e} — batch classes need autopilot",
+                    class.mode(),
+                    class.name()
+                )))
+            }
+        }
     }
 }

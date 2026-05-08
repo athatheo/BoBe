@@ -20,6 +20,7 @@
 
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_stream::stream;
 use async_trait::async_trait;
@@ -39,6 +40,35 @@ use super::ChatWorker;
 pub(crate) struct CopilotChatWorker {
     session: Arc<Session>,
     submit_lock: Arc<Mutex<()>>,
+}
+
+/// RAII guard that aborts an in-flight Copilot turn when the chat
+/// stream is dropped without seeing `Done`/`Error`. Without this, a
+/// caller that drops the stream early leaks a generating turn —
+/// continued cost, possibly mis-attributed `assistant.usage` events,
+/// and the next `send` racing the dying turn's residual events.
+struct AbortGuard {
+    session: Arc<Session>,
+    completed: Arc<AtomicBool>,
+}
+
+impl Drop for AbortGuard {
+    fn drop(&mut self) {
+        if self.completed.load(Ordering::Acquire) {
+            return;
+        }
+        let session = Arc::clone(&self.session);
+        // We're in a sync `Drop`; spawn the async abort. Failures here
+        // are best-effort — the worst case is we waste tokens on a
+        // turn the caller doesn't want.
+        tokio::spawn(async move {
+            if let Err(e) = session.abort().await {
+                tracing::warn!(err = %e, "chat stream dropped; abort failed");
+            } else {
+                tracing::debug!("chat stream dropped; aborted in-flight turn");
+            }
+        });
+    }
 }
 
 impl CopilotChatWorker {
@@ -66,7 +96,21 @@ impl ChatWorker for CopilotChatWorker {
         let session = Arc::clone(&self.session);
         let lock = Arc::clone(&self.submit_lock);
 
+        // Tracks whether the stream completed naturally (saw `Done` or
+        // `Error`). Cleared in the success path; the AbortGuard's Drop
+        // checks this and fires `session.abort()` only if the stream is
+        // dropped mid-turn (caller cancelled). Without this, a dropped
+        // stream leaks an in-flight Copilot turn — wasted quota + drift.
+        let abort_guard = AbortGuard {
+            session: Arc::clone(&session),
+            completed: Arc::new(AtomicBool::new(false)),
+        };
+        let completed = Arc::clone(&abort_guard.completed);
+
         let s = stream! {
+            // Move the AbortGuard into the stream. On stream drop, its
+            // Drop impl fires abort if `completed` is still false.
+            let _abort_on_drop = abort_guard;
             // Acquire lock inside the stream so a queued caller waits
             // cleanly, and releases on completion / drop.
             let _guard = lock.lock_owned().await;
@@ -76,12 +120,14 @@ impl ChatWorker for CopilotChatWorker {
             let opts = match build_message_options(prompt, WorkerClass::Chat) {
                 Ok(o) => o,
                 Err(e) => {
+                    completed.store(true, Ordering::Release);
                     yield ChatDelta::Error(format!("build message options: {e}"));
                     return;
                 }
             };
 
             if let Err(e) = session.send(opts).await {
+                completed.store(true, Ordering::Release);
                 yield ChatDelta::Error(format!("send failed: {e}"));
                 return;
             }
@@ -90,17 +136,15 @@ impl ChatWorker for CopilotChatWorker {
                 match events.recv().await {
                     Ok(event) => {
                         if let Some(delta) = event_to_delta(&event) {
-                            let stop = matches!(delta, ChatDelta::Done);
+                            let stop = matches!(delta, ChatDelta::Done | ChatDelta::Error(_));
                             yield delta;
                             if stop {
+                                completed.store(true, Ordering::Release);
                                 return;
                             }
                         }
                     }
                     Err(e) => {
-                        // RecvError is `non_exhaustive`; pattern-match on what
-                        // matters (Lagged is recoverable; everything else is
-                        // a closed-stream signal).
                         if let RecvError::Lagged(skipped) = &e {
                             tracing::warn!(
                                 skipped = skipped.skipped(),
@@ -108,6 +152,7 @@ impl ChatWorker for CopilotChatWorker {
                             );
                             continue;
                         }
+                        completed.store(true, Ordering::Release);
                         yield ChatDelta::Error(format!("event stream: {e}"));
                         return;
                     }

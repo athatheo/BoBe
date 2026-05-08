@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use crate::error::AppError;
 
@@ -35,15 +35,46 @@ pub(crate) const TARGET_MAX_BYTES: usize = 50 * 1024;
 
 pub(crate) struct MemoryFile {
     path: PathBuf,
-    write_lock: Mutex<()>,
+    /// Async mutex held for the duration of every write. Long-running
+    /// callers (consolidation) acquire it via `acquire_writer` to gate
+    /// out concurrent appends across the entire read-process-write cycle.
+    write_lock: Arc<Mutex<()>>,
+}
+
+/// RAII guard for an exclusive writer session. Held across the whole
+/// consolidate cycle so appends queue behind it instead of getting
+/// silently overwritten by `replace_all`.
+pub(crate) struct WriterGuard<'a> {
+    file: &'a MemoryFile,
+    _guard: OwnedMutexGuard<()>,
+}
+
+impl WriterGuard<'_> {
+    pub(crate) async fn read(&self) -> Result<String, AppError> {
+        self.file.read_unlocked().await
+    }
+    pub(crate) async fn replace_all(&self, body: String) -> Result<(), AppError> {
+        commit(&self.file.path, &body).await
+    }
 }
 
 impl MemoryFile {
     pub(crate) fn new(path: PathBuf) -> Arc<Self> {
         Arc::new(Self {
             path,
-            write_lock: Mutex::new(()),
+            write_lock: Arc::new(Mutex::new(())),
         })
+    }
+
+    /// Acquire the exclusive writer lock — held across reads + writes
+    /// in long-running operations like nightly consolidation. Appends
+    /// from other tasks block until the guard drops.
+    pub(crate) async fn acquire_writer(&self) -> WriterGuard<'_> {
+        let guard = Arc::clone(&self.write_lock).lock_owned().await;
+        WriterGuard {
+            file: self,
+            _guard: guard,
+        }
     }
 
     pub(crate) fn path(&self) -> &Path {
@@ -54,6 +85,10 @@ impl MemoryFile {
     /// `commit` guarantees readers see either the old or new contents
     /// whole, never a partial.
     pub(crate) async fn read(&self) -> Result<String, AppError> {
+        self.read_unlocked().await
+    }
+
+    async fn read_unlocked(&self) -> Result<String, AppError> {
         match tokio::fs::read_to_string(&self.path).await {
             Ok(s) => Ok(s),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -71,7 +106,7 @@ impl MemoryFile {
         entry: &str,
     ) -> Result<(), AppError> {
         let _guard = self.write_lock.lock().await;
-        let body = self.read().await?;
+        let body = self.read_unlocked().await?;
         let now: DateTime<Utc> = SystemTime::now().into();
         let date = now.format("%Y-%m-%d %H:%M");
         let line = format!("- {date} — {}", entry.trim());
@@ -79,9 +114,9 @@ impl MemoryFile {
         commit(&self.path, &new_body).await
     }
 
-    /// Replace the entire file. Used by the consolidation worker — the
-    /// caller is responsible for holding any larger lock if it needs to
-    /// exclude appends during consolidation.
+    /// Replace the entire file. Holds the writer lock for the duration
+    /// of the rewrite. For the consolidation case where the lock must
+    /// span both the read and the write, see [`acquire_writer`].
     #[allow(
         dead_code,
         reason = "Phase 2: consumed by the consolidation worker added in Phase 4"
@@ -90,7 +125,6 @@ impl MemoryFile {
         let _guard = self.write_lock.lock().await;
         commit(&self.path, &body).await
     }
-
 }
 
 /// Insert `line` at the end of the section identified by `## {heading}`,

@@ -77,9 +77,15 @@ impl ConsolidationTrigger {
     }
 
     /// Run one consolidation pass. Public for manual triggering / tests.
+    ///
+    /// Holds the memory.md writer lock for the entire read-process-write
+    /// cycle (worker turn can take up to 15 minutes). Concurrent
+    /// `append_under` calls block on the lock so they apply *after* the
+    /// new pruned body lands — no silent loss.
     pub(crate) async fn consolidate_once(&self) -> Result<ConsolidationOutcome, AppError> {
         let started = Instant::now();
-        let before = self.memory_file.read().await?;
+        let writer = self.memory_file.acquire_writer().await;
+        let before = writer.read().await?;
         let before_bytes = before.len();
 
         let worker = self.workers.consolidate().await?;
@@ -119,7 +125,7 @@ impl ConsolidationTrigger {
         }
 
         let after_bytes = new_body.len();
-        self.memory_file.replace_all(new_body).await?;
+        writer.replace_all(new_body).await?;
 
         let took = started.elapsed();
         tracing::info!(
