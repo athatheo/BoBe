@@ -2,7 +2,7 @@
 name = "bobe"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.94"
 license = "MIT"
 authors = ["The BoBe Authors"]
 homepage = "https://www.bobebot.com"
@@ -131,3 +131,7 @@ tower = { version = "0.5.3", features = ["timeout", "limit"] }
 fluent-bundle = "0.16.0"
 fluent-templates = "0.13.3"
 unic-langid = "0.9.6"
+# Official GitHub Copilot SDK (Rust). Programmatic Copilot CLI control via
+# JSON-RPC over stdio. Spawns + manages the CLI process per Client. We use one
+# shared Client across the daemon and create one Session per worker class.
+github-copilot-sdk = "0.1"

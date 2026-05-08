@@ -1,28 +1,40 @@
-//! `CopilotWorker` — one tmux session, one Copilot CLI process, one
-//! inbox/outbox pair, one hook socket. Submits jobs serially; the hook
-//! `notification` event signals "turn done; outbox has the result."
+//! `CopilotWorker` — one `github_copilot_sdk::session::Session`, one job at a
+//! time. The SDK owns the underlying Copilot CLI server process (shared via
+//! the `Client` held by the registry); this struct owns conversation state
+//! for one worker class.
+//!
+//! Submission model: `submit` builds a single prompt, calls
+//! `session.send_and_wait(opts)` which blocks until `session.idle` and
+//! returns the final `assistant.message` event. We extract the content,
+//! parse the first balanced JSON object out of it, and surface the result.
+//!
+//! Permission auto-approval and memory.md context injection are configured
+//! on the `Session` at creation time (see `registry.rs`).
 
-use std::path::PathBuf;
+#![allow(
+    dead_code,
+    reason = "Phase 2 onwards: Worker public surface; consumers cut over in Phase 5"
+)]
+
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
+use github_copilot_sdk::session::Session;
+use github_copilot_sdk::types::MessageOptions;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::hook::{HookRouter, ListenerHandle, spawn_listener};
-use super::hook_install;
-use super::mux::Mux;
+use super::agent_worker::AgentWorker;
 
-/// Wait at most this long for `notification` after `send_keys`. Configurable
-/// per-worker if a class typically takes longer (consolidation, vision).
-#[allow(dead_code, reason = "Phase 1: callers pick their own timeout; Phase 2 will default through this")]
+/// Default per-turn deadline. Workers can override via `WorkerConfig`.
 pub(crate) const DEFAULT_TURN_TIMEOUT: Duration = Duration::from_mins(2);
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum WorkerError {
-    #[error("tmux: {0}")]
-    Mux(#[from] super::mux::MuxError),
+    #[error("copilot SDK error: {0}")]
+    Sdk(#[from] github_copilot_sdk::Error),
 
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
@@ -33,18 +45,22 @@ pub(crate) enum WorkerError {
     #[error("turn timed out after {}s", .0.as_secs())]
     Timeout(Duration),
 
-    #[error("worker outbox missing for job {0}")]
-    OutboxMissing(Uuid),
+    #[error("worker returned no parseable JSON output for job {0}")]
+    NoJsonOutput(Uuid),
+
+    #[error("worker returned no assistant.message event for job {0}")]
+    NoAssistantMessage(Uuid),
 }
 
-/// What goes into `inbox/<id>.json`. Free-form `input` lets each worker
-/// class keep its own schema; the worker just promises to process it and
-/// emit `outbox/<id>.json`.
+/// Worker job request. `instructions` is the freeform prompt the worker sees;
+/// `kind` is a tag for tracing; `input` is opaque payload the prompt may
+/// reference.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct JobInput {
     pub(crate) job_id: Uuid,
     pub(crate) kind: String,
     pub(crate) instructions: String,
+    #[serde(default)]
     pub(crate) input: serde_json::Value,
 }
 
@@ -54,75 +70,36 @@ pub(crate) struct JobOutput {
     #[serde(default)]
     pub(crate) output: serde_json::Value,
     #[serde(default)]
+    pub(crate) text: String,
+    #[serde(default)]
     pub(crate) error: Option<String>,
-}
-
-/// Long-lived worker. Construct with `start`, submit work with `submit`,
-/// stop with `shutdown` (kills tmux session AND aborts the hook listener
-/// task — without that, restarting a worker leaks the prior listener).
-pub(crate) struct CopilotWorker {
-    name: String,
-    dir: PathBuf,
-    mux: Arc<Mux>,
-    router: Arc<HookRouter>,
-    /// Serializes job submission per worker — only one in-flight at a time.
-    submit_lock: Mutex<()>,
-    turn_timeout: Duration,
-    /// Abort handle for the per-worker UDS listener. `Mutex<Option<...>>`
-    /// because `shutdown` consumes the handle and we still want `&self`.
-    listener: Mutex<Option<ListenerHandle>>,
 }
 
 pub(crate) struct WorkerConfig {
     pub(crate) name: String,
-    pub(crate) dir: PathBuf,
-    pub(crate) hook_binary: PathBuf,
-    pub(crate) copilot_binary: String,
     pub(crate) turn_timeout: Duration,
 }
 
+pub(crate) struct CopilotWorker {
+    name: String,
+    session: Arc<Session>,
+    /// Serializes submits per worker — only one job in flight at a time.
+    /// The SDK's idle_waiter slot is also a single-flight gate, but our
+    /// callers expect strict job ordering so we own the gate.
+    submit_lock: Mutex<()>,
+    turn_timeout: Duration,
+}
+
 impl CopilotWorker {
-    /// Bind the hook socket, install Copilot's hook config, spawn the
-    /// tmux session running `copilot --allow-all-tools`. Idempotent on
-    /// the tmux side: if the session already exists, reuse it.
-    pub(crate) async fn start(cfg: WorkerConfig, mux: Arc<Mux>) -> Result<Arc<Self>, WorkerError> {
-        std::fs::create_dir_all(cfg.dir.join("inbox"))?;
-        std::fs::create_dir_all(cfg.dir.join("outbox"))?;
-
-        // Per-worker hook config + socket inside the worker dir.
-        hook_install::install(&cfg.dir, &cfg.hook_binary)?;
-        let socket_path = cfg.dir.join("hook.sock");
-
-        let router = HookRouter::new();
-        let listener = spawn_listener(socket_path.clone(), Arc::clone(&router)).await?;
-
-        // Spawn the tmux session if not already running.
-        if !mux.has_session(&cfg.name).await? {
-            let socket_str = socket_path.to_string_lossy().to_string();
-            let env: Vec<(&str, &str)> = vec![("BOBE_HOOK_SOCKET", &socket_str)];
-            // Copilot CLI v1.x flags: --allow-all-tools to skip permission
-            // prompts. If the flag changes, this is the single point to
-            // fix.
-            let cmd: Vec<&str> = vec![&cfg.copilot_binary, "--allow-all-tools"];
-            mux.new_session(&cfg.name, &cfg.dir, &env, &cmd).await?;
-            // Give Copilot a moment to render its prompt before we send
-            // input. Tunable; if Copilot is slow to boot, raise this.
-            tokio::time::sleep(Duration::from_millis(800)).await;
-        }
-
-        Ok(Arc::new(Self {
+    pub(crate) fn new(session: Arc<Session>, cfg: WorkerConfig) -> Arc<Self> {
+        Arc::new(Self {
             name: cfg.name,
-            dir: cfg.dir,
-            mux,
-            router,
+            session,
             submit_lock: Mutex::new(()),
             turn_timeout: cfg.turn_timeout,
-            listener: Mutex::new(Some(listener)),
-        }))
+        })
     }
 
-    /// Submit one job, block until Copilot signals completion via the
-    /// hook, return the parsed outbox file.
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
@@ -130,56 +107,148 @@ impl CopilotWorker {
     pub(crate) async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
         let _guard = self.submit_lock.lock().await;
 
-        let inbox_path = self.dir.join("inbox").join(format!("{}.json", job.job_id));
-        let outbox_path = self.dir.join("outbox").join(format!("{}.json", job.job_id));
-
-        let body = serde_json::to_vec_pretty(&job)?;
-        std::fs::write(&inbox_path, body)?;
-
-        let rx = self.router.register(job.job_id).await;
-
         let prompt = format!(
-            "Read inbox/{0}.json. Follow the `instructions` field. Write the result \
-             as JSON to outbox/{0}.json with shape {{\"job_id\":\"{0}\",\"output\":<...>}}. \
-             Do not ask questions. When finished, exit your turn so I am notified.",
-            job.job_id
+            "Job {job_id} ({kind}). {instructions}\n\n\
+             Respond with a single JSON object only — no preamble, no code fences. \
+             Required shape: {{\"job_id\":\"{job_id}\",\"output\":<...>}}.\n\n\
+             input = {input}",
+            job_id = job.job_id,
+            kind = job.kind,
+            instructions = job.instructions,
+            input = serde_json::to_string(&job.input).unwrap_or_else(|_| "null".into()),
         );
 
-        if let Err(e) = self.mux.send_keys(&self.name, &prompt).await {
-            self.router.cancel(job.job_id).await;
-            return Err(e.into());
-        }
+        let opts = MessageOptions::new(prompt).with_wait_timeout(self.turn_timeout);
 
-        // `Ok(Ok(_))` is delivery; recv-closed and outer-timeout both
-        // surface as Timeout — Copilot didn't signal in time.
-        let Ok(Ok(env)) = tokio::time::timeout(self.turn_timeout, rx).await else {
-            self.router.cancel(job.job_id).await;
-            return Err(WorkerError::Timeout(self.turn_timeout));
-        };
+        let event = self
+            .session
+            .send_and_wait(opts)
+            .await?
+            .ok_or(WorkerError::NoAssistantMessage(job.job_id))?;
 
-        tracing::debug!(
-            worker = %self.name,
-            event = %env.event,
-            job = %job.job_id,
-            "worker received completion notification"
-        );
+        let text = event
+            .data
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
 
-        if !outbox_path.exists() {
-            return Err(WorkerError::OutboxMissing(job.job_id));
-        }
-        let raw = std::fs::read(&outbox_path)?;
-        let out: JobOutput = serde_json::from_slice(&raw)?;
-        Ok(out)
+        let parsed = extract_json(&text).ok_or(WorkerError::NoJsonOutput(job.job_id))?;
+
+        Ok(JobOutput {
+            job_id: job.job_id,
+            output: parsed
+                .get("output")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+            text,
+            error: parsed
+                .get("error")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+        })
     }
 
-    #[allow(dead_code, reason = "Phase 1: caller wiring lands in Phase 2")]
+    /// Tear the session down. Other workers (sharing the same Client) keep
+    /// running.
     pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
-        // Order: kill tmux first so Copilot CLI stops invoking hooks,
-        // then abort the listener so its socket is released cleanly.
-        self.mux.kill_session(&self.name).await?;
-        if let Some(listener) = self.listener.lock().await.take() {
-            listener.shutdown();
-        }
+        self.session.destroy().await?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl AgentWorker for CopilotWorker {
+    async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
+        Self::submit(self, job).await
+    }
+
+    fn name(&self) -> &str {
+        Self::name(self)
+    }
+}
+
+/// Find the first balanced JSON object in `text`. Models sometimes wrap the
+/// JSON in chatter despite our instructions; we lift it out.
+fn extract_json(text: &str) -> Option<serde_json::Value> {
+    let bytes = text.as_bytes();
+    let mut depth = 0usize;
+    let mut start: Option<usize> = None;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (i, &b) in bytes.iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'{' => {
+                if depth == 0 {
+                    start = Some(i);
+                }
+                depth += 1;
+            }
+            b'}' => {
+                if depth > 0 {
+                    depth -= 1;
+                    if depth == 0
+                        && let Some(s) = start
+                        && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes[s..=i])
+                    {
+                        return Some(v);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "tests panic on precondition failures")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_json_finds_balanced_object() {
+        let s = r#"Here is the answer: {"job_id":"abc","output":{"goals":[]}} done."#;
+        let v = extract_json(s).unwrap();
+        assert_eq!(v["job_id"], "abc");
+    }
+
+    #[test]
+    fn extract_json_handles_nested_braces() {
+        let s = r#"{"a": {"b": {"c": 1}}}"#;
+        let v = extract_json(s).unwrap();
+        assert_eq!(v["a"]["b"]["c"], 1);
+    }
+
+    #[test]
+    fn extract_json_handles_strings_with_braces() {
+        let s = r#"{"text":"this } is fine"}"#;
+        let v = extract_json(s).unwrap();
+        assert_eq!(v["text"], "this } is fine");
+    }
+
+    #[test]
+    fn extract_json_returns_none_when_unbalanced() {
+        let s = "oops {{{";
+        assert!(extract_json(s).is_none());
+    }
+
+    #[test]
+    fn extract_json_handles_escaped_quotes() {
+        let s = r#"{"q":"she said \"hi\""}"#;
+        let v = extract_json(s).unwrap();
+        assert_eq!(v["q"], "she said \"hi\"");
     }
 }

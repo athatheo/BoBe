@@ -1,16 +1,9 @@
 //! Worker class catalog. One entry per Copilot CLI session BoBe runs.
-//! Adding a new class is one constant here + one accessor on `Registry`.
+//! Adding a new class is one constant here + one accessor on `WorkerRegistry`.
 //!
-//! Each class shares the same Copilot CLI binary + flags + memory.md
-//! symlink; the only differences are:
-//!   - name (also the tmux session name and `~/.bobe/workers/<name>/`)
-//!   - turn timeout (vision/consolidate need longer than chat/goals)
-//!
-//! Consumers get an `Arc<dyn AgentWorker>` from the registry and submit
-//! `JobInput` whose `kind` field selects the prompt shape on the worker
-//! side. The worker's standing instruction (in `.github/copilot-instructions.md`,
-//! a symlink to memory.md) plus the per-job `instructions` describe the
-//! job format; the worker writes a `JobOutput` to outbox/<id>.json.
+//! Classes share a single SDK `Client` (one Copilot CLI server process for
+//! the whole daemon); each accessor lazily spawns its own `Session` on
+//! first use. Per-class differentiation is name + turn timeout.
 
 #![allow(
     dead_code,
@@ -29,8 +22,7 @@ use super::agent_worker::AgentWorker;
 use super::registry::{WorkerRegistry, WorkerSpec};
 use super::worker::{JobInput, JobOutput, WorkerError};
 
-/// Stable session names. Kept as constants so the same string lands in
-/// tmux, the worker dir, and any tracing fields.
+/// Stable session class names.
 pub(crate) mod names {
     pub(crate) const GOALS: &str = "bobe-goals";
     pub(crate) const OBSERVE: &str = "bobe-observe";
@@ -56,8 +48,6 @@ impl WorkerRegistry {
         .await
     }
 
-    /// Vision worker has the longest "normal" turn — image inspection
-    /// can be slower than text-only completions.
     pub(crate) async fn vision(&self) -> Result<Arc<dyn AgentWorker>, AppError> {
         self.get_or_start(WorkerSpec {
             name: names::VISION.into(),
@@ -66,8 +56,6 @@ impl WorkerRegistry {
         .await
     }
 
-    /// Chat worker — interactive turns, shorter timeout so the UI doesn't
-    /// hang on a stuck Copilot session.
     pub(crate) async fn chat(&self) -> Result<Arc<dyn AgentWorker>, AppError> {
         self.get_or_start(WorkerSpec {
             name: names::CHAT.into(),
@@ -76,8 +64,6 @@ impl WorkerRegistry {
         .await
     }
 
-    /// Consolidation rewrites the entire memory.md, can take a while —
-    /// 15 minutes covers heavy nights without spurious timeouts.
     pub(crate) async fn consolidate(&self) -> Result<Arc<dyn AgentWorker>, AppError> {
         self.get_or_start(WorkerSpec {
             name: names::CONSOLIDATE.into(),
@@ -87,12 +73,12 @@ impl WorkerRegistry {
     }
 }
 
-/// Vision-specific helper: write image bytes into the worker's
-/// `images/<uuid>.<ext>`, then submit a job pointing at that file.
+/// Vision-specific helper: write image bytes to disk, then submit a job
+/// referencing the file path. The SDK runtime reads the file, base64-
+/// encodes, resizes if needed, and sends it as a vision attachment.
 ///
-/// The worker dir is `~/.bobe/workers/bobe-vision/` so Copilot sees the
-/// image as `images/<id>.jpg` from its cwd. Copilot's built-in Read tool
-/// handles JPEG/PNG natively.
+/// Future revision: switch to `AttachmentType::Blob` to avoid the temp
+/// file entirely once the SDK exposes blob attachments cleanly.
 pub(crate) struct VisionRequest {
     pub(crate) image_bytes: Vec<u8>,
     pub(crate) image_ext: &'static str,
@@ -101,32 +87,35 @@ pub(crate) struct VisionRequest {
 
 pub(crate) async fn submit_vision(
     registry: &WorkerRegistry,
-    data_dir: &std::path::Path,
+    images_dir: &std::path::Path,
     req: VisionRequest,
 ) -> Result<JobOutput, WorkerError> {
-    let worker = registry
-        .vision()
-        .await
-        .map_err(|e| WorkerError::Io(std::io::Error::other(e.to_string())))?;
-
-    let images_dir = data_dir.join("workers").join(names::VISION).join("images");
-    tokio::fs::create_dir_all(&images_dir).await?;
+    tokio::fs::create_dir_all(images_dir).await?;
 
     let job_id = Uuid::new_v4();
     let img_name = format!("{job_id}.{}", req.image_ext);
     let img_path = images_dir.join(&img_name);
     tokio::fs::write(&img_path, &req.image_bytes).await?;
 
+    // The SDK exposes `Attachment::File`/`Blob` via `MessageOptions`, but
+    // our `AgentWorker::submit` plumbs `JobInput` only. Until vision lands
+    // a proper attachment path through the trait we encode the absolute
+    // path in the job text and let Copilot's Read tool fetch it.
     let job = JobInput {
         job_id,
         kind: "vision".into(),
         instructions: format!(
-            "Read images/{img_name} and answer the user's question. \
-             Return JSON {{\"answer\": \"<text>\"}}. Be concise."
+            "Read the image at the absolute path below and answer `question`. \
+             Return JSON {{\"answer\":\"<text>\"}}. Be concise.\n\nimage = {}",
+            img_path.display()
         ),
-        input: json!({ "question": req.question, "image_path": format!("images/{img_name}") }),
+        input: json!({ "question": req.question, "image_path": img_path.to_string_lossy() }),
     };
 
+    let worker = registry
+        .vision()
+        .await
+        .map_err(|e| WorkerError::Io(std::io::Error::other(e.to_string())))?;
     worker.submit(job).await
 }
 
@@ -137,8 +126,6 @@ mod tests {
 
     #[test]
     fn class_names_are_stable() {
-        // Each constant is a tmux session name + dir component. The Mux
-        // validator enforces [A-Za-z0-9._-]{1,64} — verify we're inside it.
         for name in [
             names::GOALS,
             names::OBSERVE,
@@ -148,11 +135,6 @@ mod tests {
         ] {
             assert!(!name.is_empty());
             assert!(name.len() <= 64);
-            assert!(
-                name.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
-                "invalid char in {name}"
-            );
         }
     }
 }

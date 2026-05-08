@@ -91,22 +91,6 @@ impl MemoryFile {
         commit(&self.path, &body).await
     }
 
-    /// Symlink `<worker_dir>/.github/copilot-instructions.md` → memory.md
-    /// so Copilot CLI auto-loads pruned memory at the start of every turn.
-    /// Idempotent: replaces any existing symlink/file at the target.
-    pub(crate) async fn symlink_into_worker(
-        &self,
-        worker_dir: &Path,
-    ) -> Result<(), AppError> {
-        let dot_github = worker_dir.join(".github");
-        tokio::fs::create_dir_all(&dot_github).await?;
-        let link = dot_github.join("copilot-instructions.md");
-        if tokio::fs::symlink_metadata(&link).await.is_ok() {
-            tokio::fs::remove_file(&link).await?;
-        }
-        tokio::fs::symlink(&self.path, &link).await?;
-        Ok(())
-    }
 }
 
 /// Insert `line` at the end of the section identified by `## {heading}`,
@@ -222,27 +206,6 @@ mod tests {
         mem.append_under("Recent", "first").await.unwrap();
         mem.replace_all("# fresh\n".to_string()).await.unwrap();
         assert_eq!(mem.read().await.unwrap(), "# fresh\n");
-    }
-
-    #[tokio::test]
-    async fn symlink_into_worker_replaces_existing() {
-        let dir = tempdir();
-        let worker = dir.join("workers").join("goals");
-        tokio::fs::create_dir_all(&worker).await.unwrap();
-        let mem = MemoryFile::new(dir.join("memory.md"));
-        mem.replace_all("# v1\n".to_string()).await.unwrap();
-
-        mem.symlink_into_worker(&worker).await.unwrap();
-        let target = worker.join(".github").join("copilot-instructions.md");
-        assert_eq!(tokio::fs::read_to_string(&target).await.unwrap(), "# v1\n");
-
-        // Idempotent re-link.
-        mem.symlink_into_worker(&worker).await.unwrap();
-        assert_eq!(tokio::fs::read_to_string(&target).await.unwrap(), "# v1\n");
-
-        // Read-through after rewrite.
-        mem.replace_all("# v2\n".to_string()).await.unwrap();
-        assert_eq!(tokio::fs::read_to_string(&target).await.unwrap(), "# v2\n");
     }
 
     #[tokio::test]
