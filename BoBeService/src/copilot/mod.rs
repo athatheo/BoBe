@@ -7,6 +7,8 @@
 //! `agent_hooks::copilot`) and `Kodosi` (versioned hook envelope).
 
 pub(crate) mod agent_worker;
+pub(crate) mod classes;
+pub(crate) mod consolidation;
 pub(crate) mod hook;
 pub(crate) mod hook_install;
 pub(crate) mod memory_file;

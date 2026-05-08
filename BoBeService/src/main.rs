@@ -118,6 +118,7 @@ struct BackgroundHandles {
     runtime: tokio::task::JoinHandle<()>,
     learning: Option<tokio::task::JoinHandle<()>>,
     goal_worker: tokio::task::JoinHandle<()>,
+    consolidation: tokio::task::JoinHandle<()>,
 }
 
 fn spawn_background_tasks(
@@ -178,11 +179,24 @@ fn spawn_background_tasks(
         })
     };
 
+    let consolidation = {
+        let trigger = copilot::consolidation::ConsolidationTrigger::new(
+            std::sync::Arc::clone(&state.workers),
+            std::sync::Arc::clone(&state.memory_file),
+        );
+        let shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            trigger.run(shutdown_rx).await;
+            tracing::info!("consolidation_trigger_task.stopped");
+        })
+    };
+
     BackgroundHandles {
         heartbeat,
         runtime,
         learning,
         goal_worker,
+        consolidation,
     }
 }
 
@@ -200,6 +214,9 @@ async fn drain_background_tasks(handles: BackgroundHandles) {
     }
     if let Err(e) = handles.goal_worker.await {
         tracing::error!(error = %e, "goal worker manager task panicked");
+    }
+    if let Err(e) = handles.consolidation.await {
+        tracing::error!(error = %e, "consolidation trigger task panicked");
     }
 }
 
