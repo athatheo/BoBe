@@ -1,18 +1,40 @@
-//! Copilot CLI workers: per-class SDK session backed by `github-copilot-sdk`.
-//! One shared `Client` (== one Copilot CLI server process) owns N `Session`s,
-//! one per worker class (goals/observe/vision/chat/consolidate).
+//! Copilot CLI workers built on `github-copilot-sdk`.
 //!
-//! Memory injection happens via the `on_session_start` hook returning the
-//! current `memory.md` body as `additional_context` — workers see pruned
-//! memory at the start of every turn without symlink/file-watching games.
+//! Architecture (mirrors `crate::llm` shape):
 //!
-//! See `~/.claude/projects/-Users-john-Repos-bobrust/memory/project_copilot_workers_initiative.md`
-//! for the active design and phasing.
+//! ```text
+//!   types.rs           — data shapes (WorkerClass, JobInput, ChatDelta, ...)
+//!   error.rs           — WorkerError
+//!   client.rs          — ClientHandle: shared CLI process
+//!   session_store.rs   — persistent session IDs + daily rotation
+//!   memory_file.rs     — single-writer to ~/.bobe/memory.md
+//!   handler.rs         — BobeHandler (permission auto-approve, usage observation)
+//!   hooks.rs           — BobeHooks (memory injection, error logging, per-turn ctx)
+//!   usage.rs           — UsageMeter (cost/token rollup per class)
+//!   registry.rs        — WorkerRegistry: per-class lazy session spawn + shutdown
+//!   consolidation.rs   — nightly memory.md prune trigger
+//!   spike.rs           — `bobe spike-copilot` demo subcommand
+//!   workers/
+//!     batch.rs         — BatchWorker (autopilot, send_and_wait, JSON output)
+//!     chat.rs          — CopilotChatWorker (interactive, streaming)
+//!     vision.rs        — VisionWorker (image attachment, plain text answer)
+//! ```
+//!
+//! Memory.md injection happens via `hooks::BobeHooks::on_session_start`
+//! returning the current pruned memory as `additional_context` —
+//! workers see it at the start of every turn without symlink/file-watch
+//! plumbing. `~/.bobe/skills/<class>/SKILL.md` is loaded via
+//! `SessionConfig::skill_directories` for stable per-class identity.
 
-pub(crate) mod agent_worker;
-pub(crate) mod classes;
+pub(crate) mod client;
 pub(crate) mod consolidation;
+pub(crate) mod error;
+pub(crate) mod handler;
+pub(crate) mod hooks;
 pub(crate) mod memory_file;
 pub(crate) mod registry;
+pub(crate) mod session_store;
 pub(crate) mod spike;
-pub(crate) mod worker;
+pub(crate) mod types;
+pub(crate) mod usage;
+pub(crate) mod workers;

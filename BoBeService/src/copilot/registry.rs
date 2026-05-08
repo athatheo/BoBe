@@ -1,173 +1,274 @@
-//! `WorkerRegistry` — owns one `github_copilot_sdk::Client` (= one Copilot
-//! CLI server process) and lazy-spawns `CopilotWorker`s (one `Session`
-//! each) keyed by class name. `shutdown_all` closes every session and
-//! stops the client.
-//!
-//! Memory injection: on every session creation we register an
-//! `on_session_start` hook that reads the current `memory.md` body and
-//! returns it as `additional_context`. Workers see pruned memory at the
-//! start of every turn — no symlinks, no file watching.
+//! `WorkerRegistry` — owns the shared `ClientHandle`, the per-class
+//! `Session`s, and the cross-cutting observability (`UsageMeter`).
 
 #![allow(
     dead_code,
-    reason = "Phase 2: registry + spec types; consumers cut over in Phase 5"
+    reason = "Phase 6: per-class accessors complete; Phase 5 wires consumers"
 )]
+//!
+//! Each worker class has its own `OnceCell` so types are precise:
+//!
+//! ```text
+//!   registry.goals().await       -> Arc<BatchWorker>
+//!   registry.observe().await     -> Arc<BatchWorker>
+//!   registry.consolidate().await -> Arc<BatchWorker>
+//!   registry.vision().await      -> Arc<VisionWorker>
+//!   registry.chat().await        -> Arc<CopilotChatWorker>
+//! ```
+//!
+//! Sessions are lazy: the first call to a class accessor spawns the
+//! `Session` (after establishing the shared CLI process via
+//! `ClientHandle::ensure_started`). Subsequent calls return the cached
+//! `Arc`. Shutdown is one `shutdown_all` that walks every spawned class.
+//!
+//! Sessions persist across daemon restarts via `SessionStore`. Chat
+//! rotates daily; everything else uses a stable per-class ID.
 
-use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
-use async_trait::async_trait;
-use github_copilot_sdk::handler::ApproveAllHandler;
-use github_copilot_sdk::hooks::{HookEvent, HookOutput, SessionHooks, SessionStartOutput};
-use github_copilot_sdk::types::SessionConfig;
-use github_copilot_sdk::{Client, ClientOptions};
-use tokio::sync::{Mutex, OnceCell};
+use chrono::Local;
+use github_copilot_sdk::generated::api_types::{ModeSetRequest, SessionMode};
+use github_copilot_sdk::session::Session;
+use github_copilot_sdk::types::{ResumeSessionConfig, SessionConfig};
+use tokio::sync::OnceCell;
 
 use crate::error::AppError;
 
-use super::agent_worker::AgentWorker;
+use super::client::ClientHandle;
+use super::handler::BobeHandler;
+use super::hooks::BobeHooks;
 use super::memory_file::MemoryFile;
-use super::worker::{CopilotWorker, WorkerConfig};
-
-/// Per-class config. Currently only the timeout differs — the SDK takes
-/// care of model selection/auth/etc.
-pub(crate) struct WorkerSpec {
-    /// Stable worker class name (also session label for tracing).
-    pub(crate) name: String,
-    pub(crate) turn_timeout: Option<Duration>,
-}
+use super::session_store::SessionStore;
+use super::types::WorkerClass;
+use super::usage::UsageMeter;
+use super::workers::batch::BatchWorker;
+use super::workers::chat::CopilotChatWorker;
+use super::workers::vision::VisionWorker;
 
 pub(crate) struct WorkerRegistry {
-    /// Lazily-started SDK client. Spawning the CLI is expensive (~hundreds
-    /// of ms), so we defer it until the first worker is requested.
-    client: OnceCell<Arc<Client>>,
+    client: Arc<ClientHandle>,
+    session_store: SessionStore,
     memory_file: Arc<MemoryFile>,
-    workers: Mutex<HashMap<String, Arc<CopilotWorker>>>,
-    default_turn_timeout: Duration,
+    usage: Arc<UsageMeter>,
+    data_dir: PathBuf,
+
+    goals: OnceCell<Arc<BatchWorker>>,
+    observe: OnceCell<Arc<BatchWorker>>,
+    consolidate: OnceCell<Arc<BatchWorker>>,
+    vision: OnceCell<Arc<VisionWorker>>,
+    chat: OnceCell<Arc<CopilotChatWorker>>,
 }
 
 impl WorkerRegistry {
-    pub(crate) fn new(memory_file: Arc<MemoryFile>) -> Arc<Self> {
+    pub(crate) fn new(memory_file: Arc<MemoryFile>, data_dir: PathBuf) -> Arc<Self> {
         Arc::new(Self {
-            client: OnceCell::new(),
+            client: ClientHandle::new(),
+            session_store: SessionStore::new(&data_dir),
             memory_file,
-            workers: Mutex::new(HashMap::new()),
-            default_turn_timeout: super::worker::DEFAULT_TURN_TIMEOUT,
+            usage: UsageMeter::new(),
+            data_dir,
+            goals: OnceCell::new(),
+            observe: OnceCell::new(),
+            consolidate: OnceCell::new(),
+            vision: OnceCell::new(),
+            chat: OnceCell::new(),
         })
     }
 
-    /// Look up or spawn the worker for `spec.name`.
-    pub(crate) async fn get_or_start(
-        &self,
-        spec: WorkerSpec,
-    ) -> Result<Arc<dyn AgentWorker>, AppError> {
-        if let Some(w) = self.workers.lock().await.get(&spec.name).cloned() {
-            return Ok(w);
-        }
-
-        let client = self.ensure_client().await?;
-
-        let mut guard = self.workers.lock().await;
-        if let Some(w) = guard.get(&spec.name).cloned() {
-            return Ok(w);
-        }
-
-        let hooks: Arc<dyn SessionHooks> = Arc::new(MemoryHooks {
-            memory_file: Arc::clone(&self.memory_file),
-        });
-
-        // ApproveAllHandler: built-in handler that approves every
-        // permission request and uses safe defaults for the rest
-        // (no-op user input, deny external tools, cancel elicitation).
-        // Sandbox-as-a-feature: workers run inside ~/.bobe/, so we don't
-        // gate tool use.
-        let cfg = SessionConfig::default()
-            .with_handler(Arc::new(ApproveAllHandler))
-            .with_hooks(hooks);
-
-        tracing::info!(name = %spec.name, "spawning copilot SDK session");
-        let session = client
-            .create_session(cfg)
-            .await
-            .map_err(|e| AppError::Internal(format!("create session {}: {e}", spec.name)))?;
-
-        let worker = CopilotWorker::new(
-            Arc::new(session),
-            WorkerConfig {
-                name: spec.name.clone(),
-                turn_timeout: spec.turn_timeout.unwrap_or(self.default_turn_timeout),
-            },
-        );
-
-        guard.insert(spec.name.clone(), Arc::clone(&worker));
-        Ok(worker)
+    pub(crate) fn usage_meter(&self) -> &Arc<UsageMeter> {
+        &self.usage
     }
 
-    async fn ensure_client(&self) -> Result<Arc<Client>, AppError> {
-        self.client
+    pub(crate) async fn goals(&self) -> Result<Arc<BatchWorker>, AppError> {
+        self.goals
             .get_or_try_init(|| async {
-                tracing::info!("starting Copilot SDK client");
-                let client = Client::start(ClientOptions::default())
-                    .await
-                    .map_err(|e| AppError::Internal(format!("Client::start: {e}")))?;
-                Ok::<_, AppError>(Arc::new(client))
+                let session = self.create_or_resume(WorkerClass::Goals).await?;
+                Ok::<_, AppError>(BatchWorker::new(WorkerClass::Goals, session))
             })
             .await
             .cloned()
     }
 
+    pub(crate) async fn observe(&self) -> Result<Arc<BatchWorker>, AppError> {
+        self.observe
+            .get_or_try_init(|| async {
+                let session = self.create_or_resume(WorkerClass::Observe).await?;
+                Ok::<_, AppError>(BatchWorker::new(WorkerClass::Observe, session))
+            })
+            .await
+            .cloned()
+    }
+
+    pub(crate) async fn consolidate(&self) -> Result<Arc<BatchWorker>, AppError> {
+        self.consolidate
+            .get_or_try_init(|| async {
+                let session = self.create_or_resume(WorkerClass::Consolidate).await?;
+                Ok::<_, AppError>(BatchWorker::new(WorkerClass::Consolidate, session))
+            })
+            .await
+            .cloned()
+    }
+
+    pub(crate) async fn vision(&self) -> Result<Arc<VisionWorker>, AppError> {
+        self.vision
+            .get_or_try_init(|| async {
+                let session = self.create_or_resume(WorkerClass::Vision).await?;
+                Ok::<_, AppError>(VisionWorker::new(session))
+            })
+            .await
+            .cloned()
+    }
+
+    pub(crate) async fn chat(&self) -> Result<Arc<CopilotChatWorker>, AppError> {
+        self.chat
+            .get_or_try_init(|| async {
+                let session = self.create_or_resume(WorkerClass::Chat).await?;
+                Ok::<_, AppError>(CopilotChatWorker::new(session))
+            })
+            .await
+            .cloned()
+    }
+
+    /// Best-effort shutdown of every spawned session, then the shared
+    /// CLI process. Logged warnings only — daemon shutdown shouldn't
+    /// fail because one worker's destroy errored.
     pub(crate) async fn shutdown_all(&self) {
-        let drained: Vec<(String, Arc<CopilotWorker>)> = {
-            let mut guard = self.workers.lock().await;
-            guard.drain().collect()
+        if let Some(w) = self.goals.get() {
+            log_shutdown("goals", w.shutdown().await);
+        }
+        if let Some(w) = self.observe.get() {
+            log_shutdown("observe", w.shutdown().await);
+        }
+        if let Some(w) = self.consolidate.get() {
+            log_shutdown("consolidate", w.shutdown().await);
+        }
+        if let Some(w) = self.vision.get() {
+            log_shutdown("vision", w.shutdown().await);
+        }
+        if let Some(w) = self.chat.get() {
+            log_shutdown("chat", w.shutdown().await);
+        }
+        self.client.stop().await;
+    }
+
+    /// Build a `Session` for `class` — try resume from disk, fall back
+    /// to creating a fresh one. Always installs `BobeHandler` (auto-
+    /// approve permissions + observe usage) and `BobeHooks` (memory.md
+    /// injection + structured error logging + per-turn context).
+    async fn create_or_resume(&self, class: WorkerClass) -> Result<Arc<Session>, AppError> {
+        let client = self.client.ensure_started().await?;
+        let now = Local::now();
+        let handler = BobeHandler::new(class, Arc::clone(&self.usage));
+        let hooks = BobeHooks::new(class, Arc::clone(&self.memory_file));
+
+        // Session mode (autopilot/interactive/plan) isn't a `SessionConfig`
+        // field — it's set at runtime via `session.set_mode(...)` once
+        // the session is up.
+        let cfg_template = || {
+            let mut cfg = SessionConfig::default()
+                .with_handler(Arc::clone(&handler) as _)
+                .with_hooks(Arc::clone(&hooks) as _);
+            cfg.streaming = Some(class == WorkerClass::Chat);
+            if let Some(skill_dir) = self.skill_dir(class) {
+                cfg.skill_directories = Some(vec![skill_dir]);
+            }
+            cfg
         };
-        for (name, worker) in drained {
-            if let Err(e) = worker.shutdown().await {
-                tracing::warn!(name = %name, err = %e, "worker shutdown failed");
-            } else {
-                tracing::info!(name = %name, "worker shut down");
+
+        // Try resume from disk first.
+        if let Some(saved) = self.session_store.load(class, now).await? {
+            let mut resume_cfg = ResumeSessionConfig::new(saved.clone())
+                .with_handler(Arc::clone(&handler) as _)
+                .with_hooks(Arc::clone(&hooks) as _);
+            resume_cfg.streaming = Some(class == WorkerClass::Chat);
+            if let Some(skill_dir) = self.skill_dir(class) {
+                resume_cfg.skill_directories = Some(vec![skill_dir]);
+            }
+            match client.resume_session(resume_cfg).await {
+                Ok(session) => {
+                    apply_runtime_mode(&session, class).await;
+                    tracing::info!(
+                        class = %class.name(),
+                        session_id = %saved,
+                        "resumed copilot session from disk"
+                    );
+                    return Ok(Arc::new(session));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        class = %class.name(),
+                        session_id = %saved,
+                        err = %e,
+                        "resume failed; creating fresh session"
+                    );
+                    self.session_store.forget(class, now).await?;
+                }
             }
         }
 
-        if let Some(client) = self.client.get() {
-            if let Err(e) = client.stop().await {
-                tracing::warn!(err = %e, "copilot client stop failed");
-            } else {
-                tracing::info!("copilot client stopped");
-            }
-        }
+        // Create fresh.
+        let session = client
+            .create_session(cfg_template())
+            .await
+            .map_err(|e| AppError::Internal(format!("create_session {}: {e}", class.name())))?;
+        apply_runtime_mode(&session, class).await;
+        let id = session.id().clone();
+        self.session_store.save(class, now, &id).await?;
+        tracing::info!(
+            class = %class.name(),
+            session_id = %id,
+            "created new copilot session"
+        );
+        Ok(Arc::new(session))
+    }
+
+    /// Path to `~/.bobe/skills/<class>/` if the directory exists. Loaded
+    /// into `SessionConfig::skill_directories` so each worker sees its
+    /// own `SKILL.md` as system context — the stable identity for the
+    /// class, complementing per-job `instructions`.
+    fn skill_dir(&self, class: WorkerClass) -> Option<PathBuf> {
+        let p = self.data_dir.join("skills").join(class.name());
+        if p.exists() { Some(p) } else { None }
     }
 }
 
-/// Reads memory.md on every `on_session_start` and emits it as
-/// `additional_context`. Cheap — memory.md is capped at ~50 KB by the
-/// nightly consolidation worker.
-struct MemoryHooks {
-    memory_file: Arc<MemoryFile>,
+fn log_shutdown(class: &str, result: Result<(), super::error::WorkerError>) {
+    match result {
+        Ok(()) => tracing::info!(class, "worker shut down"),
+        Err(e) => tracing::warn!(class, err = %e, "worker shutdown failed"),
+    }
 }
 
-#[async_trait]
-impl SessionHooks for MemoryHooks {
-    async fn on_hook(&self, event: HookEvent) -> HookOutput {
-        if let HookEvent::SessionStart { ctx, .. } = event {
-            match self.memory_file.read().await {
-                Ok(body) => {
-                    tracing::debug!(
-                        session = %ctx.session_id,
-                        bytes = body.len(),
-                        "injecting memory.md as session context"
-                    );
-                    return HookOutput::SessionStart(SessionStartOutput {
-                        additional_context: Some(body),
-                        ..Default::default()
-                    });
-                }
-                Err(e) => {
-                    tracing::warn!(err = %e, "memory_file.read failed; session starts without context");
-                }
-            }
+/// Apply the worker class's mode (autopilot / interactive / plan) to a
+/// freshly-created or resumed `Session`. Wire method:
+/// `session.mode.set`. Logged warnings only — failure means the SDK
+/// refused the requested mode; the session still works in its default.
+async fn apply_runtime_mode(session: &Session, class: WorkerClass) {
+    let mode = match class.mode() {
+        "interactive" => SessionMode::Interactive,
+        "plan" => SessionMode::Plan,
+        "autopilot" => SessionMode::Autopilot,
+        other => {
+            tracing::warn!(
+                class = %class.name(),
+                mode = other,
+                "unknown session mode; leaving session at default"
+            );
+            return;
         }
-        HookOutput::None
+    };
+    if let Err(e) = session
+        .rpc()
+        .mode()
+        .set(ModeSetRequest { mode })
+        .await
+    {
+        tracing::warn!(
+            class = %class.name(),
+            requested_mode = %class.mode(),
+            err = %e,
+            "session.mode.set failed; continuing with default mode"
+        );
     }
 }

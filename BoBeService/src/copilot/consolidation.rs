@@ -22,7 +22,7 @@ use crate::error::AppError;
 
 use super::memory_file::{MemoryFile, TARGET_MAX_BYTES};
 use super::registry::WorkerRegistry;
-use super::worker::JobInput;
+use super::types::JobInput;
 
 /// Default fire-time: 03:00 local. Quiet hour, well clear of typical
 /// active learner traffic.
@@ -36,8 +36,12 @@ pub(crate) struct ConsolidationTrigger {
 
 impl ConsolidationTrigger {
     pub(crate) fn new(workers: Arc<WorkerRegistry>, memory_file: Arc<MemoryFile>) -> Self {
+        // `from_hms_opt(3,0,0)` is constant-input — the only failure case
+        // is invalid hour/minute/second, which 03:00:00 isn't. Fall back
+        // to midnight if the unreachable happens; the trigger still fires
+        // daily, just at a different time.
         let fire_at = NaiveTime::from_hms_opt(DEFAULT_FIRE_AT.0, DEFAULT_FIRE_AT.1, 0)
-            .unwrap_or_else(|| NaiveTime::from_hms_opt(3, 0, 0).expect("03:00 valid"));
+            .unwrap_or(NaiveTime::MIN);
         Self {
             workers,
             memory_file,
@@ -163,9 +167,11 @@ fn duration_until_next(fire_at: NaiveTime, now_utc: DateTime<Utc>) -> Duration {
     };
 
     let delta = target.signed_duration_since(now_local);
-    delta
-        .to_std()
-        .unwrap_or_else(|_| Duration::from_secs(60 * 60 * 24))
+    // 24h fallback. `Duration::from_days` is unstable on our MSRV; using
+    // explicit seconds is clear enough.
+    #[allow(clippy::duration_suboptimal_units, reason = "from_days is unstable")]
+    let one_day = Duration::from_secs(60 * 60 * 24);
+    delta.to_std().unwrap_or(one_day)
 }
 
 #[cfg(test)]

@@ -1,109 +1,53 @@
-//! `CopilotWorker` — one `github_copilot_sdk::session::Session`, one job at a
-//! time. The SDK owns the underlying Copilot CLI server process (shared via
-//! the `Client` held by the registry); this struct owns conversation state
-//! for one worker class.
+//! `BatchWorker` — `AgentWorker` impl for headless batch jobs (goals,
+//! observe, vision, consolidate). Sessions run in `autopilot` mode so
+//! the model agent-loops to completion (auto-nudged toward
+//! `task_complete`); we block on `send_and_wait`, parse the assistant
+//! message as JSON, and surface the structured `output` field.
 //!
-//! Submission model: `submit` builds a single prompt, calls
-//! `session.send_and_wait(opts)` which blocks until `session.idle` and
-//! returns the final `assistant.message` event. We extract the content,
-//! parse the first balanced JSON object out of it, and surface the result.
-//!
-//! Permission auto-approval and memory.md context injection are configured
-//! on the `Session` at creation time (see `registry.rs`).
+//! Submission is serialized per worker — only one job in flight at a
+//! time. The SDK's `idle_waiter` slot is also a single-flight gate, but
+//! holding our own mutex preserves strict job ordering and means
+//! cancellation in `submit()` doesn't race a queued caller.
 
 #![allow(
     dead_code,
-    reason = "Phase 2 onwards: Worker public surface; consumers cut over in Phase 5"
+    reason = "Phase 6: type + accessors complete; Phase 5 wires consumers"
 )]
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::types::MessageOptions;
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use uuid::Uuid;
 
-use super::agent_worker::AgentWorker;
+use crate::copilot::error::WorkerError;
+use crate::copilot::types::{JobInput, JobOutput, WorkerClass};
 
-/// Default per-turn deadline. Workers can override via `WorkerConfig`.
-pub(crate) const DEFAULT_TURN_TIMEOUT: Duration = Duration::from_mins(2);
+use super::AgentWorker;
 
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum WorkerError {
-    #[error("copilot SDK error: {0}")]
-    Sdk(#[from] github_copilot_sdk::Error),
-
-    #[error("io: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("serde: {0}")]
-    Serde(#[from] serde_json::Error),
-
-    #[error("turn timed out after {}s", .0.as_secs())]
-    Timeout(Duration),
-
-    #[error("worker returned no parseable JSON output for job {0}")]
-    NoJsonOutput(Uuid),
-
-    #[error("worker returned no assistant.message event for job {0}")]
-    NoAssistantMessage(Uuid),
-}
-
-/// Worker job request. `instructions` is the freeform prompt the worker sees;
-/// `kind` is a tag for tracing; `input` is opaque payload the prompt may
-/// reference.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct JobInput {
-    pub(crate) job_id: Uuid,
-    pub(crate) kind: String,
-    pub(crate) instructions: String,
-    #[serde(default)]
-    pub(crate) input: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct JobOutput {
-    pub(crate) job_id: Uuid,
-    #[serde(default)]
-    pub(crate) output: serde_json::Value,
-    #[serde(default)]
-    pub(crate) text: String,
-    #[serde(default)]
-    pub(crate) error: Option<String>,
-}
-
-pub(crate) struct WorkerConfig {
-    pub(crate) name: String,
-    pub(crate) turn_timeout: Duration,
-}
-
-pub(crate) struct CopilotWorker {
-    name: String,
+pub(crate) struct BatchWorker {
+    class: WorkerClass,
     session: Arc<Session>,
-    /// Serializes submits per worker — only one job in flight at a time.
-    /// The SDK's idle_waiter slot is also a single-flight gate, but our
-    /// callers expect strict job ordering so we own the gate.
     submit_lock: Mutex<()>,
-    turn_timeout: Duration,
 }
 
-impl CopilotWorker {
-    pub(crate) fn new(session: Arc<Session>, cfg: WorkerConfig) -> Arc<Self> {
+impl BatchWorker {
+    pub(crate) fn new(class: WorkerClass, session: Arc<Session>) -> Arc<Self> {
         Arc::new(Self {
-            name: cfg.name,
+            class,
             session,
             submit_lock: Mutex::new(()),
-            turn_timeout: cfg.turn_timeout,
         })
     }
 
-    pub(crate) fn name(&self) -> &str {
-        &self.name
+    pub(crate) fn class(&self) -> WorkerClass {
+        self.class
     }
 
+    /// Inherent equivalent of [`AgentWorker::submit`] so callers
+    /// holding an `Arc<BatchWorker>` (the typed accessor return type)
+    /// don't need the trait in scope. The trait impl just forwards.
     pub(crate) async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
         let _guard = self.submit_lock.lock().await;
 
@@ -118,7 +62,10 @@ impl CopilotWorker {
             input = serde_json::to_string(&job.input).unwrap_or_else(|_| "null".into()),
         );
 
-        let opts = MessageOptions::new(prompt).with_wait_timeout(self.turn_timeout);
+        // Session mode (autopilot vs interactive) is set on `SessionConfig`
+        // at create time — see `registry::create_or_resume`. `MessageOptions::with_mode`
+        // controls *delivery* (Enqueue vs Immediate) which we leave defaulted.
+        let opts = MessageOptions::new(prompt).with_wait_timeout(self.class.turn_timeout());
 
         let event = self
             .session
@@ -149,8 +96,8 @@ impl CopilotWorker {
         })
     }
 
-    /// Tear the session down. Other workers (sharing the same Client) keep
-    /// running.
+    /// Tear the session down. Other classes (sharing the same Client)
+    /// keep running.
     pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
         self.session.destroy().await?;
         Ok(())
@@ -158,18 +105,18 @@ impl CopilotWorker {
 }
 
 #[async_trait]
-impl AgentWorker for CopilotWorker {
+impl AgentWorker for BatchWorker {
     async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
         Self::submit(self, job).await
     }
 
-    fn name(&self) -> &str {
-        Self::name(self)
+    fn class(&self) -> WorkerClass {
+        Self::class(self)
     }
 }
 
-/// Find the first balanced JSON object in `text`. Models sometimes wrap the
-/// JSON in chatter despite our instructions; we lift it out.
+/// Find the first balanced JSON object in `text`. Models sometimes wrap
+/// the JSON in chatter despite our instructions; we lift it out.
 fn extract_json(text: &str) -> Option<serde_json::Value> {
     let bytes = text.as_bytes();
     let mut depth = 0usize;
@@ -196,15 +143,13 @@ fn extract_json(text: &str) -> Option<serde_json::Value> {
                 }
                 depth += 1;
             }
-            b'}' => {
-                if depth > 0 {
-                    depth -= 1;
-                    if depth == 0
-                        && let Some(s) = start
-                        && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes[s..=i])
-                    {
-                        return Some(v);
-                    }
+            b'}' if depth > 0 => {
+                depth -= 1;
+                if depth == 0
+                    && let Some(s) = start
+                    && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes[s..=i])
+                {
+                    return Some(v);
                 }
             }
             _ => {}

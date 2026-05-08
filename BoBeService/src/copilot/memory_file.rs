@@ -114,8 +114,7 @@ fn upsert_bullet(body: &str, heading: &str, line: &str) -> String {
     let body_after_header = &body[start..];
     let next_section = body_after_header[header.len()..]
         .find("\n## ")
-        .map(|i| start + header.len() + i)
-        .unwrap_or(body.len());
+        .map_or(body.len(), |i| start + header.len() + i);
 
     let (head, rest) = body.split_at(next_section);
     let head_trimmed = head.trim_end();

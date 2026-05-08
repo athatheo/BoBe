@@ -1,6 +1,6 @@
-//! SDK-pivot spike: drive one Copilot SDK session through one job
-//! end-to-end. Run via `bobe spike-copilot`. Manual sanity check, not a
-//! production code path.
+//! `bobe spike-copilot` — manual sanity check that drives one batch
+//! goal-extraction round-trip end-to-end. Intended for local dev only;
+//! real consumers go through `WorkerRegistry` from `AppState`.
 
 #![allow(
     clippy::print_stdout,
@@ -14,14 +14,14 @@ use uuid::Uuid;
 
 use super::memory_file::MemoryFile;
 use super::registry::WorkerRegistry;
-use super::worker::JobInput;
+use super::types::JobInput;
 
 pub(crate) async fn run() -> anyhow::Result<()> {
     let data_dir = crate::util::paths::bobe_data_dir();
     tokio::fs::create_dir_all(&data_dir).await?;
 
     let memory_file = MemoryFile::new(data_dir.join("memory.md"));
-    let registry = WorkerRegistry::new(Arc::clone(&memory_file));
+    let registry = WorkerRegistry::new(Arc::clone(&memory_file), data_dir.clone());
 
     tracing::info!("starting copilot SDK spike");
     let worker = registry.goals().await?;
@@ -55,6 +55,13 @@ pub(crate) async fn run() -> anyhow::Result<()> {
     if let Some(err) = out.error {
         println!("error:  {err}");
     }
+
+    let usage = registry.usage_meter().snapshot(super::types::WorkerClass::Goals);
+    println!("---");
+    println!(
+        "usage: {} api calls, {} input + {} output tokens, {:.2} cost units",
+        usage.api_calls, usage.input_tokens, usage.output_tokens, usage.cost_units
+    );
 
     registry.shutdown_all().await;
     Ok(())

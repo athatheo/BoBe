@@ -71,7 +71,10 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         let path = crate::util::paths::bobe_data_dir().join("memory.md");
         crate::copilot::memory_file::MemoryFile::new(path)
     };
-    let workers = crate::copilot::registry::WorkerRegistry::new(Arc::clone(&memory_file));
+    let workers = {
+        let data_dir = crate::util::paths::bobe_data_dir();
+        crate::copilot::registry::WorkerRegistry::new(Arc::clone(&memory_file), data_dir)
+    };
 
     let state = Arc::new(AppState {
         db: pool,
