@@ -391,37 +391,14 @@ fn build_native_tools(
 ) -> Vec<Arc<dyn NativeTool>> {
     use crate::tools::native::{
         approve_plan, archive_goal, browser_history, cancel_coding_agent, check_coding_agent,
-        complete_goal, create_goal, create_memory, discover_git_repos, discover_installed_tools,
-        fetch_url, file_reader, get_goals, get_recent_context, get_souls, launch_coding_agent,
-        list_coding_agents, list_directory, pause_goal, reject_plan, resume_goal, search_context,
-        search_files, search_goal, search_memories, update_goal, update_memory,
+        complete_goal, create_goal, discover_git_repos, discover_installed_tools, fetch_url,
+        file_reader, get_goals, get_souls, launch_coding_agent, list_coding_agents,
+        list_directory, pause_goal, reject_plan, resume_goal, search_files, update_goal,
     };
 
     vec![
-        Arc::new(search_memories::SearchMemoriesTool::new(
-            Arc::clone(&repos.memory_repo),
-            Arc::clone(embed),
-        )),
-        Arc::new(search_context::SearchContextTool::new(
-            Arc::clone(&repos.memory_repo),
-            Arc::clone(embed),
-        )),
-        Arc::new(search_goal::SearchGoalTool::new(
-            Arc::clone(&repos.goal_repo),
-            Arc::clone(embed),
-        )),
         Arc::new(get_goals::GetGoalsTool::new(Arc::clone(&repos.goal_repo))),
         Arc::new(get_souls::GetSoulsTool::new(Arc::clone(&repos.soul_repo))),
-        Arc::new(get_recent_context::GetRecentContextTool::new(Arc::clone(
-            &repos.observation_repo,
-        ))),
-        Arc::new(create_memory::CreateMemoryTool::new(
-            Arc::clone(&repos.memory_repo),
-            Arc::clone(embed),
-        )),
-        Arc::new(update_memory::UpdateMemoryTool::new(Arc::clone(
-            &repos.memory_repo,
-        ))),
         Arc::new(create_goal::CreateGoalTool::new(
             Arc::clone(&repos.goal_repo),
             Arc::clone(embed),

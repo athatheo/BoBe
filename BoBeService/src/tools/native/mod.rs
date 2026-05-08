@@ -1,14 +1,8 @@
 pub(crate) mod adapter;
 pub(crate) mod base;
 
-pub(crate) mod create_memory;
 pub(crate) mod get_goals;
-pub(crate) mod get_recent_context;
 pub(crate) mod get_souls;
-pub(crate) mod search_context;
-pub(crate) mod search_goal;
-pub(crate) mod search_memories;
-pub(crate) mod update_memory;
 
 pub(crate) mod archive_goal;
 pub(crate) mod complete_goal;
