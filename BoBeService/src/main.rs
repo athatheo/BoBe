@@ -116,7 +116,6 @@ async fn main() -> anyhow::Result<()> {
 struct BackgroundHandles {
     heartbeat: tokio::task::JoinHandle<()>,
     runtime: tokio::task::JoinHandle<()>,
-    learning: Option<tokio::task::JoinHandle<()>>,
     goal_worker: tokio::task::JoinHandle<()>,
     consolidation: tokio::task::JoinHandle<()>,
 }
@@ -156,20 +155,6 @@ fn spawn_background_tasks(
         })
     };
 
-    let learning = state.learning_loop.as_ref().map(|ll| {
-        let ll = std::sync::Arc::clone(ll);
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            tokio::select! {
-                () = ll.run() => {}
-                _ = shutdown_rx.recv() => {
-                    ll.stop();
-                }
-            }
-            tracing::info!("learning_loop_task.stopped");
-        })
-    });
-
     let goal_worker = {
         let shutdown_rx = shutdown_tx.subscribe();
         let mut manager = goal_worker_manager;
@@ -194,7 +179,6 @@ fn spawn_background_tasks(
     BackgroundHandles {
         heartbeat,
         runtime,
-        learning,
         goal_worker,
         consolidation,
     }
@@ -206,11 +190,6 @@ async fn drain_background_tasks(handles: BackgroundHandles) {
     }
     if let Err(e) = handles.runtime.await {
         tracing::error!(error = %e, "runtime session task panicked");
-    }
-    if let Some(h) = handles.learning
-        && let Err(e) = h.await
-    {
-        tracing::error!(error = %e, "learning loop task panicked");
     }
     if let Err(e) = handles.goal_worker.await {
         tracing::error!(error = %e, "goal worker manager task panicked");

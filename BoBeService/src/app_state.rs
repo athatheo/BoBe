@@ -22,7 +22,6 @@ use crate::db::UserProfileRepository;
 use crate::llm::EmbeddingProvider;
 use crate::llm::LlmProvider;
 use crate::llm::ollama_manager::OllamaManager;
-use crate::runtime::learning::LearningLoop;
 use crate::runtime::session::RuntimeSession;
 use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
@@ -60,7 +59,6 @@ pub(crate) struct AppState {
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) tool_registry: Arc<ToolRegistry>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
-    pub(crate) learning_loop: Option<Arc<LearningLoop>>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) ollama_manager: Arc<OllamaManager>,
     pub(crate) binary_manager: Arc<BinaryManager>,

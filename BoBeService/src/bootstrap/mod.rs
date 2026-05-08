@@ -100,7 +100,6 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         goals_service: wired.goals_service,
         tool_registry: wired.tool_registry,
         runtime_session: wired.runtime_session,
-        learning_loop: wired.learning_loop,
         screen_capture: wired.screen_capture,
         ollama_manager: infra.ollama_manager,
         binary_manager: infra.binary_manager,

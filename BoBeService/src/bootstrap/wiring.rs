@@ -13,10 +13,7 @@ use tracing::{info, warn};
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
 use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::learners::{
-    CaptureLearner, GoalLearner, MemoryConsolidator, MemoryLearner, MessageLearner,
-};
-use crate::runtime::learning::LearningLoop;
+use crate::runtime::learners::{CaptureLearner, GoalLearner, MessageLearner};
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
@@ -53,7 +50,6 @@ pub(crate) struct Wired {
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) tool_registry: Arc<ToolRegistry>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
-    pub(crate) learning_loop: Option<Arc<LearningLoop>>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
     pub(crate) goal_worker_manager: GoalWorkerManager,
@@ -196,24 +192,10 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
         Arc::clone(config_arc),
     ));
 
-    let memory_learner = Arc::new(MemoryLearner::new(
-        Arc::clone(&infra.llm_provider),
-        Arc::clone(&infra.embedding_provider),
-        Arc::clone(&repos.memory_repo),
-        Arc::clone(config_arc),
-    ));
-
     let goal_learner = Arc::new(GoalLearner::new(
         Arc::clone(&infra.llm_provider),
         Arc::clone(&infra.embedding_provider),
         Arc::clone(&goals_service),
-        Arc::clone(config_arc),
-    ));
-
-    let memory_consolidator = Arc::new(MemoryConsolidator::new(
-        Arc::clone(&infra.llm_provider),
-        Arc::clone(&infra.embedding_provider),
-        Arc::clone(&repos.memory_repo),
         Arc::clone(config_arc),
     ));
 
@@ -318,22 +300,6 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
         agent_job_trigger.clone(),
     ));
 
-    let learning_loop = config.learning.enabled.then(|| {
-        Arc::new(LearningLoop::new(
-            Arc::clone(&conversation_service),
-            Arc::clone(&goals_service),
-            memory_learner,
-            goal_learner,
-            memory_consolidator,
-            Arc::clone(&repos.memory_repo),
-            Arc::clone(&repos.observation_repo),
-            Arc::clone(&repos.goal_repo),
-            Arc::clone(&repos.learning_state_repo),
-            Arc::clone(&infra.embedding_provider),
-            Arc::clone(config_arc),
-        ))
-    });
-
     let goal_worker = Arc::new(GoalWorker::new(
         Arc::clone(config_arc),
         Arc::new(ClaudeAgentProvider::new(
@@ -372,7 +338,6 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
         goals_service,
         tool_registry,
         runtime_session,
-        learning_loop,
         screen_capture,
         config_manager,
         goal_worker_manager,
