@@ -67,6 +67,16 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
 
     print_banner(&infra.config_arc.load());
 
+    let memory_file = {
+        let path = crate::util::paths::bobe_data_dir().join("memory.md");
+        crate::copilot::memory_file::MemoryFile::new(path)
+    };
+    let workers = {
+        let data_dir = crate::util::paths::bobe_data_dir();
+        let defaults = crate::copilot::registry::RegistryDefaults::resolve(data_dir)?;
+        crate::copilot::registry::WorkerRegistry::new(defaults, Arc::clone(&memory_file))
+    };
+
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
@@ -99,6 +109,8 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         mcp_tool_adapter: Some(wired.mcp_adapter),
         mcp_config_lock: Arc::new(tokio::sync::Mutex::new(())),
         mdns_announcer: infra.mdns_announcer,
+        workers,
+        memory_file,
     });
 
     Ok((state, wired.goal_worker_manager))

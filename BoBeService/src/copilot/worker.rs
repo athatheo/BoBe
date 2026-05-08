@@ -123,6 +123,10 @@ impl CopilotWorker {
 
     /// Submit one job, block until Copilot signals completion via the
     /// hook, return the parsed outbox file.
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
     pub(crate) async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
         let _guard = self.submit_lock.lock().await;
 

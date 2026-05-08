@@ -210,6 +210,9 @@ async fn run_graceful_shutdown(
     tracing::info!("Stopping mDNS...");
     state.mdns_announcer.stop().await;
 
+    tracing::info!("Stopping Copilot workers...");
+    state.workers.shutdown_all().await;
+
     if let Some(ref mcp) = state.mcp_tool_adapter {
         tracing::info!("Stopping MCP servers...");
         tokio::time::timeout(std::time::Duration::from_secs(2), mcp.shutdown())

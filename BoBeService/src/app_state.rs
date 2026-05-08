@@ -7,6 +7,8 @@ use tokio::sync::Mutex;
 use crate::binary_manager::BinaryManager;
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
+use crate::copilot::memory_file::MemoryFile;
+use crate::copilot::registry::WorkerRegistry;
 use crate::db::AgentJobRepository;
 use crate::db::ConversationRepository;
 use crate::db::CooldownRepository;
@@ -66,6 +68,14 @@ pub(crate) struct AppState {
     pub(crate) mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
     pub(crate) mcp_config_lock: Arc<Mutex<()>>,
     pub(crate) mdns_announcer: Arc<MdnsAnnouncer>,
+    /// Copilot CLI worker fleet — lazy-spawned per worker class.
+    /// Phase 2 onwards consumers go through this for any LLM-ish work.
+    pub(crate) workers: Arc<WorkerRegistry>,
+    /// Single-writer to `~/.bobe/memory.md`. All BoBe writes funnel
+    /// through this so workers (which only read via the symlink in
+    /// each `<worker_dir>/.github/copilot-instructions.md`) never see
+    /// torn content.
+    pub(crate) memory_file: Arc<MemoryFile>,
 }
 
 impl AppState {

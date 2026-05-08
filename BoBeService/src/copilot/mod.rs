@@ -6,8 +6,11 @@
 //! (`platform::multiplexer`, `platform::peer_listener`,
 //! `agent_hooks::copilot`) and `Kodosi` (versioned hook envelope).
 
+pub(crate) mod agent_worker;
 pub(crate) mod hook;
 pub(crate) mod hook_install;
+pub(crate) mod memory_file;
 pub(crate) mod mux;
+pub(crate) mod registry;
 pub(crate) mod spike;
 pub(crate) mod worker;
