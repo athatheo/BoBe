@@ -30,7 +30,7 @@ use std::sync::Arc;
 use chrono::Local;
 use github_copilot_sdk::generated::api_types::{ModeSetRequest, SessionMode};
 use github_copilot_sdk::session::Session;
-use github_copilot_sdk::types::{ResumeSessionConfig, SessionConfig};
+use github_copilot_sdk::types::{InfiniteSessionConfig, ResumeSessionConfig, SessionConfig};
 use tokio::sync::OnceCell;
 
 use crate::error::AppError;
@@ -163,13 +163,19 @@ impl WorkerRegistry {
         let hooks = BobeHooks::new(class, Arc::clone(&self.memory_file));
 
         // Session mode (autopilot/interactive/plan) isn't a `SessionConfig`
-        // field — it's set at runtime via `session.set_mode(...)` once
-        // the session is up.
+        // field — it's set at runtime via `session.rpc().mode().set(...)`
+        // once the session is up. `apply_runtime_mode` handles that below.
         let cfg_template = || {
             let mut cfg = SessionConfig::default()
                 .with_handler(Arc::clone(&handler) as _)
                 .with_hooks(Arc::clone(&hooks) as _);
             cfg.streaming = Some(class == WorkerClass::Chat);
+            // Chat is the only class where context grows unboundedly within
+            // a day. Infinite sessions enable auto-compaction at a watermark
+            // so we don't blow context limits mid-conversation.
+            if class == WorkerClass::Chat {
+                cfg.infinite_sessions = Some(InfiniteSessionConfig::new());
+            }
             if let Some(skill_dir) = self.skill_dir(class) {
                 cfg.skill_directories = Some(vec![skill_dir]);
             }
@@ -182,6 +188,9 @@ impl WorkerRegistry {
                 .with_handler(Arc::clone(&handler) as _)
                 .with_hooks(Arc::clone(&hooks) as _);
             resume_cfg.streaming = Some(class == WorkerClass::Chat);
+            if class == WorkerClass::Chat {
+                resume_cfg.infinite_sessions = Some(InfiniteSessionConfig::new());
+            }
             if let Some(skill_dir) = self.skill_dir(class) {
                 resume_cfg.skill_directories = Some(vec![skill_dir]);
             }
