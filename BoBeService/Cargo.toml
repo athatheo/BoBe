@@ -118,9 +118,6 @@ rand = "0.10.0"
 mdns-sd = { version = "0.18.1", features = ["async"] }
 dashmap = "6.1.0"
 tower = { version = "0.5.3", features = ["timeout", "limit"] }
-fluent-bundle = "0.16.0"
-fluent-templates = "0.13.3"
-unic-langid = "0.9.6"
 # Official GitHub Copilot SDK (Rust). Programmatic Copilot CLI control via
 # JSON-RPC over stdio. Spawns + manages the CLI process per Client. We use one
 # shared Client across the daemon and create one Session per worker class.

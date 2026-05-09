@@ -82,7 +82,6 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
 
             // ── Top-level ─────────────────────────────────────────────
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
-            "locale_override" => set_parsed!(config.locale_override, value, k),
 
             _ => {} // Unknown — already warned during classification
         }
@@ -124,7 +123,6 @@ fn normalize_key(key: &str) -> String {
         "mcp_blocked_commands" => "mcp.blocked_commands",
         "mcp_dangerous_env_keys" => "mcp.dangerous_env_keys",
         "goal_check_interval_seconds" => "goals.check_interval_seconds",
-        "locale_override" => "locale_override",
         other => other,
     }
     .to_string()

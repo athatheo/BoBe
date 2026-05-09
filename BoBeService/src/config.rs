@@ -201,7 +201,6 @@ pub(crate) struct Config {
     pub(crate) goals: GoalsConfig,
 
     pub(crate) seed_default_documents: bool,
-    pub(crate) locale_override: Option<String>,
 }
 
 impl Config {
@@ -229,23 +228,6 @@ impl Config {
         }
 
         Ok(config)
-    }
-
-    /// Effective locale: config override → `en-US`.
-    ///
-    /// The frontend is responsible for detecting the system locale and persisting
-    /// it as `locale_override` on startup.
-    pub(crate) fn effective_locale(&self) -> String {
-        if let Some(locale) = self
-            .locale_override
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            return crate::i18n::resolve_supported_locale(locale);
-        }
-
-        crate::i18n::FALLBACK_LOCALE.to_string()
     }
 
     pub(crate) fn checkin_times_vec(&self) -> &[String] {

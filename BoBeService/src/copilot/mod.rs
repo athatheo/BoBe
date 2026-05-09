@@ -13,5 +13,4 @@ pub(crate) mod registry;
 pub(crate) mod session_store;
 pub(crate) mod skills;
 pub(crate) mod types;
-pub(crate) mod usage;
 pub(crate) mod workers;

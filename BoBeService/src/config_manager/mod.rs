@@ -45,7 +45,6 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "mcp.blocked_commands",
     "mcp.dangerous_env_keys",
     "seed_default_documents",
-    "locale_override",
 ];
 
 #[derive(Debug)]

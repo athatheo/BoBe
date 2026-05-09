@@ -68,8 +68,3 @@ impl Cooldown {
     }
 }
 
-impl Default for Cooldown {
-    fn default() -> Self {
-        Self::new()
-    }
-}

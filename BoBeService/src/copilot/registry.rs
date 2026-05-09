@@ -1,5 +1,5 @@
-//! `WorkerRegistry` — owns the shared `ClientHandle`, the per-class
-//! `Session`s, and the cross-cutting observability (`UsageMeter`).
+//! `WorkerRegistry` — owns the shared `ClientHandle` and the per-class
+//! `Session`s.
 //!
 //! Each worker class has its own `OnceCell` for precise return types
 //! (`Arc<BatchWorker>` for goals/observe/consolidate/decide,
@@ -32,7 +32,6 @@ use super::hooks::BobeHooks;
 use super::memory_file::MemoryFile;
 use super::session_store::{CHAT_RETENTION_DAYS, SessionStore};
 use super::types::WorkerClass;
-use super::usage::UsageMeter;
 use super::workers::batch::BatchWorker;
 use super::workers::chat::CopilotChatWorker;
 use super::workers::vision::VisionWorker;
@@ -41,7 +40,6 @@ pub(crate) struct WorkerRegistry {
     client: Arc<ClientHandle>,
     session_store: SessionStore,
     memory_file: Arc<MemoryFile>,
-    usage: Arc<UsageMeter>,
     data_dir: PathBuf,
     /// MCP servers passed into every Copilot session via
     /// `SessionConfig::mcp_servers`. Loaded from `~/.bobe/mcp.json` at
@@ -76,7 +74,6 @@ impl WorkerRegistry {
             client: ClientHandle::new(),
             session_store: SessionStore::new(&data_dir),
             memory_file,
-            usage: UsageMeter::new(),
             data_dir,
             mcp_servers,
             goals: OnceCell::new(),
@@ -285,7 +282,7 @@ impl WorkerRegistry {
     async fn create_or_resume(&self, class: WorkerClass) -> Result<Arc<Session>, AppError> {
         let client = self.client.ensure_started().await?;
         let now = Local::now();
-        let handler = BobeHandler::new(class, Arc::clone(&self.usage));
+        let handler = BobeHandler::new(class);
         let hooks = BobeHooks::new(class, Arc::clone(&self.memory_file));
 
         // Session mode (autopilot/interactive/plan) isn't a `SessionConfig`

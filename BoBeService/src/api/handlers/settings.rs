@@ -21,9 +21,6 @@ pub(crate) struct SettingsResponse {
     pub(crate) conversation_auto_close_minutes: u64,
     pub(crate) goal_check_interval_seconds: f64,
     pub(crate) mcp_enabled: bool,
-    pub(crate) locale_override: Option<String>,
-    pub(crate) effective_locale: String,
-    pub(crate) supported_locales: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,7 +34,6 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) conversation_auto_close_minutes: Option<u64>,
     pub(crate) goal_check_interval_seconds: Option<f64>,
     pub(crate) mcp_enabled: Option<bool>,
-    pub(crate) locale_override: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -63,12 +59,6 @@ pub(crate) async fn get_settings(
         conversation_auto_close_minutes: cfg.conversation.auto_close_minutes,
         goal_check_interval_seconds: cfg.goals.check_interval_seconds,
         mcp_enabled: cfg.mcp.enabled,
-        locale_override: cfg.locale_override.clone(),
-        effective_locale: cfg.effective_locale(),
-        supported_locales: crate::i18n::SUPPORTED_LOCALES
-            .iter()
-            .map(|locale| (*locale).to_string())
-            .collect(),
     }))
 }
 
@@ -76,20 +66,6 @@ pub(crate) async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SettingsUpdateRequest>,
 ) -> Result<Json<SettingsUpdateResponse>, AppError> {
-    if let Some(ref locale) = body.locale_override {
-        let normalized = locale.trim().replace('_', "-");
-        if !normalized.is_empty()
-            && !crate::i18n::SUPPORTED_LOCALES
-                .iter()
-                .any(|supported| *supported == normalized)
-        {
-            return Err(AppError::Validation(format!(
-                "Invalid locale_override '{locale}'. Supported: {}",
-                crate::i18n::SUPPORTED_LOCALES.join(", ")
-            )));
-        }
-    }
-
     let mut changes: HashMap<String, serde_json::Value> = HashMap::new();
     macro_rules! collect_opt {
         ($field:ident) => {
@@ -110,18 +86,6 @@ pub(crate) async fn update_settings(
     collect_opt!(conversation_auto_close_minutes);
     collect_opt!(goal_check_interval_seconds);
     collect_opt!(mcp_enabled);
-
-    if let Some(ref locale) = body.locale_override {
-        let normalized = locale.trim().replace('_', "-");
-        if normalized.is_empty() {
-            changes.insert("locale_override".to_owned(), serde_json::Value::Null);
-        } else {
-            changes.insert(
-                "locale_override".to_owned(),
-                serde_json::Value::String(normalized),
-            );
-        }
-    }
 
     if let Some(ref v) = body.checkin_times {
         changes.insert(

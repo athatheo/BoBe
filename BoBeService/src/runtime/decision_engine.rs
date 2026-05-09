@@ -85,7 +85,6 @@ impl DecisionEngine {
                 .map(|m| truncate_str(m, 200).to_string())
                 .collect::<Vec<_>>(),
             "current_time": Local::now().format("%Y-%m-%d %H:%M:%S %z").to_string(),
-            "locale": cfg.effective_locale(),
         });
         self.run_decision("capture_engagement_decision", input)
             .await
@@ -96,13 +95,11 @@ impl DecisionEngine {
             return Decision::Idle;
         }
 
-        let cfg = self.config.load();
         let input = json!({
             "trigger_kind": "goal",
             "current_activity": truncate_str(goal_content, 600),
             "recent_ai_messages": Vec::<String>::new(),
             "current_time": Local::now().format("%Y-%m-%d %H:%M:%S %z").to_string(),
-            "locale": cfg.effective_locale(),
         });
         self.run_decision("goal_engagement_decision", input).await
     }

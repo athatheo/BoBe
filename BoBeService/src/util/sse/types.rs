@@ -9,7 +9,6 @@ pub(crate) enum EventType {
     ToolCallComplete,
     Error,
     Heartbeat,
-    EndOfTurn,
     ConversationClosed,
 }
 

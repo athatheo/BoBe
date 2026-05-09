@@ -57,15 +57,6 @@ pub(crate) fn validate_mcp_env(
     validate_subprocess_env(env, dangerous_keys).map_err(AppError::Mcp)
 }
 
-pub(crate) fn filter_safe_env_vars<I>(vars: I, dangerous_keys: &[String]) -> HashMap<String, String>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
-    vars.into_iter()
-        .filter(|(key, _)| !is_dangerous_env_key(key, dangerous_keys))
-        .collect()
-}
-
 pub(crate) fn validate_subprocess_command_spec(
     command: &str,
     args: &[String],

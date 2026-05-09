@@ -146,17 +146,3 @@ pub(crate) enum ChatDelta {
     Done,
 }
 
-/// Snapshot of cost / quota usage for a worker session over its lifetime.
-/// Aggregated by `usage::UsageMeter` from `assistant.usage` events.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(crate) struct UsageSnapshot {
-    pub(crate) input_tokens: u64,
-    pub(crate) output_tokens: u64,
-    pub(crate) cache_read_tokens: u64,
-    pub(crate) cache_write_tokens: u64,
-    /// Sum of `cost` fields across all `assistant.usage` events. Cost is
-    /// the model multiplier — multiply by quota price to get $ amount.
-    pub(crate) cost_units: f64,
-    /// Number of API calls (one `assistant.usage` event = one call).
-    pub(crate) api_calls: u64,
-}
