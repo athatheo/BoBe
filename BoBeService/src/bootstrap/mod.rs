@@ -56,6 +56,11 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         )
     };
 
+    // Best-effort cleanup of chat session-id files older than the
+    // retention window. Removes both the SDK-side session state and
+    // the local pointer; logs and continues on failure.
+    workers.prune_old_chat_sessions().await;
+
     let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
     integrity::run(&pool, repos.agent_job_repo.as_ref()).await;

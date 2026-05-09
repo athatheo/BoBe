@@ -42,7 +42,7 @@ use super::client::ClientHandle;
 use super::handler::BobeHandler;
 use super::hooks::BobeHooks;
 use super::memory_file::MemoryFile;
-use super::session_store::SessionStore;
+use super::session_store::{CHAT_RETENTION_DAYS, SessionStore};
 use super::types::WorkerClass;
 use super::usage::UsageMeter;
 use super::workers::batch::BatchWorker;
@@ -99,6 +99,88 @@ impl WorkerRegistry {
             vision: OnceCell::new(),
             chat: Mutex::new(None),
         })
+    }
+
+    /// Best-effort cleanup of chat session-id files older than
+    /// `CHAT_RETENTION_DAYS`. For each one, we try to `destroy` the
+    /// SDK-side session (so the upstream Copilot CLI releases its
+    /// state too) and then delete the local pointer file. Failures
+    /// are logged but never propagated — leftover files don't break
+    /// anything, they just leak state.
+    ///
+    /// Called at boot from `bootstrap::run` after the registry is
+    /// constructed but before any worker is spawned, so we don't
+    /// race with the chat worker creating today's session.
+    pub(crate) async fn prune_old_chat_sessions(&self) {
+        let now = Local::now();
+        let victims = match self
+            .session_store
+            .old_chat_sessions(now, CHAT_RETENTION_DAYS)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(err = %e, "registry.prune_chat.scan_failed");
+                return;
+            }
+        };
+
+        if victims.is_empty() {
+            return;
+        }
+
+        let client = match self.client.ensure_started().await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    err = %e,
+                    count = victims.len(),
+                    "registry.prune_chat.client_unavailable_skipping_destroy"
+                );
+                // Even without the client we can still nuke the local
+                // files — the SDK-side state will simply linger until
+                // the user clears it manually.
+                for (path, _) in &victims {
+                    drop(tokio::fs::remove_file(path).await);
+                }
+                return;
+            }
+        };
+
+        let mut destroyed = 0usize;
+        for (path, id) in victims {
+            // Try to destroy the SDK-side session. If it's already
+            // gone (NotFound), that's fine. If destroy fails, we
+            // still remove the local pointer — there's nothing
+            // useful for us to do with a stale id.
+            let resume_cfg = github_copilot_sdk::types::ResumeSessionConfig::new(id.clone());
+            if let Ok(session) = client.resume_session(resume_cfg).await
+                && let Err(e) = session.destroy().await
+            {
+                tracing::debug!(
+                    session_id = %id,
+                    err = %e,
+                    "registry.prune_chat.destroy_failed"
+                );
+            }
+            if let Err(e) = tokio::fs::remove_file(&path).await {
+                tracing::warn!(
+                    path = %path.display(),
+                    err = %e,
+                    "registry.prune_chat.unlink_failed"
+                );
+            } else {
+                destroyed += 1;
+            }
+        }
+
+        if destroyed > 0 {
+            tracing::info!(
+                count = destroyed,
+                retention_days = CHAT_RETENTION_DAYS,
+                "registry.prune_chat.cleaned"
+            );
+        }
     }
 
     pub(crate) fn usage_meter(&self) -> &Arc<UsageMeter> {

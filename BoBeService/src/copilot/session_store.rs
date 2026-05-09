@@ -11,12 +11,19 @@
 //!   vision/session.id
 //!   consolidate/session.id
 //!   chat/session-2026-05-08.id    ← daily rotation: one ID per local date
-//!   chat/session-2026-05-07.id    ← yesterday's, preserved (Copilot keeps state too)
+//!   chat/session-2026-05-07.id    ← yesterday's, retained for `prune`
 //! ```
 //!
 //! Chat rotates daily so morning conversations don't inherit yesterday's
 //! noise; cross-day continuity comes from `memory.md`, not from raw chat
-//! history.
+//! history. Old chat session-id files past `CHAT_RETENTION_DAYS` are
+//! removed by `prune_old_chat_sessions` so we don't leak SDK-side
+//! session state forever.
+
+/// Number of days of rotated chat session-id files to keep on disk.
+/// Anything older is deleted at boot. Tuned for "useful for last-week
+/// debug recovery" without keeping stale state forever.
+pub(crate) const CHAT_RETENTION_DAYS: i64 = 7;
 
 use std::path::PathBuf;
 
@@ -113,6 +120,71 @@ impl SessionStore {
             Err(e) => Err(AppError::Io(e)),
         }
     }
+
+    /// Read the session ID at a specific arbitrary path. Used by
+    /// `prune_old_chat_sessions` to recover the SessionId for a
+    /// dated file before deleting it (so the caller can `destroy`
+    /// the SDK-side session before forgetting the local pointer).
+    pub(crate) async fn load_path(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Option<SessionId>, AppError> {
+        match tokio::fs::read_to_string(path).await {
+            Ok(s) => {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(SessionId::new(trimmed)))
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(AppError::Io(e)),
+        }
+    }
+
+    /// List all chat session-id files older than `today - retention_days`.
+    /// Returns `(path, session_id)` pairs so the caller can destroy the
+    /// SDK-side session before deleting the local file.
+    pub(crate) async fn old_chat_sessions(
+        &self,
+        now_local: DateTime<Local>,
+        retention_days: i64,
+    ) -> Result<Vec<(std::path::PathBuf, SessionId)>, AppError> {
+        let chat_dir = self.workers_root.join(WorkerClass::Chat.name());
+        let mut read_dir = match tokio::fs::read_dir(&chat_dir).await {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(AppError::Io(e)),
+        };
+
+        let cutoff = now_local.date_naive() - chrono::Duration::days(retention_days);
+        let mut victims = Vec::new();
+
+        while let Some(entry) = read_dir.next_entry().await? {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            // Filename shape: "session-YYYY-MM-DD.id".
+            let Some(date_part) = name
+                .strip_prefix("session-")
+                .and_then(|rest| rest.strip_suffix(".id"))
+            else {
+                continue;
+            };
+            let Ok(file_date) = chrono::NaiveDate::parse_from_str(date_part, "%Y-%m-%d") else {
+                continue;
+            };
+            if file_date < cutoff
+                && let Ok(Some(id)) = self.load_path(&path).await
+            {
+                victims.push((path, id));
+            }
+        }
+
+        Ok(victims)
+    }
 }
 
 #[cfg(test)]
@@ -182,5 +254,33 @@ mod tests {
             .unwrap();
         store.forget(WorkerClass::Goals, now).await.unwrap();
         assert!(store.load(WorkerClass::Goals, now).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn old_chat_sessions_returns_only_files_past_cutoff() {
+        let store = SessionStore::new(&tempdir());
+        let today = Local.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let yesterday = Local.with_ymd_and_hms(2026, 5, 14, 10, 0, 0).unwrap();
+        let week_ago = Local.with_ymd_and_hms(2026, 5, 8, 10, 0, 0).unwrap();
+        let two_weeks_ago = Local.with_ymd_and_hms(2026, 5, 1, 10, 0, 0).unwrap();
+
+        for (when, id) in [
+            (today, "today-id"),
+            (yesterday, "yest-id"),
+            (week_ago, "week-id"),
+            (two_weeks_ago, "old-id"),
+        ] {
+            store
+                .save(WorkerClass::Chat, when, &SessionId::new(id))
+                .await
+                .unwrap();
+        }
+
+        let victims = store.old_chat_sessions(today, 7).await.unwrap();
+
+        // Only two_weeks_ago is past the 7-day cutoff. (week_ago is
+        // exactly 7 days; cutoff is `< today - 7d` so it's kept.)
+        assert_eq!(victims.len(), 1);
+        assert_eq!(victims[0].1, SessionId::new("old-id"));
     }
 }
