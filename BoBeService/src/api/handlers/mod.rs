@@ -9,7 +9,6 @@ pub(crate) mod onboarding;
 pub(crate) mod settings;
 pub(crate) mod setup;
 pub(crate) mod souls;
-pub(crate) mod tools;
 pub(crate) mod tools_mcp;
 pub(crate) mod user_profile;
 

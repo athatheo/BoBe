@@ -119,7 +119,6 @@ pub(crate) struct StreamChunk {
 #[derive(Debug, Clone)]
 pub(crate) enum StreamItem {
     Chunk(StreamChunk),
-    TypedToolNotification(crate::tools::ToolNotification),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

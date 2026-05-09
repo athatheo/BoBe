@@ -23,7 +23,6 @@ use crate::runtime::session::RuntimeSession;
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::goals_service::GoalsService;
 use crate::tools::mcp::adapter::McpToolAdapter;
-use crate::tools::registry::ToolRegistry;
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -49,7 +48,6 @@ pub(crate) struct AppState {
     pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
     pub(crate) conversation_service: Arc<ConversationService>,
     pub(crate) goals_service: Arc<GoalsService>,
-    pub(crate) tool_registry: Arc<ToolRegistry>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) ollama_manager: Arc<OllamaManager>,

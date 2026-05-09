@@ -146,10 +146,6 @@ pub(crate) async fn save_document(
         warn!(error = %e, "mcp_config.adapter_reload_partial_failure");
     }
 
-    if let Err(e) = state.tool_registry.refresh_index().await {
-        warn!(error = %e, "mcp_config.tool_index_refresh_failed");
-    }
-
     if let Some(ref prev) = previous {
         cleanup_removed_secret_refs(prev, &file);
     }
@@ -183,10 +179,6 @@ pub(crate) async fn reset_document(state: &AppState) -> Result<McpConfigResetRes
         && let Err(e) = adapter.reload_from_config().await
     {
         warn!(error = %e, "mcp_config.adapter_reload_failed_on_reset");
-    }
-
-    if let Err(e) = state.tool_registry.refresh_index().await {
-        warn!(error = %e, "mcp_config.tool_index_refresh_failed_on_reset");
     }
 
     if let Some(ref prev) = previous {

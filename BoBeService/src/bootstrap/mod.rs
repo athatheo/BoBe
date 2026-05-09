@@ -66,7 +66,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         }
     }
 
-    wired.register_tools(&config, &infra.event_queue).await;
+    wired.start_services(&config).await;
 
     wired.wire_sse_callbacks(&infra.connection_manager).await;
 
@@ -92,7 +92,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         user_profile_repo: repos.user_profile_repo,
         conversation_service: wired.conversation_service,
         goals_service: wired.goals_service,
-        tool_registry: wired.tool_registry,
         runtime_session: wired.runtime_session,
         screen_capture: wired.screen_capture,
         ollama_manager: infra.ollama_manager,

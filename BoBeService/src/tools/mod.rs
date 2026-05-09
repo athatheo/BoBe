@@ -1,25 +1,9 @@
+//! MCP server config parsing + adapter (lifecycle management of MCP
+//! processes). Phase 5-mcp will fold MCP server registration into the
+//! Copilot SDK via `SessionConfig::mcp_servers`; this module survives
+//! until then to keep `/api/tools/mcp/config` operational.
+
 pub(crate) mod mcp;
-pub(crate) mod native;
-pub(crate) mod registry;
-
-// ─── Deprecated: superseded by Copilot SDK's built-in tool dispatch ─────────
-//
-// `ToolExecutor`, `ToolPreselector`, and `ToolCallLoop` predate the
-// Copilot SDK pivot. The SDK's session loop (autopilot mode) handles
-// tool selection + invocation natively via Copilot's built-in tools
-// (Read, Write, Bash, Grep, Edit, etc.), so BoBe-side dispatch is no
-// longer needed. The modules remain in-tree for reference but are not
-// constructed at boot — see `bootstrap/wiring.rs`. Slated for removal
-// alongside the rest of the LlmProvider consumer migration.
-
-#[deprecated(note = "superseded by Copilot SDK session loop")]
-pub(crate) mod executor;
-#[deprecated(note = "superseded by Copilot SDK session loop")]
-pub(crate) mod preselector;
-#[deprecated(note = "superseded by Copilot SDK session loop")]
-pub(crate) mod tool_call_loop;
-
-// ─── Types and trait definitions ────────────────────────────────────────────
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -41,6 +25,7 @@ pub(crate) struct ToolResult {
 }
 
 impl ToolResult {
+    #[allow(dead_code, reason = "kept for McpToolAdapter; goes with Phase 5-mcp")]
     pub(crate) fn ok(tool_call_id: String, tool_name: String, content: String) -> Self {
         Self {
             tool_call_id,
@@ -52,6 +37,7 @@ impl ToolResult {
         }
     }
 
+    #[allow(dead_code, reason = "kept for McpToolAdapter; goes with Phase 5-mcp")]
     pub(crate) fn err(tool_call_id: String, tool_name: String, error: String) -> Self {
         Self {
             tool_call_id,
@@ -66,27 +52,12 @@ impl ToolResult {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ToolExecutionContext {
+    #[allow(dead_code, reason = "kept for McpToolAdapter; goes with Phase 5-mcp")]
     pub(crate) conversation_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub(crate) enum ToolNotification {
-    Started {
-        tool_name: String,
-        tool_call_id: String,
-    },
-    Completed {
-        tool_name: String,
-        tool_call_id: String,
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        duration_ms: f64,
-    },
-}
-
 #[async_trait]
+#[allow(dead_code, reason = "kept for McpToolAdapter; goes with Phase 5-mcp")]
 pub(crate) trait ToolSource: Send + Sync {
     fn name(&self) -> &str;
     async fn get_tools(&self) -> Result<Vec<ToolDefinition>, AppError>;

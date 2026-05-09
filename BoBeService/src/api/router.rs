@@ -145,19 +145,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/tools/mcp/config/validate",
             post(handlers::tools_mcp::validate_mcp_config),
         )
-        .route("/tools", get(handlers::tools::list_tools))
-        .route(
-            "/tools/{tool_name}",
-            axum::routing::patch(handlers::tools::update_tool),
-        )
-        .route(
-            "/tools/{tool_name}/enable",
-            post(handlers::tools::enable_tool),
-        )
-        .route(
-            "/tools/{tool_name}/disable",
-            post(handlers::tools::disable_tool),
-        )
         .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))

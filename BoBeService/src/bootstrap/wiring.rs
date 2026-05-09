@@ -24,11 +24,7 @@ use crate::services::agent_job_manager::AgentJobManager;
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::file_store::GoalFileStore;
 use crate::services::goals::goals_service::GoalsService;
-use crate::tools::ToolSource;
 use crate::tools::mcp::McpToolAdapter;
-use crate::tools::native::adapter::NativeToolAdapter;
-use crate::tools::native::base::NativeTool;
-use crate::tools::registry::ToolRegistry;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
@@ -39,34 +35,19 @@ use super::repos::Repositories;
 pub(crate) struct Wired {
     pub(crate) conversation_service: Arc<ConversationService>,
     pub(crate) goals_service: Arc<GoalsService>,
-    pub(crate) tool_registry: Arc<ToolRegistry>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
     pub(crate) mcp_adapter: Arc<McpToolAdapter>,
 
-    native_adapter: Arc<NativeToolAdapter>,
     agent_job_trigger: Option<Arc<AgentJobTrigger>>,
 }
 
 impl Wired {
-    pub(crate) async fn register_tools(&self, config: &Config, _event_queue: &Arc<EventQueue>) {
-        self.tool_registry
-            .register(Arc::clone(&self.native_adapter) as Arc<dyn ToolSource>)
-            .await;
-        info!(
-            tools = self.native_adapter.tool_names().len(),
-            "bootstrap.native_tools_registered"
-        );
-
+    pub(crate) async fn start_services(&self, config: &Config) {
         if config.mcp.enabled {
             match self.mcp_adapter.initialize().await {
-                Ok(()) => {
-                    self.tool_registry
-                        .register(Arc::clone(&self.mcp_adapter) as Arc<dyn ToolSource>)
-                        .await;
-                    info!("bootstrap.mcp_tools_registered");
-                }
+                Ok(()) => info!("bootstrap.mcp_servers_started"),
                 Err(e) => warn!(error = %e, "bootstrap.mcp_init_failed"),
             }
         }
@@ -137,11 +118,6 @@ pub(crate) async fn wire(
         ))
     });
 
-    let tool_registry = Arc::new(ToolRegistry::new());
-    let native_adapter = Arc::new(NativeToolAdapter::new(build_native_tools(
-        repos,
-        agent_job_manager.as_ref(),
-    )));
     let mcp_config_path =
         crate::tools::mcp::config::resolve_mcp_config_path(config.mcp.config_file.as_deref())
             .unwrap_or_else(|e| {
@@ -256,48 +232,10 @@ pub(crate) async fn wire(
     Wired {
         conversation_service,
         goals_service,
-        tool_registry,
         runtime_session,
         screen_capture,
         config_manager,
         mcp_adapter,
-        native_adapter,
         agent_job_trigger,
     }
-}
-
-// ── Native tool construction ───────────────────────────────────────────────
-
-fn build_native_tools(
-    repos: &Repositories,
-    agent_mgr: Option<&Arc<AgentJobManager>>,
-) -> Vec<Arc<dyn NativeTool>> {
-    use crate::tools::native::{
-        browser_history, cancel_coding_agent, check_coding_agent, discover_git_repos,
-        discover_installed_tools, fetch_url, file_reader, get_souls, launch_coding_agent,
-        list_coding_agents, list_directory, search_files,
-    };
-
-    vec![
-        Arc::new(get_souls::GetSoulsTool::new(Arc::clone(&repos.soul_repo))),
-        Arc::new(file_reader::FileReaderTool::new()),
-        Arc::new(list_directory::ListDirectoryTool::new()),
-        Arc::new(search_files::SearchFilesTool::new()),
-        Arc::new(fetch_url::FetchUrlTool::new()),
-        Arc::new(browser_history::BrowserHistoryTool::new()),
-        Arc::new(discover_git_repos::DiscoverGitReposTool::new()),
-        Arc::new(discover_installed_tools::DiscoverInstalledToolsTool::new()),
-        Arc::new(launch_coding_agent::LaunchCodingAgentTool::new(
-            agent_mgr.cloned(),
-        )),
-        Arc::new(check_coding_agent::CheckCodingAgentTool::new(Arc::clone(
-            &repos.agent_job_repo,
-        ))),
-        Arc::new(cancel_coding_agent::CancelCodingAgentTool::new(
-            agent_mgr.cloned(),
-        )),
-        Arc::new(list_coding_agents::ListCodingAgentsTool::new(Arc::clone(
-            &repos.agent_job_repo,
-        ))),
-    ]
 }
