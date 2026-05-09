@@ -58,9 +58,17 @@ impl CaptureLearner {
 
     /// Vision-describe the screenshot, append the description to
     /// memory.md, return it. The returned string is what the trigger
-    /// hands to `DecisionEngine` as `context_text` — empty string means
-    /// the description was unusable and the trigger should treat the
-    /// cycle as a no-op.
+    /// hands to `DecisionEngine` as `context_text`.
+    ///
+    /// Return-value semantics:
+    /// - `Ok(non_empty)` — vision produced a usable description; the
+    ///   trigger may proceed to the decision step.
+    /// - `Ok("")` — vision produced an empty description (the screen
+    ///   was uninformative). Treat as a no-op cycle.
+    /// - `Err(_)` — vision worker failed. Trigger should back off
+    ///   instead of retrying immediately. This used to be swallowed
+    ///   into `Ok("")`, which spun forever when the SDK was
+    ///   unavailable; surfacing the error lets the trigger debounce.
     pub(crate) async fn learn(
         &self,
         screenshot: Vec<u8>,
@@ -77,13 +85,10 @@ impl CaptureLearner {
             bytes: screenshot,
             mime_type: "image/png",
         };
-        let answer = match worker.analyze(VISION_QUESTION, attachment).await {
-            Ok(a) => a,
-            Err(e) => {
-                warn!(error = %e, "capture_learner.vision_failed");
-                return Ok(String::new());
-            }
-        };
+        let answer = worker
+            .analyze(VISION_QUESTION, attachment)
+            .await
+            .map_err(|e| AppError::Capture(format!("vision worker failed: {e}")))?;
 
         let description = answer.text.trim();
         if description.is_empty() {
