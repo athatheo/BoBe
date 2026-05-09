@@ -68,10 +68,16 @@ impl ConsolidationTrigger {
                 }
             }
 
-            if let Err(e) = self.consolidate_once().await {
-                tracing::warn!(err = %e, "consolidation_trigger.run_failed");
-                // Next night will try again — don't fast-retry, that just
-                // hammers the worker if Copilot is down.
+            match self.consolidate_once().await {
+                Ok(_) => {}
+                // `Conflict` means a writer slipped in mid-pass; expected,
+                // we just skip this run and the next night tries fresh.
+                Err(AppError::Conflict(reason)) => {
+                    tracing::info!(reason = %reason, "consolidation_trigger.skipped");
+                }
+                Err(e) => {
+                    tracing::warn!(err = %e, "consolidation_trigger.run_failed");
+                }
             }
         }
     }

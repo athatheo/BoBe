@@ -31,7 +31,6 @@ use super::infra::Infrastructure;
 use super::repos::Repositories;
 
 pub(crate) struct Wired {
-    pub(crate) conversation_service: Arc<ConversationService>,
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
@@ -123,12 +122,6 @@ pub(crate) async fn wire(
         Arc::clone(config_arc),
     ));
 
-    // Tool dispatch is now owned by Copilot SDK's session loop —
-    // built-in Read/Write/Bash/Grep tools auto-invoked in autopilot
-    // mode. The legacy `ToolPreselector`, `ToolCallLoop`, and
-    // `ToolExecutor` modules remain as deprecated reference (see
-    // `#[deprecated]` on each) but are no longer constructed at boot.
-
     let proactive_generator = Arc::new(ProactiveGenerator::new(
         Arc::clone(&workers),
         Arc::clone(&conversation_service),
@@ -200,7 +193,6 @@ pub(crate) async fn wire(
     let config_manager = Arc::new(ConfigManager::new(Arc::clone(config_arc)));
 
     Wired {
-        conversation_service,
         goals_service,
         runtime_session,
         screen_capture,

@@ -63,7 +63,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
-    integrity::run(&pool, repos.agent_job_repo.as_ref()).await;
+    integrity::run(repos.agent_job_repo.as_ref()).await;
 
     if config.seed_default_documents {
         if let Err(e) = crate::db::seeding::seed_default_souls(repos.soul_repo.as_ref()).await {
@@ -86,15 +86,10 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
-        http_client: infra.http_client,
         event_queue: infra.event_queue,
         connection_manager: infra.connection_manager,
-        conversation_repo: repos.conversation_repo,
-        cooldown_repo: repos.cooldown_repo,
-        agent_job_repo: repos.agent_job_repo,
         soul_repo: repos.soul_repo,
         user_profile_repo: repos.user_profile_repo,
-        conversation_service: wired.conversation_service,
         goals_service: wired.goals_service,
         runtime_session: wired.runtime_session,
         screen_capture: wired.screen_capture,

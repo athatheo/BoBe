@@ -6,7 +6,6 @@ mod bootstrap;
 mod config;
 mod config_manager;
 mod constants;
-#[allow(unsafe_code)]
 mod copilot;
 mod db;
 mod error;
@@ -37,9 +36,6 @@ enum Commands {
         log_level: String,
     },
     Version,
-    /// Phase-1 Copilot CLI worker spike: drive one job end-to-end.
-    #[command(name = "spike-copilot")]
-    SpikeCopilot,
 }
 
 #[tokio::main]
@@ -96,15 +92,6 @@ async fn main() -> anyhow::Result<()> {
         #[allow(clippy::print_stdout)]
         Commands::Version => {
             println!("BoBe v{}", env!("CARGO_PKG_VERSION"));
-        }
-        Commands::SpikeCopilot => {
-            tracing_subscriber::fmt()
-                .with_env_filter(
-                    tracing_subscriber::EnvFilter::try_from_default_env()
-                        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-                )
-                .init();
-            copilot::spike::run().await?;
         }
     }
 
