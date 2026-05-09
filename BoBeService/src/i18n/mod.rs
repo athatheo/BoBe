@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn returns_localized_text_for_known_key() {
-        let value = t("en-US", "response-user-context-header");
-        assert_eq!(value, "Recent activity context:");
+        let value = t("en-US", "prompt-agent-job-evaluation-no-summary");
+        assert_eq!(value, "No summary available.");
     }
 }
