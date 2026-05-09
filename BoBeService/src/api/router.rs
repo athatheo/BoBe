@@ -57,26 +57,8 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::goals::archive_goal),
         )
         .route(
-            "/memories",
-            get(handlers::memories::list_memories).post(handlers::memories::create_memory),
-        )
-        .route(
-            "/memories/search",
-            post(handlers::memories::search_memories),
-        )
-        .route(
-            "/memories/{memory_id}",
-            get(handlers::memories::get_memory)
-                .patch(handlers::memories::update_memory)
-                .delete(handlers::memories::delete_memory),
-        )
-        .route(
-            "/memories/{memory_id}/enable",
-            post(handlers::memories::enable_memory),
-        )
-        .route(
-            "/memories/{memory_id}/disable",
-            post(handlers::memories::disable_memory),
+            "/memory",
+            get(handlers::memories::get_memory).put(handlers::memories::update_memory),
         )
         .route(
             "/souls",

@@ -4,7 +4,6 @@ mod agent_job_repo;
 mod conversation_repo;
 mod cooldown_repo;
 mod learning_state_repo;
-mod memory_repo;
 mod observation_repo;
 mod soul_repo;
 mod user_profile_repo;
@@ -15,7 +14,6 @@ pub(crate) use agent_job_repo::SqliteAgentJobRepo;
 pub(crate) use conversation_repo::SqliteConversationRepo;
 pub(crate) use cooldown_repo::SqliteCooldownRepo;
 pub(crate) use learning_state_repo::SqliteLearningStateRepo;
-pub(crate) use memory_repo::SqliteMemoryRepo;
 pub(crate) use observation_repo::SqliteObservationRepo;
 pub(crate) use soul_repo::SqliteSoulRepo;
 pub(crate) use user_profile_repo::SqliteUserProfileRepo;
@@ -29,14 +27,11 @@ use crate::error::AppError;
 use crate::models::agent_job::AgentJob;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::cooldown::CooldownInfo;
-use crate::models::ids::{
-    AgentJobId, ConversationId, MemoryId, ObservationId, SoulId, UserProfileId,
-};
+use crate::models::ids::{AgentJobId, ConversationId, ObservationId, SoulId, UserProfileId};
 use crate::models::learning_state::LearningState;
-use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::soul::Soul;
-use crate::models::types::{AgentJobStatus, ConversationState, MemorySource, MemoryType, TurnRole};
+use crate::models::types::{AgentJobStatus, ConversationState, TurnRole};
 use crate::models::user_profile::UserProfile;
 
 #[async_trait]
@@ -91,73 +86,6 @@ pub(crate) trait ConversationRepository: Send + Sync {
         _limit: i64,
     ) -> Result<Vec<String>, AppError> {
         unimplemented!("ConversationRepository::get_recent_turns_by_role")
-    }
-}
-
-#[async_trait]
-#[allow(dead_code)]
-pub(crate) trait MemoryRepository: Send + Sync {
-    async fn save(&self, _memory: &Memory) -> Result<Memory, AppError> {
-        unimplemented!("MemoryRepository::save")
-    }
-    async fn get_by_id(&self, _id: MemoryId) -> Result<Option<Memory>, AppError> {
-        unimplemented!("MemoryRepository::get_by_id")
-    }
-    async fn find_by_type(
-        &self,
-        _memory_type: MemoryType,
-        _enabled_only: bool,
-        _since: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Memory>, AppError> {
-        unimplemented!("MemoryRepository::find_by_type")
-    }
-    async fn find_enabled(&self, _limit: Option<i64>) -> Result<Vec<Memory>, AppError> {
-        unimplemented!("MemoryRepository::find_enabled")
-    }
-    async fn find_similar(
-        &self,
-        _embedding: &[f32],
-        _limit: i64,
-        _enabled_only: bool,
-        _min_score: f64,
-    ) -> Result<Vec<(Memory, f64)>, AppError> {
-        unimplemented!("MemoryRepository::find_similar")
-    }
-    async fn find_all(
-        &self,
-        _memory_type: Option<MemoryType>,
-        _category: Option<&str>,
-        _source: Option<MemorySource>,
-        _enabled_only: bool,
-        _limit: i64,
-        _offset: i64,
-    ) -> Result<(Vec<Memory>, i64), AppError> {
-        unimplemented!("MemoryRepository::find_all")
-    }
-    async fn update(
-        &self,
-        _id: MemoryId,
-        _content: Option<&str>,
-        _enabled: Option<bool>,
-        _category: Option<&str>,
-    ) -> Result<Option<Memory>, AppError> {
-        unimplemented!("MemoryRepository::update")
-    }
-    async fn delete_by_criteria(
-        &self,
-        _memory_type: MemoryType,
-        _older_than: DateTime<Utc>,
-    ) -> Result<i64, AppError> {
-        unimplemented!("MemoryRepository::delete_by_criteria")
-    }
-    async fn delete(&self, _id: MemoryId) -> Result<bool, AppError> {
-        unimplemented!("MemoryRepository::delete")
-    }
-    async fn find_null_embedding(&self, _limit: i64) -> Result<Vec<Memory>, AppError> {
-        unimplemented!("MemoryRepository::find_null_embedding")
-    }
-    async fn update_embedding(&self, _id: MemoryId, _embedding: &[f32]) -> Result<(), AppError> {
-        unimplemented!("MemoryRepository::update_embedding")
     }
 }
 

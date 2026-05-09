@@ -84,7 +84,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         vision_llm_provider: infra.vision_llm_provider,
         embedding_provider: infra.embedding_provider,
         conversation_repo: repos.conversation_repo,
-        memory_repo: repos.memory_repo,
         observation_repo: repos.observation_repo,
         cooldown_repo: repos.cooldown_repo,
         learning_state_repo: repos.learning_state_repo,

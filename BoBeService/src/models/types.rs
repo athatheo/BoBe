@@ -80,60 +80,6 @@ impl std::fmt::Display for GoalStatus {
     }
 }
 
-// ─── Memory ─────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum MemoryType {
-    ShortTerm,
-    LongTerm,
-    Explicit,
-}
-
-impl MemoryType {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            Self::ShortTerm => "short_term",
-            Self::LongTerm => "long_term",
-            Self::Explicit => "explicit",
-        }
-    }
-}
-
-impl std::fmt::Display for MemoryType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum MemorySource {
-    Observation,
-    Conversation,
-    VisualDiary,
-    Consolidated,
-}
-
-impl MemorySource {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            Self::Observation => "observation",
-            Self::Conversation => "conversation",
-            Self::VisualDiary => "visual_diary",
-            Self::Consolidated => "consolidated",
-        }
-    }
-}
-
-impl std::fmt::Display for MemorySource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 // ─── Observation ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]

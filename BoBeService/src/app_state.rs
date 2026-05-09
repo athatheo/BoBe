@@ -13,7 +13,6 @@ use crate::db::AgentJobRepository;
 use crate::db::ConversationRepository;
 use crate::db::CooldownRepository;
 use crate::db::LearningStateRepository;
-use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
 use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
@@ -42,7 +41,6 @@ pub(crate) struct AppState {
     pub(crate) vision_llm_provider: Option<Arc<dyn LlmProvider>>,
     pub(crate) embedding_provider: Arc<dyn EmbeddingProvider>,
     pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
-    pub(crate) memory_repo: Arc<dyn MemoryRepository>,
     pub(crate) observation_repo: Arc<dyn ObservationRepository>,
     pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
     pub(crate) learning_state_repo: Arc<dyn LearningStateRepository>,
