@@ -1,12 +1,6 @@
-//! Runtime configuration manager — hot-swap of in-memory `Config` via
-//! `ArcSwap` plus persistence to `config.toml`.
-//!
-//! Pre-pivot this module also rebuilt `LlmProvider` and
-//! `EmbeddingProvider` instances when their config keys changed
-//! (backend / model / API key). Post-pivot Copilot CLI is the engine,
-//! so there are no providers to rebuild — the manager just classifies
-//! whether a change is hot-applicable or restart-required, persists
-//! it, and atomically swaps the in-memory `Config`.
+//! Runtime configuration manager — classifies each PATCH /settings
+//! field as hot-applicable or restart-required, persists to
+//! `config.toml`, and atomically swaps the in-memory `Config`.
 
 mod fields;
 pub(crate) mod persistence;
@@ -35,17 +29,14 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "capture.interval_seconds",
     "decision.cooldown_minutes",
     "decision.extended_cooldown_minutes",
-    "decision.min_context",
     "decision.recent_ai_messages_limit",
     "checkin.enabled",
     "checkin.times",
     "checkin.interval_minutes",
     "checkin.jitter_minutes",
     "goals.check_interval_seconds",
-    "goals.max_active",
     "conversation.inactivity_timeout_seconds",
     "conversation.auto_close_minutes",
-    "conversation.summary_enabled",
     "logging.level",
     "logging.json",
     "server.cors_origins",
@@ -56,12 +47,9 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "coding_agent.enabled",
     "coding_agent.profiles",
     "coding_agent.output_dir",
-    "coding_agent.poll_interval_seconds",
     "coding_agent.max_concurrent",
     "coding_agent.max_runtime_seconds",
-    "soul_file",
     "seed_default_documents",
-    "setup_completed",
     "locale_override",
 ];
 

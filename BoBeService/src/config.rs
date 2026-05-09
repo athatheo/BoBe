@@ -1,15 +1,4 @@
 //! Application configuration. Layered: defaults → config.toml → BOBE_* env vars.
-//!
-//! Pre-pivot config carried backend choice + model + key for the
-//! `LlmProvider` (Ollama/OpenAI/Azure/llama.cpp), embedding model
-//! settings, vision LLM, similarity thresholds, learning intervals,
-//! memory retention windows, and the goal-worker subsystem. Copilot
-//! CLI is the engine now, vector memory is gone, and the goal-worker
-//! coding-agent subsystem is gone — all of those config sections went
-//! with them. What remains is everything still load-bearing at
-//! runtime.
-
-use std::path::PathBuf;
 
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
@@ -90,7 +79,6 @@ impl Default for CheckinConfig {
 pub(crate) struct ConversationConfig {
     pub(crate) inactivity_timeout_seconds: u64,
     pub(crate) auto_close_minutes: u64,
-    pub(crate) summary_enabled: bool,
 }
 
 impl Default for ConversationConfig {
@@ -98,7 +86,6 @@ impl Default for ConversationConfig {
         Self {
             inactivity_timeout_seconds: 30,
             auto_close_minutes: 10,
-            summary_enabled: true,
         }
     }
 }
@@ -182,14 +169,12 @@ impl Default for McpConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct GoalsConfig {
-    pub(crate) max_active: u32,
     pub(crate) check_interval_seconds: f64,
 }
 
 impl Default for GoalsConfig {
     fn default() -> Self {
         Self {
-            max_active: 10,
             check_interval_seconds: 900.0,
         }
     }
@@ -201,7 +186,6 @@ pub(crate) struct CodingAgentConfig {
     pub(crate) enabled: bool,
     pub(crate) profiles: String,
     pub(crate) output_dir: String,
-    pub(crate) poll_interval_seconds: f64,
     pub(crate) max_concurrent: u32,
     pub(crate) max_runtime_seconds: u64,
 }
@@ -212,7 +196,6 @@ impl Default for CodingAgentConfig {
             enabled: false,
             profiles: "[]".into(),
             output_dir: "~/.bobe/agent_output".into(),
-            poll_interval_seconds: 5.0,
             max_concurrent: 2,
             max_runtime_seconds: 1800,
         }
@@ -240,7 +223,6 @@ pub(crate) struct Config {
     pub(crate) goals: GoalsConfig,
     pub(crate) coding_agent: CodingAgentConfig,
 
-    pub(crate) soul_file: Option<String>,
     pub(crate) seed_default_documents: bool,
     pub(crate) locale_override: Option<String>,
 }
@@ -303,13 +285,5 @@ impl Config {
 
     pub(crate) fn cors_origins_vec(&self) -> &[String] {
         &self.server.cors_origins
-    }
-
-    /// Reserved for future config keys that need a tilde-expanded
-    /// path; presently only `database.url` benefits and `load`
-    /// handles it inline.
-    #[allow(dead_code)]
-    pub(crate) fn resolved_data_dir(&self) -> PathBuf {
-        crate::util::paths::expand_tilde(&self.data_dir)
     }
 }

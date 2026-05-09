@@ -1,11 +1,4 @@
-//! Read + patch the live config. Pre-pivot this handler exposed every
-//! `BOBE_*` env var the daemon honored — backend selection, model
-//! choice, embedding settings, learning intervals, goal worker
-//! controls, similarity thresholds, memory retention. Most of those
-//! knobs went away with the SDK pivot (no LLM backend choice — Copilot
-//! CLI is the engine; no embeddings; no goal-worker subsystem; no
-//! row-oriented memory). What remains is everything still load-bearing
-//! at runtime.
+//! Read + patch the live config.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,7 +19,6 @@ pub(crate) struct SettingsResponse {
     pub(crate) checkin_jitter_minutes: u32,
     pub(crate) conversation_inactivity_timeout_seconds: u64,
     pub(crate) conversation_auto_close_minutes: u64,
-    pub(crate) conversation_summary_enabled: bool,
     pub(crate) goal_check_interval_seconds: f64,
     pub(crate) mcp_enabled: bool,
     pub(crate) locale_override: Option<String>,
@@ -43,7 +35,6 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) checkin_jitter_minutes: Option<u32>,
     pub(crate) conversation_inactivity_timeout_seconds: Option<u64>,
     pub(crate) conversation_auto_close_minutes: Option<u64>,
-    pub(crate) conversation_summary_enabled: Option<bool>,
     pub(crate) goal_check_interval_seconds: Option<f64>,
     pub(crate) mcp_enabled: Option<bool>,
     pub(crate) locale_override: Option<String>,
@@ -70,7 +61,6 @@ pub(crate) async fn get_settings(
         checkin_jitter_minutes: cfg.checkin.jitter_minutes,
         conversation_inactivity_timeout_seconds: cfg.conversation.inactivity_timeout_seconds,
         conversation_auto_close_minutes: cfg.conversation.auto_close_minutes,
-        conversation_summary_enabled: cfg.conversation.summary_enabled,
         goal_check_interval_seconds: cfg.goals.check_interval_seconds,
         mcp_enabled: cfg.mcp.enabled,
         locale_override: cfg.locale_override.clone(),
@@ -118,7 +108,6 @@ pub(crate) async fn update_settings(
     collect_opt!(checkin_jitter_minutes);
     collect_opt!(conversation_inactivity_timeout_seconds);
     collect_opt!(conversation_auto_close_minutes);
-    collect_opt!(conversation_summary_enabled);
     collect_opt!(goal_check_interval_seconds);
     collect_opt!(mcp_enabled);
 

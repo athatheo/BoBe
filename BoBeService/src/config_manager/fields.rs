@@ -52,9 +52,6 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             "conversation.auto_close_minutes" => {
                 set_parsed!(config.conversation.auto_close_minutes, value, k);
             }
-            "conversation.summary_enabled" => {
-                set_parsed!(config.conversation.summary_enabled, value, k);
-            }
 
             // ── Logging ───────────────────────────────────────────────
             "logging.level" => set_parsed!(config.logging.level, value, k),
@@ -79,7 +76,6 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             "mcp.dangerous_env_keys" => set_parsed!(config.mcp.dangerous_env_keys, value, k),
 
             // ── Goals ─────────────────────────────────────────────────
-            "goals.max_active" => set_parsed!(config.goals.max_active, value, k),
             "goals.check_interval_seconds" => {
                 set_parsed!(config.goals.check_interval_seconds, value, k);
             }
@@ -88,9 +84,6 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             "coding_agent.enabled" => set_parsed!(config.coding_agent.enabled, value, k),
             "coding_agent.profiles" => set_parsed!(config.coding_agent.profiles, value, k),
             "coding_agent.output_dir" => set_parsed!(config.coding_agent.output_dir, value, k),
-            "coding_agent.poll_interval_seconds" => {
-                set_parsed!(config.coding_agent.poll_interval_seconds, value, k);
-            }
             "coding_agent.max_concurrent" => {
                 set_parsed!(config.coding_agent.max_concurrent, value, k);
             }
@@ -99,7 +92,6 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             }
 
             // ── Top-level ─────────────────────────────────────────────
-            "soul_file" => set_parsed!(config.soul_file, value, k),
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
             "locale_override" => set_parsed!(config.locale_override, value, k),
 
@@ -132,7 +124,6 @@ fn normalize_key(key: &str) -> String {
         "checkin_interval_minutes" => "checkin.interval_minutes",
         "conversation_inactivity_timeout_seconds" => "conversation.inactivity_timeout_seconds",
         "conversation_auto_close_minutes" => "conversation.auto_close_minutes",
-        "conversation_summary_enabled" => "conversation.summary_enabled",
         "log_level" => "logging.level",
         "log_json" => "logging.json",
         "log_file" => "logging.file",
@@ -143,12 +134,10 @@ fn normalize_key(key: &str) -> String {
         "mcp_config_file" => "mcp.config_file",
         "mcp_blocked_commands" => "mcp.blocked_commands",
         "mcp_dangerous_env_keys" => "mcp.dangerous_env_keys",
-        "goals_max_active" => "goals.max_active",
         "goal_check_interval_seconds" => "goals.check_interval_seconds",
         "coding_agents_enabled" => "coding_agent.enabled",
         "coding_agent_profiles" => "coding_agent.profiles",
         "coding_agent_output_dir" => "coding_agent.output_dir",
-        "coding_agent_poll_interval_seconds" => "coding_agent.poll_interval_seconds",
         "coding_agent_max_concurrent" => "coding_agent.max_concurrent",
         "coding_agent_max_runtime_seconds" => "coding_agent.max_runtime_seconds",
         "locale_override" => "locale_override",
