@@ -1,25 +1,13 @@
 //! `WorkerRegistry` — owns the shared `ClientHandle`, the per-class
 //! `Session`s, and the cross-cutting observability (`UsageMeter`).
-
-#![allow(
-    dead_code,
-    reason = "Phase 6: per-class accessors complete; Phase 5 wires consumers"
-)]
 //!
-//! Each worker class has its own `OnceCell` so types are precise:
-//!
-//! ```text
-//!   registry.goals().await       -> Arc<BatchWorker>
-//!   registry.observe().await     -> Arc<BatchWorker>
-//!   registry.consolidate().await -> Arc<BatchWorker>
-//!   registry.vision().await      -> Arc<VisionWorker>
-//!   registry.chat().await        -> Arc<CopilotChatWorker>
-//! ```
-//!
+//! Each worker class has its own `OnceCell` for precise return types
+//! (`Arc<BatchWorker>` for goals/observe/consolidate/decide,
+//! `Arc<VisionWorker>` for vision, `Arc<CopilotChatWorker>` for chat).
 //! Sessions are lazy: the first call to a class accessor spawns the
 //! `Session` (after establishing the shared CLI process via
 //! `ClientHandle::ensure_started`). Subsequent calls return the cached
-//! `Arc`. Shutdown is one `shutdown_all` that walks every spawned class.
+//! `Arc`. `shutdown_all` walks every spawned class.
 //!
 //! Sessions persist across daemon restarts via `SessionStore`. Chat
 //! rotates daily; everything else uses a stable per-class ID.
@@ -63,7 +51,6 @@ pub(crate) struct WorkerRegistry {
     mcp_servers: HashMap<String, McpServerConfig>,
 
     goals: OnceCell<Arc<BatchWorker>>,
-    observe: OnceCell<Arc<BatchWorker>>,
     consolidate: OnceCell<Arc<BatchWorker>>,
     decide: OnceCell<Arc<BatchWorker>>,
     vision: OnceCell<Arc<VisionWorker>>,
@@ -93,7 +80,6 @@ impl WorkerRegistry {
             data_dir,
             mcp_servers,
             goals: OnceCell::new(),
-            observe: OnceCell::new(),
             consolidate: OnceCell::new(),
             decide: OnceCell::new(),
             vision: OnceCell::new(),
@@ -183,10 +169,6 @@ impl WorkerRegistry {
         }
     }
 
-    pub(crate) fn usage_meter(&self) -> &Arc<UsageMeter> {
-        &self.usage
-    }
-
     /// The single-writer memory.md handle this registry was constructed
     /// with. Consumers (capture learner, consolidation, memories
     /// handler) take an `Arc<MemoryFile>` from here rather than
@@ -200,16 +182,6 @@ impl WorkerRegistry {
             .get_or_try_init(|| async {
                 let session = self.create_or_resume(WorkerClass::Goals).await?;
                 Ok::<_, AppError>(BatchWorker::new(WorkerClass::Goals, session))
-            })
-            .await
-            .cloned()
-    }
-
-    pub(crate) async fn observe(&self) -> Result<Arc<BatchWorker>, AppError> {
-        self.observe
-            .get_or_try_init(|| async {
-                let session = self.create_or_resume(WorkerClass::Observe).await?;
-                Ok::<_, AppError>(BatchWorker::new(WorkerClass::Observe, session))
             })
             .await
             .cloned()
@@ -290,9 +262,6 @@ impl WorkerRegistry {
     pub(crate) async fn shutdown_all(&self) {
         if let Some(w) = self.goals.get() {
             log_shutdown("goals", w.shutdown().await);
-        }
-        if let Some(w) = self.observe.get() {
-            log_shutdown("observe", w.shutdown().await);
         }
         if let Some(w) = self.consolidate.get() {
             log_shutdown("consolidate", w.shutdown().await);

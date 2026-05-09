@@ -1,26 +1,5 @@
 //! `UsageMeter` — aggregates `assistant.usage` events into per-class
-//! counters. Surfaces the data BoBe needs for "X premium requests today,
-//! Y left" UX and for cost observability.
-
-#![allow(
-    dead_code,
-    reason = "Phase 6: snapshot/snapshot_all consumed by Phase 5 /api/health migration"
-)]
-//!
-//! Wire format (from the SDK's streaming events doc):
-//!
-//! ```json
-//! {
-//!   "model": "gpt-4.1",
-//!   "inputTokens": 1234,
-//!   "outputTokens": 567,
-//!   "cacheReadTokens": 89,
-//!   "cacheWriteTokens": 0,
-//!   "cost": 1.0,
-//!   "duration": 2400,
-//!   "providerCallId": "req_..."
-//! }
-//! ```
+//! counters for cost observability.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -70,21 +49,13 @@ impl UsageMeter {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn snapshot(&self, class: WorkerClass) -> UsageSnapshot {
         let guard = match self.inner.read() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
         guard.get(&class).cloned().unwrap_or_default()
-    }
-
-    /// All-classes snapshot — useful for `/api/health` style endpoints.
-    pub(crate) fn snapshot_all(&self) -> HashMap<WorkerClass, UsageSnapshot> {
-        let guard = match self.inner.read() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        guard.clone()
     }
 }
 

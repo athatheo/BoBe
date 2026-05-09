@@ -606,8 +606,6 @@ async fn kill_process(pid: u32) {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use tokio::sync::Mutex as TokioMutex;
 
     #[test]
     fn build_env_filters_loader_injection_keys() {

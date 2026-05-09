@@ -7,11 +7,6 @@
 //! sequence inside `append_under`. Callers can hold the lock manually for
 //! larger ops (consolidation rewrites the whole file under the lock).
 
-#![allow(
-    dead_code,
-    reason = "Phase 2: writer + symlink helpers; consumers cut over in Phase 5"
-)]
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -21,17 +16,12 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use crate::error::AppError;
 
-/// Default skeleton when `memory.md` doesn't exist yet.
 const DEFAULT_BODY: &str =
     "# BoBe Memory\n\n## Profile\n\n## Active Goals\n\n## Long-term\n\n## Recent\n";
 
 /// Pruning cap that the consolidation worker is supposed to maintain.
 /// The writer doesn't enforce it on every write — that's a fast-path
-/// concern; consolidation (Phase 4) shrinks the file nightly.
-#[allow(
-    dead_code,
-    reason = "Phase 2: consumed by the consolidation worker added in Phase 4"
-)]
+/// concern; consolidation shrinks the file nightly.
 pub(crate) const TARGET_MAX_BYTES: usize = 50 * 1024;
 
 pub(crate) struct MemoryFile {
@@ -76,10 +66,6 @@ impl MemoryFile {
             file: self,
             _guard: guard,
         }
-    }
-
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
     }
 
     /// Read the whole file. Concurrent with writers — the atomic rename in

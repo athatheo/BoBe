@@ -141,7 +141,7 @@ where
                     state.sequence += 1;
                 }
             }
-            ChatDelta::ToolStart { id, name, args: _ } => {
+            ChatDelta::ToolStart { id, name } => {
                 info!(tool = %name, "tool_call.start");
                 event_queue.push(tool_call_start_event(state.msg_id(), &name, &id));
             }

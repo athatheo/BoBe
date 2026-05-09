@@ -46,11 +46,6 @@
 //! Sections are optional in the file (a fresh goal may only have
 //! Summary populated). Empty sections round-trip as empty strings.
 
-#![allow(
-    dead_code,
-    reason = "Phase 5-goals/1: foundation; consumers wired in next commit"
-)]
-
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
@@ -68,7 +63,8 @@ pub(crate) const LIVING_DOCUMENT_PREAMBLE: &str = "> This is a living document. 
 /// emits sections in this order (skipping empty ones counts the same
 /// as emitting empty headers — we always emit headers so the agent
 /// has a stable place to write).
-pub(crate) const SECTIONS: &[&str] = &[
+#[cfg(test)]
+const SECTIONS: &[&str] = &[
     "Summary",
     "Why It Matters",
     "How They're Working On It",

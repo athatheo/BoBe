@@ -1,20 +1,11 @@
 //! Screen-capture learner: ask `VisionWorker` what's on the screen,
 //! append a one-liner under `## Recent` in `memory.md`. The nightly
 //! Consolidate worker prunes that section.
-//!
-//! Pre-pivot this also embedded the description, persisted an
-//! `Observation` row to SQL, and rewrote a separate `Memory` entry of
-//! type `VisualDiary` via a second LLM turn. All of that is gone:
-//! memory.md is the single durable narrative store, the Vision worker
-//! is the single LLM call, and the consolidate worker is responsible
-//! for deciding what's worth keeping.
 
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
 
-use crate::config::Config;
 use crate::copilot::memory_file::MemoryFile;
 use crate::copilot::registry::WorkerRegistry;
 use crate::copilot::types::ChatAttachment;
@@ -36,23 +27,13 @@ const VISION_QUESTION: &str = "Describe in one sentence what the user is doing o
 pub(crate) struct CaptureLearner {
     workers: Arc<WorkerRegistry>,
     memory_file: Arc<MemoryFile>,
-    /// Reserved for future per-locale phrasing of the vision question
-    /// and the memory.md entry. Not currently consulted but kept on the
-    /// struct so the wiring shape doesn't need to change later.
-    #[allow(dead_code)]
-    config: Arc<ArcSwap<Config>>,
 }
 
 impl CaptureLearner {
-    pub(crate) fn new(
-        workers: Arc<WorkerRegistry>,
-        memory_file: Arc<MemoryFile>,
-        config: Arc<ArcSwap<Config>>,
-    ) -> Self {
+    pub(crate) fn new(workers: Arc<WorkerRegistry>, memory_file: Arc<MemoryFile>) -> Self {
         Self {
             workers,
             memory_file,
-            config,
         }
     }
 

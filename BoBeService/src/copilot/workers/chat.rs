@@ -179,27 +179,12 @@ fn build_message_options(
 }
 
 fn to_sdk_attachment(att: ChatAttachment) -> Result<Attachment, std::io::Error> {
-    match att {
-        ChatAttachment::ImageBytes { bytes, mime_type } => Ok(Attachment::Blob {
-            data: BASE64.encode(&bytes),
-            mime_type: mime_type.to_string(),
-            display_name: None,
-        }),
-        ChatAttachment::File { path } => {
-            // SDK requires absolute paths; fail loudly if we got a relative one.
-            if !path.is_absolute() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("file attachment must be absolute: {}", path.display()),
-                ));
-            }
-            Ok(Attachment::File {
-                path,
-                display_name: None,
-                line_range: None,
-            })
-        }
-    }
+    let ChatAttachment::ImageBytes { bytes, mime_type } = att;
+    Ok(Attachment::Blob {
+        data: BASE64.encode(&bytes),
+        mime_type: mime_type.to_string(),
+        display_name: None,
+    })
 }
 
 /// Map an SDK `SessionEvent` to a BoBe `ChatDelta`. Returns `None` for
@@ -243,12 +228,7 @@ fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let args = event
-                .data
-                .get("arguments")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-            Some(ChatDelta::ToolStart { id, name, args })
+            Some(ChatDelta::ToolStart { id, name })
         }
 
         "tool.execution_complete" => {
@@ -349,10 +329,9 @@ mod tests {
             }),
         );
         match event_to_delta(&start) {
-            Some(ChatDelta::ToolStart { id, name, args }) => {
+            Some(ChatDelta::ToolStart { id, name }) => {
                 assert_eq!(id, "tc-1");
                 assert_eq!(name, "bash");
-                assert_eq!(args["cmd"], "ls");
             }
             other => panic!("expected ToolStart, got {other:?}"),
         }
@@ -414,15 +393,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn build_options_rejects_relative_file_path() {
-        let prompt = ChatPrompt {
-            text: "hi".into(),
-            attachments: vec![ChatAttachment::File {
-                path: std::path::PathBuf::from("relative/path.png"),
-            }],
-        };
-        let err = build_message_options(prompt, WorkerClass::Vision).unwrap_err();
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-    }
 }

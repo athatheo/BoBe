@@ -3,10 +3,8 @@ use chrono::{DateTime, Duration, Utc};
 use super::ids::CooldownId;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) struct CooldownInfo {
     pub(crate) remaining: Duration,
-    pub(crate) cooldown_minutes: i64,
     /// Either `"user_response"` or `"ai_engagement"`.
     pub(crate) cooldown_type: String,
 }
@@ -50,7 +48,6 @@ impl Cooldown {
             if elapsed < extended {
                 return Some(CooldownInfo {
                     remaining: extended - elapsed,
-                    cooldown_minutes: extended_minutes,
                     cooldown_type: "user_response".to_owned(),
                 });
             }
@@ -62,7 +59,6 @@ impl Cooldown {
             if elapsed < base {
                 return Some(CooldownInfo {
                     remaining: base - elapsed,
-                    cooldown_minutes: base_minutes,
                     cooldown_type: "ai_engagement".to_owned(),
                 });
             }

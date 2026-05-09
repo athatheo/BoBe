@@ -1,13 +1,6 @@
 //! Worker error type. Internal to the `copilot` module; the rest of the
 //! daemon converts these into `crate::error::AppError` at boundaries.
 
-#![allow(
-    dead_code,
-    reason = "Phase 6: variants surface as Phase 5 consumer migration wires error paths"
-)]
-
-use std::time::Duration;
-
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -24,11 +17,6 @@ pub(crate) enum WorkerError {
     #[error("serde: {0}")]
     Serde(#[from] serde_json::Error),
 
-    /// Turn exceeded its deadline. Retry is safe — Copilot's own
-    /// `WaiterGuard` clears the in-flight slot on cancellation.
-    #[error("turn timed out after {}s", .0.as_secs())]
-    Timeout(Duration),
-
     /// Worker returned no parseable JSON when one was required (batch
     /// jobs only — chat doesn't expect JSON).
     #[error("worker returned no parseable JSON output for job {0}")]
@@ -38,8 +26,4 @@ pub(crate) enum WorkerError {
     /// Usually means the session errored mid-turn.
     #[error("worker returned no assistant.message event for job {0}")]
     NoAssistantMessage(Uuid),
-
-    /// The SDK reported `session.error` during a turn.
-    #[error("session error ({error_type}): {message}")]
-    SessionError { error_type: String, message: String },
 }

@@ -1,18 +1,9 @@
-//! `VisionWorker` — image-input batch worker. Doesn't implement
-//! `AgentWorker` because its signature is unique (image + question
-//! instead of generic JSON input). Consumers depend on this concrete
-//! type directly.
-
-#![allow(
-    dead_code,
-    reason = "Phase 6: vision worker complete; Phase 5 wires the screen capture path"
-)]
-//!
-//! Implementation: builds a `MessageOptions` with an `Attachment::Blob`
-//! (in-memory base64 — no temp files) or `Attachment::File`, sends in
-//! `autopilot` mode, blocks on `send_and_wait`, returns the assistant's
-//! reply as plain text. Vision answers don't need to be JSON; the
-//! caller usually wants natural-language descriptions.
+//! `VisionWorker` — image-input batch worker. Builds a
+//! `MessageOptions` with an `Attachment::Blob` (in-memory base64 — no
+//! temp files) or `Attachment::File`, sends in autopilot mode, blocks
+//! on `send_and_wait`, returns the assistant's reply as plain text.
+//! Vision answers don't need to be JSON; the caller usually wants
+//! natural-language descriptions.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,7 +20,6 @@ use crate::copilot::types::{ChatAttachment, WorkerClass};
 
 #[derive(Debug, Clone)]
 pub(crate) struct VisionAnswer {
-    pub(crate) request_id: Uuid,
     /// Natural-language answer from the model.
     pub(crate) text: String,
     /// Output token count if reported by the SDK; useful for cost rollups.
@@ -85,7 +75,6 @@ impl VisionWorker {
             .and_then(serde_json::Value::as_u64);
 
         Ok(VisionAnswer {
-            request_id,
             text,
             output_tokens,
         })
@@ -98,29 +87,12 @@ impl VisionWorker {
 }
 
 fn to_sdk_attachment(att: ChatAttachment) -> Result<Attachment, WorkerError> {
-    match att {
-        ChatAttachment::ImageBytes { bytes, mime_type } => Ok(Attachment::Blob {
-            data: BASE64.encode(&bytes),
-            mime_type: mime_type.to_string(),
-            display_name: None,
-        }),
-        ChatAttachment::File { path } => {
-            if !path.is_absolute() {
-                return Err(WorkerError::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!(
-                        "vision file attachment must be absolute: {}",
-                        path.display()
-                    ),
-                )));
-            }
-            Ok(Attachment::File {
-                path,
-                display_name: None,
-                line_range: None,
-            })
-        }
-    }
+    let ChatAttachment::ImageBytes { bytes, mime_type } = att;
+    Ok(Attachment::Blob {
+        data: BASE64.encode(&bytes),
+        mime_type: mime_type.to_string(),
+        display_name: None,
+    })
 }
 
 #[cfg(test)]
@@ -147,15 +119,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn file_attachment_requires_absolute_path() {
-        let err = to_sdk_attachment(ChatAttachment::File {
-            path: std::path::PathBuf::from("relative.png"),
-        })
-        .unwrap_err();
-        match err {
-            WorkerError::Io(io) => assert_eq!(io.kind(), std::io::ErrorKind::InvalidInput),
-            other => panic!("expected Io error, got {other}"),
-        }
-    }
 }

@@ -113,7 +113,6 @@ pub(crate) async fn wire(
     let capture_learner = Arc::new(CaptureLearner::new(
         Arc::clone(&workers),
         workers.memory_file(),
-        Arc::clone(config_arc),
     ));
 
     let decision_engine = Arc::new(DecisionEngine::new(

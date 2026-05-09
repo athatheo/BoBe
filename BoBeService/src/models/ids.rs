@@ -20,22 +20,9 @@ macro_rules! define_id {
         #[sqlx(transparent)]
         pub(crate) struct $name(Uuid);
 
-        #[allow(dead_code)]
         impl $name {
             pub(crate) fn new() -> Self {
                 Self(Uuid::new_v4())
-            }
-
-            pub(crate) fn from_uuid(uuid: Uuid) -> Self {
-                Self(uuid)
-            }
-
-            pub(crate) fn as_uuid(&self) -> &Uuid {
-                &self.0
-            }
-
-            pub(crate) fn into_uuid(self) -> Uuid {
-                self.0
             }
         }
 
@@ -83,15 +70,15 @@ mod tests {
     #[test]
     fn newtype_round_trips_through_uuid() {
         let id = ConversationId::new();
-        let uuid = id.into_uuid();
-        let back = ConversationId::from_uuid(uuid);
+        let uuid: Uuid = id.into();
+        let back = ConversationId::from(uuid);
         assert_eq!(id, back);
     }
 
     #[test]
     fn newtype_display_matches_uuid() {
         let uuid = Uuid::new_v4();
-        let id = GoalId::from_uuid(uuid);
+        let id = GoalId::from(uuid);
         assert_eq!(id.to_string(), uuid.to_string());
     }
 
@@ -100,7 +87,7 @@ mod tests {
         let uuid = Uuid::new_v4();
         let s = uuid.to_string();
         let id: GoalId = s.parse().unwrap();
-        assert_eq!(id.into_uuid(), uuid);
+        assert_eq!(Uuid::from(id), uuid);
     }
 
     #[test]

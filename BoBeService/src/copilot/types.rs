@@ -1,11 +1,5 @@
-//! Shared types for the Copilot worker system. Mirrors the
-//! `llm::types` pattern: data shapes only, no behavior. Workers, hooks,
-//! and the registry all import from here.
-
-#![allow(
-    dead_code,
-    reason = "Phase 6 catalog: variants/types declared here; Phase 5 consumer migration uses them"
-)]
+//! Shared types for the Copilot worker system. Data shapes only.
+//! Workers, hooks, and the registry all import from here.
 
 use std::time::Duration;
 
@@ -17,10 +11,10 @@ use uuid::Uuid;
 /// `~/.bobe/skills/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum WorkerClass {
-    /// Goal extraction from conversation history.
+    /// Goal extraction from conversation history. Also serves as the
+    /// generic batch worker for jobs without a dedicated class
+    /// (conversation summary, agent-job DONE/CONTINUE evaluation).
     Goals,
-    /// Observation extraction from screen captures or text.
-    Observe,
     /// Vision answering — image attachment + question.
     Vision,
     /// Live conversation with the user. Long-lived session, daily rotation.
@@ -34,24 +28,11 @@ pub(crate) enum WorkerClass {
 }
 
 impl WorkerClass {
-    /// All classes in declaration order — useful for shutdown loops.
-    pub(crate) const fn all() -> &'static [WorkerClass] {
-        &[
-            WorkerClass::Goals,
-            WorkerClass::Observe,
-            WorkerClass::Vision,
-            WorkerClass::Chat,
-            WorkerClass::Consolidate,
-            WorkerClass::Decide,
-        ]
-    }
-
-    /// Stable ASCII name. Also the tmux/session identifier and the
-    /// directory component under `~/.bobe/workers/`.
+    /// Stable ASCII name. Also the session identifier and the directory
+    /// component under `~/.bobe/workers/`.
     pub(crate) const fn name(self) -> &'static str {
         match self {
             WorkerClass::Goals => "goals",
-            WorkerClass::Observe => "observe",
             WorkerClass::Vision => "vision",
             WorkerClass::Chat => "chat",
             WorkerClass::Consolidate => "consolidate",
@@ -60,17 +41,9 @@ impl WorkerClass {
     }
 
     /// Per-turn deadline. Vision and consolidation need longer than chat.
-    /// Observe and Chat happen to share a 2-minute timeout, but the
-    /// values are independent — keep both arms explicit for future
-    /// tuning.
-    #[allow(
-        clippy::match_same_arms,
-        reason = "per-class tuning; identical-by-coincidence values"
-    )]
     pub(crate) const fn turn_timeout(self) -> Duration {
         match self {
             WorkerClass::Goals => Duration::from_mins(3),
-            WorkerClass::Observe => Duration::from_mins(2),
             WorkerClass::Vision => Duration::from_mins(5),
             WorkerClass::Chat => Duration::from_mins(2),
             WorkerClass::Consolidate => Duration::from_mins(15),
@@ -142,9 +115,6 @@ pub(crate) enum ChatAttachment {
         bytes: Vec<u8>,
         mime_type: &'static str,
     },
-    /// Existing file on disk. Lifted as `Attachment::File`. Use for
-    /// images / docs the daemon already wrote.
-    File { path: std::path::PathBuf },
 }
 
 /// Streaming chunks from a chat turn. Adapter from the SDK's session
@@ -160,13 +130,9 @@ pub(crate) enum ChatDelta {
         content: String,
         output_tokens: Option<u64>,
     },
-    /// A tool the assistant is invoking (UI shows "🔍 searching files...").
-    /// `id` correlates with the matching `ToolComplete` for SSE display.
-    ToolStart {
-        id: String,
-        name: String,
-        args: serde_json::Value,
-    },
+    /// A tool the assistant is invoking. `id` correlates with the
+    /// matching `ToolComplete` for SSE display.
+    ToolStart { id: String, name: String },
     /// Tool finished. `success` reflects exit, not whether the model was
     /// happy with the result. `id` matches the corresponding `ToolStart`.
     ToolComplete {
