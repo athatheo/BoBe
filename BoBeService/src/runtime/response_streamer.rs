@@ -1,11 +1,5 @@
 //! Adapts a `ChatDelta` stream (from the Copilot SDK chat worker)
 //! into the SSE `EventQueue` that the SwiftUI overlay consumes.
-//!
-//! Pre-pivot this module hosted four different stream adapters for
-//! `LlmProvider::stream`, with separate paths for tools-enabled vs
-//! tools-disabled and a `ToolNotification` typed-event variant. The
-//! Copilot SDK collapses all of those into one `ChatDelta` vocabulary,
-//! and the daemon-side adapter is a single function.
 
 use std::pin::Pin;
 use std::time::Instant;

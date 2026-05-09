@@ -1,15 +1,8 @@
-//! Handles incoming user messages: conversation lifecycle, ChatWorker
-//! streaming, persist response.
-//!
-//! Pre-pivot this file built a system+history+memory prompt itself and
-//! drove an `LlmProvider::stream` (with optional `tool_call_loop`).
-//! Post-pivot the SDK owns: per-turn context (memory.md injected via
-//! `BobeHooks::SessionStart`), conversation history (Copilot session +
-//! `InfiniteSessionConfig` auto-compaction), tool dispatch (Copilot's
-//! built-in tools), and streaming (`ChatWorker::send` returns
-//! `Stream<ChatDelta>`). Our job here shrinks to: append the user
-//! turn, drive the chat stream into SSE, persist the final assistant
-//! turn into the local conversation log.
+//! Handles incoming user messages: append the user turn, drive the
+//! chat stream into SSE, persist the final assistant turn. The SDK
+//! owns per-turn context (memory.md via `BobeHooks::SessionStart`),
+//! conversation history (Copilot session + `InfiniteSessionConfig`
+//! auto-compaction), tool dispatch, and streaming.
 
 use std::sync::Arc;
 

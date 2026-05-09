@@ -130,12 +130,10 @@ pub(crate) fn to_sdk_mcp_servers(
         .into_iter()
         .map(|s| {
             let timeout_ms = (s.timeout_seconds * 1000.0) as i64;
-            // Excluded tools: build the inverse list. `["*"]` exposes
-            // everything; an empty `tools` list exposes nothing. We
-            // can't know the full tool set without connecting, so we
-            // use `["*"]` and accept that excluded_tools is ignored
-            // — Phase 5-mcp/2 can wire `excluded_tools` once the SDK
-            // exposes the connected tool list.
+            // `tools = ["*"]` exposes everything, `[]` exposes nothing.
+            // We can't compute the inverse of `excluded_tools` without
+            // querying the live tool list (open task: #31), so we
+            // expose all and ignore `excluded_tools` for now.
             let cfg = McpStdioServerConfig {
                 tools: vec!["*".into()],
                 timeout: Some(timeout_ms),

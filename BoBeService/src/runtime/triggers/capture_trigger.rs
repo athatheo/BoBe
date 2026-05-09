@@ -1,10 +1,7 @@
 //! Capture-based proactive engagement: screenshot → vision-describe →
-//! cooldown → decision → response.
-//!
-//! Pre-pivot the trigger fetched a freshly-stored `Observation` from
-//! SQL after the learner ran. Post-pivot the learner returns the
-//! description directly (it has already appended a one-liner to
-//! memory.md), so we skip the round-trip through `ObservationRepository`.
+//! cooldown → decision → response. The vision learner returns the
+//! description directly (after appending a one-liner to memory.md),
+//! so the trigger feeds that string straight into the decision engine.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

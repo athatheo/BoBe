@@ -1,10 +1,6 @@
-//! HTTP handlers for `/memory`.
-//!
-//! Memory is a single living document at `~/.bobe/memory.md` (the
-//! durable narrative store; pruned nightly by the Consolidate
-//! worker). The pre-pivot row-oriented endpoints (list, search by
-//! embedding, enable/disable per-row, etc.) are gone — there are no
-//! rows. The UI now reads + writes the file as a whole.
+//! HTTP handlers for `/memory`. Memory is a single living document at
+//! `~/.bobe/memory.md` — the durable narrative store, pruned nightly
+//! by the Consolidate worker. The UI reads + writes the file whole.
 
 use std::sync::Arc;
 

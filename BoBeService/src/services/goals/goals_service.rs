@@ -1,10 +1,6 @@
 //! `GoalsService` — file-backed business logic over `~/.bobe/goals/`.
-//!
-//! Pre-pivot the service stored goals in SQL with embedding-based
-//! semantic search and synced from a single `GOALS.md` containing many
-//! goals. Post-pivot every goal is its own MD file under the goals dir
-//! and the agent edits them via SDK Read/Write/Edit during chat. This
-//! service is the daemon-side wrapper for the same dir: it reads the
+//! Each goal is its own MD file; the chat agent edits them via SDK
+//! Read/Write/Edit. This is the daemon-side wrapper that reads the
 //! files, mutates fields, and writes back atomically.
 
 use std::sync::Arc;

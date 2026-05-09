@@ -255,12 +255,9 @@ impl AgentJobTrigger {
     }
 }
 
-/// Build the agent-job evaluation prompt body. Pre-pivot this lived
-/// in `runtime/prompts/agent_job_evaluation.rs` and produced a list
-/// of `AiMessage`s for the `LlmProvider`. Inlined here as a string
-/// builder once `BatchWorker.submit` consumed instructions as a flat
-/// prompt — no role-tagged messages needed (the SDK session adds its
-/// own system context via memory.md).
+/// Build the agent-job evaluation prompt body — a flat string
+/// passed as `JobInput.instructions` to the Goals batch worker. The
+/// SDK session adds its own system context via memory.md.
 fn build_evaluation_prompt(
     user_intent: &str,
     result_summary: &str,
