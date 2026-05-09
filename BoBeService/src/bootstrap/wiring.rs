@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
 use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::learners::{CaptureLearner, GoalLearner, MessageLearner};
+use crate::runtime::learners::{CaptureLearner, MessageLearner};
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
@@ -189,13 +189,6 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
         Arc::clone(&repos.observation_repo),
         Arc::clone(&repos.memory_repo),
         infra.vision_llm_provider.clone(),
-        Arc::clone(config_arc),
-    ));
-
-    let goal_learner = Arc::new(GoalLearner::new(
-        Arc::clone(&infra.llm_provider),
-        Arc::clone(&infra.embedding_provider),
-        Arc::clone(&goals_service),
         Arc::clone(config_arc),
     ));
 
