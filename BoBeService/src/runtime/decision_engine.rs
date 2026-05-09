@@ -32,6 +32,7 @@ use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::services::conversation_service::ConversationService;
 use crate::util::text::truncate_str;
 
+
 pub(crate) struct DecisionEngine {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
@@ -55,17 +56,12 @@ impl DecisionEngine {
     /// and Goal both go through the same Decide worker; the difference
     /// is the `kind` field and the input shape so the agent can tailor
     /// its heuristics. Check-in unconditionally engages (the user
-    /// signed up for these). AgentJob triggers don't pass through
-    /// here.
+    /// signed up for these).
     pub(crate) async fn decide(&self, context: &TriggerContext) -> Decision {
         match context.trigger_type {
             TriggerType::Capture => self.decide_on_capture(&context.context_text).await,
             TriggerType::Goal => self.decide_on_goal(&context.context_text).await,
             TriggerType::Checkin => Decision::Engage,
-            TriggerType::AgentJob => {
-                warn!(trigger_type = ?context.trigger_type, "decision_engine.unknown_trigger");
-                Decision::Idle
-            }
         }
     }
 

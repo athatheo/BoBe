@@ -1,6 +1,5 @@
 // ─── SQLite repository implementations ──────────────────────────────────────
 
-mod agent_job_repo;
 mod conversation_repo;
 mod cooldown_repo;
 mod soul_repo;
@@ -8,7 +7,6 @@ mod user_profile_repo;
 
 pub(crate) mod seeding;
 
-pub(crate) use agent_job_repo::SqliteAgentJobRepo;
 pub(crate) use conversation_repo::SqliteConversationRepo;
 pub(crate) use cooldown_repo::SqliteCooldownRepo;
 pub(crate) use soul_repo::SqliteSoulRepo;
@@ -20,12 +18,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::error::AppError;
-use crate::models::agent_job::AgentJob;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::cooldown::CooldownInfo;
-use crate::models::ids::{AgentJobId, ConversationId, SoulId, UserProfileId};
+use crate::models::ids::{ConversationId, SoulId, UserProfileId};
 use crate::models::soul::Soul;
-use crate::models::types::{AgentJobStatus, ConversationState, TurnRole};
+use crate::models::types::{ConversationState, TurnRole};
 use crate::models::user_profile::UserProfile;
 
 #[async_trait]
@@ -74,15 +71,6 @@ pub(crate) trait SoulRepository: Send + Sync {
         name: Option<&str>,
     ) -> Result<Option<Soul>, AppError>;
     async fn delete(&self, id: SoulId) -> Result<bool, AppError>;
-}
-
-#[async_trait]
-pub(crate) trait AgentJobRepository: Send + Sync {
-    async fn save(&self, job: &AgentJob) -> Result<AgentJob, AppError>;
-    async fn get_by_id(&self, id: AgentJobId) -> Result<Option<AgentJob>, AppError>;
-    async fn find_by_status(&self, status: AgentJobStatus) -> Result<Vec<AgentJob>, AppError>;
-    async fn find_unreported_terminal(&self) -> Result<Vec<AgentJob>, AppError>;
-    async fn mark_reported(&self, id: AgentJobId) -> Result<(), AppError>;
 }
 
 #[async_trait]

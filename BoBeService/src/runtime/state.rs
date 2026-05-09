@@ -16,7 +16,6 @@ pub(crate) enum TriggerType {
     Capture,
     Goal,
     Checkin,
-    AgentJob,
 }
 
 /// Context for a triggered proactive action.

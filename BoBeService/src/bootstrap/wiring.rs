@@ -1,11 +1,7 @@
-//! Dependency wiring — connects services, tools, learners, triggers, and the
-//! runtime session into a coherent application graph.
-//!
-//! This is the only module that knows all concrete types. Everything it
-//! produces is behind `Arc<dyn Trait>` or a concrete `Arc<T>`.
+//! Dependency wiring — connects services, learners, triggers, and the
+//! runtime session into a coherent application graph. The only module
+//! that knows all concrete types.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use tracing::info;
@@ -17,10 +13,8 @@ use crate::runtime::learners::CaptureLearner;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
-use crate::runtime::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
-use crate::services::agent_job_manager::AgentJobManager;
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::file_store::GoalFileStore;
 use crate::services::goals::goals_service::GoalsService;
@@ -35,17 +29,9 @@ pub(crate) struct Wired {
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
-
-    agent_job_trigger: Option<Arc<AgentJobTrigger>>,
 }
 
 impl Wired {
-    pub(crate) async fn start_services(&self) {
-        if let Some(ref trigger) = self.agent_job_trigger {
-            trigger.register_callback().await;
-        }
-    }
-
     pub(crate) async fn wire_sse_callbacks(&self, cm: &Arc<SseConnectionManager>) {
         let on_connect = {
             let rs = Arc::clone(&self.runtime_session);
@@ -85,27 +71,6 @@ pub(crate) async fn wire(
     // trigger go through `GoalsService` for the same dir.
     let goal_file_store = GoalFileStore::new(crate::util::paths::bobe_data_dir().join("goals"));
     let goals_service = Arc::new(GoalsService::new(Arc::clone(&goal_file_store)));
-
-    let agent_job_manager = config.coding_agent.enabled.then(|| {
-        let profiles: HashMap<String, _> = match serde_json::from_str(&config.coding_agent.profiles)
-        {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "wiring.agent_profiles_parse_failed"
-                );
-                HashMap::new()
-            }
-        };
-        Arc::new(AgentJobManager::new(
-            Arc::clone(&repos.agent_job_repo),
-            profiles,
-            PathBuf::from(&config.coding_agent.output_dir),
-            config.coding_agent.max_concurrent as usize, // safe: u32→usize on 64-bit
-            config.coding_agent.max_runtime_seconds,
-        ))
-    });
 
     // Memory.md is the single durable narrative store. The capture
     // learner appends one-liners under `## Recent`; the consolidate
@@ -162,16 +127,6 @@ pub(crate) async fn wire(
         Arc::clone(config_arc),
     ));
 
-    let agent_job_trigger = agent_job_manager.as_ref().map(|mgr| {
-        Arc::new(AgentJobTrigger::new(
-            Arc::clone(mgr),
-            Arc::clone(&repos.agent_job_repo),
-            Arc::clone(&proactive_generator),
-            Arc::clone(config_arc),
-            Arc::clone(&workers),
-        ))
-    });
-
     let runtime_session = Arc::new(RuntimeSession::new(
         checkin_trigger,
         goal_trigger,
@@ -186,7 +141,6 @@ pub(crate) async fn wire(
         Some(Arc::clone(&repos.cooldown_repo)),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
-        agent_job_trigger.clone(),
     ));
 
     let config_manager = Arc::new(ConfigManager::new(Arc::clone(config_arc)));
@@ -196,6 +150,5 @@ pub(crate) async fn wire(
         runtime_session,
         screen_capture,
         config_manager,
-        agent_job_trigger,
     }
 }

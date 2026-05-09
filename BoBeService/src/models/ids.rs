@@ -59,7 +59,6 @@ define_id!(ConversationTurnId);
 define_id!(GoalId);
 define_id!(SoulId);
 define_id!(UserProfileId);
-define_id!(AgentJobId);
 define_id!(CooldownId);
 
 #[cfg(test)]

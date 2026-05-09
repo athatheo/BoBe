@@ -44,11 +44,6 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "mcp.config_file",
     "mcp.blocked_commands",
     "mcp.dangerous_env_keys",
-    "coding_agent.enabled",
-    "coding_agent.profiles",
-    "coding_agent.output_dir",
-    "coding_agent.max_concurrent",
-    "coding_agent.max_runtime_seconds",
     "seed_default_documents",
     "locale_override",
 ];

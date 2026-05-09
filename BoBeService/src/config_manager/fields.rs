@@ -80,17 +80,6 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
                 set_parsed!(config.goals.check_interval_seconds, value, k);
             }
 
-            // ── Coding Agent ──────────────────────────────────────────
-            "coding_agent.enabled" => set_parsed!(config.coding_agent.enabled, value, k),
-            "coding_agent.profiles" => set_parsed!(config.coding_agent.profiles, value, k),
-            "coding_agent.output_dir" => set_parsed!(config.coding_agent.output_dir, value, k),
-            "coding_agent.max_concurrent" => {
-                set_parsed!(config.coding_agent.max_concurrent, value, k);
-            }
-            "coding_agent.max_runtime_seconds" => {
-                set_parsed!(config.coding_agent.max_runtime_seconds, value, k);
-            }
-
             // ── Top-level ─────────────────────────────────────────────
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
             "locale_override" => set_parsed!(config.locale_override, value, k),
@@ -135,11 +124,6 @@ fn normalize_key(key: &str) -> String {
         "mcp_blocked_commands" => "mcp.blocked_commands",
         "mcp_dangerous_env_keys" => "mcp.dangerous_env_keys",
         "goal_check_interval_seconds" => "goals.check_interval_seconds",
-        "coding_agents_enabled" => "coding_agent.enabled",
-        "coding_agent_profiles" => "coding_agent.profiles",
-        "coding_agent_output_dir" => "coding_agent.output_dir",
-        "coding_agent_max_concurrent" => "coding_agent.max_concurrent",
-        "coding_agent_max_runtime_seconds" => "coding_agent.max_runtime_seconds",
         "locale_override" => "locale_override",
         other => other,
     }

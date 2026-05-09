@@ -1,15 +1,13 @@
 //! Application bootstrap — wires all dependencies and starts background services.
 //!
-//! Split into focused submodules by lifecycle phase:
-//! - `database`  — pool creation and migrations
-//! - `infra`     — HTTP client, SSE, mDNS
-//! - `repos`     — repository trait object construction
-//! - `wiring`    — services, learners, triggers, runtime session assembly
-//! - `integrity` — startup data-integrity checks (orphan cleanup)
+//! Submodules by lifecycle phase:
+//! - `database` — pool creation and migrations
+//! - `infra`    — SSE, mDNS, config arc-swap
+//! - `repos`    — repository trait object construction
+//! - `wiring`   — services, learners, triggers, runtime session assembly
 
 mod database;
 mod infra;
-mod integrity;
 mod repos;
 mod wiring;
 
@@ -63,8 +61,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
-    integrity::run(repos.agent_job_repo.as_ref()).await;
-
     if config.seed_default_documents {
         if let Err(e) = crate::db::seeding::seed_default_souls(repos.soul_repo.as_ref()).await {
             tracing::warn!(error = %e, "bootstrap.soul_seeding_failed");
@@ -76,7 +72,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         }
     }
 
-    wired.start_services().await;
     wired.wire_sse_callbacks(&infra.connection_manager).await;
 
     infra.mdns_announcer.start().await;

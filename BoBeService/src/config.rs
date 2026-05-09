@@ -180,28 +180,6 @@ impl Default for GoalsConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
-pub(crate) struct CodingAgentConfig {
-    pub(crate) enabled: bool,
-    pub(crate) profiles: String,
-    pub(crate) output_dir: String,
-    pub(crate) max_concurrent: u32,
-    pub(crate) max_runtime_seconds: u64,
-}
-
-impl Default for CodingAgentConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            profiles: "[]".into(),
-            output_dir: "~/.bobe/agent_output".into(),
-            max_concurrent: 2,
-            max_runtime_seconds: 1800,
-        }
-    }
-}
-
 /// Application configuration. Layered: defaults → config.toml → BOBE_* env vars.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -221,7 +199,6 @@ pub(crate) struct Config {
     pub(crate) decision: DecisionConfig,
     pub(crate) mcp: McpConfig,
     pub(crate) goals: GoalsConfig,
-    pub(crate) coding_agent: CodingAgentConfig,
 
     pub(crate) seed_default_documents: bool,
     pub(crate) locale_override: Option<String>,

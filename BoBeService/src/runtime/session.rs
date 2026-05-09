@@ -12,7 +12,6 @@ use crate::config::Config;
 use crate::db::CooldownRepository;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::state::Decision;
-use crate::runtime::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinTrigger, GoalTrigger};
 use crate::services::conversation_service::ConversationService;
@@ -28,7 +27,6 @@ pub(crate) struct RuntimeSession {
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
-    agent_job_trigger: Option<Arc<AgentJobTrigger>>,
     running: std::sync::atomic::AtomicBool,
     capture_enabled: std::sync::atomic::AtomicBool,
     user_message_in_flight: Arc<AtomicBool>,
@@ -54,7 +52,6 @@ impl RuntimeSession {
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
-        agent_job_trigger: Option<Arc<AgentJobTrigger>>,
     ) -> Self {
         Self {
             checkin_trigger: Mutex::new(checkin_trigger),
@@ -65,7 +62,6 @@ impl RuntimeSession {
             cooldown_repo,
             event_queue,
             config,
-            agent_job_trigger,
             running: std::sync::atomic::AtomicBool::new(false),
             capture_enabled: std::sync::atomic::AtomicBool::new(false),
             user_message_in_flight: Arc::new(AtomicBool::new(false)),
@@ -209,20 +205,6 @@ impl RuntimeSession {
                         }
                     }
                     last_capture_time = Instant::now();
-                }
-            }
-
-            if let Some(ref agent_trigger) = self.agent_job_trigger {
-                match tokio::time::timeout(std::time::Duration::from_mins(1), agent_trigger.fire())
-                    .await
-                {
-                    Ok(Decision::Engage) => {
-                        info!(trigger = "agent_job", "runtime_session.reach_out");
-                    }
-                    Ok(_) => {}
-                    Err(_) => {
-                        warn!("runtime_session.agent_job_trigger_timeout");
-                    }
                 }
             }
 

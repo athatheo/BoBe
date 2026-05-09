@@ -5,18 +5,15 @@ use std::sync::Arc;
 use sqlx::sqlite::SqlitePool;
 
 use crate::db::{
-    AgentJobRepository, ConversationRepository, CooldownRepository, SoulRepository,
-    UserProfileRepository,
+    ConversationRepository, CooldownRepository, SoulRepository, UserProfileRepository,
 };
 use crate::db::{
-    SqliteAgentJobRepo, SqliteConversationRepo, SqliteCooldownRepo, SqliteSoulRepo,
-    SqliteUserProfileRepo,
+    SqliteConversationRepo, SqliteCooldownRepo, SqliteSoulRepo, SqliteUserProfileRepo,
 };
 
 pub(crate) struct Repositories {
     pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
     pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
-    pub(crate) agent_job_repo: Arc<dyn AgentJobRepository>,
     pub(crate) soul_repo: Arc<dyn SoulRepository>,
     pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
 }
@@ -26,7 +23,6 @@ impl Repositories {
         Self {
             conversation_repo: Arc::new(SqliteConversationRepo::new(pool.clone())),
             cooldown_repo: Arc::new(SqliteCooldownRepo::new(pool.clone())),
-            agent_job_repo: Arc::new(SqliteAgentJobRepo::new(pool.clone())),
             soul_repo: Arc::new(SqliteSoulRepo::new(pool.clone())),
             user_profile_repo: Arc::new(SqliteUserProfileRepo::new(pool.clone())),
         }
