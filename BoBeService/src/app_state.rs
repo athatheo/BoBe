@@ -11,8 +11,6 @@ use crate::copilot::registry::WorkerRegistry;
 use crate::db::AgentJobRepository;
 use crate::db::ConversationRepository;
 use crate::db::CooldownRepository;
-use crate::db::LearningStateRepository;
-use crate::db::ObservationRepository;
 use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
@@ -33,9 +31,7 @@ pub(crate) struct AppState {
     pub(crate) event_queue: Arc<EventQueue>,
     pub(crate) connection_manager: Arc<SseConnectionManager>,
     pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
-    pub(crate) observation_repo: Arc<dyn ObservationRepository>,
     pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
-    pub(crate) learning_state_repo: Arc<dyn LearningStateRepository>,
     pub(crate) agent_job_repo: Arc<dyn AgentJobRepository>,
     pub(crate) soul_repo: Arc<dyn SoulRepository>,
     pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,

@@ -80,37 +80,6 @@ impl std::fmt::Display for GoalStatus {
     }
 }
 
-// ─── Observation ────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum ObservationSource {
-    Screen,
-    #[allow(dead_code)] // planned: audio input
-    Audio,
-    #[allow(dead_code)] // planned: clipboard monitoring
-    Clipboard,
-    UserMessage,
-}
-
-impl ObservationSource {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            Self::Screen => "screen",
-            Self::Audio => "audio",
-            Self::Clipboard => "clipboard",
-            Self::UserMessage => "user_message",
-        }
-    }
-}
-
-impl std::fmt::Display for ObservationSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 // ─── Agent Job ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]

@@ -3,8 +3,6 @@
 mod agent_job_repo;
 mod conversation_repo;
 mod cooldown_repo;
-mod learning_state_repo;
-mod observation_repo;
 mod soul_repo;
 mod user_profile_repo;
 
@@ -13,8 +11,6 @@ pub(crate) mod seeding;
 pub(crate) use agent_job_repo::SqliteAgentJobRepo;
 pub(crate) use conversation_repo::SqliteConversationRepo;
 pub(crate) use cooldown_repo::SqliteCooldownRepo;
-pub(crate) use learning_state_repo::SqliteLearningStateRepo;
-pub(crate) use observation_repo::SqliteObservationRepo;
 pub(crate) use soul_repo::SqliteSoulRepo;
 pub(crate) use user_profile_repo::SqliteUserProfileRepo;
 
@@ -27,9 +23,7 @@ use crate::error::AppError;
 use crate::models::agent_job::AgentJob;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::cooldown::CooldownInfo;
-use crate::models::ids::{AgentJobId, ConversationId, ObservationId, SoulId, UserProfileId};
-use crate::models::learning_state::LearningState;
-use crate::models::observation::Observation;
+use crate::models::ids::{AgentJobId, ConversationId, SoulId, UserProfileId};
 use crate::models::soul::Soul;
 use crate::models::types::{AgentJobStatus, ConversationState, TurnRole};
 use crate::models::user_profile::UserProfile;
@@ -86,49 +80,6 @@ pub(crate) trait ConversationRepository: Send + Sync {
         _limit: i64,
     ) -> Result<Vec<String>, AppError> {
         unimplemented!("ConversationRepository::get_recent_turns_by_role")
-    }
-}
-
-#[async_trait]
-pub(crate) trait ObservationRepository: Send + Sync {
-    async fn save(&self, _observation: &Observation) -> Result<Observation, AppError> {
-        unimplemented!("ObservationRepository::save")
-    }
-    async fn get_by_id(&self, _id: ObservationId) -> Result<Option<Observation>, AppError> {
-        unimplemented!("ObservationRepository::get_by_id")
-    }
-    async fn find_recent(&self, _minutes: i64) -> Result<Vec<Observation>, AppError> {
-        unimplemented!("ObservationRepository::find_recent")
-    }
-    async fn find_since(
-        &self,
-        _since: Option<DateTime<Utc>>,
-        _limit: Option<i64>,
-    ) -> Result<Vec<Observation>, AppError> {
-        unimplemented!("ObservationRepository::find_since")
-    }
-    async fn find_similar(
-        &self,
-        _embedding: &[f32],
-        _limit: i64,
-    ) -> Result<Vec<(Observation, f64)>, AppError> {
-        unimplemented!("ObservationRepository::find_similar")
-    }
-    async fn delete_older_than(&self, _days: i64) -> Result<i64, AppError> {
-        unimplemented!("ObservationRepository::delete_older_than")
-    }
-    async fn delete(&self, _id: ObservationId) -> Result<bool, AppError> {
-        unimplemented!("ObservationRepository::delete")
-    }
-    async fn find_null_embedding(&self, _limit: i64) -> Result<Vec<Observation>, AppError> {
-        unimplemented!("ObservationRepository::find_null_embedding")
-    }
-    async fn update_embedding(
-        &self,
-        _id: ObservationId,
-        _embedding: &[f32],
-    ) -> Result<(), AppError> {
-        unimplemented!("ObservationRepository::update_embedding")
     }
 }
 
@@ -222,16 +173,6 @@ pub(crate) trait UserProfileRepository: Send + Sync {
     }
     async fn delete(&self, _id: UserProfileId) -> Result<bool, AppError> {
         unimplemented!("UserProfileRepository::delete")
-    }
-}
-
-#[async_trait]
-pub(crate) trait LearningStateRepository: Send + Sync {
-    async fn get_or_create(&self) -> Result<LearningState, AppError> {
-        unimplemented!("LearningStateRepository::get_or_create")
-    }
-    async fn save(&self, _state: &LearningState) -> Result<(), AppError> {
-        unimplemented!("LearningStateRepository::save")
     }
 }
 

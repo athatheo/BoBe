@@ -69,15 +69,10 @@ macro_rules! define_id {
 
 define_id!(ConversationId);
 define_id!(ConversationTurnId);
-define_id!(MemoryId);
 define_id!(GoalId);
-define_id!(ObservationId);
 define_id!(SoulId);
 define_id!(UserProfileId);
 define_id!(AgentJobId);
-define_id!(GoalPlanId);
-define_id!(GoalPlanStepId);
-define_id!(LearningStateId);
 define_id!(CooldownId);
 
 #[cfg(test)]
@@ -96,7 +91,7 @@ mod tests {
     #[test]
     fn newtype_display_matches_uuid() {
         let uuid = Uuid::new_v4();
-        let id = MemoryId::from_uuid(uuid);
+        let id = GoalId::from_uuid(uuid);
         assert_eq!(id.to_string(), uuid.to_string());
     }
 
@@ -121,9 +116,8 @@ mod tests {
     #[test]
     fn different_id_types_are_incompatible() {
         // This test verifies the types exist and are distinct.
-        // Compile-time safety: you can't pass a GoalId where a MemoryId is expected.
+        // Compile-time safety: you can't pass a SoulId where a GoalId is expected.
         let _goal = GoalId::new();
-        let _memory = MemoryId::new();
-        // If these were both Uuid, they'd be interchangeable.
+        let _soul = SoulId::new();
     }
 }
