@@ -98,13 +98,4 @@ impl AgentJob {
             self.exit_code = Some(code);
         }
     }
-
-    pub(crate) fn mark_cancelled(&mut self, reason: Option<String>) {
-        self.status = AgentJobStatus::Cancelled;
-        self.completed_at = Some(Utc::now());
-        self.updated_at = Utc::now();
-        if let Some(r) = reason {
-            self.error_message = Some(format!("Cancelled: {r}"));
-        }
-    }
 }

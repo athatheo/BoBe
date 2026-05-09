@@ -27,7 +27,6 @@ use crate::services::goals::goals_service::GoalsService;
 use crate::tools::mcp::McpToolAdapter;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::connection_manager::SseConnectionManager;
-use crate::util::sse::event_queue::EventQueue;
 
 use super::infra::Infrastructure;
 use super::repos::Repositories;

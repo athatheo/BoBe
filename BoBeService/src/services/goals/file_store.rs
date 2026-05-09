@@ -10,7 +10,7 @@
 //!
 //! Errors bubble up as [`AppError`] so `?` in handlers stays clean.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -38,10 +38,6 @@ impl GoalFileStore {
             dir,
             write_lock: Arc::new(Mutex::new(())),
         })
-    }
-
-    pub(crate) fn dir(&self) -> &Path {
-        &self.dir
     }
 
     /// Path of the file backing `id`.

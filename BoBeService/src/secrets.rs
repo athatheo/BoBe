@@ -24,13 +24,6 @@ use tracing::{info, warn};
 
 const SERVICE_NAME: &str = "com.bobe.app";
 
-/// Dotted config keys that map to keychain accounts.
-pub(crate) static SECRET_FIELDS: &[&str] = &[
-    "llm.openai_api_key",
-    "llm.azure_openai_api_key",
-    "llm.anthropic_api_key",
-];
-
 fn base_query(account: &str) -> CFMutableDictionary {
     let mut query = CFMutableDictionary::new();
 
@@ -150,36 +143,4 @@ pub(crate) fn delete_secret(account: &str) -> Result<(), String> {
             "Failed to delete secret '{account}': OSStatus {status}"
         ))
     }
-}
-
-/// Returns dotted-key → value map of all secrets from Keychain.
-pub(crate) fn load_secrets() -> std::collections::HashMap<String, String> {
-    let mut secrets = std::collections::HashMap::new();
-
-    for &field in SECRET_FIELDS {
-        let account = keychain_account(field);
-        if let Some(value) = read_secret(&account)
-            && !value.is_empty()
-        {
-            secrets.insert(field.to_string(), value);
-        }
-    }
-
-    if !secrets.is_empty() {
-        info!(count = secrets.len(), "secrets.loaded_from_keychain");
-    }
-
-    secrets
-}
-
-pub(crate) fn is_secret_field(dotted_key: &str) -> bool {
-    SECRET_FIELDS.contains(&dotted_key)
-}
-
-fn keychain_account(dotted_key: &str) -> String {
-    dotted_key
-        .split('.')
-        .next_back()
-        .unwrap_or(dotted_key)
-        .to_string()
 }

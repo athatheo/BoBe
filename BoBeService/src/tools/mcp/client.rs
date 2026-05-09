@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -65,10 +64,6 @@ impl McpClient {
 
     pub(crate) async fn last_error(&self) -> Option<String> {
         self.last_error.lock().await.clone()
-    }
-
-    pub(crate) fn timeout_seconds(&self) -> f64 {
-        self.config.timeout_seconds
     }
 
     pub(crate) async fn connect(&self) -> Result<(), AppError> {
@@ -189,57 +184,10 @@ impl McpClient {
                 .and_then(|d| d.as_str())
                 .unwrap_or("")
                 .to_owned();
-            let input_schema = tool
-                .get("inputSchema")
-                .cloned()
-                .unwrap_or(serde_json::json!({"type": "object", "properties": {}}));
 
-            infos.push(McpToolInfo {
-                name,
-                description,
-                input_schema,
-            });
+            infos.push(McpToolInfo { name, description });
         }
         Ok(infos)
-    }
-
-    pub(crate) async fn call_tool(
-        &self,
-        name: &str,
-        arguments: HashMap<String, Value>,
-    ) -> Result<(bool, String), AppError> {
-        let result = self
-            .send_request(
-                "tools/call",
-                Some(serde_json::json!({
-                    "name": name,
-                    "arguments": arguments,
-                })),
-            )
-            .await?;
-
-        let is_error = result
-            .get("isError")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-
-        let content_parts = result
-            .get("content")
-            .and_then(|c| c.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        let mut content = String::new();
-        for part in &content_parts {
-            if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                if !content.is_empty() {
-                    content.push('\n');
-                }
-                content.push_str(text);
-            }
-        }
-
-        Ok((!is_error, content))
     }
 
     async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, AppError> {
@@ -389,5 +337,4 @@ impl Drop for McpClient {
 pub(crate) struct McpToolInfo {
     pub(crate) name: String,
     pub(crate) description: String,
-    pub(crate) input_schema: Value,
 }

@@ -253,25 +253,6 @@ impl AgentJobManager {
         Ok(job)
     }
 
-    pub(crate) async fn cancel(&self, job_id: AgentJobId) -> Result<AgentJob, AppError> {
-        let Some(mut job) = self.repo.get_by_id(job_id).await? else {
-            return Err(AppError::NotFound(format!("Job {job_id} not found")));
-        };
-
-        if job.is_terminal() {
-            return Ok(job);
-        }
-
-        if let Some(pid) = job.pid.and_then(|value| u32::try_from(value).ok()) {
-            kill_process(pid).await;
-        }
-
-        job.mark_cancelled(Some("Cancelled by user".into()));
-        let saved = self.repo.save(&job).await?;
-        info!(job_id = %job_id, status = %saved.status, "agent_job.cancelled");
-        Ok(saved)
-    }
-
     // ── Private ─────────────────────────────────────────────────────────
 
     async fn record_launch_failure(
@@ -625,9 +606,7 @@ async fn kill_process(pid: u32) {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::models::types::AgentJobStatus;
     use async_trait::async_trait;
-    use std::sync::Arc;
     use tokio::sync::Mutex as TokioMutex;
 
     #[test]
@@ -691,22 +670,6 @@ mod tests {
         );
 
         assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn cancel_marks_pending_job_cancelled() {
-        let repo = Arc::new(TestAgentJobRepo::default());
-        let job = AgentJob::new("profile".into(), "echo".into(), "task".into(), ".".into());
-        repo.save(&job).await.unwrap();
-
-        let manager = AgentJobManager::new(repo.clone(), HashMap::new(), PathBuf::from("."), 1, 60);
-        let cancelled = manager.cancel(job.id).await.unwrap();
-
-        assert_eq!(cancelled.status, AgentJobStatus::Cancelled);
-        assert_eq!(
-            repo.get_by_id(job.id).await.unwrap().unwrap().status,
-            AgentJobStatus::Cancelled
-        );
     }
 
     #[derive(Default)]
