@@ -2,10 +2,10 @@
 //!
 //! Split into focused submodules by lifecycle phase:
 //! - `database`  — pool creation and migrations
-//! - `infra`     — LLM/embedding providers, HTTP client, SSE, Ollama, mDNS
+//! - `infra`     — HTTP client, SSE, mDNS
 //! - `repos`     — repository trait object construction
-//! - `wiring`    — services, tools, learners, triggers, runtime session assembly
-//! - `integrity` — startup data-integrity checks (orphan cleanup, embedding repair)
+//! - `wiring`    — services, learners, triggers, runtime session assembly
+//! - `integrity` — startup data-integrity checks (orphan cleanup)
 
 mod database;
 mod infra;
@@ -52,9 +52,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     integrity::run(&pool, repos.agent_job_repo.as_ref()).await;
 
-    infra::ensure_ollama_ready(&config, &infra.ollama_manager).await;
-    infra::detect_context_window(&config, &infra.config_arc, &infra.ollama_manager).await;
-
     if config.seed_default_documents {
         if let Err(e) = crate::db::seeding::seed_default_souls(repos.soul_repo.as_ref()).await {
             tracing::warn!(error = %e, "bootstrap.soul_seeding_failed");
@@ -67,7 +64,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     }
 
     wired.start_services(&config).await;
-
     wired.wire_sse_callbacks(&infra.connection_manager).await;
 
     infra.mdns_announcer.start().await;
@@ -80,9 +76,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         http_client: infra.http_client,
         event_queue: infra.event_queue,
         connection_manager: infra.connection_manager,
-        llm_provider: infra.llm_provider,
-        vision_llm_provider: infra.vision_llm_provider,
-        embedding_provider: infra.embedding_provider,
         conversation_repo: repos.conversation_repo,
         observation_repo: repos.observation_repo,
         cooldown_repo: repos.cooldown_repo,
@@ -94,8 +87,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         goals_service: wired.goals_service,
         runtime_session: wired.runtime_session,
         screen_capture: wired.screen_capture,
-        ollama_manager: infra.ollama_manager,
-        binary_manager: infra.binary_manager,
         config_manager: wired.config_manager,
         mcp_tool_adapter: Some(wired.mcp_adapter),
         mcp_config_lock: Arc::new(tokio::sync::Mutex::new(())),
@@ -110,11 +101,8 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 fn print_banner(config: &Config) {
     info!("═══════════════════════════════════════════════════════");
     info!("  BoBe Server Started");
-    info!("  LLM backend: {}", config.llm.backend);
-    info!("  Model: {}", config.ollama.model);
-    info!("  Context window: {} tokens", config.llm.context_window);
+    info!("  Engine: Copilot CLI (via github-copilot-sdk)");
     info!("  Capture enabled: {}", config.capture.enabled);
-    info!("  Learning enabled: {}", config.learning.enabled);
-    info!("  Tools enabled: {}", config.tools.enabled);
+    info!("  Tools (MCP) enabled: {}", config.mcp.enabled);
     info!("═══════════════════════════════════════════════════════");
 }

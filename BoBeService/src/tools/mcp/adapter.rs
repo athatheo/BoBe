@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -8,8 +7,6 @@ use tracing::{debug, info, warn};
 use super::client::{McpClient, McpToolInfo};
 use super::config::{McpParsedServer, load_mcp_config};
 use crate::error::AppError;
-use crate::llm::types::{AiToolCall, ToolDefinition};
-use crate::tools::{ToolExecutionContext, ToolResult, ToolSource};
 
 const TOOL_NAME_SEPARATOR: &str = "__";
 
@@ -143,130 +140,13 @@ impl McpToolAdapter {
     }
 }
 
-#[async_trait]
-impl ToolSource for McpToolAdapter {
-    fn name(&self) -> &str {
-        "mcp"
-    }
-
-    async fn get_tools(&self) -> Result<Vec<ToolDefinition>, AppError> {
-        let mut all_defs = Vec::new();
-
-        // Snapshot client refs to avoid holding DashMap guards across awaits
-        let snapshot: Vec<(String, Arc<McpClient>)> = self
-            .clients
-            .iter()
-            .map(|e| (e.key().clone(), Arc::clone(e.value())))
-            .collect();
-
-        for (server_name, client) in &snapshot {
-            if !client.is_connected() {
-                continue;
-            }
-
-            match client.list_tools().await {
-                Ok(tools) => {
-                    let excluded = self
-                        .server_configs
-                        .get(server_name)
-                        .map(|e| e.excluded_tools.clone())
-                        .unwrap_or_default();
-
-                    for tool in tools {
-                        if !excluded.contains(&tool.name) {
-                            all_defs.push(to_tool_definition(server_name, &tool));
-                        }
-                    }
-                }
-                Err(e) => warn!(server = %server_name, error = %e, "Failed to list MCP tools"),
-            }
-        }
-
-        Ok(all_defs)
-    }
-
-    async fn execute(
-        &self,
-        tool_call: &AiToolCall,
-        _context: Option<&ToolExecutionContext>,
-    ) -> ToolResult {
-        let server_name = match self.tool_to_server.get(&tool_call.name) {
-            Some(e) => e.value().clone(),
-            None => {
-                return ToolResult::err(
-                    tool_call.id.clone(),
-                    tool_call.name.clone(),
-                    format!("No MCP server found for tool '{}'", tool_call.name),
-                );
-            }
-        };
-
-        let client = match self.clients.get(&server_name) {
-            Some(e) => Arc::clone(e.value()),
-            None => {
-                return ToolResult::err(
-                    tool_call.id.clone(),
-                    tool_call.name.clone(),
-                    format!("MCP server '{server_name}' not found"),
-                );
-            }
-        };
-
-        if !client.is_connected() {
-            return ToolResult::err(
-                tool_call.id.clone(),
-                tool_call.name.clone(),
-                format!("MCP server '{server_name}' is not connected"),
-            );
-        }
-
-        let original_name = unprefix_tool_name(&tool_call.name);
-        debug!(server = %server_name, tool = %original_name, "Executing MCP tool");
-
-        let timeout = std::time::Duration::from_secs_f64(client.timeout_seconds());
-        match tokio::time::timeout(
-            timeout,
-            client.call_tool(&original_name, tool_call.arguments.clone()),
-        )
-        .await
-        {
-            Ok(Ok((true, content))) => {
-                ToolResult::ok(tool_call.id.clone(), tool_call.name.clone(), content)
-            }
-            Ok(Ok((false, content))) => {
-                ToolResult::err(tool_call.id.clone(), tool_call.name.clone(), content)
-            }
-            Ok(Err(e)) => {
-                ToolResult::err(tool_call.id.clone(), tool_call.name.clone(), e.to_string())
-            }
-            Err(_) => ToolResult::err(
-                tool_call.id.clone(),
-                tool_call.name.clone(),
-                format!(
-                    "MCP tool execution timed out after {:.0}s",
-                    client.timeout_seconds()
-                ),
-            ),
-        }
-    }
-}
-
-fn to_tool_definition(server_name: &str, tool: &McpToolInfo) -> ToolDefinition {
-    ToolDefinition {
-        name: prefix_tool_name(server_name, &tool.name),
-        description: format!("[MCP: {server_name}] {}", tool.description),
-        parameters: tool.input_schema.clone(),
-    }
-}
+// Tool dispatch is owned by the Copilot SDK's session loop now —
+// MCP servers get registered via `SessionConfig::mcp_servers` and
+// the SDK manages process lifecycle + tool calls. McpToolAdapter
+// retains lifecycle (initialize/shutdown/reload) for the
+// `/api/tools/mcp/config` UI's runtime state queries; the
+// dispatch path is gone.
 
 fn prefix_tool_name(server_name: &str, tool_name: &str) -> String {
     format!("{server_name}{TOOL_NAME_SEPARATOR}{tool_name}")
-}
-
-fn unprefix_tool_name(prefixed: &str) -> String {
-    if let Some(pos) = prefixed.find(TOOL_NAME_SEPARATOR) {
-        prefixed[pos + TOOL_NAME_SEPARATOR.len()..].to_owned()
-    } else {
-        prefixed.to_owned()
-    }
 }

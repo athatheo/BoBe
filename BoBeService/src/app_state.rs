@@ -4,7 +4,6 @@ use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::binary_manager::BinaryManager;
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
 use crate::copilot::memory_file::MemoryFile;
@@ -16,9 +15,6 @@ use crate::db::LearningStateRepository;
 use crate::db::ObservationRepository;
 use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
-use crate::llm::EmbeddingProvider;
-use crate::llm::LlmProvider;
-use crate::llm::ollama_manager::OllamaManager;
 use crate::runtime::session::RuntimeSession;
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::goals_service::GoalsService;
@@ -36,9 +32,6 @@ pub(crate) struct AppState {
     pub(crate) http_client: Client,
     pub(crate) event_queue: Arc<EventQueue>,
     pub(crate) connection_manager: Arc<SseConnectionManager>,
-    pub(crate) llm_provider: Arc<dyn LlmProvider>,
-    pub(crate) vision_llm_provider: Option<Arc<dyn LlmProvider>>,
-    pub(crate) embedding_provider: Arc<dyn EmbeddingProvider>,
     pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
     pub(crate) observation_repo: Arc<dyn ObservationRepository>,
     pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
@@ -50,14 +43,11 @@ pub(crate) struct AppState {
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
-    pub(crate) ollama_manager: Arc<OllamaManager>,
-    pub(crate) binary_manager: Arc<BinaryManager>,
     pub(crate) config_manager: Arc<ConfigManager>,
     pub(crate) mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
     pub(crate) mcp_config_lock: Arc<Mutex<()>>,
     pub(crate) mdns_announcer: Arc<MdnsAnnouncer>,
     /// Copilot CLI worker fleet — lazy-spawned per worker class.
-    /// Phase 2 onwards consumers go through this for any LLM-ish work.
     pub(crate) workers: Arc<WorkerRegistry>,
     /// Single-writer to `~/.bobe/memory.md`. All BoBe writes funnel
     /// through this so workers (which only read via the symlink in

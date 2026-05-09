@@ -222,12 +222,7 @@ pub(crate) async fn wire(
         agent_job_trigger.clone(),
     ));
 
-    let config_manager = Arc::new(ConfigManager::new(
-        Arc::clone(config_arc),
-        Arc::clone(&infra.llm_swap_handle),
-        Arc::clone(&infra.embedding_swap_handle),
-        Some(Arc::clone(&infra.llm_factory)),
-    ));
+    let config_manager = Arc::new(ConfigManager::new(Arc::clone(config_arc)));
 
     Wired {
         conversation_service,

@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand};
 
 mod api;
 mod app_state;
-mod binary_manager;
 mod bootstrap;
 mod config;
 mod config_manager;
@@ -12,7 +11,6 @@ mod copilot;
 mod db;
 mod error;
 mod i18n;
-mod llm;
 mod models;
 mod runtime;
 #[allow(unsafe_code)]
@@ -186,7 +184,7 @@ async fn drain_background_tasks(handles: BackgroundHandles) {
 
 async fn run_graceful_shutdown(
     state: &std::sync::Arc<app_state::AppState>,
-    config: &config::Config,
+    _config: &config::Config,
 ) {
     tracing::info!("Stopping mDNS...");
     state.mdns_announcer.stop().await;
@@ -199,38 +197,6 @@ async fn run_graceful_shutdown(
         tokio::time::timeout(std::time::Duration::from_secs(2), mcp.shutdown())
             .await
             .ok();
-    }
-
-    if config.llm.backend == crate::config::LlmBackend::Ollama
-        || config.vision.backend == crate::config::LlmBackend::Ollama
-    {
-        tracing::info!("Unloading Ollama models...");
-        let unload_client = reqwest::Client::new();
-        for model_name in [
-            &config.ollama.model,
-            &config.vision.ollama_model,
-            &config.embedding.model,
-        ] {
-            drop(
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(2),
-                    unload_client
-                        .post(format!("{}/api/generate", config.ollama.url))
-                        .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
-                        .send(),
-                )
-                .await,
-            );
-        }
-        tracing::debug!("ollama.models_unloaded");
-
-        tracing::info!("Stopping Ollama (if managed)...");
-        tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            state.ollama_manager.stop(),
-        )
-        .await
-        .ok();
     }
 
     tracing::info!("Closing database pool...");
