@@ -11,8 +11,6 @@ use crate::db::CooldownRepository;
 use crate::llm::LlmProvider;
 use crate::models::ids::ConversationId;
 use crate::models::types::TurnRole;
-use crate::runtime::learners::MessageLearner;
-use crate::runtime::learners::types::LearnerObservation;
 use crate::runtime::prompts::response::UserResponsePrompt;
 use crate::runtime::response_streamer::{stream_llm_response, stream_response};
 use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
@@ -29,7 +27,6 @@ pub(crate) struct MessageHandler {
     llm: Arc<dyn LlmProvider>,
     context_assembler: Arc<ContextAssembler>,
     conversation: Arc<ConversationService>,
-    message_learner: Arc<MessageLearner>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
@@ -43,7 +40,6 @@ impl MessageHandler {
         llm: Arc<dyn LlmProvider>,
         context_assembler: Arc<ContextAssembler>,
         conversation: Arc<ConversationService>,
-        message_learner: Arc<MessageLearner>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
@@ -55,7 +51,6 @@ impl MessageHandler {
             llm,
             context_assembler,
             conversation,
-            message_learner,
             cooldown_repo,
             event_queue,
             config,
@@ -78,11 +73,10 @@ impl MessageHandler {
             return;
         };
 
-        let observation = LearnerObservation::message(content.to_owned());
-        if let Err(e) = self.message_learner.learn(&observation).await {
-            warn!(error = %e, "message_handler.learning_failed");
-        }
-
+        // User message lives in the conversation history (Copilot session
+        // also captures it via `session.send`). Memory distillation
+        // happens via the nightly consolidation worker reading the chat
+        // history — no parallel SQL observation insert.
         self.respond_to_message(message_id, content, conversation_id)
             .await;
     }

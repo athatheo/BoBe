@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
 use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::learners::{CaptureLearner, MessageLearner};
+use crate::runtime::learners::CaptureLearner;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
@@ -183,11 +183,6 @@ pub(crate) async fn wire(
         config.mcp_dangerous_env_keys_vec().to_vec(),
     ));
 
-    let message_learner = Arc::new(MessageLearner::new(
-        Arc::clone(&infra.embedding_provider),
-        Arc::clone(&repos.observation_repo),
-    ));
-
     let capture_learner = Arc::new(CaptureLearner::new(
         Arc::clone(&infra.llm_provider),
         Arc::clone(&infra.embedding_provider),
@@ -283,7 +278,6 @@ pub(crate) async fn wire(
             Arc::clone(&infra.llm_provider),
             Arc::clone(&context_assembler),
             Arc::clone(&conversation_service),
-            message_learner,
             Some(Arc::clone(&repos.cooldown_repo)),
             Arc::clone(&infra.event_queue),
             Arc::clone(config_arc),
