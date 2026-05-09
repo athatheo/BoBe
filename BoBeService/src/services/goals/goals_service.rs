@@ -1,271 +1,171 @@
-//! GoalsService — manages goals in the database.
+//! `GoalsService` — file-backed business logic over `~/.bobe/goals/`.
 //!
-//! Goals are stored in the database. A GOALS.md file can be used to seed
-//! initial/default goals on startup, but inferred goals are DB-only.
+//! Pre-pivot the service stored goals in SQL with embedding-based
+//! semantic search and synced from a single `GOALS.md` containing many
+//! goals. Post-pivot every goal is its own MD file under the goals dir
+//! and the agent edits them via SDK Read/Write/Edit during chat. This
+//! service is the daemon-side wrapper for the same dir: it reads the
+//! files, mutates fields, and writes back atomically.
 
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
-use tracing::{debug, info, warn};
+use chrono::Utc;
+use tracing::{info, warn};
 
-use crate::config::Config;
-use crate::constants::{GOAL_CONTENT_MAX_LENGTH, GOAL_CONTENT_MIN_LENGTH};
-use crate::db::GoalRepository;
 use crate::error::AppError;
-use crate::llm::EmbeddingProvider;
-use crate::models::goal::Goal;
 use crate::models::ids::GoalId;
-use crate::models::types::{GoalPriority, GoalSource, GoalStatus};
+use crate::models::types::GoalStatus;
 
-use super::goals_file_parser::parse_goals_file;
-
-const MAX_GOALS_FILE_SIZE: u64 = 1024 * 1024;
-
-#[derive(Debug, Clone)]
-pub(crate) struct SyncResult;
+use super::file_store::GoalFileStore;
+use super::goal_md::GoalDoc;
 
 pub(crate) struct GoalsService {
-    repo: Arc<dyn GoalRepository>,
-    embedding: Arc<dyn EmbeddingProvider>,
-    config: Arc<ArcSwap<Config>>,
+    store: Arc<GoalFileStore>,
 }
 
 impl GoalsService {
-    pub(crate) fn new(
-        repo: Arc<dyn GoalRepository>,
-        embedding: Arc<dyn EmbeddingProvider>,
-        config: Arc<ArcSwap<Config>>,
-    ) -> Self {
-        Self {
-            repo,
-            embedding,
-            config,
-        }
+    pub(crate) fn new(store: Arc<GoalFileStore>) -> Self {
+        Self { store }
     }
 
-    // ── Database Operations ─────────────────────────────────────────────
+    /// All goals on disk, sorted by priority (highest first), then
+    /// updated-at (newest first). Same priority ordering the API +
+    /// trigger want.
+    pub(crate) async fn list_all(&self) -> Result<Vec<GoalDoc>, AppError> {
+        let mut goals = self.store.list().await?;
+        sort_goals(&mut goals);
+        Ok(goals)
+    }
 
-    pub(crate) async fn create(
-        &self,
-        content: &str,
-        source: GoalSource,
-        priority: GoalPriority,
-        inference_reason: Option<String>,
-    ) -> Result<Goal, AppError> {
-        let embedding_vec = self.embedding.embed(content).await?;
+    /// Goals in `Active` status, sorted as in `list_all`.
+    pub(crate) async fn list_active(&self) -> Result<Vec<GoalDoc>, AppError> {
+        let mut goals = self.store.list().await?;
+        goals.retain(|g| g.status == GoalStatus::Active);
+        sort_goals(&mut goals);
+        Ok(goals)
+    }
 
-        let mut goal = Goal::new(content.to_owned(), source, priority);
-        goal.inference_reason = inference_reason;
-        goal.embedding = Some(serde_json::to_string(&embedding_vec)?);
+    pub(crate) async fn get(&self, id: GoalId) -> Result<Option<GoalDoc>, AppError> {
+        self.store.get(id).await
+    }
 
-        let saved = self.repo.save(&goal).await?;
+    /// Create a fresh goal. Generates a new id (the doc that callers
+    /// pass in is consumed; we always use a fresh id to avoid clashes
+    /// with files the agent may have written).
+    pub(crate) async fn create(&self, mut doc: GoalDoc) -> Result<GoalDoc, AppError> {
+        doc.id = GoalId::new();
+        let now = Utc::now();
+        doc.created_at = now;
+        doc.updated_at = now;
+        if doc.status_is_default() {
+            doc.status = GoalStatus::Active;
+        }
+        self.store.save(&doc).await?;
         info!(
-            goal_id = %saved.id,
-            content_preview = &content[..content.len().min(50)],
-            source = source.as_str(),
-            priority = priority.as_str(),
+            goal_id = %doc.id,
+            title = %doc.title,
             "goals_service.created"
         );
-        Ok(saved)
+        Ok(doc)
     }
 
-    pub(crate) async fn get_active(&self, limit: usize) -> Result<Vec<Goal>, AppError> {
-        let mut goals = self.repo.find_active(true).await?;
-
-        goals.sort_by_key(|g| match g.priority {
-            GoalPriority::High => 0,
-            GoalPriority::Medium => 1,
-            GoalPriority::Low => 2,
-        });
-
-        goals.truncate(limit);
-        debug!(count = goals.len(), limit, "goals_service.get_active");
-        Ok(goals)
-    }
-
-    pub(crate) async fn get_by_embedding(
+    /// Patch-style update. Each `Some(...)` argument overwrites the
+    /// corresponding field; `None` leaves it as-is. `updated_at`
+    /// always bumps to now on any change.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "patch surface mirrors the API request shape; explicit options are clearer than a builder"
+    )]
+    pub(crate) async fn update(
         &self,
-        embedding: &[f32],
-        limit: i64,
-        min_score: f64,
-        include_statuses: Option<&[GoalStatus]>,
-    ) -> Result<Vec<Goal>, AppError> {
-        let results = self.repo.find_similar(embedding, limit * 2, true).await?;
-
-        let status_filter: HashSet<&str> = if let Some(statuses) = include_statuses {
-            statuses.iter().map(GoalStatus::as_str).collect()
-        } else {
-            let mut set = HashSet::new();
-            set.insert("active");
-            set
-        };
-
-        let goals: Vec<Goal> = results
-            .into_iter()
-            .filter(|(_, score)| *score >= min_score)
-            .filter(|(goal, _)| status_filter.contains(goal.status.as_str()))
-            .take(limit as usize)
-            .map(|(goal, _)| goal)
-            .collect();
-
-        debug!(
-            results = goals.len(),
-            limit, min_score, "goals_service.get_by_embedding"
-        );
-        Ok(goals)
-    }
-
-    pub(crate) async fn update_content(
-        &self,
-        goal_id: GoalId,
-        content: &str,
-    ) -> Result<Option<Goal>, AppError> {
-        if content.len() < GOAL_CONTENT_MIN_LENGTH || content.len() > GOAL_CONTENT_MAX_LENGTH {
-            return Err(AppError::Validation(format!(
-                "content must be between {GOAL_CONTENT_MIN_LENGTH} and {GOAL_CONTENT_MAX_LENGTH} characters"
-            )));
-        }
-
-        let embedding_vec = self.embedding.embed(content).await?;
-        let embedding_json = serde_json::to_string(&embedding_vec)?;
-
-        let goal = self.repo.get_by_id(goal_id).await?;
-        let Some(mut goal) = goal else {
-            warn!(goal_id = %goal_id, "goals_service.update_content.not_found");
+        id: GoalId,
+        title: Option<String>,
+        status: Option<GoalStatus>,
+        priority: Option<u8>,
+        summary: Option<String>,
+        why_it_matters: Option<String>,
+        notes: Option<String>,
+    ) -> Result<Option<GoalDoc>, AppError> {
+        let Some(mut doc) = self.store.get(id).await? else {
             return Ok(None);
         };
 
-        goal.content = content.to_owned();
-        goal.embedding = Some(embedding_json);
-        goal.updated_at = chrono::Utc::now();
+        let mut changed = false;
+        if let Some(t) = title {
+            doc.title = t;
+            changed = true;
+        }
+        if let Some(s) = status {
+            doc.status = s;
+            changed = true;
+        }
+        if let Some(p) = priority {
+            doc.priority = p;
+            changed = true;
+        }
+        if let Some(s) = summary {
+            doc.summary = s;
+            changed = true;
+        }
+        if let Some(w) = why_it_matters {
+            doc.why_it_matters = w;
+            changed = true;
+        }
+        if let Some(n) = notes {
+            doc.notes = n;
+            changed = true;
+        }
 
-        let updated = self.repo.save(&goal).await?;
-        info!(
-            goal_id = %goal_id,
-            content_preview = &content[..content.len().min(80)],
-            "goals_service.content_updated"
-        );
-        Ok(Some(updated))
+        if !changed {
+            return Ok(Some(doc));
+        }
+
+        doc.updated_at = Utc::now();
+        self.store.save(&doc).await?;
+        info!(goal_id = %id, "goals_service.updated");
+        Ok(Some(doc))
     }
 
-    pub(crate) async fn get_all(&self, include_archived: bool) -> Result<Vec<Goal>, AppError> {
-        self.repo.get_all(include_archived).await
+    /// Convenience: set status only. Returns `Ok(None)` if the goal
+    /// is missing.
+    pub(crate) async fn set_status(
+        &self,
+        id: GoalId,
+        status: GoalStatus,
+    ) -> Result<Option<GoalDoc>, AppError> {
+        self.update(id, None, Some(status), None, None, None, None)
+            .await
     }
 
-    // ── File Operations ─────────────────────────────────────────────────
-
-    pub(crate) async fn sync_from_file(&self) -> Result<SyncResult, AppError> {
-        let cfg = self.config.load();
-        let goals_file = cfg.resolved_goals_file_path();
-        let mut created = 0u32;
-        let mut updated = 0u32;
-        let mut archived = 0u32;
-
-        if !goals_file.exists() {
-            return Err(AppError::NotFound(format!(
-                "GOALS.md not found at {}",
-                goals_file.display()
-            )));
+    pub(crate) async fn delete(&self, id: GoalId) -> Result<bool, AppError> {
+        let removed = self.store.delete(id).await?;
+        if removed {
+            info!(goal_id = %id, "goals_service.deleted");
+        } else {
+            warn!(goal_id = %id, "goals_service.delete_missing");
         }
-
-        let metadata = tokio::fs::metadata(&goals_file).await?;
-        if metadata.len() > MAX_GOALS_FILE_SIZE {
-            return Err(AppError::Validation(format!(
-                "GOALS.md file too large (>{MAX_GOALS_FILE_SIZE} bytes)"
-            )));
-        }
-
-        let content = tokio::fs::read_to_string(&goals_file).await?;
-        let parsed_goals = parse_goals_file(&content);
-
-        info!(
-            file_path = %goals_file.display(),
-            goal_count = parsed_goals.len(),
-            "goals_service.sync_from_file.parsed"
-        );
-
-        let existing_goals = self.get_all(true).await?;
-        let existing_by_content: HashMap<String, &Goal> = existing_goals
-            .iter()
-            .map(|g| (g.content.to_lowercase().trim().to_owned(), g))
-            .collect();
-        let mut seen_contents: HashSet<String> = HashSet::new();
-
-        for parsed in &parsed_goals {
-            let content_key = parsed.content.to_lowercase().trim().to_owned();
-            seen_contents.insert(content_key.clone());
-
-            let status = if parsed.completed {
-                GoalStatus::Completed
-            } else {
-                GoalStatus::Active
-            };
-            let source = if parsed.is_inferred {
-                GoalSource::Inferred
-            } else {
-                GoalSource::User
-            };
-            let priority = match parsed.priority.as_str() {
-                "high" => GoalPriority::High,
-                "low" => GoalPriority::Low,
-                _ => GoalPriority::Medium,
-            };
-
-            if let Some(existing) = existing_by_content.get(&content_key) {
-                // Update existing goal if status or priority changed
-                if existing.status != status || existing.priority != priority {
-                    self.repo
-                        .update_fields(
-                            existing.id,
-                            None,
-                            Some(status),
-                            Some(priority),
-                            Some(source),
-                            None,
-                        )
-                        .await?;
-                    updated += 1;
-                }
-            } else {
-                match self.embedding.embed(&parsed.content).await {
-                    Ok(embedding_vec) => {
-                        let mut new_goal = Goal::new(parsed.content.clone(), source, priority);
-                        new_goal.status = status;
-                        new_goal.embedding = Some(serde_json::to_string(&embedding_vec)?);
-                        self.repo.save(&new_goal).await?;
-                        created += 1;
-                    }
-                    Err(e) => {
-                        warn!(
-                            content_preview = &parsed.content[..parsed.content.len().min(50)],
-                            error = %e,
-                            "goals_service.sync_from_file.embedding_failed"
-                        );
-                    }
-                }
-            }
-        }
-
-        for (content_key, existing) in &existing_by_content {
-            if !seen_contents.contains(content_key) && existing.status != GoalStatus::Archived {
-                self.repo
-                    .update_status(existing.id, Some(GoalStatus::Archived), None)
-                    .await?;
-                archived += 1;
-            }
-        }
-
-        info!(
-            created,
-            updated, archived, "goals_service.sync_from_file.complete"
-        );
-        Ok(SyncResult)
+        Ok(removed)
     }
 }
 
-impl std::fmt::Debug for GoalsService {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GoalsService").finish()
+fn sort_goals(goals: &mut [GoalDoc]) {
+    // Highest priority first; tiebreak by most-recently-updated.
+    goals.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
+            .then(b.updated_at.cmp(&a.updated_at))
+    });
+}
+
+trait GoalDocExt {
+    fn status_is_default(&self) -> bool;
+}
+
+impl GoalDocExt for GoalDoc {
+    /// Treat `Active` as the implicit default for new goals; lets the
+    /// API accept payloads without a status field without leaving the
+    /// new file in a weird state.
+    fn status_is_default(&self) -> bool {
+        self.status == GoalStatus::Active
     }
 }

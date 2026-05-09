@@ -3,8 +3,6 @@
 mod agent_job_repo;
 mod conversation_repo;
 mod cooldown_repo;
-mod goal_plan_repo;
-mod goal_repo;
 mod learning_state_repo;
 mod memory_repo;
 mod observation_repo;
@@ -16,8 +14,6 @@ pub(crate) mod seeding;
 pub(crate) use agent_job_repo::SqliteAgentJobRepo;
 pub(crate) use conversation_repo::SqliteConversationRepo;
 pub(crate) use cooldown_repo::SqliteCooldownRepo;
-pub(crate) use goal_plan_repo::SqliteGoalPlanRepo;
-pub(crate) use goal_repo::SqliteGoalRepo;
 pub(crate) use learning_state_repo::SqliteLearningStateRepo;
 pub(crate) use memory_repo::SqliteMemoryRepo;
 pub(crate) use observation_repo::SqliteObservationRepo;
@@ -33,20 +29,14 @@ use crate::error::AppError;
 use crate::models::agent_job::AgentJob;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::cooldown::CooldownInfo;
-use crate::models::goal::Goal;
-use crate::models::goal_plan::{GoalPlan, GoalPlanStep};
 use crate::models::ids::{
-    AgentJobId, ConversationId, GoalId, GoalPlanId, GoalPlanStepId, MemoryId, ObservationId,
-    SoulId, UserProfileId,
+    AgentJobId, ConversationId, MemoryId, ObservationId, SoulId, UserProfileId,
 };
 use crate::models::learning_state::LearningState;
 use crate::models::memory::Memory;
 use crate::models::observation::Observation;
 use crate::models::soul::Soul;
-use crate::models::types::{
-    AgentJobStatus, ConversationState, GoalPlanStatus, GoalPlanStepStatus, GoalPriority,
-    GoalSource, GoalStatus, MemorySource, MemoryType, TurnRole,
-};
+use crate::models::types::{AgentJobStatus, ConversationState, MemorySource, MemoryType, TurnRole};
 use crate::models::user_profile::UserProfile;
 
 #[async_trait]
@@ -168,83 +158,6 @@ pub(crate) trait MemoryRepository: Send + Sync {
     }
     async fn update_embedding(&self, _id: MemoryId, _embedding: &[f32]) -> Result<(), AppError> {
         unimplemented!("MemoryRepository::update_embedding")
-    }
-}
-
-#[async_trait]
-#[allow(dead_code)]
-pub(crate) trait GoalRepository: Send + Sync {
-    async fn save(&self, _goal: &Goal) -> Result<Goal, AppError> {
-        unimplemented!("GoalRepository::save")
-    }
-    async fn get_by_id(&self, _id: GoalId) -> Result<Option<Goal>, AppError> {
-        unimplemented!("GoalRepository::get_by_id")
-    }
-    async fn find_by_status(
-        &self,
-        _status: GoalStatus,
-        _enabled_only: bool,
-    ) -> Result<Vec<Goal>, AppError> {
-        unimplemented!("GoalRepository::find_by_status")
-    }
-    async fn find_active(&self, _enabled_only: bool) -> Result<Vec<Goal>, AppError> {
-        unimplemented!("GoalRepository::find_active")
-    }
-    async fn find_enabled(&self) -> Result<Vec<Goal>, AppError> {
-        unimplemented!("GoalRepository::find_enabled")
-    }
-    async fn find_similar(
-        &self,
-        _embedding: &[f32],
-        _limit: i64,
-        _enabled_only: bool,
-    ) -> Result<Vec<(Goal, f64)>, AppError> {
-        unimplemented!("GoalRepository::find_similar")
-    }
-    async fn update_status(
-        &self,
-        _id: GoalId,
-        _status: Option<GoalStatus>,
-        _enabled: Option<bool>,
-    ) -> Result<Option<Goal>, AppError> {
-        unimplemented!("GoalRepository::update_status")
-    }
-    async fn update_fields(
-        &self,
-        _id: GoalId,
-        _content: Option<&str>,
-        _status: Option<GoalStatus>,
-        _priority: Option<GoalPriority>,
-        _source: Option<GoalSource>,
-        _enabled: Option<bool>,
-    ) -> Result<Option<Goal>, AppError> {
-        unimplemented!("GoalRepository::update_fields")
-    }
-    async fn delete(&self, _id: GoalId) -> Result<bool, AppError> {
-        unimplemented!("GoalRepository::delete")
-    }
-    async fn delete_stale_goals(
-        &self,
-        _statuses: &[GoalStatus],
-        _older_than: DateTime<Utc>,
-    ) -> Result<u64, AppError> {
-        unimplemented!("GoalRepository::delete_stale_goals")
-    }
-    async fn get_all(&self, _include_archived: bool) -> Result<Vec<Goal>, AppError> {
-        unimplemented!("GoalRepository::get_all")
-    }
-    async fn find_null_embedding(&self, _limit: i64) -> Result<Vec<Goal>, AppError> {
-        unimplemented!("GoalRepository::find_null_embedding")
-    }
-    async fn update_embedding(&self, _id: GoalId, _embedding: &[f32]) -> Result<(), AppError> {
-        unimplemented!("GoalRepository::update_embedding")
-    }
-    async fn bulk_update_status(
-        &self,
-        _goal_ids: &[GoalId],
-        _status: GoalStatus,
-    ) -> Result<u64, AppError> {
-        unimplemented!("GoalRepository::bulk_update_status")
     }
 }
 
@@ -414,69 +327,5 @@ pub(crate) trait CooldownRepository: Send + Sync {
     }
     async fn update_last_user_response(&self, _timestamp: DateTime<Utc>) -> Result<(), AppError> {
         unimplemented!("CooldownRepository::update_last_user_response")
-    }
-}
-
-#[async_trait]
-pub(crate) trait GoalPlanRepository: Send + Sync {
-    async fn create_plan(
-        &self,
-        _goal_id: GoalId,
-        _summary: &str,
-        _status: GoalPlanStatus,
-    ) -> Result<GoalPlan, AppError> {
-        unimplemented!("GoalPlanRepository::create_plan")
-    }
-    async fn get_plan(&self, _plan_id: GoalPlanId) -> Result<Option<GoalPlan>, AppError> {
-        unimplemented!("GoalPlanRepository::get_plan")
-    }
-    async fn get_plans_for_goal(&self, _goal_id: GoalId) -> Result<Vec<GoalPlan>, AppError> {
-        unimplemented!("GoalPlanRepository::get_plans_for_goal")
-    }
-    async fn get_active_plan_for_goal(
-        &self,
-        _goal_id: GoalId,
-    ) -> Result<Option<GoalPlan>, AppError> {
-        unimplemented!("GoalPlanRepository::get_active_plan_for_goal")
-    }
-    async fn update_plan_status(
-        &self,
-        _plan_id: GoalPlanId,
-        _status: GoalPlanStatus,
-        _error: Option<&str>,
-    ) -> Result<Option<GoalPlan>, AppError> {
-        unimplemented!("GoalPlanRepository::update_plan_status")
-    }
-    async fn get_pending_approval_plans(&self) -> Result<Vec<GoalPlan>, AppError> {
-        unimplemented!("GoalPlanRepository::get_pending_approval_plans")
-    }
-    async fn get_expired_pending_plans(
-        &self,
-        _timeout_minutes: i64,
-    ) -> Result<Vec<GoalPlan>, AppError> {
-        unimplemented!("GoalPlanRepository::get_expired_pending_plans")
-    }
-    async fn create_step(
-        &self,
-        _plan_id: GoalPlanId,
-        _step_order: i32,
-        _content: &str,
-    ) -> Result<GoalPlanStep, AppError> {
-        unimplemented!("GoalPlanRepository::create_step")
-    }
-    async fn update_step_status(
-        &self,
-        _step_id: GoalPlanStepId,
-        _status: GoalPlanStepStatus,
-        _result: Option<&str>,
-        _error: Option<&str>,
-    ) -> Result<Option<GoalPlanStep>, AppError> {
-        unimplemented!("GoalPlanRepository::update_step_status")
-    }
-    async fn get_steps_for_plan(
-        &self,
-        _plan_id: GoalPlanId,
-    ) -> Result<Vec<GoalPlanStep>, AppError> {
-        unimplemented!("GoalPlanRepository::get_steps_for_plan")
     }
 }

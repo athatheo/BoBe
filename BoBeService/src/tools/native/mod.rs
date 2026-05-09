@@ -1,18 +1,7 @@
 pub(crate) mod adapter;
 pub(crate) mod base;
 
-pub(crate) mod get_goals;
 pub(crate) mod get_souls;
-
-pub(crate) mod archive_goal;
-pub(crate) mod complete_goal;
-pub(crate) mod create_goal;
-pub(crate) mod pause_goal;
-pub(crate) mod resume_goal;
-pub(crate) mod update_goal;
-
-pub(crate) mod approve_plan;
-pub(crate) mod reject_plan;
 
 pub(crate) mod file_reader;
 pub(crate) mod list_directory;

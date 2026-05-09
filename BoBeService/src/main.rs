@@ -67,11 +67,11 @@ async fn main() -> anyhow::Result<()> {
                 config.server.port
             );
 
-            let (state, goal_worker_manager) = bootstrap::run(config.clone()).await?;
+            let state = bootstrap::run(config.clone()).await?;
             let app = api::router::build_router(std::sync::Arc::clone(&state));
 
             let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);
-            let handles = spawn_background_tasks(&state, goal_worker_manager, &shutdown_tx);
+            let handles = spawn_background_tasks(&state, &shutdown_tx);
 
             let listener = tokio::net::TcpListener::bind(format!(
                 "{}:{}",
@@ -116,13 +116,11 @@ async fn main() -> anyhow::Result<()> {
 struct BackgroundHandles {
     heartbeat: tokio::task::JoinHandle<()>,
     runtime: tokio::task::JoinHandle<()>,
-    goal_worker: tokio::task::JoinHandle<()>,
     consolidation: tokio::task::JoinHandle<()>,
 }
 
 fn spawn_background_tasks(
     state: &std::sync::Arc<app_state::AppState>,
-    goal_worker_manager: services::goal_worker::manager::GoalWorkerManager,
     shutdown_tx: &tokio::sync::broadcast::Sender<()>,
 ) -> BackgroundHandles {
     let heartbeat = {
@@ -155,15 +153,6 @@ fn spawn_background_tasks(
         })
     };
 
-    let goal_worker = {
-        let shutdown_rx = shutdown_tx.subscribe();
-        let mut manager = goal_worker_manager;
-        tokio::spawn(async move {
-            manager.run(shutdown_rx).await;
-            tracing::info!("goal_worker_manager_task.stopped");
-        })
-    };
-
     let consolidation = {
         let trigger = copilot::consolidation::ConsolidationTrigger::new(
             std::sync::Arc::clone(&state.workers),
@@ -179,7 +168,6 @@ fn spawn_background_tasks(
     BackgroundHandles {
         heartbeat,
         runtime,
-        goal_worker,
         consolidation,
     }
 }
@@ -190,9 +178,6 @@ async fn drain_background_tasks(handles: BackgroundHandles) {
     }
     if let Err(e) = handles.runtime.await {
         tracing::error!(error = %e, "runtime session task panicked");
-    }
-    if let Err(e) = handles.goal_worker.await {
-        tracing::error!(error = %e, "goal worker manager task panicked");
     }
     if let Err(e) = handles.consolidation.await {
         tracing::error!(error = %e, "consolidation trigger task panicked");

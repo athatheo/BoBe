@@ -95,7 +95,6 @@ impl CaptureTrigger {
         let context = TriggerContext {
             trigger_type: TriggerType::Capture,
             context_text: description,
-            goal: None,
         };
 
         let decision = self.decision_engine.decide(&context).await;

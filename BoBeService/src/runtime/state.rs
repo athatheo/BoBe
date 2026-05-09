@@ -24,7 +24,4 @@ pub(crate) enum TriggerType {
 pub(crate) struct TriggerContext {
     pub(crate) trigger_type: TriggerType,
     pub(crate) context_text: String,
-    /// Goal model for goal triggers (set by GoalTrigger, reserved for future use by DecisionEngine).
-    #[allow(dead_code)]
-    pub(crate) goal: Option<crate::models::goal::Goal>,
 }

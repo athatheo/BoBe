@@ -1,4 +1,10 @@
 //! Checks active goals against current context, engages on first match.
+//!
+//! Goals are file-backed (`~/.bobe/goals/<id>.md`); we read them
+//! through `GoalsService` rather than `GoalRepository` (which is
+//! gone). The Decide worker has access to the goals dir directly via
+//! its skill, so we only need to pass the goal title as
+//! `context_text` to give the engine a starting hint.
 
 use std::sync::Arc;
 
@@ -7,15 +13,15 @@ use tracing::{debug, info, warn};
 
 use crate::config::Config;
 use crate::db::CooldownRepository;
-use crate::db::GoalRepository;
 use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
+use crate::services::goals::goals_service::GoalsService;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
 
 pub(crate) struct GoalTrigger {
-    goal_repo: Arc<dyn GoalRepository>,
+    goals_service: Arc<GoalsService>,
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
@@ -25,7 +31,7 @@ pub(crate) struct GoalTrigger {
 
 impl GoalTrigger {
     pub(crate) fn new(
-        goal_repo: Arc<dyn GoalRepository>,
+        goals_service: Arc<GoalsService>,
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
@@ -33,7 +39,7 @@ impl GoalTrigger {
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
-            goal_repo,
+            goals_service,
             decision_engine,
             generator,
             cooldown_repo,
@@ -58,7 +64,7 @@ impl GoalTrigger {
             return Decision::Idle;
         }
 
-        let goals = match self.goal_repo.find_active(true).await {
+        let goals = match self.goals_service.list_active().await {
             Ok(g) => g,
             Err(e) => {
                 warn!(error = %e, "goal_trigger.fetch_failed");
@@ -78,8 +84,7 @@ impl GoalTrigger {
 
             let context = TriggerContext {
                 trigger_type: TriggerType::Goal,
-                context_text: goal.content.clone(),
-                goal: Some(goal.clone()),
+                context_text: goal.title.clone(),
             };
 
             let decision = self.decision_engine.decide(&context).await;
@@ -87,13 +92,13 @@ impl GoalTrigger {
             if decision == Decision::Engage {
                 info!(
                     goal_id = %goal.id,
-                    goal_content = &goal.content[..goal.content.len().min(50)],
+                    title = &goal.title[..goal.title.len().min(50)],
                     "goal_trigger.engagement_triggered"
                 );
                 self.generator
                     .generate_proactive_response(
                         cfg.conversation.auto_close_minutes as i64,
-                        Some(format!("User's goal: {}", goal.content)),
+                        Some(format!("User's goal: {}", goal.title)),
                     )
                     .await;
                 return Decision::Engage;

@@ -176,34 +176,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/tools/{tool_name}/disable",
             post(handlers::tools::disable_tool),
         )
-        .route(
-            "/goal-plans",
-            get(handlers::goal_worker::list_goal_plans),
-        )
-        .route(
-            "/goal-plans/pause",
-            post(handlers::goal_worker::pause_goal),
-        )
-        .route(
-            "/goal-plans/resume",
-            post(handlers::goal_worker::resume_goal),
-        )
-        .route(
-            "/goal-plans/status",
-            get(handlers::goal_worker::goal_worker_status),
-        )
-        .route(
-            "/goal-plans/{plan_id}",
-            get(handlers::goal_worker::get_goal_plan),
-        )
-        .route(
-            "/goal-plans/{plan_id}/approve",
-            post(handlers::goal_worker::approve_goal_plan),
-        )
-        .route(
-            "/goal-plans/{plan_id}/reject",
-            post(handlers::goal_worker::reject_goal_plan),
-        )
         .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))

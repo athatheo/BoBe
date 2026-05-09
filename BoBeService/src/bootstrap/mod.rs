@@ -20,9 +20,8 @@ use tracing::{info, warn};
 use crate::app_state::AppState;
 use crate::config::Config;
 use crate::error::AppError;
-use crate::services::goal_worker::manager::GoalWorkerManager;
 
-pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), AppError> {
+pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let pool = database::connect_and_apply_schema(&config.database.url).await?;
 
     let infra = infra::Infrastructure::build(&config)?;
@@ -36,8 +35,7 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
     }
 
     // Memory.md + WorkerRegistry constructed up-front so `wiring` can
-    // pass `workers` into the components that need it (agent_job_trigger
-    // and the rest of Phase 5 consumer migrations).
+    // pass `workers` into the components that need it.
     let memory_file = {
         let path = crate::util::paths::bobe_data_dir().join("memory.md");
         crate::copilot::memory_file::MemoryFile::new(path)
@@ -68,12 +66,6 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         }
     }
 
-    if config.goals.sync_on_startup
-        && let Err(e) = wired.goals_service.sync_from_file().await
-    {
-        tracing::warn!(error = %e, "bootstrap.goals_sync_failed");
-    }
-
     wired.register_tools(&config, &infra.event_queue).await;
 
     wired.wire_sse_callbacks(&infra.connection_manager).await;
@@ -93,14 +85,12 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         embedding_provider: infra.embedding_provider,
         conversation_repo: repos.conversation_repo,
         memory_repo: repos.memory_repo,
-        goal_repo: repos.goal_repo,
         observation_repo: repos.observation_repo,
         cooldown_repo: repos.cooldown_repo,
         learning_state_repo: repos.learning_state_repo,
         agent_job_repo: repos.agent_job_repo,
         soul_repo: repos.soul_repo,
         user_profile_repo: repos.user_profile_repo,
-        goal_plan_repo: repos.goal_plan_repo,
         conversation_service: wired.conversation_service,
         goals_service: wired.goals_service,
         tool_registry: wired.tool_registry,
@@ -116,7 +106,7 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         memory_file,
     });
 
-    Ok((state, wired.goal_worker_manager))
+    Ok(state)
 }
 
 fn print_banner(config: &Config) {

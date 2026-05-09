@@ -1,7 +1,6 @@
 pub(crate) mod capture;
 pub(crate) mod conversation;
 pub(crate) mod events;
-pub(crate) mod goal_worker;
 pub(crate) mod goals;
 pub(crate) mod health;
 pub(crate) mod memories;

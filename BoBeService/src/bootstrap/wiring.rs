@@ -22,10 +22,7 @@ use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
 use crate::services::agent_job_manager::AgentJobManager;
 use crate::services::conversation_service::ConversationService;
-use crate::services::goal_worker::claude_provider::ClaudeAgentProvider;
-use crate::services::goal_worker::context_provider::DefaultGoalContextProvider;
-use crate::services::goal_worker::manager::GoalWorkerManager;
-use crate::services::goal_worker::worker::GoalWorker;
+use crate::services::goals::file_store::GoalFileStore;
 use crate::services::goals::goals_service::GoalsService;
 use crate::tools::ToolSource;
 use crate::tools::mcp::McpToolAdapter;
@@ -46,7 +43,6 @@ pub(crate) struct Wired {
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
-    pub(crate) goal_worker_manager: GoalWorkerManager,
     pub(crate) mcp_adapter: Arc<McpToolAdapter>,
 
     native_adapter: Arc<NativeToolAdapter>,
@@ -114,11 +110,11 @@ pub(crate) async fn wire(
         &repos.conversation_repo,
     )));
 
-    let goals_service = Arc::new(GoalsService::new(
-        Arc::clone(&repos.goal_repo),
-        Arc::clone(&infra.embedding_provider),
-        Arc::clone(config_arc),
-    ));
+    // File-backed goals: each goal is `~/.bobe/goals/<id>.md`. The
+    // chat agent reads/edits these via SDK Read/Write/Edit; the API +
+    // trigger go through `GoalsService` for the same dir.
+    let goal_file_store = GoalFileStore::new(crate::util::paths::bobe_data_dir().join("goals"));
+    let goals_service = Arc::new(GoalsService::new(Arc::clone(&goal_file_store)));
 
     let agent_job_manager = config.coding_agent.enabled.then(|| {
         let profiles: HashMap<String, _> = match serde_json::from_str(&config.coding_agent.profiles)
@@ -144,7 +140,6 @@ pub(crate) async fn wire(
     let tool_registry = Arc::new(ToolRegistry::new());
     let native_adapter = Arc::new(NativeToolAdapter::new(build_native_tools(
         repos,
-        &infra.embedding_provider,
         agent_job_manager.as_ref(),
     )));
     let mcp_config_path =
@@ -216,7 +211,7 @@ pub(crate) async fn wire(
     );
 
     let goal_trigger = Arc::new(GoalTrigger::new(
-        Arc::clone(&repos.goal_repo),
+        Arc::clone(&goals_service),
         decision_engine,
         Arc::clone(&proactive_generator),
         Some(Arc::clone(&repos.cooldown_repo)),
@@ -251,31 +246,6 @@ pub(crate) async fn wire(
         agent_job_trigger.clone(),
     ));
 
-    let goal_worker = Arc::new(GoalWorker::new(
-        Arc::clone(config_arc),
-        Arc::new(ClaudeAgentProvider::new(
-            Arc::clone(config_arc),
-            infra.http_client.clone(),
-        )),
-        Arc::new(DefaultGoalContextProvider::new(
-            Arc::clone(&repos.memory_repo),
-            Arc::clone(&repos.goal_repo),
-            Arc::clone(&repos.soul_repo),
-            Arc::clone(&infra.embedding_provider),
-        )),
-        Arc::clone(&repos.goal_repo),
-        Arc::clone(&repos.goal_plan_repo),
-        Arc::clone(&infra.event_queue),
-        Arc::clone(&conversation_service),
-    ));
-
-    let goal_worker_manager = GoalWorkerManager::new(
-        Arc::clone(config_arc),
-        goal_worker,
-        Arc::clone(&repos.goal_repo),
-        Arc::clone(&repos.goal_plan_repo),
-    );
-
     let config_manager = Arc::new(ConfigManager::new(
         Arc::clone(config_arc),
         Arc::clone(&infra.llm_swap_handle),
@@ -290,7 +260,6 @@ pub(crate) async fn wire(
         runtime_session,
         screen_capture,
         config_manager,
-        goal_worker_manager,
         mcp_adapter,
         native_adapter,
         agent_job_trigger,
@@ -301,42 +270,16 @@ pub(crate) async fn wire(
 
 fn build_native_tools(
     repos: &Repositories,
-    embed: &Arc<dyn crate::llm::EmbeddingProvider>,
     agent_mgr: Option<&Arc<AgentJobManager>>,
 ) -> Vec<Arc<dyn NativeTool>> {
     use crate::tools::native::{
-        approve_plan, archive_goal, browser_history, cancel_coding_agent, check_coding_agent,
-        complete_goal, create_goal, discover_git_repos, discover_installed_tools, fetch_url,
-        file_reader, get_goals, get_souls, launch_coding_agent, list_coding_agents, list_directory,
-        pause_goal, reject_plan, resume_goal, search_files, update_goal,
+        browser_history, cancel_coding_agent, check_coding_agent, discover_git_repos,
+        discover_installed_tools, fetch_url, file_reader, get_souls, launch_coding_agent,
+        list_coding_agents, list_directory, search_files,
     };
 
     vec![
-        Arc::new(get_goals::GetGoalsTool::new(Arc::clone(&repos.goal_repo))),
         Arc::new(get_souls::GetSoulsTool::new(Arc::clone(&repos.soul_repo))),
-        Arc::new(create_goal::CreateGoalTool::new(
-            Arc::clone(&repos.goal_repo),
-            Arc::clone(embed),
-        )),
-        Arc::new(update_goal::UpdateGoalTool::new(Arc::clone(
-            &repos.goal_repo,
-        ))),
-        Arc::new(complete_goal::CompleteGoalTool::new(Arc::clone(
-            &repos.goal_repo,
-        ))),
-        Arc::new(archive_goal::ArchiveGoalTool::new(Arc::clone(
-            &repos.goal_repo,
-        ))),
-        Arc::new(pause_goal::PauseGoalTool::new(Arc::clone(&repos.goal_repo))),
-        Arc::new(resume_goal::ResumeGoalTool::new(Arc::clone(
-            &repos.goal_repo,
-        ))),
-        Arc::new(approve_plan::ApprovePlanTool::new(Arc::clone(
-            &repos.goal_plan_repo,
-        ))),
-        Arc::new(reject_plan::RejectPlanTool::new(Arc::clone(
-            &repos.goal_plan_repo,
-        ))),
         Arc::new(file_reader::FileReaderTool::new()),
         Arc::new(list_directory::ListDirectoryTool::new()),
         Arc::new(search_files::SearchFilesTool::new()),

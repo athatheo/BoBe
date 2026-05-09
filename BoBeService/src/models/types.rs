@@ -50,8 +50,11 @@ impl std::fmt::Display for TurnRole {
 
 // ─── Goal ───────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+/// Goals are file-backed (`~/.bobe/goals/<id>.md`); this enum is the
+/// stable wire shape the API + skill files reference. Priority is a
+/// raw `u8` on `GoalDoc`, not an enum, so the agent can express finer
+/// gradations without changing types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum GoalStatus {
     Active,
@@ -72,54 +75,6 @@ impl GoalStatus {
 }
 
 impl std::fmt::Display for GoalStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum GoalPriority {
-    High,
-    Medium,
-    Low,
-}
-
-impl GoalPriority {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            Self::High => "high",
-            Self::Medium => "medium",
-            Self::Low => "low",
-        }
-    }
-}
-
-impl std::fmt::Display for GoalPriority {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum GoalSource {
-    User,
-    Inferred,
-}
-
-impl GoalSource {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            Self::User => "user",
-            Self::Inferred => "inferred",
-        }
-    }
-}
-
-impl std::fmt::Display for GoalSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
@@ -242,116 +197,5 @@ impl AgentJobStatus {
 impl std::fmt::Display for AgentJobStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
-    }
-}
-
-// ─── Goal Plan ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum GoalPlanStatus {
-    PendingApproval,
-    Approved,
-    AutoApproved,
-    InProgress,
-    Completed,
-    Failed,
-    Rejected,
-}
-
-impl GoalPlanStatus {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            Self::PendingApproval => "pending_approval",
-            Self::Approved => "approved",
-            Self::AutoApproved => "auto_approved",
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::Rejected => "rejected",
-        }
-    }
-}
-
-impl std::fmt::Display for GoalPlanStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum GoalPlanStepStatus {
-    Pending,
-    InProgress,
-    Completed,
-    Failed,
-    Skipped,
-}
-
-impl GoalPlanStepStatus {
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::Skipped => "skipped",
-        }
-    }
-
-    pub(crate) fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Skipped)
-    }
-}
-
-impl std::fmt::Display for GoalPlanStepStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn goal_plan_step_status_in_progress_uses_snake_case() {
-        assert_eq!(GoalPlanStepStatus::InProgress.as_str(), "in_progress");
-        assert_eq!(GoalPlanStepStatus::InProgress.to_string(), "in_progress");
-    }
-
-    #[test]
-    fn goal_plan_step_status_serde_round_trip() {
-        let status = GoalPlanStepStatus::InProgress;
-        let json = serde_json::to_string(&status).unwrap();
-        assert_eq!(json, "\"in_progress\"");
-        let back: GoalPlanStepStatus = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, GoalPlanStepStatus::InProgress);
-    }
-
-    #[test]
-    fn goal_plan_step_status_all_variants_consistent() {
-        for status in [
-            GoalPlanStepStatus::Pending,
-            GoalPlanStepStatus::InProgress,
-            GoalPlanStepStatus::Completed,
-            GoalPlanStepStatus::Failed,
-            GoalPlanStepStatus::Skipped,
-        ] {
-            let json = serde_json::to_string(&status).unwrap();
-            let from_json: GoalPlanStepStatus = serde_json::from_str(&json).unwrap();
-            assert_eq!(from_json, status);
-            assert_eq!(format!("\"{status}\""), json, "as_str and serde must agree");
-        }
-    }
-
-    #[test]
-    fn goal_plan_status_in_progress_matches_step_convention() {
-        assert_eq!(GoalPlanStatus::InProgress.as_str(), "in_progress");
-        assert_eq!(GoalPlanStepStatus::InProgress.as_str(), "in_progress");
     }
 }

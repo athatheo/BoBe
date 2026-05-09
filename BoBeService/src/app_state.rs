@@ -12,8 +12,6 @@ use crate::copilot::registry::WorkerRegistry;
 use crate::db::AgentJobRepository;
 use crate::db::ConversationRepository;
 use crate::db::CooldownRepository;
-use crate::db::GoalPlanRepository;
-use crate::db::GoalRepository;
 use crate::db::LearningStateRepository;
 use crate::db::MemoryRepository;
 use crate::db::ObservationRepository;
@@ -45,14 +43,12 @@ pub(crate) struct AppState {
     pub(crate) embedding_provider: Arc<dyn EmbeddingProvider>,
     pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
     pub(crate) memory_repo: Arc<dyn MemoryRepository>,
-    pub(crate) goal_repo: Arc<dyn GoalRepository>,
     pub(crate) observation_repo: Arc<dyn ObservationRepository>,
     pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
     pub(crate) learning_state_repo: Arc<dyn LearningStateRepository>,
     pub(crate) agent_job_repo: Arc<dyn AgentJobRepository>,
     pub(crate) soul_repo: Arc<dyn SoulRepository>,
     pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
-    pub(crate) goal_plan_repo: Arc<dyn GoalPlanRepository>,
     pub(crate) conversation_service: Arc<ConversationService>,
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) tool_registry: Arc<ToolRegistry>,
