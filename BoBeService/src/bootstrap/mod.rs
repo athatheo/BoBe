@@ -42,6 +42,9 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         let path = crate::util::paths::bobe_data_dir().join("memory.md");
         crate::copilot::memory_file::MemoryFile::new(path)
     };
+    // Default SKILL.md files for worker classes that ship with one.
+    // Idempotent: existing skills are never overwritten.
+    crate::copilot::skills::ensure_skills(&crate::util::paths::bobe_data_dir()).await;
     let workers = {
         let data_dir = crate::util::paths::bobe_data_dir();
         crate::copilot::registry::WorkerRegistry::new(Arc::clone(&memory_file), data_dir)

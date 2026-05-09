@@ -41,8 +41,5 @@ pub(crate) enum WorkerError {
 
     /// The SDK reported `session.error` during a turn.
     #[error("session error ({error_type}): {message}")]
-    SessionError {
-        error_type: String,
-        message: String,
-    },
+    SessionError { error_type: String, message: String },
 }

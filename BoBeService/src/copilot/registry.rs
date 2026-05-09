@@ -56,6 +56,7 @@ pub(crate) struct WorkerRegistry {
     goals: OnceCell<Arc<BatchWorker>>,
     observe: OnceCell<Arc<BatchWorker>>,
     consolidate: OnceCell<Arc<BatchWorker>>,
+    decide: OnceCell<Arc<BatchWorker>>,
     vision: OnceCell<Arc<VisionWorker>>,
     /// Chat is keyed by local date so the cache invalidates at the
     /// midnight boundary — a `OnceCell` would pin the first day's
@@ -80,6 +81,7 @@ impl WorkerRegistry {
             goals: OnceCell::new(),
             observe: OnceCell::new(),
             consolidate: OnceCell::new(),
+            decide: OnceCell::new(),
             vision: OnceCell::new(),
             chat: Mutex::new(None),
         })
@@ -114,6 +116,16 @@ impl WorkerRegistry {
             .get_or_try_init(|| async {
                 let session = self.create_or_resume(WorkerClass::Consolidate).await?;
                 Ok::<_, AppError>(BatchWorker::new(WorkerClass::Consolidate, session))
+            })
+            .await
+            .cloned()
+    }
+
+    pub(crate) async fn decide(&self) -> Result<Arc<BatchWorker>, AppError> {
+        self.decide
+            .get_or_try_init(|| async {
+                let session = self.create_or_resume(WorkerClass::Decide).await?;
+                Ok::<_, AppError>(BatchWorker::new(WorkerClass::Decide, session))
             })
             .await
             .cloned()
@@ -180,6 +192,9 @@ impl WorkerRegistry {
         }
         if let Some(w) = self.consolidate.get() {
             log_shutdown("consolidate", w.shutdown().await);
+        }
+        if let Some(w) = self.decide.get() {
+            log_shutdown("decide", w.shutdown().await);
         }
         if let Some(w) = self.vision.get() {
             log_shutdown("vision", w.shutdown().await);

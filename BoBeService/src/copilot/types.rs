@@ -27,6 +27,10 @@ pub(crate) enum WorkerClass {
     Chat,
     /// Nightly memory.md compaction.
     Consolidate,
+    /// Engagement gate — fast yes/no on whether to invoke the chat agent
+    /// from a proactive trigger. Output is JSON parsed in the daemon and
+    /// never streamed to the user.
+    Decide,
 }
 
 impl WorkerClass {
@@ -38,6 +42,7 @@ impl WorkerClass {
             WorkerClass::Vision,
             WorkerClass::Chat,
             WorkerClass::Consolidate,
+            WorkerClass::Decide,
         ]
     }
 
@@ -50,6 +55,7 @@ impl WorkerClass {
             WorkerClass::Vision => "vision",
             WorkerClass::Chat => "chat",
             WorkerClass::Consolidate => "consolidate",
+            WorkerClass::Decide => "decide",
         }
     }
 
@@ -68,6 +74,10 @@ impl WorkerClass {
             WorkerClass::Vision => Duration::from_mins(5),
             WorkerClass::Chat => Duration::from_mins(2),
             WorkerClass::Consolidate => Duration::from_mins(15),
+            // Decision is hot-path: every screen capture trigger waits on
+            // it before the chat session can engage. Tighter cap than
+            // batch classes.
+            WorkerClass::Decide => Duration::from_secs(45),
         }
     }
 

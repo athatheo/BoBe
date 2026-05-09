@@ -154,12 +154,7 @@ impl AgentJobTrigger {
 
         match worker.submit(job_input).await {
             Ok(out) => {
-                let verdict = out
-                    .output
-                    .as_str()
-                    .unwrap_or("")
-                    .trim()
-                    .to_uppercase();
+                let verdict = out.output.as_str().unwrap_or("").trim().to_uppercase();
                 info!(
                     job_id = %job.id,
                     verdict = %verdict,

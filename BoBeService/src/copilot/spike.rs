@@ -56,7 +56,9 @@ pub(crate) async fn run() -> anyhow::Result<()> {
         println!("error:  {err}");
     }
 
-    let usage = registry.usage_meter().snapshot(super::types::WorkerClass::Goals);
+    let usage = registry
+        .usage_meter()
+        .snapshot(super::types::WorkerClass::Goals);
     println!("---");
     println!(
         "usage: {} api calls, {} input + {} output tokens, {:.2} cost units",

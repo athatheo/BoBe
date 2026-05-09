@@ -89,7 +89,9 @@ impl SessionStore {
 
         let tmp = parent.join(format!(
             ".{}.tmp",
-            path.file_name().and_then(|n| n.to_str()).unwrap_or("session")
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("session")
         ));
         tokio::fs::write(&tmp, id.as_str()).await?;
         tokio::fs::rename(&tmp, &path).await?;

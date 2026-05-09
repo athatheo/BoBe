@@ -186,15 +186,17 @@ impl ProactiveGenerator {
             .map_err(|e| AppError::Internal(format!("chat_worker.send: {e}")))?;
         info!(msg_id, "proactive_generator.stream_start");
         let conversation = Arc::clone(&self.conversation);
-        Ok(stream_chat_delta_response(
-            chat_stream,
-            &self.event_queue,
-            Some(msg_id),
-            move |delta| {
-                conversation.push_proactive_stream_delta(conversation_id, delta);
-            },
+        Ok(
+            stream_chat_delta_response(
+                chat_stream,
+                &self.event_queue,
+                Some(msg_id),
+                move |delta| {
+                    conversation.push_proactive_stream_delta(conversation_id, delta);
+                },
+            )
+            .await,
         )
-        .await)
     }
 
     async fn persist_proactive_response(

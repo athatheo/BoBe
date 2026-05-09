@@ -326,11 +326,19 @@ where
                     }
                     state.full_response.push_str(&text);
                     on_text_delta(&text);
-                    event_queue.push(text_delta_event(state.msg_id(), &text, state.sequence, false));
+                    event_queue.push(text_delta_event(
+                        state.msg_id(),
+                        &text,
+                        state.sequence,
+                        false,
+                    ));
                     state.sequence += 1;
                 }
             }
-            ChatDelta::MessageComplete { content, output_tokens } => {
+            ChatDelta::MessageComplete {
+                content,
+                output_tokens,
+            } => {
                 debug!(
                     bytes = content.len(),
                     output_tokens = ?output_tokens,
@@ -345,7 +353,12 @@ where
                         state.first_token_time = Some(Instant::now());
                     }
                     on_text_delta(&content);
-                    event_queue.push(text_delta_event(state.msg_id(), &content, state.sequence, false));
+                    event_queue.push(text_delta_event(
+                        state.msg_id(),
+                        &content,
+                        state.sequence,
+                        false,
+                    ));
                     state.full_response = content;
                     state.sequence += 1;
                 }

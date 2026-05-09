@@ -190,11 +190,9 @@ pub(crate) async fn wire(
     ));
 
     let decision_engine = Arc::new(DecisionEngine::new(
-        Arc::clone(&infra.llm_provider),
-        Arc::clone(&repos.observation_repo),
+        Arc::clone(&workers),
         Arc::clone(&conversation_service),
         Arc::clone(config_arc),
-        Some(Arc::clone(&context_assembler)),
     ));
 
     // Tool dispatch is now owned by Copilot SDK's session loop —
@@ -329,8 +327,8 @@ fn build_native_tools(
     use crate::tools::native::{
         approve_plan, archive_goal, browser_history, cancel_coding_agent, check_coding_agent,
         complete_goal, create_goal, discover_git_repos, discover_installed_tools, fetch_url,
-        file_reader, get_goals, get_souls, launch_coding_agent, list_coding_agents,
-        list_directory, pause_goal, reject_plan, resume_goal, search_files, update_goal,
+        file_reader, get_goals, get_souls, launch_coding_agent, list_coding_agents, list_directory,
+        pause_goal, reject_plan, resume_goal, search_files, update_goal,
     };
 
     vec![

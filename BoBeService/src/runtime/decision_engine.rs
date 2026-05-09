@@ -1,62 +1,65 @@
-//! Decision engine — decides whether to reach out proactively.
+//! Decision engine — gates whether BoBe reaches out proactively.
 //!
-//! Uses context, conversation state, and LLM structured output.
+//! Triggers (capture / goal / check-in) call `decide()` *before* the
+//! chat session is invoked. The decision call goes through
+//! `WorkerClass::Decide`, a dedicated batch worker session whose output
+//! is JSON parsed in the daemon and **never** streamed to the user.
+//! Only on `Decision::Engage` does the trigger then call
+//! `ProactiveGenerator`, which wakes the chat session.
+//!
+//! Why a separate worker rather than asking the chat agent: the chat
+//! agent always replies (an "I won't reach out" reply is still a reply
+//! that costs tokens and creates user-visible chat history). The
+//! decision belongs in a structured-output channel.
+//!
+//! Memory.md is auto-injected at session start (via `BobeHooks`), and
+//! the decide skill instructs the agent to read `~/.bobe/goals/*.md`
+//! when the trigger could relate to a goal — so this module no longer
+//! needs to assemble context, embed queries, or query observations.
 
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use chrono::{Duration, Utc};
-use serde_json::Value;
-use tracing::{debug, info, warn};
+use chrono::{Duration, Local, Utc};
+use serde_json::{Value, json};
+use tracing::{debug, warn};
+use uuid::Uuid;
 
 use crate::config::Config;
-use crate::constants::MILLIS_PER_SECOND;
-use crate::db::ObservationRepository;
-use crate::llm::LlmProvider;
-use crate::runtime::prompts::decision::DecisionPrompt;
-use crate::runtime::prompts::goal_decision::GoalDecisionPrompt;
+use crate::copilot::registry::WorkerRegistry;
+use crate::copilot::types::JobInput;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
-use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
 use crate::util::text::truncate_str;
 
 pub(crate) struct DecisionEngine {
-    llm: Arc<dyn LlmProvider>,
-    observation_repo: Arc<dyn ObservationRepository>,
+    workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
     config: Arc<ArcSwap<Config>>,
-    context_assembler: Option<Arc<ContextAssembler>>,
 }
 
 impl DecisionEngine {
     pub(crate) fn new(
-        llm: Arc<dyn LlmProvider>,
-        observation_repo: Arc<dyn ObservationRepository>,
+        workers: Arc<WorkerRegistry>,
         conversation: Arc<ConversationService>,
         config: Arc<ArcSwap<Config>>,
-        context_assembler: Option<Arc<ContextAssembler>>,
     ) -> Self {
         Self {
-            llm,
-            observation_repo,
+            workers,
             conversation,
             config,
-            context_assembler,
         }
     }
 
-    /// Route to appropriate decision logic based on trigger type.
+    /// Route to the right decision path based on trigger type. Capture
+    /// and Goal both go through the same Decide worker; the difference
+    /// is the `kind` field and the input shape so the agent can tailor
+    /// its heuristics. Check-in unconditionally engages (the user
+    /// signed up for these). AgentJob triggers don't pass through
+    /// here.
     pub(crate) async fn decide(&self, context: &TriggerContext) -> Decision {
         match context.trigger_type {
-            TriggerType::Capture => {
-                let embedding = context
-                    .observation
-                    .as_ref()
-                    .and_then(|obs| obs.embedding.as_ref())
-                    .and_then(|e| serde_json::from_str::<Vec<f32>>(e).ok());
-                self.decide_on_capture(&context.context_text, embedding.as_deref())
-                    .await
-            }
+            TriggerType::Capture => self.decide_on_capture(&context.context_text).await,
             TriggerType::Goal => self.decide_on_goal(&context.context_text).await,
             TriggerType::Checkin => Decision::Engage,
             TriggerType::AgentJob => {
@@ -66,327 +69,154 @@ impl DecisionEngine {
         }
     }
 
-    async fn decide_on_capture(&self, current_text: &str, embedding: Option<&[f32]>) -> Decision {
-        let cfg = self.config.load();
-        let locale = cfg.effective_locale();
-
-        // Check active conversation
-        if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout = Duration::seconds(cfg.conversation.inactivity_timeout_seconds as i64);
-            let time_since = Utc::now() - active.updated_at;
-            if time_since < timeout {
-                debug!(
-                    conversation_id = %active.id,
-                    "decision_engine.blocked_by_recent_conversation"
-                );
-                return Decision::Idle;
-            }
-            // Conversation is stale but we proceed
-            debug!(
-                conversation_id = %active.id,
-                stale_seconds = time_since.num_seconds(),
-                "decision_engine.conversation_stale_allowing_reachout"
-            );
+    async fn decide_on_capture(&self, current_text: &str) -> Decision {
+        if self.blocked_by_active_conversation().await {
+            return Decision::Idle;
         }
 
-        // Get recent AI messages
+        let cfg = self.config.load();
         let recent_ai_messages = self
             .conversation
             .get_recent_ai_messages(cfg.decision.recent_ai_messages_limit)
             .await
             .unwrap_or_default();
 
-        // Get similar observations via semantic search with cascading fallback
-        let similar_observations = self.get_similar_observations(embedding).await;
-
-        // Check LLM health
-        match tokio::time::timeout(std::time::Duration::from_secs(10), self.llm.health_check())
+        let input = json!({
+            "trigger_kind": "capture",
+            "current_activity": truncate_str(current_text, 600),
+            "recent_ai_messages": recent_ai_messages
+                .iter()
+                .map(|m| truncate_str(m, 200).to_string())
+                .collect::<Vec<_>>(),
+            "current_time": Local::now().format("%Y-%m-%d %H:%M:%S %z").to_string(),
+            "locale": cfg.effective_locale(),
+        });
+        self.run_decision("capture_engagement_decision", input)
             .await
-        {
-            Ok(true) => {}
-            Ok(false) => {
-                warn!("decision_engine.llm_unhealthy");
-                return Decision::Idle;
-            }
-            Err(_) => {
-                warn!("decision_engine.llm_health_timeout");
-                return Decision::Idle;
-            }
-        }
-
-        // Build context using observation summaries
-        let context_summary = if similar_observations.is_empty() {
-            "No recent context".into()
-        } else {
-            use std::fmt::Write;
-            let mut buf = String::new();
-            for (i, obs) in similar_observations.iter().take(5).enumerate() {
-                if i > 0 {
-                    buf.push('\n');
-                }
-                let summary = self.get_observation_summary(obs);
-                let _ = write!(buf, "- [{}] {}", obs.category, summary);
-            }
-            buf
-        };
-
-        let recent_messages = if recent_ai_messages.is_empty() {
-            "I haven't sent any messages recently.".into()
-        } else {
-            use std::fmt::Write;
-            let mut buf = String::from("Recent messages I sent:\n");
-            for (i, msg) in recent_ai_messages.iter().enumerate() {
-                if i > 0 {
-                    buf.push('\n');
-                }
-                if msg.len() > 100 {
-                    let _ = write!(buf, "- {}...", truncate_str(msg, 100));
-                } else {
-                    let _ = write!(buf, "- {msg}");
-                }
-            }
-            buf
-        };
-
-        let current_summary = truncate_str(current_text, 200);
-
-        // Get soul
-        let soul = self.get_soul_content().await;
-
-        let current_time = Utc::now().format("%A, %B %d %Y %H:%M").to_string();
-
-        let messages = DecisionPrompt::messages(
-            current_summary,
-            &context_summary,
-            &recent_messages,
-            soul.as_deref(),
-            Some(&current_time),
-            Some(&locale),
-        );
-        let config = DecisionPrompt::config();
-
-        self.llm_decide(&messages, &config).await
     }
 
     async fn decide_on_goal(&self, goal_content: &str) -> Decision {
+        if self.blocked_by_active_conversation().await {
+            return Decision::Idle;
+        }
+
         let cfg = self.config.load();
-        let locale = cfg.effective_locale();
+        let input = json!({
+            "trigger_kind": "goal",
+            "current_activity": truncate_str(goal_content, 600),
+            "recent_ai_messages": Vec::<String>::new(),
+            "current_time": Local::now().format("%Y-%m-%d %H:%M:%S %z").to_string(),
+            "locale": cfg.effective_locale(),
+        });
+        self.run_decision("goal_engagement_decision", input).await
+    }
 
-        // Check active conversation
-        if let Ok(Some(active)) = self.conversation.get_pending_or_active().await {
-            let timeout = Duration::seconds(cfg.conversation.inactivity_timeout_seconds as i64);
-            let time_since = Utc::now() - active.updated_at;
-            if time_since < timeout {
-                debug!("decision_engine.goal_blocked_by_conversation");
-                return Decision::Idle;
-            }
-        }
-
-        // Get recent observations for context
-        let recent_observations = self
-            .observation_repo
-            .find_recent(30)
-            .await
-            .unwrap_or_default();
-
-        if !self.llm.health_check().await {
-            warn!("decision_engine.goal_llm_unhealthy");
-            return Decision::Idle;
-        }
-
-        let context_summary = if recent_observations.is_empty() {
-            "No recent context".into()
-        } else {
-            use std::fmt::Write;
-            let mut buf = String::new();
-            for (i, obs) in recent_observations.iter().take(5).enumerate() {
-                if i > 0 {
-                    buf.push('\n');
-                }
-                let summary = self.get_observation_summary(obs);
-                let _ = write!(buf, "- [{}] {}", obs.category, summary);
-            }
-            buf
+    /// True when there is a pending or active conversation that has
+    /// been touched within the inactivity timeout — proactive
+    /// engagement on top of an in-progress conversation is rude.
+    async fn blocked_by_active_conversation(&self) -> bool {
+        let Ok(Some(active)) = self.conversation.get_pending_or_active().await else {
+            return false;
         };
-
-        let soul = self.get_soul_content().await;
-        let current_time = Utc::now().format("%A, %B %d %Y %H:%M").to_string();
-
-        let messages = GoalDecisionPrompt::messages(
-            goal_content,
-            &context_summary,
-            soul.as_deref(),
-            Some(&current_time),
-            Some(&locale),
-        );
-        let config = GoalDecisionPrompt::config();
-
-        self.llm_decide(&messages, &config).await
-    }
-
-    async fn get_soul_content(&self) -> Option<String> {
-        if let Some(ref ctx_asm) = self.context_assembler {
-            let content = ctx_asm.get_soul_content().await;
-            if content.is_empty() {
-                None
-            } else {
-                Some(content)
-            }
-        } else {
-            None
-        }
-    }
-
-    async fn llm_decide(
-        &self,
-        messages: &[crate::llm::types::AiMessage],
-        config: &crate::runtime::prompts::base::PromptConfig,
-    ) -> Decision {
-        let response = match tokio::time::timeout(
-            std::time::Duration::from_secs(240),
-            self.llm.complete(
-                messages,
-                None,
-                config.response_format.as_ref(),
-                config.temperature,
-                config.max_tokens,
-            ),
-        )
-        .await
-        {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => {
-                warn!(error = %e, "decision_engine.llm_error");
-                return Decision::Idle;
-            }
-            Err(_) => {
-                warn!("decision_engine.llm_timeout");
-                return Decision::Idle;
-            }
-        };
-
-        self.parse_decision_response(response.message.content.text_or_empty())
-    }
-
-    fn parse_decision_response(&self, content: &str) -> Decision {
-        if content.is_empty() {
-            debug!("decision_engine.empty_content_idle");
-            return Decision::Idle;
-        }
-        let content = content.trim();
-
-        // Try JSON
-        if let Ok(data) = serde_json::from_str::<Value>(content) {
-            let decision_value = data
-                .get("decision")
-                .and_then(|d| d.as_str())
-                .unwrap_or("idle");
-            let reasoning = data.get("reasoning").and_then(|r| r.as_str()).unwrap_or("");
-
+        let cfg = self.config.load();
+        let timeout = Duration::seconds(cfg.conversation.inactivity_timeout_seconds as i64);
+        let time_since = Utc::now() - active.updated_at;
+        if time_since < timeout {
             debug!(
-                decision = %decision_value,
-                reasoning = &reasoning[..reasoning.len().min(150)],
-                "decision_engine.parsed_json"
+                conversation_id = %active.id,
+                "decision_engine.blocked_by_recent_conversation"
             );
-
-            return match decision_value {
-                "reach_out" => Decision::Engage,
-                "need_more_info" => Decision::NeedMoreInfo,
-                _ => Decision::Idle,
-            };
-        }
-
-        // JSON parse failed
-        warn!("decision_engine.json_parse_failed");
-
-        // Fallback: text parsing
-        let lower = content.to_lowercase();
-        if lower.contains("reach_out") {
-            Decision::Engage
-        } else if lower.contains("need_more_info") || lower.contains("need more") {
-            Decision::NeedMoreInfo
+            true
         } else {
-            Decision::Idle
+            debug!(
+                conversation_id = %active.id,
+                stale_seconds = time_since.num_seconds(),
+                "decision_engine.conversation_stale_allowing_reachout"
+            );
+            false
         }
     }
 
-    /// Get similar observations via semantic search with cascading fallback.
-    /// Fallback 1: recent observations (10 minutes). Fallback 2: empty.
-    async fn get_similar_observations(
-        &self,
-        embedding: Option<&[f32]>,
-    ) -> Vec<crate::models::observation::Observation> {
-        let cfg = self.config.load();
-        if let Some(emb) = embedding {
-            let start = std::time::Instant::now();
-            match self
-                .observation_repo
-                .find_similar(emb, cfg.decision.semantic_search_limit)
-                .await
-            {
-                Ok(results) => {
-                    let duration_ms = start.elapsed().as_secs_f64() * MILLIS_PER_SECOND;
-                    if results.is_empty() {
-                        debug!(
-                            duration_ms = format!("{duration_ms:.1}"),
-                            "decision_engine.semantic_search_empty"
-                        );
-                    } else {
-                        let top_scores: Vec<f64> = results
-                            .iter()
-                            .take(3)
-                            .map(|(_, s)| (*s * 1000.0).round() / 1000.0)
-                            .collect();
-                        info!(
-                            result_count = results.len(),
-                            top_scores = ?top_scores,
-                            duration_ms = format!("{duration_ms:.1}"),
-                            "decision_engine.semantic_search_complete"
-                        );
-                    }
-                    results.into_iter().map(|(obs, _score)| obs).collect()
-                }
-                Err(e) => {
-                    warn!(error = %e, "decision_engine.semantic_search_failed");
-                    // Fallback 1: recent observations
-                    match self.observation_repo.find_recent(10).await {
-                        Ok(obs) => {
-                            debug!(
-                                count = obs.len(),
-                                "decision_engine.fallback_recent_observations"
-                            );
-                            obs
-                        }
-                        Err(_) => Vec::new(),
-                    }
-                }
+    /// Submit the decision job to the Decide worker and parse the
+    /// structured output. Any failure path falls back to `Idle` — when
+    /// in doubt, leave the user alone.
+    async fn run_decision(&self, kind: &str, input: Value) -> Decision {
+        let worker = match self.workers.decide().await {
+            Ok(w) => w,
+            Err(e) => {
+                warn!(error = %e, "decision_engine.decide_worker_unavailable");
+                return Decision::Idle;
             }
-        } else {
-            debug!("decision_engine.no_embedding_fallback");
-            match self.observation_repo.find_recent(10).await {
-                Ok(obs) => obs,
-                Err(e) => {
-                    warn!(error = %e, "decision_engine.get_recent_failed");
-                    Vec::new()
-                }
+        };
+
+        let job = JobInput {
+            job_id: Uuid::new_v4(),
+            kind: kind.into(),
+            instructions: "Decide whether BoBe should engage the user proactively right now. \
+                 Output strict JSON: output must be \
+                 {\"decision\":\"reach_out|idle|need_more_info\",\"reasoning\":\"<short>\"}. \
+                 Default to idle when uncertain. See your SKILL.md for heuristics."
+                .into(),
+            input,
+        };
+
+        match worker.submit(job).await {
+            Ok(out) => parse_decision(&out.output),
+            Err(e) => {
+                warn!(error = %e, "decision_engine.decide_submit_failed");
+                Decision::Idle
             }
         }
     }
+}
 
-    /// Extract summary from observation metadata, or truncate content.
-    fn get_observation_summary(&self, obs: &crate::models::observation::Observation) -> String {
-        // Check metadata for pre-computed summary
-        if let Some(ref meta) = obs.metadata
-            && let Ok(parsed) = serde_json::from_str::<Value>(meta)
-            && let Some(summary) = parsed.get("summary").and_then(|s| s.as_str())
-        {
-            return truncate_str(summary, 200).to_owned();
-        }
-        // Fallback: truncate content
-        if obs.content.len() > 100 {
-            format!("{}...", truncate_str(&obs.content, 100))
-        } else {
-            obs.content.clone()
-        }
+fn parse_decision(output: &Value) -> Decision {
+    let decision = output
+        .get("decision")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let reasoning = output
+        .get("reasoning")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    debug!(
+        decision = %decision,
+        reasoning = &reasoning[..reasoning.len().min(150)],
+        "decision_engine.parsed"
+    );
+    match decision {
+        "reach_out" => Decision::Engage,
+        "need_more_info" => Decision::NeedMoreInfo,
+        _ => Decision::Idle,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_decision_reach_out() {
+        let v = json!({"decision": "reach_out", "reasoning": "user stuck"});
+        assert_eq!(parse_decision(&v), Decision::Engage);
+    }
+
+    #[test]
+    fn parse_decision_need_more_info() {
+        let v = json!({"decision": "need_more_info", "reasoning": "ambiguous"});
+        assert_eq!(parse_decision(&v), Decision::NeedMoreInfo);
+    }
+
+    #[test]
+    fn parse_decision_idle_default() {
+        // unknown values map to idle (conservative)
+        let v = json!({"decision": "shrug", "reasoning": ""});
+        assert_eq!(parse_decision(&v), Decision::Idle);
+    }
+
+    #[test]
+    fn parse_decision_missing_fields() {
+        let v = json!({});
+        assert_eq!(parse_decision(&v), Decision::Idle);
     }
 }

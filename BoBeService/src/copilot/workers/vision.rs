@@ -108,7 +108,10 @@ fn to_sdk_attachment(att: ChatAttachment) -> Result<Attachment, WorkerError> {
             if !path.is_absolute() {
                 return Err(WorkerError::Io(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!("vision file attachment must be absolute: {}", path.display()),
+                    format!(
+                        "vision file attachment must be absolute: {}",
+                        path.display()
+                    ),
                 )));
             }
             Ok(Attachment::File {

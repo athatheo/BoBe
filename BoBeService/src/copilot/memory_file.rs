@@ -22,7 +22,8 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 use crate::error::AppError;
 
 /// Default skeleton when `memory.md` doesn't exist yet.
-const DEFAULT_BODY: &str = "# BoBe Memory\n\n## Profile\n\n## Active Goals\n\n## Long-term\n\n## Recent\n";
+const DEFAULT_BODY: &str =
+    "# BoBe Memory\n\n## Profile\n\n## Active Goals\n\n## Long-term\n\n## Recent\n";
 
 /// Pruning cap that the consolidation worker is supposed to maintain.
 /// The writer doesn't enforce it on every write — that's a fast-path
@@ -91,20 +92,14 @@ impl MemoryFile {
     async fn read_unlocked(&self) -> Result<String, AppError> {
         match tokio::fs::read_to_string(&self.path).await {
             Ok(s) => Ok(s),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Ok(DEFAULT_BODY.to_string())
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(DEFAULT_BODY.to_string()),
             Err(e) => Err(AppError::Io(e)),
         }
     }
 
     /// Append a bullet under `section` (e.g. "Recent"). Creates the
     /// section if missing. Adds an ISO-8601 date prefix to each entry.
-    pub(crate) async fn append_under(
-        &self,
-        section: &str,
-        entry: &str,
-    ) -> Result<(), AppError> {
+    pub(crate) async fn append_under(&self, section: &str, entry: &str) -> Result<(), AppError> {
         let _guard = self.write_lock.lock().await;
         let body = self.read_unlocked().await?;
         let now: DateTime<Utc> = SystemTime::now().into();
@@ -213,13 +208,20 @@ mod tests {
     async fn append_under_existing_section() {
         let dir = tempdir();
         let mem = MemoryFile::new(dir.join("memory.md"));
-        mem.append_under("Recent", "User asked about Foo").await.unwrap();
-        mem.append_under("Recent", "User asked about Bar").await.unwrap();
+        mem.append_under("Recent", "User asked about Foo")
+            .await
+            .unwrap();
+        mem.append_under("Recent", "User asked about Bar")
+            .await
+            .unwrap();
         let body = mem.read().await.unwrap();
 
         assert!(body.contains("User asked about Foo"));
         assert!(body.contains("User asked about Bar"));
-        assert!(body.matches("## Recent").count() == 1, "no duplicate sections");
+        assert!(
+            body.matches("## Recent").count() == 1,
+            "no duplicate sections"
+        );
     }
 
     #[tokio::test]

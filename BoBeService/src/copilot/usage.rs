@@ -53,10 +53,16 @@ impl UsageMeter {
         if let Some(t) = data.get("outputTokens").and_then(serde_json::Value::as_u64) {
             entry.output_tokens += t;
         }
-        if let Some(t) = data.get("cacheReadTokens").and_then(serde_json::Value::as_u64) {
+        if let Some(t) = data
+            .get("cacheReadTokens")
+            .and_then(serde_json::Value::as_u64)
+        {
             entry.cache_read_tokens += t;
         }
-        if let Some(t) = data.get("cacheWriteTokens").and_then(serde_json::Value::as_u64) {
+        if let Some(t) = data
+            .get("cacheWriteTokens")
+            .and_then(serde_json::Value::as_u64)
+        {
             entry.cache_write_tokens += t;
         }
         if let Some(c) = data.get("cost").and_then(serde_json::Value::as_f64) {
