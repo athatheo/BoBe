@@ -1,61 +1,59 @@
-//! Generates proactive responses: conversation setup, LLM generation, engagement recording.
+//! Generates BoBe-initiated (proactive) responses using the Copilot
+//! chat session.
+//!
+//! The agent receives a synthetic "[BoBe proactive check]" prompt as
+//! the next turn; memory.md context (injected via `BobeHooks`) plus
+//! recent session history give it the signal to either produce a
+//! proactive message or return an empty/no-op response. Streaming
+//! goes through the same SSE pipe as user-initiated chat — the
+//! SwiftUI overlay can't tell the difference, which is intentional.
+//!
+//! Conversation summary at session-close uses the goals batch worker
+//! (autopilot mode + JSON output) — independent of the chat session.
 
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
 use chrono::Utc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::config::Config;
+use crate::copilot::registry::WorkerRegistry;
+use crate::copilot::types::{ChatPrompt, JobInput};
+use crate::copilot::workers::ChatWorker;
 use crate::db::CooldownRepository;
-use crate::llm::LlmProvider;
+use crate::error::AppError;
 use crate::models::conversation::Conversation;
-use crate::runtime::prompts::response::ProactiveResponsePrompt;
-use crate::runtime::prompts::summary::ConversationSummaryPrompt;
-use crate::runtime::response_streamer::{
-    stream_llm_response_with_text_observer, stream_response_with_text_observer,
-};
-use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
+use crate::runtime::response_streamer::stream_chat_delta_response;
 use crate::services::conversation_service::ConversationService;
-use crate::tools::registry::ToolRegistry;
-use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::conversation_closed_event;
 use crate::util::sse::types::IndicatorType;
-use crate::util::tokens::{clamp_max_tokens, count_message_tokens};
+
+const PROACTIVE_TRIGGER_PROMPT: &str = "[bobe.proactive_check] \
+     The system has detected an opportunity to engage proactively with the user. \
+     Based on the memory.md context and recent conversation, decide whether to \
+     produce a short proactive message. If a message would not add value right \
+     now, reply with an empty message — no apology, no preamble.";
 
 pub(crate) struct ProactiveGenerator {
-    llm: Arc<dyn LlmProvider>,
-    context_assembler: Arc<ContextAssembler>,
+    workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
     event_queue: Arc<EventQueue>,
-    config: Arc<ArcSwap<Config>>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-    tool_registry: Option<Arc<ToolRegistry>>,
-    tool_call_loop: Option<Arc<ToolCallLoop>>,
 }
 
 impl ProactiveGenerator {
     pub(crate) fn new(
-        llm: Arc<dyn LlmProvider>,
-        context_assembler: Arc<ContextAssembler>,
+        workers: Arc<WorkerRegistry>,
         conversation: Arc<ConversationService>,
         event_queue: Arc<EventQueue>,
-        config: Arc<ArcSwap<Config>>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-        tool_registry: Option<Arc<ToolRegistry>>,
-        tool_call_loop: Option<Arc<ToolCallLoop>>,
     ) -> Self {
         Self {
-            llm,
-            context_assembler,
+            workers,
             conversation,
             event_queue,
-            config,
             cooldown_repo,
-            tool_registry,
-            tool_call_loop,
         }
     }
 
@@ -64,7 +62,7 @@ impl ProactiveGenerator {
         auto_close_minutes: i64,
         context_summary: Option<String>,
     ) {
-        let (target, previous_summary) = self.ensure_conversation(auto_close_minutes).await;
+        let (target, _previous_summary) = self.ensure_conversation(auto_close_minutes).await;
         let target = match self
             .conversation
             .begin_proactive_stream(target.as_ref())
@@ -77,7 +75,12 @@ impl ProactiveGenerator {
             }
         };
 
-        self.generate_response(target, previous_summary, context_summary)
+        let Some(target_conversation) = target else {
+            warn!("proactive_generator.missing_target_conversation");
+            return;
+        };
+
+        self.generate_response(&target_conversation, context_summary)
             .await;
     }
 
@@ -121,113 +124,36 @@ impl ProactiveGenerator {
 
     async fn generate_response(
         &self,
-        target_conversation: Option<Conversation>,
-        previous_summary: Option<String>,
+        target_conversation: &Conversation,
         context_summary: Option<String>,
     ) {
         self.event_queue.set_indicator(IndicatorType::Streaming);
-
-        let query = context_summary.as_deref().unwrap_or("");
-
-        let assembled = self
-            .context_assembler
-            .build_context(
-                query,
-                BuildContextOptions {
-                    include_memories: true,
-                    include_goals: true,
-                    include_souls: true,
-                    include_observations: true,
-                    observation_limit: 5,
-                    ..BuildContextOptions::default()
-                },
-            )
-            .await;
-
-        let (assembled_context, soul) = assembled.to_context_string();
-
-        let final_context = match &context_summary {
-            Some(cs) => format!("{cs}\n\n{assembled_context}"),
-            None => assembled_context,
-        };
-
         let msg_id = format!("msg_{}", Uuid::new_v4().simple());
-        let current_time = Utc::now().format("%A, %B %d %Y %H:%M").to_string();
-        let cfg = self.config.load();
-        let locale = cfg.effective_locale();
-
-        let messages = ProactiveResponsePrompt::messages(
-            &final_context,
-            soul.as_deref(),
-            previous_summary.as_deref(),
-            Some(&current_time),
-            Some(&locale),
-        );
-        let prompt_config = ProactiveResponsePrompt::config();
-
-        let prompt_tokens = count_message_tokens(&messages);
-        let max_tokens = clamp_max_tokens(
-            cfg.llm.context_window,
-            prompt_tokens,
-            prompt_config.max_tokens,
-        );
-        if max_tokens < prompt_config.max_tokens {
-            info!(
-                requested = prompt_config.max_tokens,
-                clamped = max_tokens,
-                prompt_tokens,
-                context_window = cfg.llm.context_window,
-                "proactive_generator.max_tokens_clamped"
-            );
-        }
-
-        let tools = if let Some(ref registry) = self.tool_registry {
-            registry.get_all_tools(false).await
-        } else {
-            vec![]
-        };
-
-        let Some(target_conversation) = target_conversation.as_ref() else {
-            warn!("proactive_generator.missing_target_conversation");
-            self.event_queue.set_indicator(IndicatorType::Idle);
-            return;
-        };
-
         let conversation_id = target_conversation.id;
-        let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
-            let tool_stream =
-                tcl.stream(messages, tools, prompt_config.temperature, max_tokens, None);
-            stream_response_with_text_observer(
-                tool_stream,
-                &self.event_queue,
-                Some(&msg_id),
-                |delta| {
-                    self.conversation
-                        .push_proactive_stream_delta(conversation_id, delta);
-                },
-            )
-            .await
-        } else {
-            let stream = self.llm.stream(
-                messages,
-                None,
-                prompt_config.response_format,
-                prompt_config.temperature,
-                max_tokens,
-            );
-            stream_llm_response_with_text_observer(
-                stream,
-                &self.event_queue,
-                Some(&msg_id),
-                |delta| {
-                    self.conversation
-                        .push_proactive_stream_delta(conversation_id, delta);
-                },
-            )
-            .await
+
+        let prompt_text = match context_summary.as_deref() {
+            Some(cs) if !cs.is_empty() => {
+                format!("{PROACTIVE_TRIGGER_PROMPT}\n\nrecent_context = {cs}")
+            }
+            _ => PROACTIVE_TRIGGER_PROMPT.to_string(),
         };
 
-        if result.full_response.is_empty() {
+        let result = match self
+            .send_proactive_via_chat(&prompt_text, &msg_id, conversation_id)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                error!(error = %e, "proactive_generator.chat_failed");
+                self.conversation.discard_proactive_stream(conversation_id);
+                self.event_queue.set_indicator(IndicatorType::Idle);
+                return;
+            }
+        };
+
+        if result.full_response.trim().is_empty() {
+            // The agent declined to engage — discard the partial stream
+            // state without finalizing a turn.
             self.conversation.discard_proactive_stream(conversation_id);
         } else {
             self.persist_proactive_response(&result, target_conversation)
@@ -245,6 +171,30 @@ impl ProactiveGenerator {
         }
 
         self.event_queue.set_indicator(IndicatorType::Idle);
+    }
+
+    async fn send_proactive_via_chat(
+        &self,
+        prompt_text: &str,
+        msg_id: &str,
+        conversation_id: crate::models::ids::ConversationId,
+    ) -> Result<crate::runtime::response_streamer::StreamResult, AppError> {
+        let worker = self.workers.chat().await?;
+        let chat_stream = worker
+            .send(ChatPrompt::text(prompt_text))
+            .await
+            .map_err(|e| AppError::Internal(format!("chat_worker.send: {e}")))?;
+        info!(msg_id, "proactive_generator.stream_start");
+        let conversation = Arc::clone(&self.conversation);
+        Ok(stream_chat_delta_response(
+            chat_stream,
+            &self.event_queue,
+            Some(msg_id),
+            move |delta| {
+                conversation.push_proactive_stream_delta(conversation_id, delta);
+            },
+        )
+        .await)
     }
 
     async fn persist_proactive_response(
@@ -294,14 +244,12 @@ impl ProactiveGenerator {
         &self,
         old_conversation: &Conversation,
     ) -> (Conversation, Option<String>) {
-        let cfg = self.config.load();
         let mut summary: Option<String> = None;
 
-        if cfg.conversation.summary_enabled
-            && let Ok(turns) = self
-                .conversation
-                .get_conversation_turns(old_conversation.id, 50)
-                .await
+        if let Ok(turns) = self
+            .conversation
+            .get_conversation_turns(old_conversation.id, 50)
+            .await
             && turns.len() >= 2
         {
             summary = self.generate_summary(&turns).await;
@@ -329,57 +277,46 @@ impl ProactiveGenerator {
         }
     }
 
+    /// Generate a one-paragraph summary of `turns` via the goals batch
+    /// worker (autopilot + JSON output). Returns None on failure.
     async fn generate_summary(
         &self,
         turns: &[crate::models::conversation::ConversationTurn],
     ) -> Option<String> {
-        let turn_tuples: Vec<(String, String)> = turns
+        let transcript = turns
             .iter()
-            .map(|t| (t.role.as_str().to_owned(), t.content.clone()))
-            .collect();
+            .map(|t| format!("{}: {}", t.role.as_str(), t.content))
+            .collect::<Vec<_>>()
+            .join("\n");
 
-        let turn_refs: Vec<(&str, &str)> = turn_tuples
-            .iter()
-            .map(|(r, c)| (r.as_str(), c.as_str()))
-            .collect();
+        let worker = match self.workers.goals().await {
+            Ok(w) => w,
+            Err(e) => {
+                warn!(err = %e, "proactive_generator.summary.worker_unavailable");
+                return None;
+            }
+        };
 
-        let cfg = self.config.load();
-        let locale = cfg.effective_locale();
-        let messages = ConversationSummaryPrompt::messages(&turn_refs, Some(&locale));
-        let prompt_config = ConversationSummaryPrompt::config();
-        let prompt_tokens = count_message_tokens(&messages);
-        let max_tokens = clamp_max_tokens(
-            cfg.llm.context_window,
-            prompt_tokens,
-            prompt_config.max_tokens,
-        );
+        let job = JobInput {
+            job_id: Uuid::new_v4(),
+            kind: "conversation_summary".into(),
+            instructions: "Summarize the conversation in 1-2 sentences. Capture the gist, \
+                 not the details. Return JSON {\"output\":\"<summary>\"}."
+                .into(),
+            input: serde_json::json!({ "transcript": transcript }),
+        };
 
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(240),
-            self.llm.complete(
-                &messages,
-                None,
-                prompt_config.response_format.as_ref(),
-                prompt_config.temperature,
-                max_tokens,
-            ),
-        )
-        .await
-        {
-            Ok(Ok(response)) => {
-                let content = response.message.content.text_or_empty().trim().to_string();
-                if content.is_empty() {
+        match worker.submit(job).await {
+            Ok(out) => {
+                let summary = out.output.as_str().unwrap_or("").trim().to_string();
+                if summary.is_empty() {
                     None
                 } else {
-                    Some(content)
+                    Some(summary)
                 }
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 warn!(error = %e, "proactive_generator.summary_failed");
-                None
-            }
-            Err(_) => {
-                warn!("proactive_generator.summary_timeout");
                 None
             }
         }

@@ -2,13 +2,15 @@
 //!
 //! Handles text deltas, tool notifications, error recovery.
 
+use std::pin::Pin;
 use std::time::Instant;
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::constants::MILLIS_PER_SECOND;
+use crate::copilot::types::ChatDelta;
 use crate::error::AppError;
 use crate::llm::types::{StreamChunk, StreamItem};
 use crate::util::sse::event_queue::EventQueue;
@@ -296,6 +298,86 @@ fn classify_error(error: &AppError) -> (&'static str, bool) {
 
 fn push_done_event(msg_id: &str, sequence: usize, event_queue: &EventQueue) {
     event_queue.push(end_of_turn_event(msg_id, sequence));
+}
+
+/// Stream a `ChatDelta` stream (from the Copilot SDK chat worker) into
+/// the SSE event queue. Mirrors `stream_response` for `LlmProvider`
+/// streams but consumes the BoBe-shaped `ChatDelta` vocabulary —
+/// MessageDelta → text_delta_event, MessageComplete is informational
+/// (deltas already covered the content), ToolStart/Complete map 1:1,
+/// Done terminates, Error pushes a recoverable stream error.
+pub(crate) async fn stream_chat_delta_response<F>(
+    mut stream: Pin<Box<dyn Stream<Item = ChatDelta> + Send>>,
+    event_queue: &EventQueue,
+    msg_id: Option<&str>,
+    mut on_text_delta: F,
+) -> StreamResult
+where
+    F: FnMut(&str) + Send,
+{
+    let mut state = StreamAccumulator::new(msg_id);
+
+    while let Some(delta) = stream.next().await {
+        match delta {
+            ChatDelta::MessageDelta(text) => {
+                if !text.is_empty() {
+                    if state.first_token_time.is_none() {
+                        state.first_token_time = Some(Instant::now());
+                    }
+                    state.full_response.push_str(&text);
+                    on_text_delta(&text);
+                    event_queue.push(text_delta_event(state.msg_id(), &text, state.sequence, false));
+                    state.sequence += 1;
+                }
+            }
+            ChatDelta::MessageComplete { content, output_tokens } => {
+                debug!(
+                    bytes = content.len(),
+                    output_tokens = ?output_tokens,
+                    "stream_chat_delta.message_complete"
+                );
+                // If the SDK didn't emit deltas (some models / non-streaming
+                // mode), push the whole content as one delta so the UI sees
+                // something. When deltas were already streamed, the
+                // accumulated buffer already matches `content` and we skip.
+                if state.full_response.is_empty() && !content.is_empty() {
+                    if state.first_token_time.is_none() {
+                        state.first_token_time = Some(Instant::now());
+                    }
+                    on_text_delta(&content);
+                    event_queue.push(text_delta_event(state.msg_id(), &content, state.sequence, false));
+                    state.full_response = content;
+                    state.sequence += 1;
+                }
+            }
+            ChatDelta::ToolStart { id, name, args: _ } => {
+                info!(tool = %name, "tool_call.start");
+                event_queue.push(tool_call_start_event(state.msg_id(), &name, &id));
+            }
+            ChatDelta::ToolComplete { id, name, success } => {
+                info!(tool = %name, success, "tool_call.complete");
+                event_queue.push(tool_call_complete_event(
+                    state.msg_id(),
+                    &name,
+                    &id,
+                    Some(success),
+                    None,
+                    None,
+                ));
+            }
+            ChatDelta::Error(msg) => {
+                state.mark_failed();
+                error!(error = %msg, chunks = state.sequence, "stream_chat_delta.error");
+                event_queue.push(error_event(state.msg_id(), "CHAT_ERROR", &msg, true));
+            }
+            ChatDelta::Done => {
+                debug!(chunks = state.sequence, "stream_chat_delta.done");
+                break;
+            }
+        }
+    }
+
+    state.finish(event_queue)
 }
 
 /// Stream a simple text message (no LLM call needed).

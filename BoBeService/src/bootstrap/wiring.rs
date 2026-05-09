@@ -30,13 +30,10 @@ use crate::services::goal_worker::worker::GoalWorker;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::soul_service::SoulService;
 use crate::tools::ToolSource;
-use crate::tools::executor::ToolExecutor;
 use crate::tools::mcp::McpToolAdapter;
 use crate::tools::native::adapter::NativeToolAdapter;
 use crate::tools::native::base::NativeTool;
-use crate::tools::preselector::ToolPreselector;
 use crate::tools::registry::ToolRegistry;
-use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
@@ -200,29 +197,17 @@ pub(crate) async fn wire(
         Some(Arc::clone(&context_assembler)),
     ));
 
-    let tool_executor = Arc::new(ToolExecutor::new(
-        Arc::clone(&tool_registry),
-        config.tools.timeout_seconds,
-    ));
-    let tool_preselector = Arc::new(ToolPreselector::new(
-        Arc::clone(&infra.llm_provider),
-        Arc::clone(config_arc),
-    ));
-    let tool_call_loop = Arc::new(ToolCallLoop::new(
-        Arc::clone(&infra.llm_provider),
-        tool_executor,
-        Arc::clone(config_arc),
-    ));
+    // Tool dispatch is now owned by Copilot SDK's session loop —
+    // built-in Read/Write/Bash/Grep tools auto-invoked in autopilot
+    // mode. The legacy `ToolPreselector`, `ToolCallLoop`, and
+    // `ToolExecutor` modules remain as deprecated reference (see
+    // `#[deprecated]` on each) but are no longer constructed at boot.
 
     let proactive_generator = Arc::new(ProactiveGenerator::new(
-        Arc::clone(&infra.llm_provider),
-        Arc::clone(&context_assembler),
+        Arc::clone(&workers),
         Arc::clone(&conversation_service),
         Arc::clone(&infra.event_queue),
-        Arc::clone(config_arc),
         Some(Arc::clone(&repos.cooldown_repo)),
-        Some(Arc::clone(&tool_registry)),
-        Some(Arc::clone(&tool_call_loop)),
     ));
 
     let screen_capture = Arc::new(ScreenCapture::new());
@@ -275,15 +260,10 @@ pub(crate) async fn wire(
         goal_trigger,
         capture_trigger,
         Arc::new(MessageHandler::new(
-            Arc::clone(&infra.llm_provider),
-            Arc::clone(&context_assembler),
+            Arc::clone(&workers),
             Arc::clone(&conversation_service),
             Some(Arc::clone(&repos.cooldown_repo)),
             Arc::clone(&infra.event_queue),
-            Arc::clone(config_arc),
-            Some(Arc::clone(&tool_registry)),
-            Some(tool_preselector),
-            Some(tool_call_loop),
         )),
         Arc::clone(&conversation_service),
         Some(Arc::clone(&repos.cooldown_repo)),

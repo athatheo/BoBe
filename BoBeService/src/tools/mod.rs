@@ -1,8 +1,22 @@
-pub(crate) mod executor;
 pub(crate) mod mcp;
 pub(crate) mod native;
-pub(crate) mod preselector;
 pub(crate) mod registry;
+
+// ─── Deprecated: superseded by Copilot SDK's built-in tool dispatch ─────────
+//
+// `ToolExecutor`, `ToolPreselector`, and `ToolCallLoop` predate the
+// Copilot SDK pivot. The SDK's session loop (autopilot mode) handles
+// tool selection + invocation natively via Copilot's built-in tools
+// (Read, Write, Bash, Grep, Edit, etc.), so BoBe-side dispatch is no
+// longer needed. The modules remain in-tree for reference but are not
+// constructed at boot — see `bootstrap/wiring.rs`. Slated for removal
+// alongside the rest of the LlmProvider consumer migration.
+
+#[deprecated(note = "superseded by Copilot SDK session loop")]
+pub(crate) mod executor;
+#[deprecated(note = "superseded by Copilot SDK session loop")]
+pub(crate) mod preselector;
+#[deprecated(note = "superseded by Copilot SDK session loop")]
 pub(crate) mod tool_call_loop;
 
 // ─── Types and trait definitions ────────────────────────────────────────────

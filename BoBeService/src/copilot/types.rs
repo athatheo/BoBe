@@ -151,13 +151,19 @@ pub(crate) enum ChatDelta {
         output_tokens: Option<u64>,
     },
     /// A tool the assistant is invoking (UI shows "🔍 searching files...").
+    /// `id` correlates with the matching `ToolComplete` for SSE display.
     ToolStart {
+        id: String,
         name: String,
         args: serde_json::Value,
     },
     /// Tool finished. `success` reflects exit, not whether the model was
-    /// happy with the result.
-    ToolComplete { name: String, success: bool },
+    /// happy with the result. `id` matches the corresponding `ToolStart`.
+    ToolComplete {
+        id: String,
+        name: String,
+        success: bool,
+    },
     /// Recoverable error mid-stream. Stream may continue.
     Error(String),
     /// Turn complete. Stream ends after this.

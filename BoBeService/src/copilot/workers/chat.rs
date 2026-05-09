@@ -251,6 +251,12 @@ fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
         }
 
         "tool.execution_start" => {
+            let id = event
+                .data
+                .get("toolCallId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let name = event
                 .data
                 .get("toolName")
@@ -262,10 +268,16 @@ fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
                 .get("arguments")
                 .cloned()
                 .unwrap_or(serde_json::Value::Null);
-            Some(ChatDelta::ToolStart { name, args })
+            Some(ChatDelta::ToolStart { id, name, args })
         }
 
         "tool.execution_complete" => {
+            let id = event
+                .data
+                .get("toolCallId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let name = event
                 .data
                 .get("toolName")
@@ -277,7 +289,7 @@ fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
                 .get("success")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false);
-            Some(ChatDelta::ToolComplete { name, success })
+            Some(ChatDelta::ToolComplete { id, name, success })
         }
 
         "session.idle" => Some(ChatDelta::Done),
@@ -350,10 +362,15 @@ mod tests {
     fn tool_events_round_trip() {
         let start = ev(
             "tool.execution_start",
-            json!({ "toolName": "bash", "arguments": { "cmd": "ls" } }),
+            json!({
+                "toolCallId": "tc-1",
+                "toolName": "bash",
+                "arguments": { "cmd": "ls" }
+            }),
         );
         match event_to_delta(&start) {
-            Some(ChatDelta::ToolStart { name, args }) => {
+            Some(ChatDelta::ToolStart { id, name, args }) => {
+                assert_eq!(id, "tc-1");
                 assert_eq!(name, "bash");
                 assert_eq!(args["cmd"], "ls");
             }
@@ -361,10 +378,11 @@ mod tests {
         }
         let complete = ev(
             "tool.execution_complete",
-            json!({ "toolName": "bash", "success": true }),
+            json!({ "toolCallId": "tc-1", "toolName": "bash", "success": true }),
         );
         match event_to_delta(&complete) {
-            Some(ChatDelta::ToolComplete { name, success }) => {
+            Some(ChatDelta::ToolComplete { id, name, success }) => {
+                assert_eq!(id, "tc-1");
                 assert_eq!(name, "bash");
                 assert!(success);
             }
