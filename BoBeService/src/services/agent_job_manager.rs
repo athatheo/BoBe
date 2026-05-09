@@ -672,23 +672,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[derive(Default)]
-    struct TestAgentJobRepo {
-        jobs: TokioMutex<HashMap<AgentJobId, AgentJob>>,
-    }
-
-    #[async_trait]
-    impl AgentJobRepository for TestAgentJobRepo {
-        async fn save(&self, job: &AgentJob) -> Result<AgentJob, AppError> {
-            self.jobs.lock().await.insert(job.id, job.clone());
-            Ok(job.clone())
-        }
-
-        async fn get_by_id(&self, id: AgentJobId) -> Result<Option<AgentJob>, AppError> {
-            Ok(self.jobs.lock().await.get(&id).cloned())
-        }
-    }
-
     #[test]
     fn push_tail_bytes_keeps_latest_bytes_only() {
         let mut tail = Vec::new();

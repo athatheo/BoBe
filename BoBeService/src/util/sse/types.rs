@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 pub(crate) enum EventType {
     Indicator,
     TextDelta,
-    ToolCall,
     ToolCallStart,
     ToolCallComplete,
     Error,
@@ -22,7 +21,6 @@ pub(crate) enum IndicatorType {
     Idle,
     ScreenCapture,
     Thinking,
-    ToolCalling,
     Streaming,
 }
 
@@ -32,7 +30,6 @@ impl IndicatorType {
             Self::Idle => "Idle",
             Self::ScreenCapture => "ScreenCapture",
             Self::Thinking => "Thinking",
-            Self::ToolCalling => "ToolCalling",
             Self::Streaming => "Streaming",
         }
     }

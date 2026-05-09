@@ -1,22 +1,14 @@
 //! `ChatWorker` — streaming chat with the user. Long-lived session per
-//! local date (rotation handled by [`super::super::session_store`]). The
-//! `send` method returns a `Stream<ChatDelta>` that yields token-level
-//! deltas, tool-execution events, and a terminal `Done`.
-
-#![allow(
-    dead_code,
-    reason = "Phase 6: chat worker complete; Phase 5 wires the SwiftUI overlay path"
-)]
+//! local date (rotation handled by [`super::super::session_store`]).
 //!
-//! Session lifecycle (per turn):
-//!
+//! Per-turn lifecycle:
 //! 1. Acquire `submit_lock` so only one turn is in flight per worker.
-//! 2. `session.subscribe()` to start receiving events from now on.
-//! 3. `session.send(opts)` to enqueue the prompt (returns message ID
-//!    immediately; events arrive via the subscription).
-//! 4. Yield `ChatDelta`s from the event stream until `session.idle`
-//!    (success) or `session.error` (failure).
-//! 5. Drop the lock when the stream is consumed or dropped.
+//! 2. `session.subscribe()` to receive events from now on.
+//! 3. `session.send(opts)` to enqueue the prompt.
+//! 4. Yield `ChatDelta`s until `session.idle` (success) or
+//!    `session.error` (failure).
+//! 5. Drop the lock when the stream completes or is dropped (the
+//!    `AbortGuard` cancels any in-flight turn on premature drop).
 
 use std::pin::Pin;
 use std::sync::Arc;
@@ -161,18 +153,6 @@ impl ChatWorker for CopilotChatWorker {
         };
 
         Ok(Box::pin(s))
-    }
-
-    async fn abort(&self) -> Result<(), WorkerError> {
-        self.session.abort().await?;
-        Ok(())
-    }
-
-    async fn compact(&self) -> Result<(), WorkerError> {
-        // Wire method: `session.history.compact`. Marked experimental in
-        // the SDK — pin both SDK + CLI versions if behavior changes.
-        self.session.rpc().history().compact().await?;
-        Ok(())
     }
 }
 

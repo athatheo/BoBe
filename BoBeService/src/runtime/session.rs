@@ -292,7 +292,6 @@ impl RuntimeSession {
             return Err(match indicator {
                 IndicatorType::ScreenCapture => "BoBe is finishing capture work",
                 IndicatorType::Thinking => "BoBe is still thinking",
-                IndicatorType::ToolCalling => "BoBe is still using tools",
                 IndicatorType::Streaming => "BoBe is still responding",
                 IndicatorType::Idle => "BoBe is still finishing the previous message",
             });

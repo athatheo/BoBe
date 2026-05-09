@@ -108,12 +108,4 @@ impl AgentJobRepository for SqliteAgentJobRepo {
         Ok(())
     }
 
-    async fn get_running_count(&self) -> Result<i64, AppError> {
-        let count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM agent_jobs WHERE status = 'running'")
-                .fetch_one(&self.pool)
-                .await
-                .map_err(AppError::Database)?;
-        Ok(count.0)
-    }
 }

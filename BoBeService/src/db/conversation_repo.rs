@@ -4,7 +4,7 @@ use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::ids::{ConversationId, ConversationTurnId};
 use crate::models::types::{ConversationState, TurnRole};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 
@@ -63,32 +63,6 @@ impl ConversationRepository for SqliteConversationRepo {
         .await
         .map_err(AppError::Database)?;
         Ok(row)
-    }
-
-    async fn find_closed_since(
-        &self,
-        since: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Conversation>, AppError> {
-        let rows = if let Some(since) = since {
-            sqlx::query_as::<_, Conversation>(
-                "SELECT * FROM conversations WHERE state = ?1 AND closed_at > ?2 ORDER BY closed_at ASC",
-            )
-            .bind(ConversationState::Closed.as_str())
-            .bind(since)
-            .fetch_all(&self.pool)
-            .await
-        } else {
-            sqlx::query_as::<_, Conversation>(
-                "SELECT * FROM conversations WHERE state = ?1 ORDER BY closed_at ASC",
-            )
-            .bind(ConversationState::Closed.as_str())
-            .fetch_all(&self.pool)
-            .await
-        }
-        .map_err(AppError::Database)?;
-
-        debug!(since = ?since, count = rows.len(), "conversation_repo.find_closed_since");
-        Ok(rows)
     }
 
     async fn get_last_closed(&self) -> Result<Option<Conversation>, AppError> {

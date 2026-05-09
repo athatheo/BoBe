@@ -1,30 +1,22 @@
-//! `BatchWorker` — `AgentWorker` impl for headless batch jobs (goals,
-//! observe, vision, consolidate). Sessions run in `autopilot` mode so
-//! the model agent-loops to completion (auto-nudged toward
-//! `task_complete`); we block on `send_and_wait`, parse the assistant
-//! message as JSON, and surface the structured `output` field.
+//! `BatchWorker` — headless batch jobs (goals, observe, decide,
+//! consolidate). Sessions run in `autopilot` mode so the model
+//! agent-loops to completion (auto-nudged toward `task_complete`); we
+//! block on `send_and_wait`, parse the assistant message as JSON, and
+//! surface the structured `output` field.
 //!
 //! Submission is serialized per worker — only one job in flight at a
 //! time. The SDK's `idle_waiter` slot is also a single-flight gate, but
 //! holding our own mutex preserves strict job ordering and means
 //! cancellation in `submit()` doesn't race a queued caller.
 
-#![allow(
-    dead_code,
-    reason = "Phase 6: type + accessors complete; Phase 5 wires consumers"
-)]
-
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::types::MessageOptions;
 use tokio::sync::Mutex;
 
 use crate::copilot::error::WorkerError;
 use crate::copilot::types::{JobInput, JobOutput, WorkerClass};
-
-use super::AgentWorker;
 
 pub(crate) struct BatchWorker {
     class: WorkerClass,
@@ -41,13 +33,6 @@ impl BatchWorker {
         })
     }
 
-    pub(crate) fn class(&self) -> WorkerClass {
-        self.class
-    }
-
-    /// Inherent equivalent of [`AgentWorker::submit`] so callers
-    /// holding an `Arc<BatchWorker>` (the typed accessor return type)
-    /// don't need the trait in scope. The trait impl just forwards.
     pub(crate) async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
         let _guard = self.submit_lock.lock().await;
 
@@ -101,17 +86,6 @@ impl BatchWorker {
     pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
         self.session.destroy().await?;
         Ok(())
-    }
-}
-
-#[async_trait]
-impl AgentWorker for BatchWorker {
-    async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
-        Self::submit(self, job).await
-    }
-
-    fn class(&self) -> WorkerClass {
-        Self::class(self)
     }
 }
 

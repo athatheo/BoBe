@@ -37,20 +37,6 @@ impl SqliteCooldownRepo {
 
 #[async_trait]
 impl CooldownRepository for SqliteCooldownRepo {
-    fn last_engagement(&self) -> Option<DateTime<Utc>> {
-        self.state
-            .try_lock()
-            .ok()
-            .and_then(|s| s.as_ref()?.last_engagement)
-    }
-
-    fn last_user_response(&self) -> Option<DateTime<Utc>> {
-        self.state
-            .try_lock()
-            .ok()
-            .and_then(|s| s.as_ref()?.last_user_response)
-    }
-
     fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo> {
         self.state
             .try_lock()

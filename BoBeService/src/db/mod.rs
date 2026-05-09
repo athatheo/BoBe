@@ -29,172 +29,82 @@ use crate::models::types::{AgentJobStatus, ConversationState, TurnRole};
 use crate::models::user_profile::UserProfile;
 
 #[async_trait]
-#[allow(dead_code)]
 pub(crate) trait ConversationRepository: Send + Sync {
-    async fn save(&self, _conversation: &Conversation) -> Result<Conversation, AppError> {
-        unimplemented!("ConversationRepository::save")
-    }
-    async fn get_by_id(&self, _id: ConversationId) -> Result<Option<Conversation>, AppError> {
-        unimplemented!("ConversationRepository::get_by_id")
-    }
-    async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
-        unimplemented!("ConversationRepository::get_pending_or_active")
-    }
-    async fn find_closed_since(
-        &self,
-        _since: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Conversation>, AppError> {
-        unimplemented!("ConversationRepository::find_closed_since")
-    }
-    async fn get_last_closed(&self) -> Result<Option<Conversation>, AppError> {
-        unimplemented!("ConversationRepository::get_last_closed")
-    }
+    async fn save(&self, conversation: &Conversation) -> Result<Conversation, AppError>;
+    async fn get_by_id(&self, id: ConversationId) -> Result<Option<Conversation>, AppError>;
+    async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError>;
+    async fn get_last_closed(&self) -> Result<Option<Conversation>, AppError>;
     async fn update_state(
         &self,
-        _id: ConversationId,
-        _state: ConversationState,
-        _summary: Option<String>,
-    ) -> Result<Option<Conversation>, AppError> {
-        unimplemented!("ConversationRepository::update_state")
-    }
-    async fn add_turn(&self, _turn: &ConversationTurn) -> Result<ConversationTurn, AppError> {
-        unimplemented!("ConversationRepository::add_turn")
-    }
+        id: ConversationId,
+        state: ConversationState,
+        summary: Option<String>,
+    ) -> Result<Option<Conversation>, AppError>;
+    async fn add_turn(&self, turn: &ConversationTurn) -> Result<ConversationTurn, AppError>;
     async fn update_turn_content(
         &self,
-        _turn_id: crate::models::ids::ConversationTurnId,
-        _content: &str,
-    ) -> Result<Option<ConversationTurn>, AppError> {
-        unimplemented!("ConversationRepository::update_turn_content")
-    }
+        turn_id: crate::models::ids::ConversationTurnId,
+        content: &str,
+    ) -> Result<Option<ConversationTurn>, AppError>;
     async fn get_turns(
         &self,
-        _conversation_id: ConversationId,
-        _limit: i64,
-    ) -> Result<Vec<ConversationTurn>, AppError> {
-        unimplemented!("ConversationRepository::get_turns")
-    }
+        conversation_id: ConversationId,
+        limit: i64,
+    ) -> Result<Vec<ConversationTurn>, AppError>;
     async fn get_recent_turns_by_role(
         &self,
-        _role: TurnRole,
-        _limit: i64,
-    ) -> Result<Vec<String>, AppError> {
-        unimplemented!("ConversationRepository::get_recent_turns_by_role")
-    }
+        role: TurnRole,
+        limit: i64,
+    ) -> Result<Vec<String>, AppError>;
 }
 
 #[async_trait]
-#[allow(dead_code)]
 pub(crate) trait SoulRepository: Send + Sync {
-    async fn save(&self, _soul: &Soul) -> Result<Soul, AppError> {
-        unimplemented!("SoulRepository::save")
-    }
-    async fn get_by_id(&self, _id: SoulId) -> Result<Option<Soul>, AppError> {
-        unimplemented!("SoulRepository::get_by_id")
-    }
-    async fn get_by_name(&self, _name: &str) -> Result<Option<Soul>, AppError> {
-        unimplemented!("SoulRepository::get_by_name")
-    }
-    async fn get_default(&self) -> Result<Option<Soul>, AppError> {
-        unimplemented!("SoulRepository::get_default")
-    }
-    async fn get_all(&self) -> Result<Vec<Soul>, AppError> {
-        unimplemented!("SoulRepository::get_all")
-    }
-    async fn find_enabled(&self) -> Result<Vec<Soul>, AppError> {
-        unimplemented!("SoulRepository::find_enabled")
-    }
+    async fn save(&self, soul: &Soul) -> Result<Soul, AppError>;
+    async fn get_by_id(&self, id: SoulId) -> Result<Option<Soul>, AppError>;
+    async fn get_by_name(&self, name: &str) -> Result<Option<Soul>, AppError>;
+    async fn get_all(&self) -> Result<Vec<Soul>, AppError>;
+    async fn find_enabled(&self) -> Result<Vec<Soul>, AppError>;
     async fn update(
         &self,
-        _id: SoulId,
-        _content: Option<&str>,
-        _enabled: Option<bool>,
-        _is_default: Option<bool>,
-        _name: Option<&str>,
-    ) -> Result<Option<Soul>, AppError> {
-        unimplemented!("SoulRepository::update")
-    }
-    async fn delete(&self, _id: SoulId) -> Result<bool, AppError> {
-        unimplemented!("SoulRepository::delete")
-    }
+        id: SoulId,
+        content: Option<&str>,
+        enabled: Option<bool>,
+        is_default: Option<bool>,
+        name: Option<&str>,
+    ) -> Result<Option<Soul>, AppError>;
+    async fn delete(&self, id: SoulId) -> Result<bool, AppError>;
 }
 
 #[async_trait]
-#[allow(dead_code)]
 pub(crate) trait AgentJobRepository: Send + Sync {
-    async fn save(&self, _job: &AgentJob) -> Result<AgentJob, AppError> {
-        unimplemented!("AgentJobRepository::save")
-    }
-    async fn get_by_id(&self, _id: AgentJobId) -> Result<Option<AgentJob>, AppError> {
-        unimplemented!("AgentJobRepository::get_by_id")
-    }
-    async fn find_by_status(&self, _status: AgentJobStatus) -> Result<Vec<AgentJob>, AppError> {
-        unimplemented!("AgentJobRepository::find_by_status")
-    }
-    async fn find_unreported_terminal(&self) -> Result<Vec<AgentJob>, AppError> {
-        unimplemented!("AgentJobRepository::find_unreported_terminal")
-    }
-    async fn mark_reported(&self, _id: AgentJobId) -> Result<(), AppError> {
-        unimplemented!("AgentJobRepository::mark_reported")
-    }
-    async fn get_running_count(&self) -> Result<i64, AppError> {
-        unimplemented!("AgentJobRepository::get_running_count")
-    }
+    async fn save(&self, job: &AgentJob) -> Result<AgentJob, AppError>;
+    async fn get_by_id(&self, id: AgentJobId) -> Result<Option<AgentJob>, AppError>;
+    async fn find_by_status(&self, status: AgentJobStatus) -> Result<Vec<AgentJob>, AppError>;
+    async fn find_unreported_terminal(&self) -> Result<Vec<AgentJob>, AppError>;
+    async fn mark_reported(&self, id: AgentJobId) -> Result<(), AppError>;
 }
 
 #[async_trait]
-#[allow(dead_code)]
 pub(crate) trait UserProfileRepository: Send + Sync {
-    async fn save(&self, _profile: &UserProfile) -> Result<UserProfile, AppError> {
-        unimplemented!("UserProfileRepository::save")
-    }
-    async fn get_by_id(&self, _id: UserProfileId) -> Result<Option<UserProfile>, AppError> {
-        unimplemented!("UserProfileRepository::get_by_id")
-    }
-    async fn get_by_name(&self, _name: &str) -> Result<Option<UserProfile>, AppError> {
-        unimplemented!("UserProfileRepository::get_by_name")
-    }
-    async fn get_default(&self) -> Result<Option<UserProfile>, AppError> {
-        unimplemented!("UserProfileRepository::get_default")
-    }
-    async fn find_enabled(&self) -> Result<Vec<UserProfile>, AppError> {
-        unimplemented!("UserProfileRepository::find_enabled")
-    }
-    async fn get_all(&self) -> Result<Vec<UserProfile>, AppError> {
-        unimplemented!("UserProfileRepository::get_all")
-    }
+    async fn save(&self, profile: &UserProfile) -> Result<UserProfile, AppError>;
+    async fn get_by_id(&self, id: UserProfileId) -> Result<Option<UserProfile>, AppError>;
+    async fn get_by_name(&self, name: &str) -> Result<Option<UserProfile>, AppError>;
+    async fn find_enabled(&self) -> Result<Vec<UserProfile>, AppError>;
+    async fn get_all(&self) -> Result<Vec<UserProfile>, AppError>;
     async fn update(
         &self,
-        _id: UserProfileId,
-        _content: Option<&str>,
-        _enabled: Option<bool>,
-    ) -> Result<Option<UserProfile>, AppError> {
-        unimplemented!("UserProfileRepository::update")
-    }
-    async fn delete(&self, _id: UserProfileId) -> Result<bool, AppError> {
-        unimplemented!("UserProfileRepository::delete")
-    }
+        id: UserProfileId,
+        content: Option<&str>,
+        enabled: Option<bool>,
+    ) -> Result<Option<UserProfile>, AppError>;
+    async fn delete(&self, id: UserProfileId) -> Result<bool, AppError>;
 }
 
 #[async_trait]
-#[allow(dead_code)]
 pub(crate) trait CooldownRepository: Send + Sync {
-    fn last_engagement(&self) -> Option<DateTime<Utc>> {
-        unimplemented!("CooldownRepository::last_engagement")
-    }
-    fn last_user_response(&self) -> Option<DateTime<Utc>> {
-        unimplemented!("CooldownRepository::last_user_response")
-    }
-    fn check_cooldown(&self, _base_minutes: i64, _extended_minutes: i64) -> Option<CooldownInfo> {
-        unimplemented!("CooldownRepository::check_cooldown")
-    }
-    async fn load_or_create(&self) -> Result<(), AppError> {
-        unimplemented!("CooldownRepository::load_or_create")
-    }
-    async fn update_last_engagement(&self, _timestamp: DateTime<Utc>) -> Result<(), AppError> {
-        unimplemented!("CooldownRepository::update_last_engagement")
-    }
-    async fn update_last_user_response(&self, _timestamp: DateTime<Utc>) -> Result<(), AppError> {
-        unimplemented!("CooldownRepository::update_last_user_response")
-    }
+    fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo>;
+    async fn load_or_create(&self) -> Result<(), AppError>;
+    async fn update_last_engagement(&self, timestamp: DateTime<Utc>) -> Result<(), AppError>;
+    async fn update_last_user_response(&self, timestamp: DateTime<Utc>) -> Result<(), AppError>;
 }
