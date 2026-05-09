@@ -102,7 +102,6 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         user_profile_repo: repos.user_profile_repo,
         goal_plan_repo: repos.goal_plan_repo,
         conversation_service: wired.conversation_service,
-        context_assembler: wired.context_assembler,
         goals_service: wired.goals_service,
         tool_registry: wired.tool_registry,
         runtime_session: wired.runtime_session,

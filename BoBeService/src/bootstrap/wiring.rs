@@ -21,14 +21,12 @@ use crate::runtime::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
 use crate::services::agent_job_manager::AgentJobManager;
-use crate::services::context_assembler::ContextAssembler;
 use crate::services::conversation_service::ConversationService;
 use crate::services::goal_worker::claude_provider::ClaudeAgentProvider;
 use crate::services::goal_worker::context_provider::DefaultGoalContextProvider;
 use crate::services::goal_worker::manager::GoalWorkerManager;
 use crate::services::goal_worker::worker::GoalWorker;
 use crate::services::goals::goals_service::GoalsService;
-use crate::services::soul_service::SoulService;
 use crate::tools::ToolSource;
 use crate::tools::mcp::McpToolAdapter;
 use crate::tools::native::adapter::NativeToolAdapter;
@@ -43,7 +41,6 @@ use super::repos::Repositories;
 
 pub(crate) struct Wired {
     pub(crate) conversation_service: Arc<ConversationService>,
-    pub(crate) context_assembler: Arc<ContextAssembler>,
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) tool_registry: Arc<ToolRegistry>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
@@ -116,21 +113,6 @@ pub(crate) async fn wire(
     let conversation_service = Arc::new(ConversationService::new(Arc::clone(
         &repos.conversation_repo,
     )));
-
-    let soul_service = Arc::new(SoulService::new(
-        config.soul_file.as_ref().map(PathBuf::from),
-        Some(Arc::clone(&repos.soul_repo)),
-    ));
-
-    let context_assembler = Arc::new(ContextAssembler::new(
-        Arc::clone(&repos.soul_repo),
-        Arc::clone(&repos.goal_repo),
-        Arc::clone(&repos.memory_repo),
-        Arc::clone(&repos.observation_repo),
-        Arc::clone(&repos.user_profile_repo),
-        Arc::clone(&infra.embedding_provider),
-        Some(soul_service),
-    ));
 
     let goals_service = Arc::new(GoalsService::new(
         Arc::clone(&repos.goal_repo),
@@ -303,7 +285,6 @@ pub(crate) async fn wire(
 
     Wired {
         conversation_service,
-        context_assembler,
         goals_service,
         tool_registry,
         runtime_session,
