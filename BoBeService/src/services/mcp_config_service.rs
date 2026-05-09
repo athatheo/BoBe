@@ -140,12 +140,6 @@ pub(crate) async fn save_document(
 
     mcp_config::save_mcp_config_file(&path, &file)?;
 
-    if let Some(adapter) = state.mcp_tool_adapter.as_ref()
-        && let Err(e) = adapter.reload_from_config().await
-    {
-        warn!(error = %e, "mcp_config.adapter_reload_partial_failure");
-    }
-
     if let Some(ref prev) = previous {
         cleanup_removed_secret_refs(prev, &file);
     }
@@ -174,12 +168,6 @@ pub(crate) async fn reset_document(state: &AppState) -> Result<McpConfigResetRes
         mcp_servers: HashMap::new(),
     };
     mcp_config::save_mcp_config_file(&path, &empty)?;
-
-    if let Some(adapter) = state.mcp_tool_adapter.as_ref()
-        && let Err(e) = adapter.reload_from_config().await
-    {
-        warn!(error = %e, "mcp_config.adapter_reload_failed_on_reset");
-    }
 
     if let Some(ref prev) = previous {
         cleanup_removed_secret_refs(prev, &empty);
@@ -280,7 +268,7 @@ async fn build_runtime_summaries(state: &AppState, file: &McpConfigFile) -> Vec<
 }
 
 async fn build_server_summary(
-    state: &AppState,
+    _state: &AppState,
     name: &str,
     entry: &McpServerEntry,
 ) -> McpServerSummary {
@@ -288,48 +276,23 @@ async fn build_server_summary(
     env_keys.sort();
     secret_env_keys.sort();
 
-    let excluded: HashSet<&str> = entry.excluded_tools.iter().map(String::as_str).collect();
-
-    let (connected, tools, runtime_error) = match state.mcp_tool_adapter.as_ref() {
-        Some(adapter) => match adapter.get_raw_tools_for_server(name).await {
-            Ok(raw) => {
-                let mut t: Vec<McpToolMetadata> = raw
-                    .iter()
-                    .map(|tool| McpToolMetadata {
-                        name: tool.name.clone(),
-                        description: tool.description.clone(),
-                        excluded: excluded.contains(tool.name.as_str()),
-                    })
-                    .collect();
-                t.sort_by(|a, b| a.name.cmp(&b.name));
-                (true, t, adapter.get_server_error(name).await)
-            }
-            Err(e) => (
-                false,
-                Vec::new(),
-                adapter
-                    .get_server_error(name)
-                    .await
-                    .or_else(|| Some(e.to_string())),
-            ),
-        },
-        None => (false, Vec::new(), None),
-    };
-
-    let tool_count = tools.iter().filter(|t| !t.excluded).count();
-
+    // The Copilot SDK owns MCP server lifecycle now (servers are
+    // spawned per-session via `SessionConfig::mcp_servers`). The
+    // daemon doesn't have a sideband query path into the SDK's MCP
+    // state, so we report config-only fields. `connected` and the
+    // tool list go to defaults until we query the SDK over JSON-RPC.
     McpServerSummary {
         name: name.to_owned(),
         command: entry.command.clone(),
         args: entry.args.clone(),
         enabled: entry.enabled,
-        connected,
-        tool_count,
-        tools,
+        connected: false,
+        tool_count: 0,
+        tools: Vec::new(),
         excluded_tools: entry.excluded_tools.clone(),
         env_keys,
         secret_env_keys,
-        error: runtime_error,
+        error: None,
     }
 }
 

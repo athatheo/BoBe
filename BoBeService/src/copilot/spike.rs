@@ -21,7 +21,11 @@ pub(crate) async fn run() -> anyhow::Result<()> {
     tokio::fs::create_dir_all(&data_dir).await?;
 
     let memory_file = MemoryFile::new(data_dir.join("memory.md"));
-    let registry = WorkerRegistry::new(Arc::clone(&memory_file), data_dir.clone());
+    let registry = WorkerRegistry::new(
+        Arc::clone(&memory_file),
+        data_dir.clone(),
+        std::collections::HashMap::new(),
+    );
 
     tracing::info!("starting copilot SDK spike");
     let worker = registry.goals().await?;

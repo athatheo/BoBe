@@ -24,13 +24,16 @@
 //! Sessions persist across daemon restarts via `SessionStore`. Chat
 //! rotates daily; everything else uses a stable per-class ID.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{Local, NaiveDate};
 use github_copilot_sdk::generated::api_types::{ModeSetRequest, SessionMode};
 use github_copilot_sdk::session::Session;
-use github_copilot_sdk::types::{InfiniteSessionConfig, ResumeSessionConfig, SessionConfig};
+use github_copilot_sdk::types::{
+    InfiniteSessionConfig, McpServerConfig, ResumeSessionConfig, SessionConfig,
+};
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::error::AppError;
@@ -52,6 +55,12 @@ pub(crate) struct WorkerRegistry {
     memory_file: Arc<MemoryFile>,
     usage: Arc<UsageMeter>,
     data_dir: PathBuf,
+    /// MCP servers passed into every Copilot session via
+    /// `SessionConfig::mcp_servers`. Loaded from `~/.bobe/mcp.json` at
+    /// daemon start; changes require restart to take effect (the SDK
+    /// captures the map at session creation, and our sessions are
+    /// long-lived).
+    mcp_servers: HashMap<String, McpServerConfig>,
 
     goals: OnceCell<Arc<BatchWorker>>,
     observe: OnceCell<Arc<BatchWorker>>,
@@ -71,13 +80,18 @@ struct DatedChatWorker {
 }
 
 impl WorkerRegistry {
-    pub(crate) fn new(memory_file: Arc<MemoryFile>, data_dir: PathBuf) -> Arc<Self> {
+    pub(crate) fn new(
+        memory_file: Arc<MemoryFile>,
+        data_dir: PathBuf,
+        mcp_servers: HashMap<String, McpServerConfig>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             client: ClientHandle::new(),
             session_store: SessionStore::new(&data_dir),
             memory_file,
             usage: UsageMeter::new(),
             data_dir,
+            mcp_servers,
             goals: OnceCell::new(),
             observe: OnceCell::new(),
             consolidate: OnceCell::new(),
@@ -240,6 +254,11 @@ impl WorkerRegistry {
             if let Some(skill_dir) = self.skill_dir(class) {
                 cfg.skill_directories = Some(vec![skill_dir]);
             }
+            // MCP tools belong to interactive chat — batch classes
+            // have narrow autopilot jobs and don't need extra tools.
+            if class == WorkerClass::Chat && !self.mcp_servers.is_empty() {
+                cfg.mcp_servers = Some(self.mcp_servers.clone());
+            }
             cfg
         };
 
@@ -254,6 +273,9 @@ impl WorkerRegistry {
             }
             if let Some(skill_dir) = self.skill_dir(class) {
                 resume_cfg.skill_directories = Some(vec![skill_dir]);
+            }
+            if class == WorkerClass::Chat && !self.mcp_servers.is_empty() {
+                resume_cfg.mcp_servers = Some(self.mcp_servers.clone());
             }
             match client.resume_session(resume_cfg).await {
                 Ok(session) => {

@@ -192,13 +192,6 @@ async fn run_graceful_shutdown(
     tracing::info!("Stopping Copilot workers...");
     state.workers.shutdown_all().await;
 
-    if let Some(ref mcp) = state.mcp_tool_adapter {
-        tracing::info!("Stopping MCP servers...");
-        tokio::time::timeout(std::time::Duration::from_secs(2), mcp.shutdown())
-            .await
-            .ok();
-    }
-
     tracing::info!("Closing database pool...");
     state.db.close().await;
 

@@ -16,7 +16,6 @@ use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::goals_service::GoalsService;
-use crate::tools::mcp::adapter::McpToolAdapter;
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -40,7 +39,6 @@ pub(crate) struct AppState {
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
-    pub(crate) mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
     pub(crate) mcp_config_lock: Arc<Mutex<()>>,
     pub(crate) mdns_announcer: Arc<MdnsAnnouncer>,
     /// Copilot CLI worker fleet — lazy-spawned per worker class.

@@ -48,6 +48,12 @@ pub(crate) struct McpParsedServer {
     pub(crate) args: Vec<String>,
     pub(crate) env: HashMap<String, String>,
     pub(crate) timeout_seconds: f64,
+    /// Tools the user has marked as excluded in `mcp.json`. Currently
+    /// unused — `to_sdk_mcp_servers` exposes all tools (`["*"]`)
+    /// because we'd need to query the SDK for the live tool list to
+    /// build the inverse exposure list. The field is preserved on
+    /// disk for forward compatibility.
+    #[allow(dead_code)]
     pub(crate) excluded_tools: Vec<String>,
 }
 
@@ -109,6 +115,38 @@ pub(crate) fn load_mcp_config(
 ) -> Result<Vec<McpParsedServer>, AppError> {
     let file = load_mcp_config_file(path)?;
     parse_enabled_servers(file, blocked_commands, dangerous_env_keys)
+}
+
+/// Translate `Vec<McpParsedServer>` (BoBe's mcp.json shape) into the
+/// `HashMap<String, McpServerConfig>` shape the Copilot SDK takes via
+/// `SessionConfig::mcp_servers`. The SDK takes ownership of process
+/// spawn + lifecycle + tool dispatch from this point.
+pub(crate) fn to_sdk_mcp_servers(
+    servers: Vec<McpParsedServer>,
+) -> HashMap<String, github_copilot_sdk::types::McpServerConfig> {
+    use github_copilot_sdk::types::{McpServerConfig, McpStdioServerConfig};
+
+    servers
+        .into_iter()
+        .map(|s| {
+            let timeout_ms = (s.timeout_seconds * 1000.0) as i64;
+            // Excluded tools: build the inverse list. `["*"]` exposes
+            // everything; an empty `tools` list exposes nothing. We
+            // can't know the full tool set without connecting, so we
+            // use `["*"]` and accept that excluded_tools is ignored
+            // — Phase 5-mcp/2 can wire `excluded_tools` once the SDK
+            // exposes the connected tool list.
+            let cfg = McpStdioServerConfig {
+                tools: vec!["*".into()],
+                timeout: Some(timeout_ms),
+                command: s.command,
+                args: s.args,
+                env: s.env,
+                cwd: None,
+            };
+            (s.name, McpServerConfig::Stdio(cfg))
+        })
+        .collect()
 }
 
 pub(crate) fn parse_enabled_servers(

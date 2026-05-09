@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
@@ -24,7 +24,6 @@ use crate::services::agent_job_manager::AgentJobManager;
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::file_store::GoalFileStore;
 use crate::services::goals::goals_service::GoalsService;
-use crate::tools::mcp::McpToolAdapter;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::connection_manager::SseConnectionManager;
 
@@ -37,20 +36,12 @@ pub(crate) struct Wired {
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
-    pub(crate) mcp_adapter: Arc<McpToolAdapter>,
 
     agent_job_trigger: Option<Arc<AgentJobTrigger>>,
 }
 
 impl Wired {
-    pub(crate) async fn start_services(&self, config: &Config) {
-        if config.mcp.enabled {
-            match self.mcp_adapter.initialize().await {
-                Ok(()) => info!("bootstrap.mcp_servers_started"),
-                Err(e) => warn!(error = %e, "bootstrap.mcp_init_failed"),
-            }
-        }
-
+    pub(crate) async fn start_services(&self) {
         if let Some(ref trigger) = self.agent_job_trigger {
             trigger.register_callback().await;
         }
@@ -116,21 +107,6 @@ pub(crate) async fn wire(
             config.coding_agent.max_runtime_seconds,
         ))
     });
-
-    let mcp_config_path =
-        crate::tools::mcp::config::resolve_mcp_config_path(config.mcp.config_file.as_deref())
-            .unwrap_or_else(|e| {
-                warn!(
-                    error = %e,
-                    "wiring.mcp_config_path_resolution_failed"
-                );
-                PathBuf::from(".bobe/mcp.json")
-            });
-    let mcp_adapter = Arc::new(McpToolAdapter::new(
-        mcp_config_path,
-        config.mcp_blocked_commands_vec().to_vec(),
-        config.mcp_dangerous_env_keys_vec().to_vec(),
-    ));
 
     // Memory.md is the single durable narrative store. The capture
     // learner appends one-liners under `## Recent`; the consolidate
@@ -229,7 +205,6 @@ pub(crate) async fn wire(
         runtime_session,
         screen_capture,
         config_manager,
-        mcp_adapter,
         agent_job_trigger,
     }
 }
