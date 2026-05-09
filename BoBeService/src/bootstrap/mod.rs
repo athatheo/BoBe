@@ -35,7 +35,19 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         warn!(error = %e, "bootstrap.ensure_mcp_config_failed");
     }
 
-    let wired = wiring::wire(&config, &infra, &repos).await;
+    // Memory.md + WorkerRegistry constructed up-front so `wiring` can
+    // pass `workers` into the components that need it (agent_job_trigger
+    // and the rest of Phase 5 consumer migrations).
+    let memory_file = {
+        let path = crate::util::paths::bobe_data_dir().join("memory.md");
+        crate::copilot::memory_file::MemoryFile::new(path)
+    };
+    let workers = {
+        let data_dir = crate::util::paths::bobe_data_dir();
+        crate::copilot::registry::WorkerRegistry::new(Arc::clone(&memory_file), data_dir)
+    };
+
+    let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
     integrity::run(&pool, repos.agent_job_repo.as_ref()).await;
 
@@ -66,15 +78,6 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
     infra.mdns_announcer.start().await;
 
     print_banner(&infra.config_arc.load());
-
-    let memory_file = {
-        let path = crate::util::paths::bobe_data_dir().join("memory.md");
-        crate::copilot::memory_file::MemoryFile::new(path)
-    };
-    let workers = {
-        let data_dir = crate::util::paths::bobe_data_dir();
-        crate::copilot::registry::WorkerRegistry::new(Arc::clone(&memory_file), data_dir)
-    };
 
     let state = Arc::new(AppState {
         db: pool,

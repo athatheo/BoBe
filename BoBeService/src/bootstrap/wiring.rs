@@ -108,7 +108,12 @@ impl Wired {
 
 // ── Assembly ───────────────────────────────────────────────────────────────
 
-pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Repositories) -> Wired {
+pub(crate) async fn wire(
+    config: &Config,
+    infra: &Infrastructure,
+    repos: &Repositories,
+    workers: Arc<crate::copilot::registry::WorkerRegistry>,
+) -> Wired {
     let config_arc = &infra.config_arc;
 
     let conversation_service = Arc::new(ConversationService::new(Arc::clone(
@@ -266,7 +271,7 @@ pub(crate) async fn wire(config: &Config, infra: &Infrastructure, repos: &Reposi
             Arc::clone(&repos.agent_job_repo),
             Arc::clone(&proactive_generator),
             Arc::clone(config_arc),
-            Some(Arc::clone(&infra.llm_provider)),
+            Arc::clone(&workers),
         ))
     });
 

@@ -5,9 +5,12 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
+use uuid::Uuid;
+
 use crate::config::Config;
+use crate::copilot::registry::WorkerRegistry;
+use crate::copilot::types::JobInput;
 use crate::db::AgentJobRepository;
-use crate::llm::LlmProvider;
 use crate::models::agent_job::AgentJob;
 use crate::models::types::AgentJobStatus;
 use crate::runtime::proactive_generator::ProactiveGenerator;
@@ -22,7 +25,7 @@ pub(crate) struct AgentJobTrigger {
     agent_job_repo: Arc<dyn AgentJobRepository>,
     generator: Arc<ProactiveGenerator>,
     config: Arc<ArcSwap<Config>>,
-    llm: Option<Arc<dyn LlmProvider>>,
+    workers: Arc<WorkerRegistry>,
 }
 
 impl AgentJobTrigger {
@@ -31,14 +34,14 @@ impl AgentJobTrigger {
         agent_job_repo: Arc<dyn AgentJobRepository>,
         generator: Arc<ProactiveGenerator>,
         config: Arc<ArcSwap<Config>>,
-        llm: Option<Arc<dyn LlmProvider>>,
+        workers: Arc<WorkerRegistry>,
     ) -> Self {
         Self {
             manager,
             agent_job_repo,
             generator,
             config,
-            llm,
+            workers,
         }
     }
 
@@ -108,16 +111,11 @@ impl AgentJobTrigger {
             );
             return false;
         }
-
-        let Some(ref llm) = self.llm else {
-            return false;
-        };
-
         if job.result_summary.is_none() && job.error_message.is_none() {
             return false;
         }
-        let locale = self.config.load().effective_locale();
 
+        let locale = self.config.load().effective_locale();
         let messages = AgentJobEvaluationPrompt::messages(
             &job.user_intent,
             job.result_summary.as_deref().unwrap_or(""),
@@ -125,31 +123,49 @@ impl AgentJobTrigger {
             job.continuation_count as u32,
             Some(&locale),
         );
-        let prompt_config = AgentJobEvaluationPrompt::config();
+        // Concatenate the SDK-pre-prompt-style message list into one
+        // body — BatchWorker takes a single instructions string (not
+        // role-tagged messages) and the underlying autopilot turn
+        // builds its own system message via memory.md context anyway.
+        let prompt_body = messages
+            .iter()
+            .map(|m| m.content.text_or_empty().to_string())
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
-        match llm
-            .complete(
-                &messages,
-                None,
-                prompt_config.response_format.as_ref(),
-                prompt_config.temperature,
-                prompt_config.max_tokens,
-            )
-            .await
-        {
-            Ok(response) => {
-                let content = response
-                    .message
-                    .content
-                    .text_or_empty()
+        let worker = match self.workers.goals().await {
+            Ok(w) => w,
+            Err(e) => {
+                warn!(err = %e, job_id = %job.id, "agent_job.evaluation.worker_unavailable");
+                return false;
+            }
+        };
+
+        let job_input = JobInput {
+            job_id: Uuid::new_v4(),
+            kind: "agent_job_evaluation".into(),
+            instructions: format!(
+                "{prompt_body}\n\n\
+                 Return JSON {{\"output\": \"CONTINUE\"}} or {{\"output\": \"STOP\"}} — \
+                 nothing else."
+            ),
+            input: serde_json::Value::Null,
+        };
+
+        match worker.submit(job_input).await {
+            Ok(out) => {
+                let verdict = out
+                    .output
+                    .as_str()
+                    .unwrap_or("")
                     .trim()
                     .to_uppercase();
                 info!(
                     job_id = %job.id,
-                    verdict = %content,
+                    verdict = %verdict,
                     "agent_job.evaluation"
                 );
-                content == "CONTINUE"
+                verdict == "CONTINUE"
             }
             Err(e) => {
                 warn!(error = %e, job_id = %job.id, "agent_job.evaluation_failed");
