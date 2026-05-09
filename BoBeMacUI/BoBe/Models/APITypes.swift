@@ -2,15 +2,17 @@ import Foundation
 
 // MARK: - SSE Event Stream Types
 
+/// Daemon SSE event discriminator (snake_case on the wire).
+///
+/// End-of-turn is signalled by a `text_delta` event with `done: true`
+/// — the daemon does not emit a separate `end_of_turn` event.
 enum EventType: String, Codable, Sendable {
     case indicator
     case textDelta = "text_delta"
-    case toolCall = "tool_call"
     case toolCallStart = "tool_call_start"
     case toolCallComplete = "tool_call_complete"
     case error
     case heartbeat
-    case endOfTurn = "end_of_turn"
     case conversationClosed = "conversation_closed"
     case unknown
 

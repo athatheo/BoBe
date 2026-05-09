@@ -1,6 +1,12 @@
 import Foundation
 
 // MARK: - Goals
+//
+// Goals are file-backed living documents (`~/.bobe/goals/<id>.md`) that
+// the chat agent edits via SDK Read/Write/Edit during conversation.
+// The daemon's `/goals` API exposes the parsed projection — title,
+// status, integer priority 0-5, and the rich sections that BoBe uses
+// to discover the user's relationship to each goal.
 
 enum GoalStatus: String, Codable, Sendable, CaseIterable {
     case active, paused, completed, archived, unknown
@@ -11,36 +17,29 @@ enum GoalStatus: String, Codable, Sendable, CaseIterable {
     }
 }
 
-enum GoalPriority: String, Codable, Sendable, CaseIterable {
-    case high, medium, low, unknown
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = GoalPriority(rawValue: raw) ?? .unknown
-    }
-}
-
-enum GoalSource: String, Codable, Sendable {
-    case user, inferred, unknown
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = GoalSource(rawValue: raw) ?? .unknown
-    }
-}
-
 struct Goal: Identifiable, Codable, Sendable {
     let id: String
-    var content: String
+    var title: String
     var status: GoalStatus
-    var priority: GoalPriority
-    var source: GoalSource
-    var enabled: Bool
+    /// 0–5; higher is more urgent.
+    var priority: Int
+    var summary: String
+    var whyItMatters: String
+    var howWorkingOnIt: String
+    var patternsObserved: String
+    var attitudeFeelings: String
+    var openQuestions: String
+    var notes: String
     let createdAt: String
     var updatedAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, content, status, priority, source, enabled
+        case id, title, status, priority, summary, notes
+        case whyItMatters = "why_it_matters"
+        case howWorkingOnIt = "how_working_on_it"
+        case patternsObserved = "patterns_observed"
+        case attitudeFeelings = "attitude_feelings"
+        case openQuestions = "open_questions"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -57,23 +56,59 @@ struct GoalListResponse: Codable, Sendable {
     }
 }
 
+/// Request body for `POST /goals`. The chat agent populates the deeper
+/// sections (patterns, attitude, etc.) over time; the API only lets
+/// the user seed `title` + `summary` + `why_it_matters` + `priority`.
 struct GoalCreateRequest: Codable, Sendable {
-    let content: String
-    var priority: GoalPriority?
-    var enabled: Bool?
+    let title: String
+    var summary: String?
+    var whyItMatters: String?
+    var priority: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case title, summary, priority
+        case whyItMatters = "why_it_matters"
+    }
 }
 
+/// Request body for `PATCH /goals/{id}`. Mirrors the daemon's
+/// `GoalUpdateRequest` — `how_working_on_it`, `patterns_observed`,
+/// `attitude_feelings`, `open_questions` are deliberately not exposed
+/// here; those belong to the chat agent.
 struct GoalUpdateRequest: Codable, Sendable {
-    var content: String?
+    var title: String?
     var status: GoalStatus?
-    var priority: GoalPriority?
-    var enabled: Bool?
+    var priority: Int?
+    var summary: String?
+    var whyItMatters: String?
+    var notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title, status, priority, summary, notes
+        case whyItMatters = "why_it_matters"
+    }
 }
 
 struct GoalActionResponse: Codable, Sendable {
     let id: String
     let status: String
     let message: String
+}
+
+// MARK: - Memory (single document)
+//
+// `~/.bobe/memory.md` is the single durable narrative store; the
+// daemon exposes it through GET/PUT /memory rather than the
+// pre-pivot row-oriented CRUD surface. Pruned nightly by the
+// Consolidate worker.
+
+struct MemoryResponse: Codable, Sendable {
+    let content: String
+    let bytes: Int
+}
+
+struct MemoryUpdateRequest: Codable, Sendable {
+    let content: String
 }
 
 // MARK: - Souls
@@ -172,114 +207,14 @@ struct UserProfileActionResponse: Codable, Sendable {
     let message: String
 }
 
-// MARK: - Memories
-
-enum MemoryType: String, Codable, Sendable {
-    case shortTerm = "short_term"
-    case longTerm = "long_term"
-    case explicit
-    case unknown
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = MemoryType(rawValue: raw) ?? .unknown
-    }
-}
-
-enum MemoryCategory: String, Codable, Sendable, CaseIterable {
-    case preference, pattern, fact, interest, general, observation, unknown
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = MemoryCategory(rawValue: raw) ?? .unknown
-    }
-}
-
-enum MemorySource: String, Codable, Sendable {
-    case observation, conversation, user
-    case visualDiary = "visual_diary"
-    case unknown
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        self = MemorySource(rawValue: raw) ?? .unknown
-    }
-}
-
-struct Memory: Identifiable, Codable, Sendable {
-    let id: String
-    var content: String
-    var memoryType: MemoryType
-    var category: MemoryCategory
-    let source: MemorySource
-    var enabled: Bool
-    let createdAt: String
-    var updatedAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, content, category, source, enabled
-        case memoryType = "memory_type"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-    }
-}
-
-struct MemoryListResponse: Codable, Sendable {
-    let memories: [Memory]
-    let count: Int
-    let total: Int
-}
-
-struct MemoryCreateRequest: Codable, Sendable {
-    let content: String
-    var category: MemoryCategory?
-    var memoryType: MemoryType?
-
-    enum CodingKeys: String, CodingKey {
-        case content, category
-        case memoryType = "memory_type"
-    }
-}
-
-struct MemoryUpdateRequest: Codable, Sendable {
-    var content: String?
-    var category: MemoryCategory?
-    var enabled: Bool?
-}
-
-struct MemoryActionResponse: Codable, Sendable {
-    let id: String
-    let enabled: Bool
-    let message: String
-}
-
-// MARK: - Tools
-
-struct ToolInfo: Identifiable, Codable, Sendable {
-    var id: String {
-        self.name
-    }
-
-    let name: String
-    let description: String
-    let provider: String
-    var enabled: Bool
-    let category: String?
-}
-
-struct ToolListResponse: Codable, Sendable {
-    let tools: [ToolInfo]
-    let count: Int
-    let providers: [String]
-}
-
-struct ToolUpdateResponse: Codable, Sendable {
-    let name: String
-    let enabled: Bool
-    let message: String
-}
-
 // MARK: - MCP Servers
+//
+// The daemon owns the on-disk `mcp.json` file. The Copilot SDK manages
+// MCP server lifecycle (process spawn + tool dispatch) via
+// `SessionConfig::mcp_servers` once the daemon hands it the parsed map
+// at session creation. Live runtime state — `connected`, `toolCount`,
+// `tools` — is currently stubbed to defaults; the daemon will populate
+// it once the SDK exposes a sideband query (open task #31).
 
 struct MCPServerTool: Codable, Sendable, Hashable {
     let name: String

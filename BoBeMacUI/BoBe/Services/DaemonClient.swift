@@ -220,63 +220,6 @@ actor DaemonClient {
         return String(data: data, encoding: .utf8) ?? "Unknown error"
     }
 
-    func performModelPull(named name: String) async throws {
-        let url = self.endpointURL("models/pull")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.httpBody = try self.encoder.encode(["name": name])
-
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 300
-        config.timeoutIntervalForResource = 60 * 60 * 2
-        let pullSession = URLSession(configuration: config)
-
-        let bytes: URLSession.AsyncBytes
-        let response: URLResponse
-        do {
-            (bytes, response) = try await pullSession.bytes(for: request)
-        } catch {
-            logger.error("POST /models/pull: network error — \(error.localizedDescription)")
-            throw error
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            logger.error("POST /models/pull: invalid response (not HTTP)")
-            throw DaemonError.invalidResponse
-        }
-        guard (200 ... 299).contains(httpResponse.statusCode) else {
-            throw DaemonError.httpError(
-                statusCode: httpResponse.statusCode,
-                message: "Model pull failed"
-            )
-        }
-
-        for try await line in bytes.lines {
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
-            guard
-                let data = payload.data(using: .utf8),
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let status = json["status"] as? String
-            else {
-                continue
-            }
-
-            if status == "error" {
-                let detail = json["detail"] as? String ?? "Model pull failed"
-                throw DaemonError.operationFailed(detail)
-            }
-
-            if status == "complete" || status == "success" {
-                return
-            }
-        }
-
-        throw DaemonError.operationFailed("Model pull ended before completion")
-    }
-
     // MARK: - Health & Status
 
     func health() async throws -> HealthResponse {
@@ -295,8 +238,25 @@ actor DaemonClient {
 
     // MARK: - Messages
 
-    func sendMessage(_ content: String) async throws {
-        try await self.fetchVoid("/message", body: SendMessageRequest(content: content))
+    /// `/message` returns `{message_id}`; the message itself streams via SSE.
+    @discardableResult
+    func sendMessage(_ content: String) async throws -> SendMessageResponse {
+        try await self.fetch("/message", method: "POST", body: SendMessageRequest(content: content))
+    }
+
+    // MARK: - Memory (single document)
+
+    func getMemory() async throws -> MemoryResponse {
+        try await self.fetch("/memory")
+    }
+
+    @discardableResult
+    func updateMemory(_ content: String) async throws -> MemoryResponse {
+        try await self.fetch(
+            "/memory",
+            method: "PUT",
+            body: MemoryUpdateRequest(content: content)
+        )
     }
 
     // MARK: - Goals
@@ -377,69 +337,4 @@ actor DaemonClient {
         try await self.fetch("/user-profiles/\(id)/disable", method: "POST")
     }
 
-    // MARK: - Memories
-
-    func listMemories(
-        type: MemoryType? = nil,
-        category: MemoryCategory? = nil,
-        limit: Int? = nil,
-        offset: Int? = nil
-    ) async throws -> MemoryListResponse {
-        guard var components = URLComponents(
-            url: endpointURL("memories"),
-            resolvingAgainstBaseURL: false
-        )
-        else {
-            throw DaemonError.invalidResponse
-        }
-        var items: [URLQueryItem] = []
-        if let type { items.append(.init(name: "memory_type", value: type.rawValue)) }
-        if let category { items.append(.init(name: "category", value: category.rawValue)) }
-        if let limit { items.append(.init(name: "limit", value: String(limit))) }
-        if let offset { items.append(.init(name: "offset", value: String(offset))) }
-        if !items.isEmpty { components.queryItems = items }
-
-        guard let url = components.url else {
-            throw DaemonError.invalidResponse
-        }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = self.fetchTimeout
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await self.session.data(for: request)
-        } catch {
-            logger.error("GET /memories: network error — \(error.localizedDescription)")
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200 ... 299).contains(httpResponse.statusCode)
-        else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            logger.error("GET /memories failed: HTTP \(code) — \(message)")
-            throw DaemonError.httpError(statusCode: code, message: message)
-        }
-        return try self.decoder.decode(MemoryListResponse.self, from: data)
-    }
-
-    func createMemory(_ request: MemoryCreateRequest) async throws -> Memory {
-        try await self.fetch("/memories", method: "POST", body: request)
-    }
-
-    func updateMemory(_ id: String, _ request: MemoryUpdateRequest) async throws -> Memory {
-        try await self.fetch("/memories/\(id)", method: "PATCH", body: request)
-    }
-
-    func deleteMemory(_ id: String) async throws {
-        try await self.fetchVoid("/memories/\(id)", method: "DELETE")
-    }
-
-    func enableMemory(_ id: String) async throws -> MemoryActionResponse {
-        try await self.fetch("/memories/\(id)/enable", method: "POST")
-    }
-
-    func disableMemory(_ id: String) async throws -> MemoryActionResponse {
-        try await self.fetch("/memories/\(id)/disable", method: "POST")
-    }
 }

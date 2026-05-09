@@ -17,13 +17,18 @@ final class BobeStore {
     private(set) var isBackendFatal = false
     private var hasConnectedOnce = false
 
-    // MARK: - Locale
+    // MARK: - Locale (client-side only)
+    //
+    // Locale is purely a SwiftUI concern post-Copilot-SDK pivot — the
+    // daemon doesn't translate anything. Persist to UserDefaults so
+    // the choice survives restarts; empty string means "follow system".
 
-    var localeOverride: String = ""
-    var effectiveLocale: String = "en"
-    var supportedLocales: [String] = []
-    /// Increments on locale change to force SwiftUI views to re-evaluate L10n.tr() calls.
-    private(set) var localeVersion: Int = 0
+    private static let localeOverrideKey = "bobe.locale_override"
+    static let supportedLocales = [
+        "en-US", "el-GR", "zh-CN", "de-DE", "es-ES", "pt-BR", "ko-KR", "ja-JP", "fr-FR",
+    ]
+    private(set) var localeOverride: String =
+        UserDefaults.standard.string(forKey: BobeStore.localeOverrideKey) ?? ""
 
     var stateType: BobeStateType {
         self.context.stateType
@@ -213,12 +218,19 @@ final class BobeStore {
         self.updateState { $0.shuttingDown = true }
     }
 
-    // MARK: - Locale
-
     func updateLocale(_ newOverride: String) {
         self.localeOverride = newOverride
-        self.localeVersion += 1
+        if newOverride.isEmpty {
+            UserDefaults.standard.removeObject(forKey: BobeStore.localeOverrideKey)
+        } else {
+            UserDefaults.standard.set(newOverride, forKey: BobeStore.localeOverrideKey)
+        }
         L10n.setLocaleOverride(newOverride.isEmpty ? nil : newOverride)
+    }
+
+    /// Apply persisted override on app launch.
+    func applyPersistedLocale() {
+        L10n.setLocaleOverride(self.localeOverride.isEmpty ? nil : self.localeOverride)
     }
 
     // MARK: - Actions
@@ -324,12 +336,13 @@ final class BobeStore {
                 self.handleIndicator(payload)
             }
         case .textDelta:
+            // The daemon emits a `text_delta` with `done: true` as the
+            // end-of-turn marker; `handleTextDelta` calls
+            // `finalizeStreamingMessage` when it sees that flag.
             if let payload = try? bundle.payload.decode(as: TextDeltaPayload.self) {
                 self.handleTextDelta(payload, messageId: bundle.messageId)
             }
-        case .toolCall, .toolCallStart:
-            self.handleToolCall(bundle.payload)
-        case .toolCallComplete:
+        case .toolCallStart, .toolCallComplete:
             self.handleToolCall(bundle.payload)
         case .conversationClosed:
             if let payload = try? bundle.payload.decode(as: ConversationClosedPayload.self) {
@@ -345,8 +358,6 @@ final class BobeStore {
                     }
                 }
             }
-        case .endOfTurn:
-            self.finalizeStreamingMessage()
         case .heartbeat, .unknown:
             break
         }
@@ -360,8 +371,7 @@ final class BobeStore {
             return
         }
 
-        let bubbleIndicators: Set<IndicatorType> = [.thinking, .toolCalling]
-        let activeIndicator: IndicatorType? = bubbleIndicators.contains(indicator) ? indicator : nil
+        let activeIndicator: IndicatorType? = (indicator == .thinking) ? .thinking : nil
 
         self.updateState { ctx in
             switch indicator {
@@ -373,7 +383,7 @@ final class BobeStore {
                 ctx.captureInProgress = true
                 ctx.thinking = false
                 ctx.speaking = false
-            case .toolCalling, .thinking:
+            case .thinking:
                 ctx.captureInProgress = false
                 ctx.thinking = true
                 ctx.speaking = false
@@ -500,25 +510,6 @@ final class BobeStore {
             guard let self else { return }
             do {
                 let settings = try await client.getSettings()
-
-                // Apply locale from daemon settings
-                self.effectiveLocale = settings.effectiveLocale
-                self.supportedLocales = settings.supportedLocales
-                var override = settings.localeOverride ?? ""
-
-                // Auto-detect system locale and persist when no override is set
-                if override.isEmpty {
-                    let systemLocale = Locale.current.identifier.replacingOccurrences(of: "_", with: "-")
-                    var req = SettingsUpdateRequest()
-                    req.localeOverride = systemLocale
-                    _ = try? await self.client.updateSettings(req)
-                    let refreshed = try await self.client.getSettings()
-                    self.effectiveLocale = refreshed.effectiveLocale
-                    override = refreshed.localeOverride ?? ""
-                }
-
-                self.localeOverride = override
-                L10n.setLocaleOverride(override.isEmpty ? nil : override)
 
                 guard settings.captureEnabled else {
                     self.updateState { ctx in

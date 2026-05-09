@@ -14,12 +14,14 @@ enum BobeStateType: String, Sendable, Equatable {
     case shuttingDown = "shutting_down"
 }
 
-/// Matches Rust SCREAMING_SNAKE_CASE indicator variants.
+/// Matches Rust SCREAMING_SNAKE_CASE indicator variants. Tool dispatch
+/// is internal to the Copilot SDK now — the daemon never raises a
+/// `TOOL_CALLING` indicator; tool execution surfaces only as
+/// `tool_call_start` / `tool_call_complete` SSE events.
 enum IndicatorType: String, Codable, Sendable, Equatable {
     case idle = "IDLE"
     case screenCapture = "SCREEN_CAPTURE"
     case thinking = "THINKING"
-    case toolCalling = "TOOL_CALLING"
     case streaming = "STREAMING"
     case unknown
 

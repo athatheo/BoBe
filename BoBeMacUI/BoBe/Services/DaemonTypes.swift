@@ -29,20 +29,6 @@ struct AnyEncodable: Encodable {
 }
 
 extension DaemonClient {
-    // MARK: Tools
-
-    func listTools() async throws -> ToolListResponse {
-        try await fetch("/tools")
-    }
-
-    func enableTool(_ name: String) async throws -> ToolUpdateResponse {
-        try await fetch("/tools/\(name)/enable", method: "POST")
-    }
-
-    func disableTool(_ name: String) async throws -> ToolUpdateResponse {
-        try await fetch("/tools/\(name)/disable", method: "POST")
-    }
-
     // MARK: MCP Servers
 
     func getMCPConfig() async throws -> MCPConfigDocumentResponse {
@@ -61,12 +47,6 @@ extension DaemonClient {
         try await fetch("/tools/mcp/config", method: "DELETE")
     }
 
-    // MARK: Goal Worker
-
-    func goalWorkerStatus() async throws -> GoalWorkerStatusResponse {
-        try await fetch("/goal-plans/status")
-    }
-
     // MARK: Settings
 
     func getSettings() async throws -> DaemonSettings {
@@ -75,45 +55,5 @@ extension DaemonClient {
 
     func updateSettings(_ request: SettingsUpdateRequest) async throws -> SettingsUpdateResponse {
         try await fetch("/settings", method: "PATCH", body: request)
-    }
-
-    // MARK: Models
-
-    func listModels() async throws -> ModelsListResponse {
-        try await fetch("/models")
-    }
-
-    func pullModel(_ name: String) async throws {
-        try await performModelPull(named: name)
-    }
-
-    func deleteModel(_ name: String) async throws {
-        try await fetchVoid("/models/\(name)", method: "DELETE")
-    }
-
-    // MARK: Onboarding
-
-    func getOnboardingStatus() async throws -> OnboardingStatusResponse {
-        try await fetch("/onboarding/status")
-    }
-
-    func getOnboardingOptions() async throws -> OnboardingOptions {
-        try await fetch("/onboarding/options")
-    }
-
-    func startSetupJob(_ request: SetupRequest) async throws -> SetupJobState {
-        try await fetch("/onboarding/setup", method: "POST", body: request)
-    }
-
-    func getSetupJobStatus(jobId: String) async throws -> SetupJobState {
-        try await fetch("/onboarding/setup/\(jobId)")
-    }
-
-    func cancelSetupJob(jobId: String) async throws -> SetupJobState {
-        try await fetch("/onboarding/setup/\(jobId)", method: "DELETE")
-    }
-
-    func markOnboardingComplete() async throws {
-        try await fetchVoid("/onboarding/mark-complete", method: "POST")
     }
 }
