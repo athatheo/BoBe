@@ -48,13 +48,6 @@ pub(crate) struct McpParsedServer {
     pub(crate) args: Vec<String>,
     pub(crate) env: HashMap<String, String>,
     pub(crate) timeout_seconds: f64,
-    /// Tools the user has marked as excluded in `mcp.json`. Currently
-    /// unused — `to_sdk_mcp_servers` exposes all tools (`["*"]`)
-    /// because we'd need to query the SDK for the live tool list to
-    /// build the inverse exposure list. The field is preserved on
-    /// disk for forward compatibility.
-    #[allow(dead_code)]
-    pub(crate) excluded_tools: Vec<String>,
 }
 
 pub(crate) fn resolve_mcp_config_path(config_file: Option<&str>) -> Result<PathBuf, AppError> {
@@ -179,7 +172,6 @@ pub(crate) fn parse_enabled_servers(
             args,
             env,
             timeout_seconds: entry.timeout_seconds,
-            excluded_tools: entry.excluded_tools,
         });
     }
     Ok(servers)

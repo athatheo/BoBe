@@ -285,7 +285,6 @@ dependencies = [
  "libc",
  "mdns-sd",
  "rand 0.10.1",
- "regex",
  "security-framework-sys",
  "serde",
  "serde_json",
