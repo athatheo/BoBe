@@ -11,10 +11,10 @@ use crate::config::Config;
 use crate::copilot::registry::WorkerRegistry;
 use crate::copilot::types::JobInput;
 use crate::db::AgentJobRepository;
+use crate::i18n::{FALLBACK_LOCALE, t, t_vars};
 use crate::models::agent_job::AgentJob;
 use crate::models::types::AgentJobStatus;
 use crate::runtime::proactive_generator::ProactiveGenerator;
-use crate::runtime::prompts::agent_job_evaluation::AgentJobEvaluationPrompt;
 use crate::runtime::state::Decision;
 use crate::services::agent_job_manager::AgentJobManager;
 
@@ -116,22 +116,13 @@ impl AgentJobTrigger {
         }
 
         let locale = self.config.load().effective_locale();
-        let messages = AgentJobEvaluationPrompt::messages(
+        let prompt_body = build_evaluation_prompt(
             &job.user_intent,
             job.result_summary.as_deref().unwrap_or(""),
             job.error_message.as_deref(),
             job.continuation_count as u32,
-            Some(&locale),
+            &locale,
         );
-        // Concatenate the SDK-pre-prompt-style message list into one
-        // body — BatchWorker takes a single instructions string (not
-        // role-tagged messages) and the underlying autopilot turn
-        // builds its own system message via memory.md context anyway.
-        let prompt_body = messages
-            .iter()
-            .map(|m| m.content.text_or_empty().to_string())
-            .collect::<Vec<_>>()
-            .join("\n\n");
 
         let worker = match self.workers.goals().await {
             Ok(w) => w,
@@ -262,4 +253,65 @@ impl AgentJobTrigger {
             )
             .await;
     }
+}
+
+/// Build the agent-job evaluation prompt body. Pre-pivot this lived
+/// in `runtime/prompts/agent_job_evaluation.rs` and produced a list
+/// of `AiMessage`s for the `LlmProvider`. Inlined here as a string
+/// builder once `BatchWorker.submit` consumed instructions as a flat
+/// prompt — no role-tagged messages needed (the SDK session adds its
+/// own system context via memory.md).
+fn build_evaluation_prompt(
+    user_intent: &str,
+    result_summary: &str,
+    error_message: Option<&str>,
+    continuation_count: u32,
+    locale: &str,
+) -> String {
+    let locale = if locale.is_empty() {
+        FALLBACK_LOCALE
+    } else {
+        locale
+    };
+
+    let mut parts = vec![
+        t(locale, "prompt-agent-job-evaluation-system"),
+        t_vars(
+            locale,
+            "prompt-agent-job-evaluation-original-task",
+            &[("user_intent", user_intent.to_owned())],
+        ),
+        t_vars(
+            locale,
+            "prompt-agent-job-evaluation-agent-result",
+            &[(
+                "result_summary",
+                if result_summary.is_empty() {
+                    t(locale, "prompt-agent-job-evaluation-no-summary")
+                } else {
+                    result_summary.to_owned()
+                },
+            )],
+        ),
+    ];
+
+    if let Some(err) = error_message {
+        parts.push(t_vars(
+            locale,
+            "prompt-agent-job-evaluation-agent-error",
+            &[("error", err.to_owned())],
+        ));
+    }
+
+    if continuation_count > 0 {
+        parts.push(t_vars(
+            locale,
+            "prompt-agent-job-evaluation-continuation-count",
+            &[("count", continuation_count.to_string())],
+        ));
+    }
+
+    parts.push(t(locale, "prompt-agent-job-evaluation-final-directive"));
+
+    parts.join("\n\n")
 }

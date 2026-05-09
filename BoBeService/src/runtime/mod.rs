@@ -6,5 +6,4 @@ pub(crate) mod session;
 pub(crate) mod state;
 
 pub(crate) mod learners;
-pub(crate) mod prompts;
 pub(crate) mod triggers;

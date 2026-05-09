@@ -1,6 +1,6 @@
 use axum::{
     Router, middleware as axum_middleware,
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -109,31 +109,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/settings",
             get(handlers::settings::get_settings)
                 .patch(handlers::settings::update_settings),
-        )
-        .route("/models", get(handlers::models::list_models))
-        .route("/models/pull", post(handlers::models::pull_model))
-        .route("/models/registry", get(handlers::models::list_registry_models))
-        .route("/models/{model_name}", delete(handlers::models::delete_model))
-        .route(
-            "/onboarding/status",
-            get(handlers::onboarding::onboarding_status),
-        )
-        .route(
-            "/onboarding/mark-complete",
-            post(handlers::onboarding::mark_complete),
-        )
-        .route(
-            "/onboarding/options",
-            get(handlers::setup::get_options),
-        )
-        .route(
-            "/onboarding/setup",
-            post(handlers::setup::create_setup_job),
-        )
-        .route(
-            "/onboarding/setup/{job_id}",
-            get(handlers::setup::get_setup_status)
-                .delete(handlers::setup::cancel_setup_job),
         )
         .route(
             "/tools/mcp/config",
