@@ -78,14 +78,24 @@ impl ConsolidationTrigger {
 
     /// Run one consolidation pass. Public for manual triggering / tests.
     ///
-    /// Holds the memory.md writer lock for the entire read-process-write
-    /// cycle (worker turn can take up to 15 minutes). Concurrent
-    /// `append_under` calls block on the lock so they apply *after* the
-    /// new pruned body lands — no silent loss.
+    /// Optimistic concurrency: reads memory.md without holding any
+    /// lock, runs the worker (up to 15 min), then takes the writer
+    /// lock briefly to verify+commit. If memory.md changed mid-flight
+    /// (an `append_under` from `CaptureLearner` slipped through, or
+    /// the user edited the file by hand), the pass aborts cleanly
+    /// instead of clobbering the concurrent change. Next night runs
+    /// fresh.
+    ///
+    /// Why this matters: pre-fix the writer lock was held for the
+    /// full worker turn, so every `CaptureLearner.append_under` (and
+    /// any other writer) blocked indefinitely. With capture cycles
+    /// running at 45-second cadence, even a 10-minute consolidation
+    /// could queue up a dozen waiters.
     pub(crate) async fn consolidate_once(&self) -> Result<ConsolidationOutcome, AppError> {
         let started = Instant::now();
-        let writer = self.memory_file.acquire_writer().await;
-        let before = writer.read().await?;
+
+        // Lock-free pre-read.
+        let before = self.memory_file.read().await?;
         let before_bytes = before.len();
 
         let worker = self.workers.consolidate().await?;
@@ -125,7 +135,24 @@ impl ConsolidationTrigger {
         }
 
         let after_bytes = new_body.len();
+
+        // Take the writer guard for the freshness check + replace. The
+        // guard scope is now milliseconds instead of the full worker
+        // turn, so concurrent appends only stall briefly.
+        let writer = self.memory_file.acquire_writer().await;
+        let current = writer.read().await?;
+        if current != before {
+            tracing::warn!(
+                before_bytes,
+                current_bytes = current.len(),
+                "consolidation_trigger.aborted_concurrent_write"
+            );
+            return Err(AppError::Conflict(
+                "memory.md changed during consolidation; skipping this pass".into(),
+            ));
+        }
         writer.replace_all(new_body).await?;
+        drop(writer);
 
         let took = started.elapsed();
         tracing::info!(
