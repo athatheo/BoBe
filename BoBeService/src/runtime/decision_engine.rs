@@ -181,7 +181,7 @@ fn parse_decision(output: &Value) -> Decision {
         .unwrap_or("");
     debug!(
         decision = %decision,
-        reasoning = &reasoning[..reasoning.len().min(150)],
+        reasoning = truncate_str(reasoning, 150),
         "decision_engine.parsed"
     );
     match decision {
@@ -218,5 +218,17 @@ mod tests {
     fn parse_decision_missing_fields() {
         let v = json!({});
         assert_eq!(parse_decision(&v), Decision::Idle);
+    }
+
+    #[test]
+    fn parse_decision_handles_multibyte_reasoning() {
+        // Reasoning > 150 bytes with multi-byte chars at the boundary.
+        // Pre-fix this panicked because byte-slicing `len().min(150)`
+        // could land mid-codepoint. truncate_str is char-boundary safe.
+        let mostly_ascii = "x".repeat(140);
+        let trailing_emoji = "\u{1F600}\u{1F600}\u{1F600}\u{1F600}";
+        let reasoning = format!("{mostly_ascii}{trailing_emoji}");
+        let v = json!({"decision": "reach_out", "reasoning": reasoning});
+        assert_eq!(parse_decision(&v), Decision::Engage);
     }
 }

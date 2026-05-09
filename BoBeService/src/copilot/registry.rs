@@ -245,12 +245,14 @@ impl WorkerRegistry {
                 .with_handler(Arc::clone(&handler) as _)
                 .with_hooks(Arc::clone(&hooks) as _);
             cfg.streaming = Some(class == WorkerClass::Chat);
-            // Chat is the only class where context grows unboundedly within
-            // a day. Infinite sessions enable auto-compaction at a watermark
-            // so we don't blow context limits mid-conversation.
-            if class == WorkerClass::Chat {
-                cfg.infinite_sessions = Some(InfiniteSessionConfig::new());
-            }
+            // Auto-compaction on every class. Chat needs it because
+            // user dialogue grows unboundedly within a day. Batch
+            // classes need it because their sessions persist across
+            // daemon restarts and the Goals worker in particular is
+            // shared across goal-extraction, agent-job evaluation,
+            // and conversation summary jobs — without compaction the
+            // history grows monotonically over weeks.
+            cfg.infinite_sessions = Some(InfiniteSessionConfig::new());
             if let Some(skill_dir) = self.skill_dir(class) {
                 cfg.skill_directories = Some(vec![skill_dir]);
             }
@@ -268,9 +270,7 @@ impl WorkerRegistry {
                 .with_handler(Arc::clone(&handler) as _)
                 .with_hooks(Arc::clone(&hooks) as _);
             resume_cfg.streaming = Some(class == WorkerClass::Chat);
-            if class == WorkerClass::Chat {
-                resume_cfg.infinite_sessions = Some(InfiniteSessionConfig::new());
-            }
+            resume_cfg.infinite_sessions = Some(InfiniteSessionConfig::new());
             if let Some(skill_dir) = self.skill_dir(class) {
                 resume_cfg.skill_directories = Some(vec![skill_dir]);
             }
