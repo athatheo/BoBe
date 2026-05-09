@@ -24,7 +24,7 @@ use crate::util::sse::types::IndicatorType;
 pub(crate) struct MessageHandler {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
     event_queue: Arc<EventQueue>,
 }
 
@@ -32,7 +32,7 @@ impl MessageHandler {
     pub(crate) fn new(
         workers: Arc<WorkerRegistry>,
         conversation: Arc<ConversationService>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
     ) -> Self {
         Self {
@@ -44,9 +44,7 @@ impl MessageHandler {
     }
 
     pub(crate) async fn handle_message(&self, content: &str, message_id: &str) {
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.update_last_user_response(Utc::now()).await
-        {
+        if let Err(e) = self.cooldown_repo.update_last_user_response(Utc::now()).await {
             warn!(error = %e, "message_handler.cooldown_update_failed");
         }
 

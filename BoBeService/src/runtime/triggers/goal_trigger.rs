@@ -24,7 +24,7 @@ pub(crate) struct GoalTrigger {
     goals_service: Arc<GoalsService>,
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
 }
@@ -34,7 +34,7 @@ impl GoalTrigger {
         goals_service: Arc<GoalsService>,
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
@@ -51,12 +51,10 @@ impl GoalTrigger {
     pub(crate) async fn fire(&self) -> Decision {
         let cfg = self.config.load();
 
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Some(cooldown) = cooldown_repo.check_cooldown(
-                cfg.decision.cooldown_minutes,
-                cfg.decision.extended_cooldown_minutes,
-            )
-        {
+        if let Some(cooldown) = self.cooldown_repo.check_cooldown(
+            cfg.decision.cooldown_minutes,
+            cfg.decision.extended_cooldown_minutes,
+        ) {
             debug!(
                 remaining_s = cooldown.remaining.num_seconds(),
                 "goal_trigger.cooldown_active"

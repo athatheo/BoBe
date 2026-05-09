@@ -5,11 +5,6 @@
 //! directly. It returns the new body in `output.body`; this trigger
 //! calls `MemoryFile::replace_all` (the only writer in the daemon).
 
-#![allow(
-    dead_code,
-    reason = "Phase 4: trigger lands here; daemon spawn path lights up alongside it"
-)]
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -97,7 +92,7 @@ impl ConsolidationTrigger {
     /// any other writer) blocked indefinitely. With capture cycles
     /// running at 45-second cadence, even a 10-minute consolidation
     /// could queue up a dozen waiters.
-    pub(crate) async fn consolidate_once(&self) -> Result<ConsolidationOutcome, AppError> {
+    pub(crate) async fn consolidate_once(&self) -> Result<(), AppError> {
         let started = Instant::now();
 
         // Lock-free pre-read.
@@ -169,19 +164,8 @@ impl ConsolidationTrigger {
             "consolidation_trigger.run_complete"
         );
 
-        Ok(ConsolidationOutcome {
-            before_bytes,
-            after_bytes,
-            took,
-        })
+        Ok(())
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ConsolidationOutcome {
-    pub(crate) before_bytes: usize,
-    pub(crate) after_bytes: usize,
-    pub(crate) took: Duration,
 }
 
 fn duration_until_next(fire_at: NaiveTime, now_utc: DateTime<Utc>) -> Duration {

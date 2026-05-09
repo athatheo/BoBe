@@ -4,4 +4,5 @@
 //! The SDK owns server lifecycle and tool dispatch — this module is
 //! config-only.
 
-pub(crate) mod mcp;
+pub(crate) mod config;
+pub(crate) mod security;

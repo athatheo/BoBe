@@ -27,7 +27,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     if config.mcp.enabled
         && let Err(e) =
-            crate::tools::mcp::config::ensure_mcp_config_exists(config.mcp.config_file.as_deref())
+            crate::mcp::config::ensure_mcp_config_exists(config.mcp.config_file.as_deref())
     {
         warn!(error = %e, "bootstrap.ensure_mcp_config_failed");
     }
@@ -106,7 +106,7 @@ fn load_mcp_servers_for_sdk(
     }
 
     let path =
-        match crate::tools::mcp::config::resolve_mcp_config_path(config.mcp.config_file.as_deref())
+        match crate::mcp::config::resolve_mcp_config_path(config.mcp.config_file.as_deref())
         {
             Ok(p) => p,
             Err(e) => {
@@ -115,7 +115,7 @@ fn load_mcp_servers_for_sdk(
             }
         };
 
-    let parsed = match crate::tools::mcp::config::load_mcp_config(
+    let parsed = match crate::mcp::config::load_mcp_config(
         &path,
         &config.mcp.blocked_commands,
         &config.mcp.dangerous_env_keys,
@@ -128,7 +128,7 @@ fn load_mcp_servers_for_sdk(
     };
 
     let count = parsed.len();
-    let map = crate::tools::mcp::config::to_sdk_mcp_servers(parsed);
+    let map = crate::mcp::config::to_sdk_mcp_servers(parsed);
     info!(count, "bootstrap.mcp_servers_registered_via_sdk");
     map
 }

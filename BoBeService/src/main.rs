@@ -9,12 +9,12 @@ mod constants;
 mod copilot;
 mod db;
 mod error;
+mod mcp;
 mod models;
 mod runtime;
 #[allow(unsafe_code)]
 mod secrets;
 mod services;
-mod tools;
 mod util;
 
 #[derive(Parser)]

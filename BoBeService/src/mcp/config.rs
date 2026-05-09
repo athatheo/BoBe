@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use super::security::{validate_mcp_command_with_args, validate_mcp_env};
 use crate::error::AppError;
 
-const DEFAULT_MCP_CONFIG_JSON: &str = include_str!("../../assets/defaults/mcp_servers.json");
+const DEFAULT_MCP_CONFIG_JSON: &str = include_str!("../assets/defaults/mcp_servers.json");
 
 pub(crate) const SECRET_REF_PREFIX: &str = "bobe-secret://";
 

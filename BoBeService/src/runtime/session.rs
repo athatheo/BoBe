@@ -24,7 +24,7 @@ pub(crate) struct RuntimeSession {
     capture_trigger: Mutex<CaptureTrigger>,
     message_handler: Arc<MessageHandler>,
     conversation: Arc<ConversationService>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
     running: std::sync::atomic::AtomicBool,
@@ -49,7 +49,7 @@ impl RuntimeSession {
         capture_trigger: CaptureTrigger,
         message_handler: Arc<MessageHandler>,
         conversation: Arc<ConversationService>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
@@ -104,9 +104,7 @@ impl RuntimeSession {
         self.running
             .store(true, std::sync::atomic::Ordering::Release);
 
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.load_or_create().await
-        {
+        if let Err(e) = self.cooldown_repo.load_or_create().await {
             warn!(error = %e, "runtime_session.cooldown_load_failed");
         }
 

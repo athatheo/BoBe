@@ -15,8 +15,8 @@ use tracing::warn;
 
 use crate::app_state::AppState;
 use crate::error::AppError;
-use crate::tools::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
-use crate::tools::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
+use crate::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
+use crate::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
 
 // ── Response / request DTOs ────────────────────────────────────────────────
 

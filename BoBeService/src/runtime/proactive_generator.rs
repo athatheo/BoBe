@@ -39,7 +39,7 @@ pub(crate) struct ProactiveGenerator {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
     event_queue: Arc<EventQueue>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
 }
 
 impl ProactiveGenerator {
@@ -47,7 +47,7 @@ impl ProactiveGenerator {
         workers: Arc<WorkerRegistry>,
         conversation: Arc<ConversationService>,
         event_queue: Arc<EventQueue>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
     ) -> Self {
         Self {
             workers,
@@ -235,9 +235,7 @@ impl ProactiveGenerator {
     }
 
     async fn record_engagement(&self) {
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.update_last_engagement(Utc::now()).await
-        {
+        if let Err(e) = self.cooldown_repo.update_last_engagement(Utc::now()).await {
             warn!(error = %e, "proactive_generator.cooldown_update_failed");
         }
     }

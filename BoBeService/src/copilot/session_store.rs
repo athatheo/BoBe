@@ -7,9 +7,9 @@
 //! ```text
 //! ~/.bobe/workers/
 //!   goals/session.id
-//!   observe/session.id
 //!   vision/session.id
 //!   consolidate/session.id
+//!   decide/session.id
 //!   chat/session-2026-05-08.id    ← daily rotation: one ID per local date
 //!   chat/session-2026-05-07.id    ← yesterday's, retained for `prune`
 //! ```

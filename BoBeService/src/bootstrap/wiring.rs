@@ -90,7 +90,7 @@ pub(crate) async fn wire(
         Arc::clone(&workers),
         Arc::clone(&conversation_service),
         Arc::clone(&infra.event_queue),
-        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&repos.cooldown_repo),
     ));
 
     let screen_capture = Arc::new(ScreenCapture::new());
@@ -100,7 +100,7 @@ pub(crate) async fn wire(
         capture_learner,
         Arc::clone(&decision_engine),
         Arc::clone(&proactive_generator),
-        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
     );
@@ -114,7 +114,7 @@ pub(crate) async fn wire(
         ),
         Arc::clone(&proactive_generator),
         Arc::clone(&conversation_service),
-        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&repos.cooldown_repo),
         Arc::clone(config_arc),
     );
 
@@ -122,7 +122,7 @@ pub(crate) async fn wire(
         Arc::clone(&goals_service),
         decision_engine,
         Arc::clone(&proactive_generator),
-        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
     ));
@@ -134,11 +134,11 @@ pub(crate) async fn wire(
         Arc::new(MessageHandler::new(
             Arc::clone(&workers),
             Arc::clone(&conversation_service),
-            Some(Arc::clone(&repos.cooldown_repo)),
+            Arc::clone(&repos.cooldown_repo),
             Arc::clone(&infra.event_queue),
         )),
         Arc::clone(&conversation_service),
-        Some(Arc::clone(&repos.cooldown_repo)),
+        Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
     ));
