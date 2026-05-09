@@ -91,6 +91,14 @@ impl WorkerRegistry {
         &self.usage
     }
 
+    /// The single-writer memory.md handle this registry was constructed
+    /// with. Consumers (capture learner, consolidation, memories
+    /// handler) take an `Arc<MemoryFile>` from here rather than
+    /// reaching back to bootstrap.
+    pub(crate) fn memory_file(&self) -> Arc<MemoryFile> {
+        Arc::clone(&self.memory_file)
+    }
+
     pub(crate) async fn goals(&self) -> Result<Arc<BatchWorker>, AppError> {
         self.goals
             .get_or_try_init(|| async {

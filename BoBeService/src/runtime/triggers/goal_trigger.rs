@@ -79,7 +79,6 @@ impl GoalTrigger {
             let context = TriggerContext {
                 trigger_type: TriggerType::Goal,
                 context_text: goal.content.clone(),
-                observation: None,
                 goal: Some(goal.clone()),
             };
 

@@ -180,12 +180,12 @@ pub(crate) async fn wire(
         config.mcp_dangerous_env_keys_vec().to_vec(),
     ));
 
+    // Memory.md is the single durable narrative store. The capture
+    // learner appends one-liners under `## Recent`; the consolidate
+    // worker prunes the section nightly.
     let capture_learner = Arc::new(CaptureLearner::new(
-        Arc::clone(&infra.llm_provider),
-        Arc::clone(&infra.embedding_provider),
-        Arc::clone(&repos.observation_repo),
-        Arc::clone(&repos.memory_repo),
-        infra.vision_llm_provider.clone(),
+        Arc::clone(&workers),
+        workers.memory_file(),
         Arc::clone(config_arc),
     ));
 
@@ -216,7 +216,6 @@ pub(crate) async fn wire(
         Arc::clone(&decision_engine),
         Arc::clone(&proactive_generator),
         Some(Arc::clone(&repos.cooldown_repo)),
-        Arc::clone(&repos.observation_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
     );

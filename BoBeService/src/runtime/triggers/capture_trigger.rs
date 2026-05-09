@@ -1,4 +1,10 @@
-//! Capture-based proactive engagement: screenshot -> learn -> cooldown -> decision -> response.
+//! Capture-based proactive engagement: screenshot → vision-describe →
+//! cooldown → decision → response.
+//!
+//! Pre-pivot the trigger fetched a freshly-stored `Observation` from
+//! SQL after the learner ran. Post-pivot the learner returns the
+//! description directly (it has already appended a one-liner to
+//! memory.md), so we skip the round-trip through `ObservationRepository`.
 
 use std::sync::Arc;
 
@@ -7,18 +13,14 @@ use tracing::{debug, error, info};
 
 use crate::config::Config;
 use crate::db::CooldownRepository;
-use crate::db::ObservationRepository;
-use crate::models::observation::Observation;
+use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::learners::CaptureLearner;
-use crate::runtime::learners::types::LearnerObservation;
+use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::indicator_event;
 use crate::util::sse::types::IndicatorType;
-
-use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::proactive_generator::ProactiveGenerator;
 
 pub(crate) struct CaptureTrigger {
     screen_capture: Arc<ScreenCapture>,
@@ -26,7 +28,6 @@ pub(crate) struct CaptureTrigger {
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
     cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-    observation_repo: Arc<dyn ObservationRepository>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
     enabled: bool,
@@ -40,7 +41,6 @@ impl CaptureTrigger {
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
         cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-        observation_repo: Arc<dyn ObservationRepository>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
@@ -50,7 +50,6 @@ impl CaptureTrigger {
             decision_engine,
             generator,
             cooldown_repo,
-            observation_repo,
             event_queue,
             config,
             enabled: false,
@@ -69,8 +68,7 @@ impl CaptureTrigger {
     }
 
     pub(crate) async fn fire(&mut self) -> Decision {
-        let observation = self.run_capture_cycle().await;
-        let Some(obs) = observation else {
+        let Some(description) = self.run_capture_cycle().await else {
             return Decision::Idle;
         };
 
@@ -96,8 +94,7 @@ impl CaptureTrigger {
             .push(indicator_event(IndicatorType::Thinking, None));
         let context = TriggerContext {
             trigger_type: TriggerType::Capture,
-            context_text: obs.content.clone(),
-            observation: Some(obs),
+            context_text: description,
             goal: None,
         };
 
@@ -114,7 +111,11 @@ impl CaptureTrigger {
         decision
     }
 
-    async fn run_capture_cycle(&mut self) -> Option<Observation> {
+    /// Capture the screen, hand the bytes to the learner, return its
+    /// description. `None` means the cycle should be treated as a
+    /// no-op (capture failed, or the model couldn't say anything
+    /// useful).
+    async fn run_capture_cycle(&mut self) -> Option<String> {
         let cycle_num = self.context_count + 1;
         info!(cycle = cycle_num, "capture_trigger.cycle_start");
 
@@ -132,29 +133,26 @@ impl CaptureTrigger {
 
         self.event_queue
             .push(indicator_event(IndicatorType::Thinking, None));
-        let observation =
-            LearnerObservation::capture(capture_result.image, capture_result.active_window);
-        match self.capture_learner.learn(&observation).await {
-            Ok(result) => {
+        match self
+            .capture_learner
+            .learn(
+                capture_result.image,
+                capture_result.active_window.as_deref(),
+            )
+            .await
+        {
+            Ok(description) if !description.is_empty() => {
                 self.context_count += 1;
                 debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
                 self.event_queue
                     .push(indicator_event(IndicatorType::Idle, None));
-                match result {
-                    crate::runtime::learners::types::LearnerResult::Stored { observation_id } => {
-                        match self.observation_repo.get_by_id(observation_id).await {
-                            Ok(Some(obs)) => Some(obs),
-                            Ok(None) => {
-                                debug!("capture_trigger.observation_not_found_after_store");
-                                None
-                            }
-                            Err(e) => {
-                                error!(error = %e, "capture_trigger.observation_fetch_failed");
-                                None
-                            }
-                        }
-                    }
-                }
+                Some(description)
+            }
+            Ok(_) => {
+                debug!(cycle = cycle_num, "capture_trigger.empty_description");
+                self.event_queue
+                    .push(indicator_event(IndicatorType::Idle, None));
+                None
             }
             Err(e) => {
                 error!(error = %e, cycle = cycle_num, "capture_trigger.cycle_failed");
