@@ -205,6 +205,7 @@ pub(crate) struct EngineConfig {
     /// Local-mode provider URL, e.g. `http://127.0.0.1:11434/v1`. Ignored
     /// in cloud mode (the signed-in user's GitHub Copilot endpoint is
     /// implicit).
+    #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_base_url: Option<String>,
     /// Model used by the user-facing Chat worker. Cloud: a Copilot-served
     /// model (e.g. `"claude-sonnet-4"`); local: an Ollama tag (e.g.
@@ -214,19 +215,40 @@ pub(crate) struct EngineConfig {
     /// only — never shipped to users). Aliased here so any local checkout
     /// that still has `provider_text_model = "…"` in `config.toml` loads
     /// the value as the chat model rather than dropping it.
-    #[serde(alias = "provider_text_model")]
+    #[serde(
+        alias = "provider_text_model",
+        deserialize_with = "empty_string_as_none",
+        default
+    )]
     pub(crate) provider_chat_model: Option<String>,
     /// Model used by the autopilot batch workers (goals / decide /
     /// consolidate). May be the same as `provider_chat_model` or a
     /// cheaper / faster alternative for headless jobs.
+    #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_batch_model: Option<String>,
     /// Model used by the Vision worker (capture pipeline). Must support
     /// image inputs in local mode (e.g. `"qwen2.5-vl:7b"`).
+    #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_vision_model: Option<String>,
     /// Sets `COPILOT_OFFLINE=true` on the spawned CLI to suppress GitHub
-    /// telemetry / metadata calls. Default true; mostly relevant for
-    /// local-mode users who want strict no-network-to-GitHub.
+    /// telemetry / metadata calls. Only takes effect in `local` engine
+    /// mode (cloud mode needs GitHub network access and would refuse to
+    /// start with offline=true).
     pub(crate) provider_offline: bool,
+}
+
+/// Deserializer that maps `""` and absent fields to `None`. Paired with
+/// `config_manager::fields::set_opt_string!` which already normalizes
+/// the runtime PATCH path; this handles the on-disk side. Without it,
+/// a cleared field that gets persisted as `provider_x = ""` would
+/// deserialize back as `Some("")` on next daemon start and pass an
+/// empty model name to the SDK.
+fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = serde::Deserialize::deserialize(deserializer)?;
+    Ok(opt.filter(|s| !s.is_empty()))
 }
 
 impl Default for EngineConfig {

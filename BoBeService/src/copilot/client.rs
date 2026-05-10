@@ -86,9 +86,15 @@ impl ClientHandle {
 /// per-session via `SessionConfig::with_model` / `with_provider`, which gives
 /// us per-class flexibility without forcing a CLI process restart on a
 /// vision-only model swap.
+///
+/// `COPILOT_OFFLINE` is **only** set when the engine is `local`. In cloud
+/// mode the CLI needs GitHub network access, and setting offline=true
+/// without a `COPILOT_PROVIDER_BASE_URL` (which we never set process-wide;
+/// it's per-session) makes the CLI refuse to start with "Offline mode
+/// requires a local model provider."
 fn client_options_from_config(config: &Config) -> ClientOptions {
     let mut opts = ClientOptions::default();
-    if config.engine.provider_offline {
+    if config.engine.engine == "local" && config.engine.provider_offline {
         opts.env
             .push((OsString::from("COPILOT_OFFLINE"), OsString::from("true")));
     }
