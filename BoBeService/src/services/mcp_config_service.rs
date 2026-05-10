@@ -34,6 +34,12 @@ pub(crate) struct McpServerSummary {
     pub(crate) args: Vec<String>,
     pub(crate) enabled: bool,
     pub(crate) connected: bool,
+    /// Live status from `session.mcp.list` when chat session is alive.
+    /// One of: `connected | failed | needs-auth | pending | disabled |
+    /// not_configured`. `None` when chat session hasn't spawned yet —
+    /// UI should treat that as "indeterminate" rather than disconnected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) status: Option<String>,
     pub(crate) tool_count: usize,
     pub(crate) tools: Vec<McpToolMetadata>,
     pub(crate) excluded_tools: Vec<String>,
@@ -260,39 +266,95 @@ async fn build_runtime_summaries(state: &AppState, file: &McpConfigFile) -> Vec<
     let mut entries: Vec<(&String, &McpServerEntry)> = file.mcp_servers.iter().collect();
     entries.sort_by_key(|(name, _)| *name);
 
+    // Query live MCP state from the chat session (the only one with
+    // MCP servers attached). Returns `None` when chat hasn't spawned
+    // yet — UI then renders "indeterminate" for `connected`/`status`.
+    // This is best-effort; we don't force-spawn the CLI just for the
+    // Settings panel.
+    let live = state.workers.live_mcp_servers().await;
+    let live_map: HashMap<String, mcp_live::ServerEntry> = live
+        .map(|servers| {
+            servers
+                .into_iter()
+                .map(|s| (s.name.clone(), mcp_live::ServerEntry::from_sdk(s)))
+                .collect()
+        })
+        .unwrap_or_default();
+
     let mut summaries = Vec::with_capacity(entries.len());
     for (name, entry) in entries {
-        summaries.push(build_server_summary(state, name, entry).await);
+        summaries.push(build_server_summary(name, entry, live_map.get(name)).await);
     }
     summaries
 }
 
 async fn build_server_summary(
-    _state: &AppState,
     name: &str,
     entry: &McpServerEntry,
+    live: Option<&mcp_live::ServerEntry>,
 ) -> McpServerSummary {
     let (mut env_keys, mut secret_env_keys) = env_metadata(entry);
     env_keys.sort();
     secret_env_keys.sort();
 
-    // The Copilot SDK owns MCP server lifecycle now (servers are
-    // spawned per-session via `SessionConfig::mcp_servers`). The
-    // daemon doesn't have a sideband query path into the SDK's MCP
-    // state, so we report config-only fields. `connected` and the
-    // tool list go to defaults until we query the SDK over JSON-RPC.
+    // SDK's `session.mcp.list` reports `name`, `status`, optional
+    // `error`. Per-server tool count + tools list aren't exposed at
+    // v0.1.0 — leave them at defaults. UI surfaces status badge from
+    // the enum string.
+    let (connected, status, error) = match live {
+        Some(s) => (s.connected, Some(s.status.clone()), s.error.clone()),
+        None => (false, None, None),
+    };
+
     McpServerSummary {
         name: name.to_owned(),
         command: entry.command.clone(),
         args: entry.args.clone(),
         enabled: entry.enabled,
-        connected: false,
+        connected,
+        status,
         tool_count: 0,
         tools: Vec::new(),
         excluded_tools: entry.excluded_tools.clone(),
         env_keys,
         secret_env_keys,
-        error: None,
+        error,
+    }
+}
+
+/// Adapter between the SDK's `McpServer` (which has a typed enum status)
+/// and the wire-format we send to Swift (status as a flat string). Kept
+/// in a small private module so the SDK type doesn't leak into the
+/// service's public surface.
+mod mcp_live {
+    use github_copilot_sdk::generated::api_types::{McpServer, McpServerStatus};
+
+    pub(super) struct ServerEntry {
+        pub(super) connected: bool,
+        pub(super) status: String,
+        pub(super) error: Option<String>,
+    }
+
+    impl ServerEntry {
+        pub(super) fn from_sdk(server: McpServer) -> Self {
+            let connected = matches!(server.status, McpServerStatus::Connected);
+            let status = match server.status {
+                McpServerStatus::Connected => "connected",
+                McpServerStatus::Failed => "failed",
+                McpServerStatus::NeedsAuth => "needs-auth",
+                McpServerStatus::Pending => "pending",
+                McpServerStatus::Disabled => "disabled",
+                McpServerStatus::NotConfigured => "not-configured",
+                // Forward-compat: SDK adds new states, we surface as-is.
+                McpServerStatus::Unknown => "unknown",
+            }
+            .to_string();
+            Self {
+                connected,
+                status,
+                error: server.error,
+            }
+        }
     }
 }
 

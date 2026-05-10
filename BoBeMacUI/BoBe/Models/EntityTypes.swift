@@ -212,9 +212,14 @@ struct UserProfileActionResponse: Codable, Sendable {
 // The daemon owns the on-disk `mcp.json` file. The Copilot SDK manages
 // MCP server lifecycle (process spawn + tool dispatch) via
 // `SessionConfig::mcp_servers` once the daemon hands it the parsed map
-// at session creation. Live runtime state — `connected`, `toolCount`,
-// `tools` — is currently stubbed to defaults; the daemon will populate
-// it once the SDK exposes a sideband query (open task #31).
+// at session creation.
+//
+// Live runtime state (`connected` + `status`) comes from the SDK's
+// `session.mcp.list` RPC, queried via the chat session if it's alive.
+// `status == nil` means the chat session hasn't spawned yet — UI
+// should render "indeterminate" rather than "disconnected" in that case.
+// Per-server `toolCount` and `tools` aren't exposed by the SDK at
+// v0.1.0 and stay stubbed at 0/empty.
 
 struct MCPServerTool: Codable, Sendable, Hashable {
     let name: String
@@ -231,6 +236,10 @@ struct MCPServer: Identifiable, Codable, Sendable {
     let command: String
     let args: [String]
     var connected: Bool
+    /// One of: `connected | failed | needs-auth | pending | disabled |
+    /// not-configured | unknown`. `nil` = live state unavailable
+    /// (chat session not spawned yet — open Settings before chatting).
+    var status: String?
     var enabled: Bool
     var toolCount: Int
     var excludedTools: [String]
@@ -240,7 +249,7 @@ struct MCPServer: Identifiable, Codable, Sendable {
     var error: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, command, args, connected, enabled, error
+        case name, command, args, connected, enabled, error, status
         case tools
         case envKeys = "env_keys"
         case secretEnvKeys = "secret_env_keys"

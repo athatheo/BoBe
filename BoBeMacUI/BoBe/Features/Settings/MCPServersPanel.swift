@@ -136,6 +136,7 @@ struct MCPServersPanel: View {
                                 )
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(server.enabled ? self.theme.colors.secondary : self.theme.colors.textMuted)
+                                self.statusBadge(for: server)
                             }
                             .foregroundStyle(self.theme.colors.text)
 
@@ -156,17 +157,66 @@ struct MCPServersPanel: View {
                         .background(RoundedRectangle(cornerRadius: 6).fill(self.theme.colors.surface))
                     }
 
-                    // The Copilot SDK owns MCP server lifecycle (per-session
-                    // spawn). Until task #31 lands a daemon-side sideband
-                    // query, live connect/tool-count state isn't visible.
-                    Text(L10n.tr("settings.mcp.discovery.runtime_state_pending"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(self.theme.colors.textMuted.opacity(0.8))
-                        .italic()
-                        .padding(.top, 4)
+                    // Live status comes from the chat session's
+                    // `session.mcp.list` RPC — when the chat session
+                    // hasn't been spawned yet, we render an
+                    // "indeterminate" hint instead of misleading badges.
+                    if self.servers.contains(where: { $0.status == nil }) {
+                        Text(L10n.tr("settings.mcp.discovery.runtime_state_pending"))
+                            .font(.system(size: 10).italic())
+                            .foregroundStyle(self.theme.colors.textMuted.opacity(0.8))
+                            .padding(.top, 4)
+                    }
                 }
             }
         }
+    }
+
+    /// Renders the live runtime-state badge for a server. Mirrors the
+    /// SDK's `McpServerStatus` enum:
+    /// - `connected` → green dot
+    /// - `failed` → red badge
+    /// - `needs-auth` → orange badge with "needs auth"
+    /// - `pending` → muted spinner-feel
+    /// - `disabled` / `not-configured` → muted neutral
+    /// - `nil` (chat session not spawned) → no badge; the
+    ///   "live status pending" hint at the bottom of the section
+    ///   explains why
+    @ViewBuilder
+    private func statusBadge(for server: MCPServer) -> some View {
+        if let status = server.status {
+            switch status {
+            case "connected":
+                self.badge(text: L10n.tr("settings.mcp.runtime.connected"),
+                           color: self.theme.colors.secondary)
+            case "failed":
+                self.badge(text: L10n.tr("settings.mcp.runtime.failed"),
+                           color: self.theme.colors.primary)
+            case "needs-auth":
+                self.badge(text: L10n.tr("settings.mcp.runtime.needs_auth"),
+                           color: self.theme.colors.tertiary)
+            case "pending":
+                self.badge(text: L10n.tr("settings.mcp.runtime.pending"),
+                           color: self.theme.colors.textMuted)
+            case "disabled", "not-configured":
+                EmptyView()  // already covered by the enabled/disabled label
+            default:
+                self.badge(text: status, color: self.theme.colors.textMuted)
+            }
+        }
+    }
+
+    private func badge(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .medium))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule()
+                    .fill(color.opacity(0.15))
+                    .overlay(Capsule().stroke(color.opacity(0.5), lineWidth: 0.5))
+            )
+            .foregroundStyle(color)
     }
 
     private func loadConfig() async {

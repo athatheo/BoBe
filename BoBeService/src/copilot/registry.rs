@@ -216,6 +216,37 @@ impl WorkerRegistry {
         Arc::clone(&self.client)
     }
 
+    /// Live MCP server state from the chat session, if it's already
+    /// running. Returns `None` (not `Vec::new()`) when the chat session
+    /// hasn't been spawned yet — that's the signal to UI that "live
+    /// status isn't available, fall back to config-only fields."
+    ///
+    /// Doesn't force-spawn the chat session: opening Settings → MCP
+    /// shouldn't burn a CLI process if the user hasn't chatted yet.
+    /// Callers should treat `None` as "indeterminate" rather than
+    /// "all servers disconnected."
+    ///
+    /// The `session.mcp.list` RPC is marked **experimental** by the
+    /// SDK — pin both SDK and CLI versions, expect breakage on upgrade.
+    pub(crate) async fn live_mcp_servers(
+        &self,
+    ) -> Option<Vec<github_copilot_sdk::generated::api_types::McpServer>> {
+        // Acquire the chat session WITHOUT calling `chat()` — that
+        // method spawns on cache miss. We just peek.
+        let session = {
+            let guard = self.chat.lock().await;
+            let dated = guard.as_ref()?;
+            dated.worker.session()
+        };
+        match session.rpc().mcp().list().await {
+            Ok(list) => Some(list.servers),
+            Err(e) => {
+                tracing::warn!(err = %e, "registry.live_mcp_servers.rpc_failed");
+                Some(Vec::new())
+            }
+        }
+    }
+
     pub(crate) async fn goals(&self) -> Result<Arc<BatchWorker>, AppError> {
         let mut guard = self.goals.lock().await;
         if let Some(w) = guard.as_ref() {

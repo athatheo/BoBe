@@ -77,6 +77,13 @@ impl CopilotChatWorker {
         self.session.disconnect().await?;
         Ok(())
     }
+
+    /// Borrow the underlying `Session` for sideband RPC queries that
+    /// don't go through the chat-turn path (e.g. `session.mcp.list` for
+    /// the Settings → MCP panel's live status).
+    pub(crate) fn session(&self) -> Arc<Session> {
+        Arc::clone(&self.session)
+    }
 }
 
 #[async_trait]

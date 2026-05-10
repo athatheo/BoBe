@@ -343,3 +343,7 @@
 "settings.engine.models.local_unavailable" = "Ollama isn't running. Start it, or pick cloud mode above.";
 "settings.engine.models.cloud_unavailable" = "GitHub Copilot is unreachable. Check your sign-in or network.";
 "settings.engine.models.error_format" = "Couldn't load models: %@";
+"settings.mcp.runtime.connected" = "connected";
+"settings.mcp.runtime.failed" = "failed";
+"settings.mcp.runtime.needs_auth" = "needs auth";
+"settings.mcp.runtime.pending" = "pending";
