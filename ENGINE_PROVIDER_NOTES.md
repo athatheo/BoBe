@@ -12,7 +12,7 @@
 1. We keep `github-copilot-sdk` as the only agent-loop SDK. No `pi_agent_rust` (one-contributor risk), no Goose (not on crates.io), no OpenCode (different topology, less local-friendly).
 2. **Local models are supported via Copilot CLI BYOK** (shipped by GitHub on 2026-04-07) — set `COPILOT_PROVIDER_BASE_URL`, `COPILOT_MODEL`, etc. before spawning the SDK Client. Same agent loop, different env.
 3. **The Copilot CLI is bundled in BoBe** via `embedded-cli` feature + `COPILOT_CLI_VERSION` build env. Drops the wizard's "is copilot installed?" branch and the user's responsibility to install anything.
-4. **Local model server is a user-managed sidecar** (`llama-server`, Ollama, LM Studio). BoBe detects what's running on known ports; doesn't bundle inference itself. FFI-into-llama.cpp was considered and rejected (high complexity, the loopback HTTP isn't a real cost — see "What we're not doing").
+4. **Local model runtime: Ollama, downloaded on demand during onboarding.** Not bundled in the .app — the binary is fetched at first-launch when the user picks the Local-AI path, models are pulled the same way. BoBe owns the download + spawn lifecycle (resurrects the pre-pivot `binary_manager` + `ollama_manager` modules from main). Pi, OpenCode, Aider, and Goose all default to Ollama in their first-run docs — matching that muscle memory is part of why we pick it. If the user already has `ollama serve` on `127.0.0.1:11434`, BoBe detects and uses theirs (no second copy). After the runtime + models are ready, BoBe just sets `COPILOT_PROVIDER_BASE_URL` env vars on its Copilot CLI subprocesses; the SDK handles every actual call to Ollama from there. FFI-into-llama.cpp was considered and rejected — TCP loopback is ~50 µs, irrelevant vs seconds of inference.
 5. **Onboarding reworks** to surface the engine choice up front (cloud Copilot vs local) and verify the picked path actually works.
 
 ---
@@ -58,7 +58,10 @@ Source: [github/copilot-sdk#248 (Steve Sanderson's confirmation)](https://github
 - **Not switching SDKs.** `pi_agent_rust` is a single-contributor port (873 stars, 1 maintainer). Goose isn't published to crates.io (name collision with the load-testing tool), would require git-dep or vendoring. OpenCode is HTTP+SSE topology, different shape, weaker local-model story per Reddit sentiment. Sticking with `github-copilot-sdk` keeps a single agent loop, single set of code paths, single maintenance burden — and now-bundled means no install friction.
 - **Not building an in-process FFI-to-llama.cpp shim.** The Copilot CLI subprocess can only speak HTTP to its inference backend. Loopback HTTP is ~50 µs vs ~seconds of inference (irrelevant). The "FFI shim" only saves one external process to manage, at the cost of a model-management subsystem in BoBe + cmake-llama.cpp build complexity + macOS notarization friction. Net negative.
 - **Not abandoning the Copilot agent loop in favor of direct llama.cpp FFI.** Doing so would mean re-implementing skills, hooks, autopilot, MCP server lifecycle, tool dispatch, JSON repair, multi-turn iteration — exactly the `LlmProvider` infrastructure we deleted during the pivot.
-- **Not bundling `llama-server` either.** User runs whichever runtime they prefer (llama.cpp, Ollama, LM Studio); BoBe detects on launch. Bundling inference is a separate product surface (model download, GPU lifecycle, OOM handling) that we don't need to own.
+- **Not bundling Ollama in the .app.** The macOS Ollama is small (~100–300 MB) so it could fit, but bundling complicates code-signing/notarization (third-party binary inside our bundle), increases the download we ship, and forces lockstep version pinning. Downloading at first-launch (with progress UI) is the same pattern the old wizard used pre-pivot and matches how Ollama's own update mechanism works. If the user already has Ollama installed/running, BoBe detects it and skips the download entirely.
+- **Not bundling `llama-server` + `llama-swap`** despite tempting size. We'd be writing our own Ollama (model download + GGUF cache + multi-model scheduler) for marginal speed gain on a workload where it's irrelevant. Ollama already does the boring stuff well.
+- **Not bundling LlamaEdge.** Smallest at 30 MB but no native multi-model, less mature ecosystem, requires `llama-swap` on top for hot-swap. Niche fit, not ours.
+- **Not proxying/wrapping Ollama calls inside BoBe.** BoBe sets the `COPILOT_PROVIDER_BASE_URL` env at Copilot CLI Client construction; the SDK + spawned CLI subprocess handle every model call directly. BoBe never sits in the request path between the CLI and Ollama. Less code, fewer failure modes.
 
 ---
 
@@ -66,30 +69,41 @@ Source: [github/copilot-sdk#248 (Steve Sanderson's confirmation)](https://github
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ BoBe daemon (Rust, single PID — bundled with copilot CLI binary) │
+│ BoBe daemon (Rust binary, ~120 MB after stripping)               │
 │                                                                  │
-│   github-copilot-sdk (with embedded-cli feature)                 │
-│       └─ extracts ~/.cache/github-copilot-sdk-{ver}/copilot      │
-│       └─ spawns it as subprocess                                 │
+│   github-copilot-sdk (with embedded-cli feature, Phase 0)        │
+│   ├─ extracts copilot CLI to ~/.cache/github-copilot-sdk-{ver}/  │
+│   └─ spawns 2× CLI subprocesses (text-client + vision-client)    │
+│                                                                  │
+│   binary_manager (resurrected from main, simplified)             │
+│   ├─ ensures Ollama binary at ~/.bobe/runtimes/ollama            │
+│   │   (downloads if absent, validates, signs is unchanged)       │
+│   └─ progress streamed via watch::Sender<DownloadProgress>       │
+│                                                                  │
+│   ollama_manager (resurrected from main)                         │
+│   ├─ spawns `ollama serve` (or skips if user's runs on :11434)   │
+│   ├─ ollama pull qwen2.5:7b-instruct (text)                      │
+│   └─ ollama pull qwen2.5-vl:7b (vision)                          │
 │                                                                  │
 └──┬───────────────────────────────────────────────────────────────┘
-   │ stdio JSON-RPC
+   │ stdio JSON-RPC                          (sets up ↑ on choice)
    ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ copilot CLI subprocess (Node.js, child of bobe-daemon)           │
-│ Reads env vars set by daemon at spawn time:                      │
-│  COPILOT_PROVIDER_BASE_URL / COPILOT_MODEL / COPILOT_OFFLINE     │
-└──┬───────────────────────────────────────────────────────────────┘
-   │ HTTPS  (cloud path)         │ HTTP loopback  (local path)
-   ▼                             ▼
-GitHub Copilot               User's local server
-                             (`llama-server`,
-                              `ollama serve`,
-                              LM Studio, etc.)
-                             — NOT managed by BoBe.
-                             — User installed/runs separately.
-                             — BoBe detects on launch.
+┌─────────────────────────────────┐
+│ 2× copilot CLI subprocesses     │  COPILOT_PROVIDER_BASE_URL =
+│ Different COPILOT_MODEL each:   │      http://127.0.0.1:11434/v1
+│  text-client:  qwen2.5:7b       │ ──────────┐
+│  vision-client: qwen2.5-vl:7b   │            ▼
+└──┬──────────────────────────────┘    ┌────────────────────────┐
+   │ HTTPS (cloud)         (local)     │ ollama serve           │
+   ▼                                   │ Native multi-model     │
+GitHub Copilot                         │ OLLAMA_MAX_LOADED=2    │
+(cloud mode — no Ollama)               │ Models in ~/.ollama/   │
+                                       └────────────────────────┘
+                                       (NOT in BoBe's request path —
+                                        SDK + CLI handle calls direct)
 ```
+
+The daemon is small (~120 MB final binary; Phase 0's bundled CLI dominates). The Ollama runtime + ~10 GB of model weights live outside the bundle, downloaded on demand. If the user already runs Ollama (their existing `~/.ollama/models` is shared so any models they previously pulled are detected), BoBe skips the runtime download entirely — only the missing models are pulled.
 
 ---
 
@@ -120,33 +134,35 @@ GitHub Copilot               User's local server
 pub(crate) struct SettingsResponse {
     // ... existing 9 fields ...
     pub(crate) engine: String,                          // "copilot_cloud" | "local"
-    pub(crate) provider_base_url: Option<String>,       // for "local"
-    pub(crate) provider_model: Option<String>,
-    pub(crate) provider_offline: bool,
+    pub(crate) provider_base_url: Option<String>,       // local: typically http://127.0.0.1:11434/v1
+    pub(crate) provider_text_model: Option<String>,     // local: qwen2.5:7b-instruct
+    pub(crate) provider_vision_model: Option<String>,   // local: qwen2.5-vl:7b
+    pub(crate) provider_offline: bool,                  // local: usually true
 }
 ```
 
-Daemon picks env vars at Copilot SDK Client construction:
+Daemon constructs **two Copilot clients in local mode** so vision/text can use different models (BYOK fixes `COPILOT_MODEL` per-process). Cloud mode keeps a single client.
 
 ```rust
 match cfg.engine.as_str() {
     "local" => {
-        if let Some(url) = &cfg.provider_base_url {
-            unsafe { env::set_var("COPILOT_PROVIDER_BASE_URL", url); }
-        }
-        if let Some(model) = &cfg.provider_model {
-            unsafe { env::set_var("COPILOT_MODEL", model); }
-        }
-        if cfg.provider_offline {
-            unsafe { env::set_var("COPILOT_OFFLINE", "true"); }
-        }
+        let base = cfg.provider_base_url.as_deref().unwrap_or("http://127.0.0.1:11434/v1");
+        let text_client = Client::start(opts_with_env(&[
+            ("COPILOT_PROVIDER_BASE_URL", base),
+            ("COPILOT_MODEL", cfg.provider_text_model.as_deref().unwrap_or("qwen2.5:7b-instruct")),
+            ("COPILOT_OFFLINE", if cfg.provider_offline { "true" } else { "false" }),
+        ])).await?;
+        let vision_client = Client::start(opts_with_env(&[
+            ("COPILOT_PROVIDER_BASE_URL", base),
+            ("COPILOT_MODEL", cfg.provider_vision_model.as_deref().unwrap_or("qwen2.5-vl:7b")),
+            ("COPILOT_OFFLINE", "true"),
+        ])).await?;
     }
-    _ => { /* cloud — no env override */ }
+    _ => { /* cloud — single client, no env override */ }
 }
-let client = Client::start(...).await?;
 ```
 
-`engine` change is **restart-required** (the spawned CLI captures env at boot). UI restart-banner shadow set extends with `["engine", "provider_base_url", "provider_model", "provider_offline"]`.
+`engine` change is **restart-required** (CLIs capture env at boot). UI restart-banner shadow set extends with `["engine", "provider_base_url", "provider_text_model", "provider_vision_model", "provider_offline"]`.
 
 ### Phase 2 — Onboarding wizard rework
 
@@ -204,6 +220,35 @@ Both options show **hardware warning** if `sysctl -n hw.memsize` returns < 32 GB
 #### Step 5: Done
 
 Same as current.
+
+### Phase 5 — Resurrect download flow for Ollama + models
+
+Bring back (simplified) the pre-pivot infrastructure. From the `main` branch:
+- `BoBeService/src/binary_manager/{mod,download,extract}.rs` — ~460 lines, downloads Ollama from official release with SHA verification + progress events
+- `BoBeService/src/services/ollama_runtime_service.rs` — coordinates download + spawn lifecycle
+- `BoBeService/src/llm/ollama_manager.rs` — `ensure_daemon_running`, `ollama pull` orchestration
+- `BoBeMacUI/BoBe/Views/Setup/SetupWizardProgressViews.swift` — download progress UI
+
+What changes vs. the old version:
+- Drop the LLM-provider abstraction entirely — Ollama is the only target. No Azure / OpenAI / llama.cpp branches.
+- BoBe doesn't proxy Ollama HTTP calls — daemon's only job is "is the runtime ready, are the models pulled, are env vars wired into the Copilot CLI". Once those are true, BoBe is out of the request path.
+- Pull both models concurrently with progress events (`text_progress` + `vision_progress`), not sequentially.
+- Skip download entirely if `127.0.0.1:11434` is already responding (user has their own Ollama).
+
+API for the wizard:
+- `POST /local-runtime/install` → starts download, returns immediately
+- `GET /local-runtime/status` (SSE) → streams `{stage: "ollama"|"text-model"|"vision-model", percent, bytes_done, bytes_total}` events
+- `POST /local-runtime/cancel` → aborts an in-flight download
+
+Wizard subscribes to the SSE stream, renders three stacked progress bars. On completion, settings are updated with the model names and `engine: "local"` and the wizard advances.
+
+Defaults (subject to refinement):
+- Text model: `qwen2.5:7b-instruct` (~5 GB Q4_K_M)
+- Vision model: `qwen2.5-vl:7b` (~5 GB Q4_K_M)
+- Total first-run download: ~250 MB Ollama binary + ~10 GB models = ~10.25 GB
+- Hardware floor: warn if `sysctl hw.memsize` returns < 16 GB; recommend 32 GB+
+
+If user already has Ollama running, only the missing models pulled (BoBe checks `GET /api/tags` before issuing pulls).
 
 ### Phase 3 — Settings adds an Engine section
 
