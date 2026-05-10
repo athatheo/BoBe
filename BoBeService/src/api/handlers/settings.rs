@@ -21,6 +21,12 @@ pub(crate) struct SettingsResponse {
     pub(crate) conversation_auto_close_minutes: u64,
     pub(crate) goal_check_interval_seconds: f64,
     pub(crate) mcp_enabled: bool,
+    /// "copilot_cloud" (default) or "local". Restart-required.
+    pub(crate) engine: String,
+    pub(crate) provider_base_url: Option<String>,
+    pub(crate) provider_text_model: Option<String>,
+    pub(crate) provider_vision_model: Option<String>,
+    pub(crate) provider_offline: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +40,11 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) conversation_auto_close_minutes: Option<u64>,
     pub(crate) goal_check_interval_seconds: Option<f64>,
     pub(crate) mcp_enabled: Option<bool>,
+    pub(crate) engine: Option<String>,
+    pub(crate) provider_base_url: Option<String>,
+    pub(crate) provider_text_model: Option<String>,
+    pub(crate) provider_vision_model: Option<String>,
+    pub(crate) provider_offline: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +70,11 @@ pub(crate) async fn get_settings(
         conversation_auto_close_minutes: cfg.conversation.auto_close_minutes,
         goal_check_interval_seconds: cfg.goals.check_interval_seconds,
         mcp_enabled: cfg.mcp.enabled,
+        engine: cfg.engine.engine.clone(),
+        provider_base_url: cfg.engine.provider_base_url.clone(),
+        provider_text_model: cfg.engine.provider_text_model.clone(),
+        provider_vision_model: cfg.engine.provider_vision_model.clone(),
+        provider_offline: cfg.engine.provider_offline,
     }))
 }
 
@@ -86,6 +102,11 @@ pub(crate) async fn update_settings(
     collect_opt!(conversation_auto_close_minutes);
     collect_opt!(goal_check_interval_seconds);
     collect_opt!(mcp_enabled);
+    collect_opt!(engine);
+    collect_opt!(provider_base_url);
+    collect_opt!(provider_text_model);
+    collect_opt!(provider_vision_model);
+    collect_opt!(provider_offline);
 
     if let Some(ref v) = body.checkin_times {
         changes.insert(

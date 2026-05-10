@@ -21,6 +21,14 @@ static STATIC_FIELDS: &[&str] = &[
     "database.url",
     "server.mdns_enabled",
     "logging.file",
+    // Engine choice + provider config — Copilot CLI subprocess captures
+    // COPILOT_PROVIDER_* env vars at spawn time, so changing any of these
+    // requires daemon restart for the CLI to pick up new values.
+    "engine.engine",
+    "engine.provider_base_url",
+    "engine.provider_text_model",
+    "engine.provider_vision_model",
+    "engine.provider_offline",
 ];
 
 /// Fields safe to swap at runtime via `fields::apply`.

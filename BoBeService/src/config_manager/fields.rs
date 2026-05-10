@@ -80,6 +80,21 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
                 set_parsed!(config.goals.check_interval_seconds, value, k);
             }
 
+            // ── Engine / provider ─────────────────────────────────────
+            "engine.engine" => set_parsed!(config.engine.engine, value, k),
+            "engine.provider_base_url" => {
+                set_parsed!(config.engine.provider_base_url, value, k);
+            }
+            "engine.provider_text_model" => {
+                set_parsed!(config.engine.provider_text_model, value, k);
+            }
+            "engine.provider_vision_model" => {
+                set_parsed!(config.engine.provider_vision_model, value, k);
+            }
+            "engine.provider_offline" => {
+                set_parsed!(config.engine.provider_offline, value, k);
+            }
+
             // ── Top-level ─────────────────────────────────────────────
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
 
@@ -123,6 +138,11 @@ fn normalize_key(key: &str) -> String {
         "mcp_blocked_commands" => "mcp.blocked_commands",
         "mcp_dangerous_env_keys" => "mcp.dangerous_env_keys",
         "goal_check_interval_seconds" => "goals.check_interval_seconds",
+        "engine" => "engine.engine",
+        "provider_base_url" => "engine.provider_base_url",
+        "provider_text_model" => "engine.provider_text_model",
+        "provider_vision_model" => "engine.provider_vision_model",
+        "provider_offline" => "engine.provider_offline",
         other => other,
     }
     .to_string()

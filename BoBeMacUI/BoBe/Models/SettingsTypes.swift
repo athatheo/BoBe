@@ -2,11 +2,11 @@ import Foundation
 
 // MARK: - Settings
 
-/// Mirrors the daemon's `/settings` GET response. The daemon settings
-/// surface is intentionally narrow post-Copilot-SDK pivot: capture
-/// cadence, check-in scheduling, conversation timing, goal evaluation
-/// cadence, MCP toggle. LLM provider choice is delegated to Copilot
-/// CLI and lives outside the daemon.
+/// Mirrors the daemon's `/settings` GET response. Capture/checkin/
+/// conversation/goal-cadence/mcp are the runtime knobs; the engine
+/// section selects whether the Copilot CLI subprocess drives GitHub
+/// Copilot's cloud or a user-managed local OpenAI-compat server
+/// (typically a managed Ollama).
 struct DaemonSettings: Codable, Sendable {
     var captureEnabled: Bool
     var captureIntervalSeconds: Int
@@ -17,6 +17,12 @@ struct DaemonSettings: Codable, Sendable {
     var conversationAutoCloseMinutes: Int
     var goalCheckIntervalSeconds: Double
     var mcpEnabled: Bool
+    /// "copilot_cloud" (default) or "local". Restart-required.
+    var engine: String
+    var providerBaseUrl: String?
+    var providerTextModel: String?
+    var providerVisionModel: String?
+    var providerOffline: Bool
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -28,6 +34,11 @@ struct DaemonSettings: Codable, Sendable {
         case conversationAutoCloseMinutes = "conversation_auto_close_minutes"
         case goalCheckIntervalSeconds = "goal_check_interval_seconds"
         case mcpEnabled = "mcp_enabled"
+        case engine
+        case providerBaseUrl = "provider_base_url"
+        case providerTextModel = "provider_text_model"
+        case providerVisionModel = "provider_vision_model"
+        case providerOffline = "provider_offline"
     }
 }
 
@@ -43,6 +54,11 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var conversationAutoCloseMinutes: Int?
     var goalCheckIntervalSeconds: Double?
     var mcpEnabled: Bool?
+    var engine: String?
+    var providerBaseUrl: String?
+    var providerTextModel: String?
+    var providerVisionModel: String?
+    var providerOffline: Bool?
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -54,6 +70,11 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case conversationAutoCloseMinutes = "conversation_auto_close_minutes"
         case goalCheckIntervalSeconds = "goal_check_interval_seconds"
         case mcpEnabled = "mcp_enabled"
+        case engine
+        case providerBaseUrl = "provider_base_url"
+        case providerTextModel = "provider_text_model"
+        case providerVisionModel = "provider_vision_model"
+        case providerOffline = "provider_offline"
     }
 }
 

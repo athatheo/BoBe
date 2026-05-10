@@ -180,6 +180,48 @@ impl Default for GoalsConfig {
     }
 }
 
+/// Engine + LLM provider configuration. Determines whether the daemon
+/// drives Copilot CLI against GitHub Copilot's cloud (default) or against
+/// a local OpenAI-compatible server (typically a managed Ollama).
+///
+/// In local mode the daemon spawns two Copilot CLI subprocesses, each
+/// pinned to a different `COPILOT_MODEL` (text + vision) since BYOK
+/// fixes the model at process spawn. Both clients point at the same
+/// `COPILOT_PROVIDER_BASE_URL`; Ollama routes by `model` field.
+///
+/// Engine + provider fields are restart-required — the spawned CLI
+/// captures env at boot.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub(crate) struct EngineConfig {
+    /// `"copilot_cloud"` (default) drives GitHub-hosted Copilot models.
+    /// `"local"` drives a user-managed OpenAI-compat server.
+    pub(crate) engine: String,
+    /// Local-mode provider URL, e.g. `http://127.0.0.1:11434/v1`. Ignored
+    /// in cloud mode.
+    pub(crate) provider_base_url: Option<String>,
+    /// Local-mode model for chat / decide / goals / consolidate workers.
+    pub(crate) provider_text_model: Option<String>,
+    /// Local-mode model for the vision worker (capture pipeline).
+    pub(crate) provider_vision_model: Option<String>,
+    /// Local-mode flag — sets `COPILOT_OFFLINE=true` to suppress GitHub
+    /// telemetry/metadata calls. Default true for local; ignored in
+    /// cloud mode.
+    pub(crate) provider_offline: bool,
+}
+
+impl Default for EngineConfig {
+    fn default() -> Self {
+        Self {
+            engine: "copilot_cloud".into(),
+            provider_base_url: None,
+            provider_text_model: None,
+            provider_vision_model: None,
+            provider_offline: true,
+        }
+    }
+}
+
 /// Application configuration. Layered: defaults → config.toml → BOBE_* env vars.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -199,6 +241,7 @@ pub(crate) struct Config {
     pub(crate) decision: DecisionConfig,
     pub(crate) mcp: McpConfig,
     pub(crate) goals: GoalsConfig,
+    pub(crate) engine: EngineConfig,
 
     pub(crate) seed_default_documents: bool,
 }
