@@ -448,6 +448,28 @@ struct EnginePanel: View {
 
     private func openSignInTerminal() {
         CopilotSignIn.openLogin(cliPath: self.auth?.cliPath)
+        // Same pattern as the wizard: once we hand off to Terminal,
+        // poll /auth/status in the background so the pane auto-refreshes
+        // when the user finishes signing in.
+        self.startAuthPolling()
+    }
+
+    private func startAuthPolling() {
+        Task { @MainActor in
+            let interval = Duration.seconds(2)
+            let deadline = ContinuousClock.now + .seconds(300)
+            while !Task.isCancelled, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: interval)
+                if Task.isCancelled { break }
+                do {
+                    let resp = try await DaemonClient.shared.getAuthStatus()
+                    self.auth = resp
+                    if resp.isAuthenticated { return }
+                } catch {
+                    // Transient — keep polling.
+                }
+            }
+        }
     }
 }
 

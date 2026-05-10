@@ -406,6 +406,15 @@ impl WorkerRegistry {
             if class == WorkerClass::Chat && !self.mcp_servers.is_empty() {
                 cfg.mcp_servers = Some(self.mcp_servers.clone());
             }
+            // Autopilot classes (Goals/Decide/Consolidate/Vision) run
+            // without a user present — the `ask_user` tool would
+            // deadlock them waiting for input that's never coming.
+            // Disabling it maps to the CLI's `--no-ask-user` flag.
+            // Chat keeps the default (Some(true)) so the model can
+            // ask clarifying questions mid-turn when needed.
+            if class != WorkerClass::Chat {
+                cfg = cfg.with_request_user_input(false);
+            }
             // Per-class model + provider from EngineConfig snapshot.
             if let Some(m) = class_model.clone() {
                 cfg = cfg.with_model(m);
@@ -428,6 +437,13 @@ impl WorkerRegistry {
             }
             if class == WorkerClass::Chat && !self.mcp_servers.is_empty() {
                 resume_cfg.mcp_servers = Some(self.mcp_servers.clone());
+            }
+            // Same `request_user_input` policy as the create path —
+            // autopilot classes have no user to ask. Has to be set on
+            // resume too because session params don't carry across the
+            // disconnect/resume boundary.
+            if class != WorkerClass::Chat {
+                resume_cfg.request_user_input = Some(false);
             }
             // `ResumeSessionConfig` exposes `provider` but not `model` — the
             // model is locked to whatever the session was created with. If

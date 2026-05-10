@@ -310,6 +310,7 @@ struct CloudAuthStepView: View {
     let onContinue: () -> Void
 
     @State private var state: CloudAuthState = .checking
+    @State private var pollTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -334,6 +335,7 @@ struct CloudAuthStepView: View {
             self.actionRow
         }
         .task { await self.refresh() }
+        .onDisappear { self.pollTask?.cancel() }
     }
 
     @ViewBuilder
@@ -417,6 +419,11 @@ struct CloudAuthStepView: View {
             VStack(spacing: 8) {
                 Button(L10n.tr("setup.cloud_auth.open_terminal")) {
                     CopilotSignIn.openLogin(cliPath: cliPath)
+                    // Once we hand the user off to Terminal, start
+                    // polling /auth/status in the background so the
+                    // wizard auto-advances when they finish — no need
+                    // to come back and click "Check again."
+                    self.startAuthPolling()
                 }
                 .bobeButton(.primary, size: .regular)
                 Button(L10n.tr("setup.cloud_auth.retry")) {
@@ -453,6 +460,7 @@ struct CloudAuthStepView: View {
             let resp = try await DaemonClient.shared.getAuthStatus()
             await MainActor.run {
                 if resp.isAuthenticated {
+                    self.pollTask?.cancel()
                     self.state = .authenticated(login: resp.login, authType: resp.authType)
                 } else {
                     self.state = .unauthenticated(message: resp.statusMessage, cliPath: resp.cliPath)
@@ -461,6 +469,36 @@ struct CloudAuthStepView: View {
         } catch {
             await MainActor.run {
                 self.state = .error(message: error.localizedDescription)
+            }
+        }
+    }
+
+    /// Polls `/auth/status` every 2s after the user starts the device
+    /// flow in Terminal, advancing automatically once
+    /// `is_authenticated` flips. SDK doesn't expose a `login()` /
+    /// `poll_for_token()` method, but we don't need one — the CLI
+    /// persists the token to keychain as soon as the user completes
+    /// the flow, and `get_auth_status` reads that. Capped at 5 minutes
+    /// so a forgotten Terminal window doesn't poll forever.
+    private func startAuthPolling() {
+        self.pollTask?.cancel()
+        self.pollTask = Task { @MainActor in
+            let interval = Duration.seconds(2)
+            let deadline = ContinuousClock.now + .seconds(300)
+            while !Task.isCancelled, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: interval)
+                if Task.isCancelled { break }
+                do {
+                    let resp = try await DaemonClient.shared.getAuthStatus()
+                    if resp.isAuthenticated {
+                        self.state = .authenticated(login: resp.login, authType: resp.authType)
+                        return
+                    }
+                } catch {
+                    // Transient errors during polling are expected (the
+                    // CLI may briefly be unresponsive while completing
+                    // the flow). Keep polling until the deadline.
+                }
             }
         }
     }
