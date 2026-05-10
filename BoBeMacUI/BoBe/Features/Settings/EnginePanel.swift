@@ -15,6 +15,7 @@ struct EnginePanel: View {
     @State private var settings: DaemonSettings?
     @State private var auth: AuthStatusResponse?
     @State private var availableModels: [ModelInfo] = []
+    @State private var modelsHint: String?
     @State private var isLoading = false
     @State private var error: String?
     @State private var savedMessage: String?
@@ -49,9 +50,7 @@ struct EnginePanel: View {
                         self.localProviderSection
                     }
                     self.modelsSection
-                    if self.currentEngine == "local" {
-                        self.offlineSection
-                    }
+                    self.offlineSection
                 } else if self.isLoading {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
@@ -179,6 +178,21 @@ struct EnginePanel: View {
             description: L10n.tr("settings.engine.models.description")
         ) {
             VStack(alignment: .leading, spacing: 12) {
+                if let hint = self.modelsHint {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(self.theme.colors.tertiary)
+                        Text(hint)
+                            .font(.system(size: 11))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(self.theme.colors.tertiary.opacity(0.08))
+                    )
+                }
                 self.modelDropdown(
                     label: L10n.tr("settings.engine.models.chat"),
                     description: L10n.tr("settings.engine.models.chat.description"),
@@ -218,10 +232,21 @@ struct EnginePanel: View {
         }
 
         let binding = Binding<String>(
-            get: { self.settings?[keyPath: keyPath] ?? "—" },
+            get: {
+                let raw = self.settings?[keyPath: keyPath]
+                // Server may return `nil` (never set) or `""` (cleared
+                // via the empty-string sentinel) — both render as `—`.
+                if let raw, !raw.isEmpty { return raw }
+                return "—"
+            },
             set: { newValue in
                 guard var current = self.settings else { return }
-                current[keyPath: keyPath] = (newValue == "—") ? nil : newValue
+                // Swift's `JSONEncoder` omits `nil` Optional fields by
+                // default — sending `nil` here would silently no-op on
+                // the daemon's PATCH handler. Use empty string as the
+                // clear sentinel; the daemon's `set_opt_string!` macro
+                // normalizes `""` back to `None` in Config.
+                current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
                 self.settings = current
                 self.debounceSave()
             }
@@ -396,16 +421,73 @@ struct EnginePanel: View {
 
     private func loadModels() async {
         self.availableModels = []
+        self.modelsHint = nil
         do {
             let resp = try await DaemonClient.shared.listModels(engine: self.currentEngine)
             self.availableModels = resp.models
+            if resp.models.isEmpty {
+                self.modelsHint = self.currentEngine == "local"
+                    ? L10n.tr("settings.engine.models.local_empty")
+                    : L10n.tr("settings.engine.models.cloud_empty")
+            }
+        } catch let DaemonError.httpError(statusCode, _) where statusCode == 503 {
+            // Expected: Ollama not running yet (local mode without
+            // setup) or Copilot CLI not reachable.
+            self.modelsHint = self.currentEngine == "local"
+                ? L10n.tr("settings.engine.models.local_unavailable")
+                : L10n.tr("settings.engine.models.cloud_unavailable")
         } catch {
-            // 503 means Ollama isn't running yet (local mode without
-            // setup). The dropdowns just stay empty in that case.
+            // Daemon down, parse error, network issue — surface it so
+            // the user knows the dropdowns aren't empty by design.
+            self.modelsHint = String(
+                format: L10n.tr("settings.engine.models.error_format"),
+                error.localizedDescription
+            )
         }
     }
 
     private func openSignInTerminal() {
+        if !CopilotSignIn.ghIsInstalled() {
+            CopilotSignIn.openInstallInstructions()
+            return
+        }
+        CopilotSignIn.openTerminalLogin()
+    }
+}
+
+/// Helpers for kicking off the `gh auth login` flow from Swift. Shared
+/// between the welcome wizard's `CloudAuthStepView` and the Settings →
+/// Engine pane.
+///
+/// The bundled Copilot CLI shares its auth state with the system's `gh`
+/// install (per the BYOK docs: `gh` token → `~/.config/gh/hosts.yml` →
+/// keychain → SDK reads same auth). So "sign in" means "make the user's
+/// `gh` happy" — but if `gh` isn't installed, we have to send them
+/// elsewhere first.
+enum CopilotSignIn {
+    /// Detect whether `gh` is on the user's login-shell PATH. We can't
+    /// rely on the current process's `$PATH` (GUI apps launched from
+    /// Finder don't get the shell's PATH) so we invoke a login shell.
+    static func ghIsInstalled() -> Bool {
+        let process = Process()
+        process.launchPath = "/bin/zsh"
+        process.arguments = ["-l", "-c", "command -v gh"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
+    /// Open Terminal.app and run `gh auth login` so the user can finish
+    /// the OAuth flow there. Idempotent — running it twice just opens a
+    /// second tab.
+    static func openTerminalLogin() {
         let script = """
         tell application "Terminal"
             activate
@@ -416,5 +498,13 @@ struct EnginePanel: View {
         process.launchPath = "/usr/bin/osascript"
         process.arguments = ["-e", script]
         try? process.run()
+    }
+
+    /// Open the `cli.github.com` install page in the user's default
+    /// browser when we can't find `gh` locally.
+    static func openInstallInstructions() {
+        if let url = URL(string: "https://cli.github.com/") {
+            NSWorkspace.shared.open(url)
+        }
     }
 }

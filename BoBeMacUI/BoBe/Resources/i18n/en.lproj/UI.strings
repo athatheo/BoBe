@@ -338,3 +338,8 @@
 "settings.engine.offline.description" = "Skip all telemetry and metadata calls to GitHub.";
 "settings.engine.offline.toggle" = "Strict offline";
 "settings.engine.offline.toggle.description" = "Even in local mode, the bundled CLI normally pings GitHub for sign-in info. Strict offline turns that off.";
+"settings.engine.models.local_empty" = "No local models installed yet. Pull one via `ollama pull <name>` or run setup from the welcome screen.";
+"settings.engine.models.cloud_empty" = "Your subscription doesn't have any models available right now.";
+"settings.engine.models.local_unavailable" = "Ollama isn't running. Start it, or pick cloud mode above.";
+"settings.engine.models.cloud_unavailable" = "GitHub Copilot is unreachable. Check your sign-in or network.";
+"settings.engine.models.error_format" = "Couldn't load models: %@";

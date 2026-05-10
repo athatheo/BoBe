@@ -458,17 +458,16 @@ struct CloudAuthStepView: View {
     /// the user can authenticate. The bundled CLI shares its auth state
     /// with the system `gh` install — once they're logged in there, the
     /// next "Retry check" lands on `.authenticated`.
+    ///
+    /// If `gh` isn't installed (common on fresh macOS), fall back to
+    /// opening cli.github.com so the user can install it first instead
+    /// of getting "command not found" in Terminal.
     private func openSignInTerminal() {
-        let script = """
-        tell application "Terminal"
-            activate
-            do script "gh auth login --scopes copilot"
-        end tell
-        """
-        let process = Process()
-        process.launchPath = "/usr/bin/osascript"
-        process.arguments = ["-e", script]
-        try? process.run()
+        if CopilotSignIn.ghIsInstalled() {
+            CopilotSignIn.openTerminalLogin()
+        } else {
+            CopilotSignIn.openInstallInstructions()
+        }
     }
 }
 
