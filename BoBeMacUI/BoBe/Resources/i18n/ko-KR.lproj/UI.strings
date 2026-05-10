@@ -10,6 +10,7 @@
 "app.service_error.detail_prefix" = "여러 번 시도했지만 백엔드 서비스를 시작하지 못했어요.\n\n";
 "app.service_error.logs_hint" = "로그 위치: ~/.bobe/logs/";
 "app.service_error.title" = "BoBe를 시작할 수 없어요";
+"app.service_warning.database_degraded" = "BoBe's database is unavailable — some features will be limited until the daemon is restarted.";
 
 "overlay.avatar.accessibility_format" = "BoBe 아바타, %@";
 "overlay.avatar.brand_label" = "BoBe";
@@ -184,6 +185,7 @@
 "settings.privacy.storage.title" = "로컬 저장소";
 "settings.shared.action.add_new" = "새로 추가 +";
 "settings.shared.action.discard" = "취소";
+"settings.shared.action.persist_failed" = "Saved in memory but couldn't write to disk — restart BoBe to retry.";
 "settings.shared.action.save" = "저장";
 "settings.shared.action.saving" = "저장 중...";
 "settings.shared.bytes.gb_format" = "%.1f GB";

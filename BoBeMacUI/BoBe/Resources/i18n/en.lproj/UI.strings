@@ -10,6 +10,7 @@
 "app.service_error.detail_prefix" = "The backend service failed to start after multiple attempts.\n\n";
 "app.service_error.logs_hint" = "Logs are in ~/.bobe/logs/";
 "app.service_error.title" = "BoBe couldn't start";
+"app.service_warning.database_degraded" = "BoBe's database is unavailable — some features will be limited until the daemon is restarted.";
 
 "overlay.avatar.accessibility_format" = "BoBe avatar, %@";
 "overlay.avatar.brand_label" = "BoBe";
@@ -196,6 +197,7 @@
 
 "settings.shared.action.add_new" = "Add New +";
 "settings.shared.action.discard" = "Discard";
+"settings.shared.action.persist_failed" = "Saved in memory but couldn't write to disk — restart BoBe to retry.";
 "settings.shared.action.save" = "Save";
 "settings.shared.action.saving" = "Saving...";
 "settings.shared.bytes.gb_format" = "%.1f GB";

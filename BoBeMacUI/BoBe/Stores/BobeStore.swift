@@ -242,6 +242,15 @@ final class BobeStore {
         }
     }
 
+    /// Push a non-fatal warning (e.g. backend degraded subsystem) through
+    /// the same banner channel as transient errors. The user can dismiss
+    /// it via the X button on the overlay error banner.
+    func surfaceWarning(_ message: String) {
+        self.updateState { ctx in
+            ctx.errorMessage = message
+        }
+    }
+
     func toggleCapture() async -> Bool {
         let newState = !self.context.capturing
         do {

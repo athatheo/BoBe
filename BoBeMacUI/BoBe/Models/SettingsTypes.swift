@@ -61,11 +61,16 @@ struct SettingsUpdateResponse: Codable, Sendable {
     let message: String
     let appliedFields: [String]
     let restartRequiredFields: [String]
+    /// Daemon flips this to `true` when the in-memory swap succeeded but
+    /// writing to ~/.bobe/config.toml failed. Settings are live for this
+    /// session but won't survive a restart — surface to the user.
+    var persistFailed: Bool?
 
     enum CodingKeys: String, CodingKey {
         case message
         case appliedFields = "applied_fields"
         case restartRequiredFields = "restart_required_fields"
+        case persistFailed = "persist_failed"
     }
 }
 

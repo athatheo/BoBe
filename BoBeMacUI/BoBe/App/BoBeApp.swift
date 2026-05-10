@@ -175,6 +175,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("Dev mode: skipping service management (run `bobe serve` manually)")
         }
 
+        // After backend is healthy, surface any non-fatal startup warning
+        // (e.g. degraded database) into the store before connecting SSE.
+        if let warning = await BackendService.shared.startupWarning {
+            self.store.surfaceWarning(warning)
+        }
+
         if SetupWindowManager.shared.isOnboardingCompleted {
             self.showOverlay()
             self.store.connect()

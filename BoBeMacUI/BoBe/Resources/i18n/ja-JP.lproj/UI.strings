@@ -10,6 +10,7 @@
 "app.service_error.detail_prefix" = "バックエンドサービスの起動に複数回失敗しました。\n\n";
 "app.service_error.logs_hint" = "ログは ~/.bobe/logs/ にあります。";
 "app.service_error.title" = "BoBeを起動できませんでした";
+"app.service_warning.database_degraded" = "BoBe's database is unavailable — some features will be limited until the daemon is restarted.";
 
 "overlay.avatar.accessibility_format" = "BoBeアバター、%@";
 "overlay.avatar.brand_label" = "BoBe";
@@ -184,6 +185,7 @@
 "settings.privacy.storage.title" = "ローカルストレージ";
 "settings.shared.action.add_new" = "新規追加 +";
 "settings.shared.action.discard" = "破棄";
+"settings.shared.action.persist_failed" = "Saved in memory but couldn't write to disk — restart BoBe to retry.";
 "settings.shared.action.save" = "保存";
 "settings.shared.action.saving" = "保存中...";
 "settings.shared.bytes.gb_format" = "%.1f GB";

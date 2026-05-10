@@ -6,8 +6,10 @@ struct BehaviorPanel: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var error: String?
+    @State private var savedMessage: String?
     @State private var newCheckinTime = ""
     @State private var saveTask: Task<Void, Never>?
+    @State private var savedToastTask: Task<Void, Never>?
     @State private var restartFields: Set<String> = []
     @State private var bannerDismissed = false
     @Environment(\.theme) private var theme
@@ -46,6 +48,18 @@ struct BehaviorPanel: View {
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.primary.opacity(0.08)))
+                }
+
+                if let savedMessage {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(self.theme.colors.secondary)
+                        Text(savedMessage)
+                            .font(.system(size: 11))
+                            .foregroundStyle(self.theme.colors.secondary)
+                        Spacer()
+                    }
+                    .transition(.opacity)
                 }
 
                 if self.settings != nil {
@@ -213,12 +227,33 @@ struct BehaviorPanel: View {
                 req.conversationAutoCloseMinutes = currentSettings.conversationAutoCloseMinutes
 
                 let resp = try await DaemonClient.shared.updateSettings(req)
-                self.error = nil
-                self.applyRestartFields(touched: touchedFields, response: resp)
+                self.applySaveResponse(touched: touchedFields, response: resp)
             } catch {
                 self.error = error.localizedDescription
+                self.savedMessage = nil
             }
             self.isSaving = false
+        }
+    }
+
+    private func applySaveResponse(touched: Set<String>, response: SettingsUpdateResponse) {
+        if response.persistFailed == true {
+            self.error = L10n.tr("settings.shared.action.persist_failed")
+            self.savedMessage = nil
+        } else {
+            self.error = nil
+            self.savedMessage = response.message
+            self.scheduleSavedToastDismiss()
+        }
+        self.applyRestartFields(touched: touched, response: response)
+    }
+
+    private func scheduleSavedToastDismiss() {
+        self.savedToastTask?.cancel()
+        self.savedToastTask = Task {
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !Task.isCancelled else { return }
+            self.savedMessage = nil
         }
     }
 
