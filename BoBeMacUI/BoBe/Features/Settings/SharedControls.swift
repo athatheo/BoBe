@@ -190,10 +190,34 @@ struct CollapsibleSection<Content: View>: View {
     let icon: String
     var description: String?
     var toggleBinding: Binding<Bool>?
+    /// When true, renders an "AI-curated" badge in the section header.
+    /// Used by Goals editor for sections that the chat agent edits via
+    /// SDK file ops (read-only via API).
+    var aiCuratedBadge = false
+    var initiallyExpanded = true
     @ViewBuilder let content: Content
 
-    @State private var isExpanded = true
+    @State private var isExpanded: Bool
     @Environment(\.theme) private var theme
+
+    init(
+        title: String,
+        icon: String,
+        description: String? = nil,
+        toggleBinding: Binding<Bool>? = nil,
+        aiCuratedBadge: Bool = false,
+        initiallyExpanded: Bool = true,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.icon = icon
+        self.description = description
+        self.toggleBinding = toggleBinding
+        self.aiCuratedBadge = aiCuratedBadge
+        self.initiallyExpanded = initiallyExpanded
+        self.content = content()
+        self._isExpanded = State(initialValue: initiallyExpanded)
+    }
 
     var body: some View {
         DisclosureGroup(isExpanded: self.$isExpanded) {
@@ -217,9 +241,24 @@ struct CollapsibleSection<Content: View>: View {
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(self.title)
-                        .bobeTextStyle(.heading)
-                        .foregroundStyle(self.theme.colors.text)
+                    HStack(spacing: 6) {
+                        Text(self.title)
+                            .bobeTextStyle(.heading)
+                            .foregroundStyle(self.theme.colors.text)
+                        if self.aiCuratedBadge {
+                            Text(L10n.tr("settings.goals.section.ai_curated_badge"))
+                                .bobeTextStyle(.badge)
+                                .foregroundStyle(self.theme.colors.tertiary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(
+                                    Capsule().fill(self.theme.colors.tertiary.opacity(0.15))
+                                )
+                                .overlay(
+                                    Capsule().stroke(self.theme.colors.tertiary.opacity(0.4), lineWidth: 0.5)
+                                )
+                        }
+                    }
                     if let description {
                         Text(description)
                             .font(.system(size: 11))

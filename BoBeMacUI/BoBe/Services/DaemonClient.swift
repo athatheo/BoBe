@@ -261,8 +261,16 @@ actor DaemonClient {
 
     // MARK: - Goals
 
-    func listGoals() async throws -> GoalListResponse {
-        try await self.fetch("/goals")
+    func listGoals(status: GoalStatus? = nil, includeArchived: Bool = false) async throws -> GoalListResponse {
+        var query: [String] = []
+        if let status, status != .unknown {
+            query.append("status=\(status.rawValue)")
+        }
+        if includeArchived {
+            query.append("include_archived=true")
+        }
+        let suffix = query.isEmpty ? "" : "?" + query.joined(separator: "&")
+        return try await self.fetch("/goals\(suffix)")
     }
 
     func createGoal(_ request: GoalCreateRequest) async throws -> Goal {
@@ -336,5 +344,4 @@ actor DaemonClient {
     func disableUserProfile(_ id: String) async throws -> UserProfileActionResponse {
         try await self.fetch("/user-profiles/\(id)/disable", method: "POST")
     }
-
 }
