@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 mod api;
 mod app_state;
+mod binary_manager;
 mod bootstrap;
 mod config;
 mod config_manager;

@@ -125,6 +125,10 @@ tower = { version = "0.5.3", features = ["timeout", "limit"] }
 # rustls-tls keeps us off OpenSSL; `stream` lets us consume responses
 # incrementally for the download path.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+# Archive handling for the Ollama install path (Phase 5a). The
+# `ollama-darwin.tgz` release tarball ships gzip-compressed.
+flate2 = "1.0"
+tar = "0.4"
 # Official GitHub Copilot SDK (Rust). Programmatic Copilot CLI control via
 # JSON-RPC over stdio. Spawns + manages the CLI process per Client. We use one
 # shared Client across the daemon and create one Session per worker class.
