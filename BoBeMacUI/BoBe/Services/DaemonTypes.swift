@@ -129,3 +129,127 @@ struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
         case contextWindow = "context_window"
     }
 }
+
+// MARK: - Local-runtime install DTOs
+
+extension DaemonClient {
+    /// Kicks off the wizard's local-mode install: ensures Ollama is
+    /// running (downloading the runtime if needed), pulls each model.
+    /// Returns 202 immediately; the wizard listens on
+    /// `streamLocalRuntimeStatus()` for progress.
+    @discardableResult
+    func startLocalRuntimeInstall(_ request: LocalRuntimeInstallRequest) async throws -> LocalRuntimeMessageResponse {
+        try await fetch("/local-runtime/install", method: "POST", body: request)
+    }
+
+    /// Signals the daemon to abort an in-flight install. Snapshot stream
+    /// will emit `status: "canceled"` shortly after.
+    @discardableResult
+    func cancelLocalRuntimeInstall() async throws -> LocalRuntimeMessageResponse {
+        try await fetch("/local-runtime/cancel", method: "POST")
+    }
+
+    /// Open an SSE connection to `/local-runtime/status`, call
+    /// `onSnapshot` for each parsed event. Returns when a terminal
+    /// status arrives (`complete` / `canceled` / `failed`) or when the
+    /// caller's `Task` is cancelled.
+    func streamLocalRuntimeStatus(
+        onSnapshot: @Sendable @escaping (LocalRuntimeSnapshot) -> Void
+    ) async throws {
+        let url = self.endpointURL("local-runtime/status")
+        var request = URLRequest(url: url)
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 0
+
+        let (bytes, response) = try await self.session.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200
+        else {
+            throw DaemonError.invalidResponse
+        }
+
+        let decoder = JSONDecoder()
+        for try await line in bytes.lines {
+            if Task.isCancelled { break }
+            guard line.hasPrefix("data: ") else { continue }
+            let jsonStr = String(line.dropFirst(6))
+            guard let data = jsonStr.data(using: .utf8) else { continue }
+            do {
+                let snapshot = try decoder.decode(LocalRuntimeSnapshot.self, from: data)
+                onSnapshot(snapshot)
+                if ["complete", "canceled", "failed"].contains(snapshot.status) {
+                    break
+                }
+            } catch {
+                continue
+            }
+        }
+    }
+}
+
+struct LocalRuntimeInstallRequest: Codable, Sendable {
+    let chatModel: String
+    let batchModel: String
+    let visionModel: String
+
+    enum CodingKeys: String, CodingKey {
+        case chatModel = "chat_model"
+        case batchModel = "batch_model"
+        case visionModel = "vision_model"
+    }
+}
+
+struct LocalRuntimeMessageResponse: Codable, Sendable {
+    let message: String
+}
+
+/// Snapshot the daemon emits on the install-status SSE stream. UI binds
+/// progress bars to `runtime.percent`, `chatModel.percent`, etc.
+struct LocalRuntimeSnapshot: Codable, Sendable {
+    /// `"idle"`, `"running"`, `"complete"`, `"canceled"`, or `"failed"`.
+    let status: String
+    /// Set when `status == "failed"`.
+    let error: String?
+    let runtime: LocalRuntimeDownload
+    let chatModel: LocalRuntimePull
+    let batchModel: LocalRuntimePull
+    let visionModel: LocalRuntimePull
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case error
+        case runtime
+        case chatModel = "chat_model"
+        case batchModel = "batch_model"
+        case visionModel = "vision_model"
+    }
+}
+
+struct LocalRuntimeDownload: Codable, Sendable {
+    let currentBytes: UInt64
+    let totalBytes: UInt64?
+    let percent: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case currentBytes = "current_bytes"
+        case totalBytes = "total_bytes"
+        case percent
+    }
+}
+
+struct LocalRuntimePull: Codable, Sendable {
+    /// Phase string from Ollama (`"pulling manifest"`, `"downloading"`,
+    /// `"verifying sha256 digest"`, `"writing manifest"`, `"success"`)
+    /// or our own (`"already installed"`, `"skipped (same as chat)"`).
+    let status: String
+    let completedBytes: UInt64?
+    let totalBytes: UInt64?
+    let percent: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case completedBytes = "completed_bytes"
+        case totalBytes = "total_bytes"
+        case percent
+    }
+}

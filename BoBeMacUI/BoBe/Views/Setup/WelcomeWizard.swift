@@ -1,43 +1,49 @@
 import AppKit
 import SwiftUI
 
-enum WelcomeStep: CaseIterable {
+/// Steps the wizard can land on. The set is fixed but the *path* depends
+/// on the user's engine choice — cloud users see `cloudAuth`, local users
+/// see `localSetup`. `progressOrdinal` collapses both branches to a
+/// single 0..4 axis for the progress dots.
+enum WelcomeStep: Hashable {
     case welcome
     case engineChoice
+    case cloudAuth
+    case localSetup
     case permissions
     case done
 
-    var index: Int {
-        Self.allCases.firstIndex(of: self) ?? 0
+    /// 0..4 — used to color the progress dots. Both `cloudAuth` and
+    /// `localSetup` map to position 2 since they're the engine-specific
+    /// step.
+    var progressOrdinal: Int {
+        switch self {
+        case .welcome: 0
+        case .engineChoice: 1
+        case .cloudAuth, .localSetup: 2
+        case .permissions: 3
+        case .done: 4
+        }
     }
 }
 
-/// User's selection in the engine-choice step. Persisted to UserDefaults
-/// so the daemon can read it on next start. Daemon-side wiring lands in
-/// the Phase 1 commit (see ENGINE_PROVIDER_NOTES.md); for now we just
-/// record the user's choice here.
-enum EngineChoice: String {
+/// User's selection in the engine-choice step. Held in wizard `@State`
+/// during the flow; applied to the daemon (`PATCH /settings`) on the
+/// Done step. No UserDefaults persistence — `Config.engine` on disk is
+/// the source of truth once the wizard finishes.
+enum EngineChoice: String, Sendable {
     case copilot
     case local
-
-    static let userDefaultsKey = "bobe.engine_choice"
-
-    static var current: EngineChoice? {
-        UserDefaults.standard.string(forKey: Self.userDefaultsKey)
-            .flatMap { EngineChoice(rawValue: $0) }
-    }
-
-    func persist() {
-        UserDefaults.standard.set(self.rawValue, forKey: Self.userDefaultsKey)
-    }
 }
 
 struct WelcomeWizard: View {
     let onComplete: () -> Void
 
     @State private var currentStep: WelcomeStep = .welcome
+    @State private var engineChoice: EngineChoice?
     @Environment(\.theme) private var theme
     private let themeStore = ThemeStore.shared
+    private let totalSteps = 5
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,11 +56,17 @@ struct WelcomeWizard: View {
                 case .welcome:
                     WelcomeStepView(onContinue: { self.advance() })
                 case .engineChoice:
-                    EngineChoiceStepView(onContinue: { self.advance() })
+                    EngineChoiceStepView(selection: self.$engineChoice) {
+                        self.advance()
+                    }
+                case .cloudAuth:
+                    CloudAuthStepView(onContinue: { self.advance() })
+                case .localSetup:
+                    LocalSetupStepView(onContinue: { self.advance() })
                 case .permissions:
                     PermissionsStepView(onContinue: { self.advance() })
                 case .done:
-                    DoneStepView(onLaunch: self.onComplete)
+                    DoneStepView(engineChoice: self.engineChoice, onLaunch: self.onComplete)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -69,27 +81,32 @@ struct WelcomeWizard: View {
 
     private var progressIndicator: some View {
         HStack(spacing: 6) {
-            ForEach(WelcomeStep.allCases, id: \.self) { step in
+            ForEach(0..<self.totalSteps, id: \.self) { idx in
                 Capsule()
-                    .fill(self.color(for: step))
+                    .fill(idx <= self.currentStep.progressOrdinal
+                        ? self.theme.colors.primary
+                        : self.theme.colors.border.opacity(0.6))
                     .frame(height: 4)
             }
         }
     }
 
-    private func color(for step: WelcomeStep) -> Color {
-        if step.index <= self.currentStep.index {
-            return self.theme.colors.primary
-        }
-        return self.theme.colors.border.opacity(0.6)
-    }
-
+    /// State machine for step transitions. Branches at engineChoice and
+    /// reconverges at permissions.
     private func advance() {
-        let allCases = WelcomeStep.allCases
-        let currentIdx = self.currentStep.index
-        let nextIdx = currentIdx + 1
-        if nextIdx < allCases.count {
-            self.currentStep = allCases[nextIdx]
+        let next: WelcomeStep
+        switch self.currentStep {
+        case .welcome:
+            next = .engineChoice
+        case .engineChoice:
+            next = self.engineChoice == .local ? .localSetup : .cloudAuth
+        case .cloudAuth, .localSetup:
+            next = .permissions
+        case .permissions:
+            next = .done
+        case .done:
+            return
         }
+        self.currentStep = next
     }
 }
