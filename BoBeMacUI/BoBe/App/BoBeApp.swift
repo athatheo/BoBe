@@ -78,8 +78,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.trayManager.setup()
         UpdaterManager.shared.setup()
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWelcomeCompleted),
+            name: .bobeWelcomeCompleted,
+            object: nil
+        )
+
         Task { @MainActor in
             await self.startApp()
+        }
+    }
+
+    @objc
+    private func handleWelcomeCompleted() {
+        Task { @MainActor in
+            SetupWindowManager.shared.close()
+            self.showOverlay()
+            self.store.connect()
         }
     }
 
@@ -159,8 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("Dev mode: skipping service management (run `bobe serve` manually)")
         }
 
-        self.showOverlay()
-        self.store.connect()
+        if SetupWindowManager.shared.isOnboardingCompleted {
+            self.showOverlay()
+            self.store.connect()
+        } else {
+            SetupWindowManager.shared.show()
+            // store.connect() defers until handleWelcomeCompleted observer fires
+        }
     }
 
     @MainActor
