@@ -65,10 +65,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::souls::list_souls).post(handlers::souls::create_soul),
         )
         .route(
-            "/souls/by-name/{name}",
-            get(handlers::souls::get_soul_by_name),
-        )
-        .route(
             "/souls/{soul_id}",
             get(handlers::souls::get_soul)
                 .patch(handlers::souls::update_soul)
@@ -86,10 +82,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/user-profiles",
             get(handlers::user_profile::list_profiles)
                 .post(handlers::user_profile::create_profile),
-        )
-        .route(
-            "/user-profiles/by-name/{name}",
-            get(handlers::user_profile::get_profile_by_name),
         )
         .route(
             "/user-profiles/{profile_id}",

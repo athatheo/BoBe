@@ -16,7 +16,7 @@ use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinTrigger, GoalTrigger};
 use crate::services::conversation_service::ConversationService;
 use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::types::{EventType, IndicatorType, StreamBundle};
+use crate::util::sse::types::IndicatorType;
 
 pub(crate) struct RuntimeSession {
     checkin_trigger: Mutex<CheckinTrigger>,
@@ -293,16 +293,9 @@ impl RuntimeSession {
 
     fn push_error_event(&self, trigger: &str, message: &str) {
         error!(trigger, message, "runtime_session.trigger_error");
-        self.event_queue.push(StreamBundle {
-            event_type: EventType::Error,
-            message_id: uuid::Uuid::new_v4().to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            description: format!("{trigger} error"),
-            payload: serde_json::json!({
-                "trigger": trigger,
-                "message": message,
-                "recoverable": true,
-            }),
-        });
+        self.event_queue
+            .push(crate::util::sse::factories::trigger_error_event(
+                trigger, message, true,
+            ));
     }
 }

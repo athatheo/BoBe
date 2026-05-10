@@ -163,19 +163,6 @@ pub(crate) async fn get_profile(
     Ok(Json(profile_to_response(&profile)))
 }
 
-pub(crate) async fn get_profile_by_name(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-) -> Result<Json<UserProfileResponse>, AppError> {
-    let profile = state
-        .user_profile_repo
-        .get_by_name(&name)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("User profile '{name}' not found")))?;
-
-    Ok(Json(profile_to_response(&profile)))
-}
-
 pub(crate) async fn update_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<UserProfileId>,

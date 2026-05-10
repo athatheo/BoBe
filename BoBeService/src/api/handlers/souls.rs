@@ -219,19 +219,6 @@ pub(crate) async fn update_soul(
     Ok(Json(soul_to_response(&updated)))
 }
 
-pub(crate) async fn get_soul_by_name(
-    State(state): State<Arc<AppState>>,
-    Path(name): Path<String>,
-) -> Result<Json<SoulResponse>, AppError> {
-    let soul = state
-        .soul_repo
-        .get_by_name(&name)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Soul '{name}' not found")))?;
-
-    Ok(Json(soul_to_response(&soul)))
-}
-
 pub(crate) async fn enable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,

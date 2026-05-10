@@ -29,7 +29,7 @@ use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::factories::indicator_event;
+use crate::util::sse::factories::{indicator_event, trigger_error_event};
 use crate::util::sse::types::IndicatorType;
 
 pub(crate) struct CaptureTrigger {
@@ -48,6 +48,11 @@ pub(crate) struct CaptureTrigger {
     /// When the breaker tripped — we suppress new cycles until this
     /// instant + `VISION_FAILURE_COOLDOWN`. Cleared on next success.
     vision_breaker_tripped_at: Option<Instant>,
+    /// Whether we've already pushed the "paused" SSE event to clients.
+    /// Cleared after we've announced "restored" on actual recovery —
+    /// stops us from spamming alternating paused/resumed events when
+    /// vision stays broken across multiple cooldown cycles.
+    vision_pause_announced: bool,
 }
 
 impl CaptureTrigger {
@@ -72,6 +77,7 @@ impl CaptureTrigger {
             context_count: 0,
             vision_failure_count: 0,
             vision_breaker_tripped_at: None,
+            vision_pause_announced: false,
         }
     }
 
@@ -86,7 +92,9 @@ impl CaptureTrigger {
             // Cool-down elapsed — let the next cycle attempt vision.
             // Failure count stays high until a success clears it,
             // so a single recovery cycle re-trips the breaker if
-            // vision is still broken.
+            // vision is still broken. We DON'T announce "resuming"
+            // here because it'd be misleading if vision is still
+            // broken; the success path emits "restored" once we know.
             self.vision_breaker_tripped_at = None;
             info!("capture_trigger.vision_breaker_reopened");
             false
@@ -189,6 +197,14 @@ impl CaptureTrigger {
                 self.context_count += 1;
                 self.vision_failure_count = 0;
                 self.vision_breaker_tripped_at = None;
+                if self.vision_pause_announced {
+                    self.vision_pause_announced = false;
+                    self.event_queue.push(trigger_error_event(
+                        "vision",
+                        "Screen awareness restored.",
+                        true,
+                    ));
+                }
                 debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
                 Some(description)
             }
@@ -198,6 +214,14 @@ impl CaptureTrigger {
                 // just wasn't worth describing.
                 self.vision_failure_count = 0;
                 self.vision_breaker_tripped_at = None;
+                if self.vision_pause_announced {
+                    self.vision_pause_announced = false;
+                    self.event_queue.push(trigger_error_event(
+                        "vision",
+                        "Screen awareness restored.",
+                        true,
+                    ));
+                }
                 debug!(cycle = cycle_num, "capture_trigger.empty_description");
                 None
             }
@@ -205,6 +229,14 @@ impl CaptureTrigger {
                 self.vision_failure_count += 1;
                 if self.vision_failure_count >= VISION_FAILURE_BREAKER_THRESHOLD {
                     self.vision_breaker_tripped_at = Some(Instant::now());
+                    if !self.vision_pause_announced {
+                        self.vision_pause_announced = true;
+                        self.event_queue.push(trigger_error_event(
+                            "vision",
+                            "Screen awareness paused — vision unavailable.",
+                            true,
+                        ));
+                    }
                     warn!(
                         cycle = cycle_num,
                         consecutive_failures = self.vision_failure_count,
