@@ -146,10 +146,10 @@
 "settings.mcp.action.validating" = "検証中...";
 "settings.mcp.description" = "mcp.json 全体を編集します。保存すると設定が永続化され、サーバーに接続します。シークレット値はシステムのキーチェーンに安全に保存されます。";
 "settings.mcp.discovery.empty" = "MCPサーバーは設定されていません。";
-"settings.mcp.discovery.status.connected" = "接続済み";
-"settings.mcp.discovery.status.disconnected" = "未接続";
+"settings.mcp.discovery.runtime_state_pending" = "Live connect/tool state isn't surfaced yet — servers are spawned per chat session by the Copilot SDK.";
+"settings.mcp.discovery.status.disabled" = "disabled";
+"settings.mcp.discovery.status.enabled" = "enabled";
 "settings.mcp.discovery.title" = "検出されたサーバー";
-"settings.mcp.discovery.tools_format" = "%d 個のツール";
 "settings.mcp.error.empty_json" = "MCP JSONは空にできません。";
 "settings.mcp.loading" = "MCP設定を読み込み中...";
 "settings.mcp.status.validation_passed_format" = "検証に成功しました（%d サーバー）。";

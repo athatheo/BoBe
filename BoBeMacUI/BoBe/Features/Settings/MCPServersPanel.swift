@@ -130,15 +130,12 @@ struct MCPServersPanel: View {
                                 Text(server.name)
                                     .font(.system(size: 12, weight: .semibold))
                                 Text(
-                                    server.connected
-                                        ? L10n.tr("settings.mcp.discovery.status.connected")
-                                        : L10n.tr("settings.mcp.discovery.status.disconnected")
+                                    server.enabled
+                                        ? L10n.tr("settings.mcp.discovery.status.enabled")
+                                        : L10n.tr("settings.mcp.discovery.status.disabled")
                                 )
                                     .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(server.connected ? self.theme.colors.secondary : self.theme.colors.primary)
-                                Text(L10n.tr("settings.mcp.discovery.tools_format", server.toolCount))
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(self.theme.colors.textMuted)
+                                    .foregroundStyle(server.enabled ? self.theme.colors.secondary : self.theme.colors.textMuted)
                             }
                             .foregroundStyle(self.theme.colors.text)
 
@@ -158,6 +155,15 @@ struct MCPServersPanel: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 6).fill(self.theme.colors.surface))
                     }
+
+                    // The Copilot SDK owns MCP server lifecycle (per-session
+                    // spawn). Until task #31 lands a daemon-side sideband
+                    // query, live connect/tool-count state isn't visible.
+                    Text(L10n.tr("settings.mcp.discovery.runtime_state_pending"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(self.theme.colors.textMuted.opacity(0.8))
+                        .italic()
+                        .padding(.top, 4)
                 }
             }
         }

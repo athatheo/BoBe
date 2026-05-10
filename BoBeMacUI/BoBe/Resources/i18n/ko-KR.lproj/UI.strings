@@ -146,10 +146,10 @@
 "settings.mcp.action.validating" = "검증 중...";
 "settings.mcp.description" = "전체 mcp.json 문서를 편집할 수 있어요. 저장하면 설정이 반영되고 서버에 연결돼요. 비밀 값은 시스템 키체인에 안전하게 저장돼요.";
 "settings.mcp.discovery.empty" = "구성된 MCP 서버가 없어요.";
-"settings.mcp.discovery.status.connected" = "연결됨";
-"settings.mcp.discovery.status.disconnected" = "연결 끊김";
+"settings.mcp.discovery.runtime_state_pending" = "Live connect/tool state isn't surfaced yet — servers are spawned per chat session by the Copilot SDK.";
+"settings.mcp.discovery.status.disabled" = "disabled";
+"settings.mcp.discovery.status.enabled" = "enabled";
 "settings.mcp.discovery.title" = "발견된 서버";
-"settings.mcp.discovery.tools_format" = "%d개 도구";
 "settings.mcp.error.empty_json" = "MCP JSON은 비워둘 수 없어요.";
 "settings.mcp.loading" = "MCP 설정 불러오는 중...";
 "settings.mcp.status.validation_passed_format" = "검증 통과 (%d개 서버).";

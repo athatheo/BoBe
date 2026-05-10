@@ -146,10 +146,10 @@
 "settings.mcp.action.validating" = "验证中...";
 "settings.mcp.description" = "编辑 mcp.json 配置文件。保存后自动连接服务器。敏感信息安全存储在系统钥匙串中。";
 "settings.mcp.discovery.empty" = "未配置 MCP 服务器。";
-"settings.mcp.discovery.status.connected" = "已连接";
-"settings.mcp.discovery.status.disconnected" = "已断开";
+"settings.mcp.discovery.runtime_state_pending" = "Live connect/tool state isn't surfaced yet — servers are spawned per chat session by the Copilot SDK.";
+"settings.mcp.discovery.status.disabled" = "disabled";
+"settings.mcp.discovery.status.enabled" = "enabled";
 "settings.mcp.discovery.title" = "已发现服务器";
-"settings.mcp.discovery.tools_format" = "%d 个工具";
 "settings.mcp.error.empty_json" = "MCP JSON 不能为空。";
 "settings.mcp.loading" = "正在加载 MCP 配置...";
 "settings.mcp.status.validation_passed_format" = "验证通过（%d 个服务器）。";

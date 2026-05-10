@@ -146,10 +146,10 @@
 "settings.mcp.action.validating" = "Validation...";
 "settings.mcp.description" = "Modifiez le document mcp.json complet. Enregistrer applique la configuration et connecte les serveurs. Les valeurs secrètes sont stockées en toute sécurité dans le trousseau système.";
 "settings.mcp.discovery.empty" = "Aucun serveur MCP configuré.";
-"settings.mcp.discovery.status.connected" = "connecté";
-"settings.mcp.discovery.status.disconnected" = "déconnecté";
+"settings.mcp.discovery.runtime_state_pending" = "Live connect/tool state isn't surfaced yet — servers are spawned per chat session by the Copilot SDK.";
+"settings.mcp.discovery.status.disabled" = "disabled";
+"settings.mcp.discovery.status.enabled" = "enabled";
 "settings.mcp.discovery.title" = "Serveurs détectés";
-"settings.mcp.discovery.tools_format" = "%d outils";
 "settings.mcp.error.empty_json" = "Le JSON MCP ne doit pas être vide.";
 "settings.mcp.loading" = "Chargement de la configuration MCP...";
 "settings.mcp.status.validation_passed_format" = "Validation réussie (%d serveur(s)).";

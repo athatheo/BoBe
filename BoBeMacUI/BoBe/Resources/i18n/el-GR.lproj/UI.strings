@@ -146,10 +146,10 @@
 "settings.mcp.action.validating" = "Γίνεται επικύρωση...";
 "settings.mcp.description" = "Επεξεργάσου ολόκληρο το mcp.json. Η αποθήκευση κρατά τη ρύθμιση και συνδέει τους servers. Τα secrets αποθηκεύονται με ασφάλεια στο keychain.";
 "settings.mcp.discovery.empty" = "Δεν έχουν ρυθμιστεί MCP servers.";
-"settings.mcp.discovery.status.connected" = "συνδεδεμένο";
-"settings.mcp.discovery.status.disconnected" = "αποσυνδεδεμένο";
+"settings.mcp.discovery.runtime_state_pending" = "Live connect/tool state isn't surfaced yet — servers are spawned per chat session by the Copilot SDK.";
+"settings.mcp.discovery.status.disabled" = "disabled";
+"settings.mcp.discovery.status.enabled" = "enabled";
 "settings.mcp.discovery.title" = "Εντοπισμένοι servers";
-"settings.mcp.discovery.tools_format" = "%d εργαλεία";
 "settings.mcp.error.empty_json" = "Το JSON του MCP δεν πρέπει να είναι κενό.";
 "settings.mcp.loading" = "Φόρτωση ρύθμισης MCP...";
 "settings.mcp.status.validation_passed_format" = "Η επικύρωση πέτυχε (%d servers).";
