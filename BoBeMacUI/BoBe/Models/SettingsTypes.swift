@@ -100,3 +100,22 @@ struct HealthResponse: Codable, Sendable {
 struct HealthServices: Codable, Sendable {
     let database: String
 }
+
+/// `/status` body — runtime snapshot used to seed local state on SSE
+/// reconnect. `accepting_user_messages` is the daemon's authoritative
+/// answer to "can the user send right now?"; UI should mirror it.
+struct StatusResponse: Codable, Sendable {
+    let indicator: String
+    let capturing: Bool
+    let acceptingUserMessages: Bool
+    let version: String?
+
+    enum CodingKeys: String, CodingKey {
+        case indicator, capturing, version
+        case acceptingUserMessages = "accepting_user_messages"
+    }
+
+    var indicatorType: IndicatorType {
+        IndicatorType(rawValue: self.indicator) ?? .unknown
+    }
+}

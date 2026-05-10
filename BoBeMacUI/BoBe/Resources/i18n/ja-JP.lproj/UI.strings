@@ -32,6 +32,7 @@
 "overlay.chat_toggle.show.accessibility" = "チャットを表示";
 "overlay.connection.connected" = "接続済み";
 "overlay.connection.disconnected" = "未接続";
+"overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "チャット入力を閉じる";
 "overlay.input.placeholder.default" = "メッセージを入力...";
 "overlay.input.send.accessibility" = "メッセージを送信";
@@ -52,6 +53,7 @@
 "overlay.status.thinking" = "思考中";
 "overlay.status.using_tool_format" = "%@ を使用中...";
 "overlay.status.wants_to_speak" = "ねえ";
+"overlay.tool_badge.accessibility_format" = "%d tool(s) running";
 
 "settings.advanced.conversation.description" = "会話タイミングの詳細設定";
 "settings.advanced.conversation.inactivity_timeout" = "非アクティブタイムアウト";

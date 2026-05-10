@@ -80,11 +80,25 @@ struct ToolCallCompletePayload: Codable, Sendable {
     }
 }
 
+/// Daemon emits TWO shapes for the `error` SSE event:
+/// - chat-stream: `{code, message, recoverable, details?}`
+/// - trigger:     `{trigger, message, recoverable}`
+/// Both shapes carry `message` + `recoverable`; the discriminator is
+/// `code` (chat) vs `trigger` (background worker like vision/capture).
 struct ErrorPayload: Codable, Sendable {
-    let code: String
+    let code: String?
+    let trigger: String?
     let message: String
     let recoverable: Bool
     let details: [String: AnyCodableValue]?
+
+    var sourceLabel: String {
+        self.trigger ?? self.code ?? "error"
+    }
+
+    var isTriggerError: Bool {
+        self.trigger != nil
+    }
 }
 
 struct ConversationClosedPayload: Codable, Sendable {

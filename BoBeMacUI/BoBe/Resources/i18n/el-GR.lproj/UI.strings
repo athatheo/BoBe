@@ -32,6 +32,7 @@
 "overlay.chat_toggle.show.accessibility" = "Εμφάνιση συνομιλίας";
 "overlay.connection.connected" = "Συνδεδεμένο";
 "overlay.connection.disconnected" = "Αποσυνδεδεμένο";
+"overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "Κλείσιμο εισαγωγής συνομιλίας";
 "overlay.input.placeholder.default" = "Γράψε μήνυμα...";
 "overlay.input.send.accessibility" = "Αποστολή μηνύματος";
@@ -52,6 +53,7 @@
 "overlay.status.thinking" = "Σκέφτεται";
 "overlay.status.using_tool_format" = "Χρήση %@...";
 "overlay.status.wants_to_speak" = "Γεια";
+"overlay.tool_badge.accessibility_format" = "%d tool(s) running";
 
 "settings.advanced.conversation.description" = "Προχωρημένος χρονισμός συνομιλίας";
 "settings.advanced.conversation.inactivity_timeout" = "Χρονικό όριο αδράνειας";

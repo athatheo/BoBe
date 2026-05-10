@@ -32,6 +32,7 @@
 "overlay.chat_toggle.show.accessibility" = "채팅 보기";
 "overlay.connection.connected" = "연결됨";
 "overlay.connection.disconnected" = "연결 끊김";
+"overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "채팅 입력 닫기";
 "overlay.input.placeholder.default" = "메시지를 입력하세요...";
 "overlay.input.send.accessibility" = "메시지 보내기";
@@ -52,6 +53,7 @@
 "overlay.status.thinking" = "생각 중";
 "overlay.status.using_tool_format" = "%@ 사용 중...";
 "overlay.status.wants_to_speak" = "안녕";
+"overlay.tool_badge.accessibility_format" = "%d tool(s) running";
 
 "settings.advanced.conversation.description" = "대화 타이밍 세부 설정";
 "settings.advanced.conversation.inactivity_timeout" = "비활성 시간 제한";

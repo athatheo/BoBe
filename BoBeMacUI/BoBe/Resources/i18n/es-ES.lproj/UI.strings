@@ -32,6 +32,7 @@
 "overlay.chat_toggle.show.accessibility" = "Mostrar chat";
 "overlay.connection.connected" = "Conectado";
 "overlay.connection.disconnected" = "Desconectado";
+"overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "Cerrar entrada del chat";
 "overlay.input.placeholder.default" = "Escribe un mensaje...";
 "overlay.input.send.accessibility" = "Enviar mensaje";
@@ -52,6 +53,7 @@
 "overlay.status.thinking" = "Pensando";
 "overlay.status.using_tool_format" = "Usando %@...";
 "overlay.status.wants_to_speak" = "Hola";
+"overlay.tool_badge.accessibility_format" = "%d tool(s) running";
 
 "settings.advanced.conversation.description" = "Ajustes avanzados de tiempos de conversación";
 "settings.advanced.conversation.inactivity_timeout" = "Tiempo de inactividad";

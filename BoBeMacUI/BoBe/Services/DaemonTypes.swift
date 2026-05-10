@@ -56,4 +56,12 @@ extension DaemonClient {
     func updateSettings(_ request: SettingsUpdateRequest) async throws -> SettingsUpdateResponse {
         try await fetch("/settings", method: "PATCH", body: request)
     }
+
+    // MARK: Status
+
+    /// Snapshot of `accepting_user_messages` + indicator + capturing.
+    /// Used to seed local state after SSE reconnect.
+    func getStatus() async throws -> StatusResponse {
+        try await fetch("/status")
+    }
 }

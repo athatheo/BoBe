@@ -32,6 +32,7 @@
 "overlay.chat_toggle.show.accessibility" = "显示聊天";
 "overlay.connection.connected" = "已连接";
 "overlay.connection.disconnected" = "已断开";
+"overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "关闭聊天输入";
 "overlay.input.placeholder.default" = "说点什么…";
 "overlay.input.send.accessibility" = "发送消息";
@@ -52,6 +53,7 @@
 "overlay.status.thinking" = "思考中";
 "overlay.status.using_tool_format" = "正在使用 %@...";
 "overlay.status.wants_to_speak" = "嘿";
+"overlay.tool_badge.accessibility_format" = "%d tool(s) running";
 
 "settings.advanced.conversation.description" = "高级对话时间设置";
 "settings.advanced.conversation.inactivity_timeout" = "空闲超时";

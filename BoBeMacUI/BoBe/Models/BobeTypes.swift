@@ -104,7 +104,24 @@ struct BobeContext: Sendable {
     var speaking = false
     var shuttingDown = false
     var lastMessage: String?
+    /// Fatal/dismissable banner — red. Used for unrecoverable errors
+    /// and the degraded-DB startup warning (which is fatal-feeling).
     var errorMessage: String?
+    /// Soft / informational banner — tertiary tint. Used for recoverable
+    /// trigger errors (vision breaker, capture timeout) that the user
+    /// should know about but that don't block functionality.
+    var softWarning: String?
+    /// Free-form progress label from the daemon's indicator events
+    /// (`indicator.message`). Surfaced as overlay status when present.
+    var indicatorMessage: String?
+    /// Daemon-reported `accepting_user_messages` from `/status`.
+    /// Authoritative — synced after SSE reconnect. Defaults to `true`
+    /// so the composer is enabled until proven otherwise.
+    var acceptingUserMessages = true
+    /// Set to `true` after a `conversation_closed` SSE event for the 3s
+    /// pre-clear window so the UI can flash a "Conversation ended"
+    /// notice before the chat history disappears.
+    var conversationEnding = false
     var currentMessage = ""
     var messages: [ChatMessage] = []
     var failedSendRecoveries: [FailedSendRecovery] = []

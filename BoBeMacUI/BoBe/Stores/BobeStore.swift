@@ -74,6 +74,22 @@ final class BobeStore {
         self.context.capturePermissionMissing
     }
 
+    var softWarning: String? {
+        self.context.softWarning
+    }
+
+    var indicatorMessage: String? {
+        self.context.indicatorMessage
+    }
+
+    var conversationEnding: Bool {
+        self.context.conversationEnding
+    }
+
+    var canSendMessage: Bool {
+        self.context.daemonConnected && self.context.acceptingUserMessages
+    }
+
     var isInitialConnectionPending: Bool {
         !self.hasConnectedOnce && !self.context.daemonConnected && !self.isBackendFatal
     }
@@ -93,6 +109,12 @@ final class BobeStore {
         }
         if self.context.captureInProgress {
             return .capturing
+        }
+        // Daemon owns the authoritative "accepting" flag — covers the
+        // gap between try_begin_user_message setting it false and the
+        // indicator transitioning. Without this, rapid double-sends 409.
+        if !self.context.acceptingUserMessages {
+            return .thinking
         }
         return nil
     }
@@ -242,6 +264,10 @@ final class BobeStore {
         }
     }
 
+    func dismissSoftWarning() {
+        self.updateState { $0.softWarning = nil }
+    }
+
     /// Push a non-fatal warning (e.g. backend degraded subsystem) through
     /// the same banner channel as transient errors. The user can dismiss
     /// it via the X button on the overlay error banner.
@@ -286,6 +312,7 @@ final class BobeStore {
         )
         self.updateState { ctx in
             ctx.errorMessage = nil
+            ctx.conversationEnding = false
             ctx.messages.append(userMessage)
         }
 
@@ -293,18 +320,37 @@ final class BobeStore {
             try await client.sendMessage(content)
             self.updateState { ctx in
                 Self.markMessageSent(userMessage.id, messages: &ctx.messages)
+                // Optimistically lock the composer until the indicator
+                // catches up — closes the SSE-vs-daemon race window.
+                ctx.acceptingUserMessages = false
             }
         } catch {
+            // Daemon returns 409 when busy with one of 4 hardcoded
+            // "BoBe is still..." strings. The retry banner is the right
+            // affordance — don't double up with a fatal-looking red
+            // error banner. For other failures (network, etc.) we DO
+            // surface errorMessage so the user knows it wasn't busy.
+            let isBusy409 = Self.isBusy409(error)
             logger.error("sendMessage failed: \(error.localizedDescription)")
             self.updateState { ctx in
                 Self.removeMessage(userMessage.id, messages: &ctx.messages)
                 ctx.failedSendRecoveries.append(
                     FailedSendRecovery(id: userMessage.id, content: content)
                 )
-                ctx.errorMessage = error.localizedDescription
-                ctx.daemonError = false
+                if !isBusy409 {
+                    ctx.errorMessage = error.localizedDescription
+                    ctx.daemonError = false
+                }
+                ctx.acceptingUserMessages = !isBusy409
             }
         }
+    }
+
+    private static func isBusy409(_ error: any Error) -> Bool {
+        if case let DaemonError.httpError(statusCode, _) = error {
+            return statusCode == 409
+        }
+        return false
     }
 
     func dismissFailedSendRecovery(_ recoveryId: String) {
@@ -359,13 +405,7 @@ final class BobeStore {
             }
         case .error:
             if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
-                logger.error("Daemon error: \(payload.message)")
-                if !payload.recoverable {
-                    self.updateState { ctx in
-                        ctx.errorMessage = payload.message
-                        ctx.daemonError = true
-                    }
-                }
+                self.handleErrorPayload(payload)
             }
         case .heartbeat, .unknown:
             break
@@ -388,27 +428,54 @@ final class BobeStore {
                 ctx.captureInProgress = false
                 ctx.thinking = false
                 ctx.speaking = false
+                ctx.acceptingUserMessages = true
             case .screenCapture:
                 ctx.captureInProgress = true
                 ctx.thinking = false
                 ctx.speaking = false
+                ctx.acceptingUserMessages = false
             case .thinking:
                 ctx.captureInProgress = false
                 ctx.thinking = true
                 ctx.speaking = false
+                ctx.acceptingUserMessages = false
             case .streaming:
                 ctx.captureInProgress = false
                 let hasVisibleText = self.hasVisibleGlyphs(self.streamingMessage) || self.hasVisibleGlyphs(ctx.currentMessage)
                 ctx.thinking = !hasVisibleText
                 ctx.speaking = hasVisibleText
+                ctx.acceptingUserMessages = false
             case .unknown:
                 break
             }
             ctx.activeIndicator = activeIndicator
+            ctx.indicatorMessage = payload.message
             if indicator != .unknown {
                 ctx.errorMessage = nil
                 ctx.daemonError = false
             }
+        }
+    }
+
+    /// Decode either chat-stream errors (`code` discriminator) or
+    /// background trigger errors (`trigger` discriminator). Recoverable
+    /// trigger errors land in the soft-warning banner; recoverable chat
+    /// errors do nothing (the stream may continue); fatal errors stop
+    /// the world via the red banner.
+    private func handleErrorPayload(_ payload: ErrorPayload) {
+        if payload.recoverable {
+            if payload.isTriggerError {
+                logger.warning("Trigger soft warning [\(payload.sourceLabel)]: \(payload.message)")
+                self.updateState { $0.softWarning = payload.message }
+            } else {
+                logger.warning("Recoverable chat error [\(payload.sourceLabel)]: \(payload.message)")
+            }
+            return
+        }
+        logger.error("Daemon error [\(payload.sourceLabel)]: \(payload.message)")
+        self.updateState { ctx in
+            ctx.errorMessage = payload.message
+            ctx.daemonError = true
         }
     }
 
@@ -509,6 +576,7 @@ final class BobeStore {
             $0.speaking = false
             $0.activeIndicator = nil
             $0.toolExecutions = []
+            $0.conversationEnding = true
         }
         self.scheduleConversationClear()
     }
@@ -574,11 +642,35 @@ final class BobeStore {
             self.isReconnecting = false
             self.hasConnectedOnce = true
             self.synchronizeCaptureStartup()
+            self.synchronizeStatus()
             return
         }
 
         guard self.hasConnectedOnce else { return }
         self.scheduleReconnectStatusTransition()
+    }
+
+    /// Seed `acceptingUserMessages`, `capturing`, and the indicator state
+    /// from the daemon's authoritative `/status` snapshot. Without this,
+    /// SSE-only state can drift on mid-turn reconnects — the composer
+    /// re-enables before the daemon is actually ready and the first send
+    /// 409s.
+    private func synchronizeStatus() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let status = try await self.client.getStatus()
+                self.updateState { ctx in
+                    ctx.acceptingUserMessages = status.acceptingUserMessages
+                    let indicator = status.indicatorType
+                    ctx.thinking = indicator == .thinking
+                    ctx.speaking = indicator == .streaming
+                    ctx.captureInProgress = indicator == .screenCapture
+                }
+            } catch {
+                logger.warning("Status sync skipped: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func scheduleReconnectStatusTransition() {
@@ -607,6 +699,7 @@ final class BobeStore {
             try? await Task.sleep(for: .seconds(StoreTiming.conversationClearSeconds))
             guard let self, !Task.isCancelled else { return }
             self.clearMessages()
+            self.updateState { $0.conversationEnding = false }
         }
     }
 
