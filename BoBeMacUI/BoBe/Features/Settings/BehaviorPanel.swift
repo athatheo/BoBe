@@ -8,11 +8,33 @@ struct BehaviorPanel: View {
     @State private var error: String?
     @State private var newCheckinTime = ""
     @State private var saveTask: Task<Void, Never>?
+    @State private var restartFields: Set<String> = []
+    @State private var bannerDismissed = false
     @Environment(\.theme) private var theme
+
+    /// Fields the daemon claims to hot-apply but actually doesn't —
+    /// CheckinScheduler captured these at boot and only re-reads them
+    /// on restart. Shadowed locally so we always show the banner.
+    private static let deferToRestartFields: Set<String> = [
+        "checkin_enabled",
+        "checkin_times",
+        "checkin_jitter_minutes",
+    ]
+
+    private var visibleRestartFields: Set<String> {
+        self.bannerDismissed ? [] : self.restartFields
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if !self.visibleRestartFields.isEmpty {
+                    RestartRequiredBanner(
+                        fields: self.visibleRestartFields,
+                        onDismiss: { self.bannerDismissed = true }
+                    )
+                }
+
                 if let error {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -29,9 +51,7 @@ struct BehaviorPanel: View {
                 if self.settings != nil {
                     self.captureSection
                     self.checkinSection
-                    self.memorySection
                     self.conversationSection
-                    self.toolsSection
                 } else if self.isLoading {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
@@ -66,7 +86,7 @@ struct BehaviorPanel: View {
                     Text(L10n.tr("settings.behavior.capture.permission_missing"))
                         .font(.system(size: 12))
                         .foregroundStyle(self.theme.colors.tertiary)
-                    Button(L10n.tr("setup.capture.permission.open_settings")) {
+                    Button(L10n.tr("setup.permissions.open_settings")) {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                             NSWorkspace.shared.open(url)
                         }
@@ -123,46 +143,18 @@ struct BehaviorPanel: View {
         }
     }
 
-    private var memorySection: some View {
-        CollapsibleSection(
-            title: L10n.tr("settings.behavior.memory.title"),
-            icon: "brain.head.profile",
-            description: L10n.tr("settings.behavior.memory.description"),
-            toggleBinding: self.binding(\.learningEnabled, fallback: true)
-        ) {
-            SettingsRow(label: L10n.tr("settings.behavior.memory.short_term_retention"), suffix: L10n.tr("settings.units.days")) {
-                DebouncedNumberInput(value: self.binding(\.memoryShortTermRetentionDays, fallback: 7), range: 1 ... 365)
-            }
-            SettingsRow(label: L10n.tr("settings.behavior.memory.long_term_retention"), suffix: L10n.tr("settings.units.days")) {
-                DebouncedNumberInput(value: self.binding(\.memoryLongTermRetentionDays, fallback: 365), range: 1 ... 3650)
-            }
-        }
-    }
-
     private var conversationSection: some View {
         CollapsibleSection(
             title: L10n.tr("settings.behavior.conversation.title"),
             icon: "message.fill",
             description: L10n.tr("settings.behavior.conversation.description")
         ) {
-            SettingsRow(label: L10n.tr("settings.behavior.conversation.auto_close_after"), suffix: L10n.tr("settings.units.minutes")) {
+            SettingsRow(
+                label: L10n.tr("settings.behavior.conversation.auto_close_after"),
+                description: L10n.tr("settings.behavior.conversation.auto_close.description"),
+                suffix: L10n.tr("settings.units.minutes")
+            ) {
                 DebouncedNumberInput(value: self.binding(\.conversationAutoCloseMinutes, fallback: 10), range: 1 ... 60)
-            }
-            SettingsRow(label: L10n.tr("settings.behavior.conversation.generate_summaries")) {
-                BobeToggle(isOn: self.binding(\.conversationSummaryEnabled, fallback: true))
-            }
-        }
-    }
-
-    private var toolsSection: some View {
-        CollapsibleSection(
-            title: L10n.tr("settings.behavior.tools.title"),
-            icon: "wrench.fill",
-            description: L10n.tr("settings.behavior.tools.description"),
-            toggleBinding: self.binding(\.toolsEnabled, fallback: true)
-        ) {
-            SettingsRow(label: L10n.tr("settings.behavior.tools.max_iterations"), suffix: L10n.tr("settings.units.rounds")) {
-                DebouncedNumberInput(value: self.binding(\.toolsMaxIterations, fallback: 8), range: 1 ... 20)
             }
         }
     }
@@ -179,15 +171,32 @@ struct BehaviorPanel: View {
                 guard var current = settings else { return }
                 current[keyPath: keyPath] = newValue
                 self.settings = current
-                self.debounceSave()
+                self.debounceSave(touched: Self.fieldKey(for: keyPath))
             }
         )
     }
 
-    private func debounceSave() {
+    /// Map `WritableKeyPath` → wire field name. Used to figure out which
+    /// fields each save touches so we can show the restart banner only
+    /// when relevant.
+    private static func fieldKey<V>(for keyPath: WritableKeyPath<DaemonSettings, V>) -> String? {
+        switch keyPath {
+        case \DaemonSettings.captureEnabled: "capture_enabled"
+        case \DaemonSettings.captureIntervalSeconds: "capture_interval_seconds"
+        case \DaemonSettings.checkinEnabled: "checkin_enabled"
+        case \DaemonSettings.checkinTimes: "checkin_times"
+        case \DaemonSettings.checkinJitterMinutes: "checkin_jitter_minutes"
+        case \DaemonSettings.conversationAutoCloseMinutes: "conversation_auto_close_minutes"
+        default: nil
+        }
+    }
+
+    private func debounceSave(touched: String? = nil) {
         self.saveTask?.cancel()
         self.isSaving = true
         let currentSettings = self.settings
+        let touchedFields = self.collectTouchedFields(initial: touched)
+
         self.saveTask = Task {
             try? await Task.sleep(for: .seconds(0.6))
             guard !Task.isCancelled, let currentSettings else {
@@ -201,20 +210,31 @@ struct BehaviorPanel: View {
                 req.checkinEnabled = currentSettings.checkinEnabled
                 req.checkinTimes = currentSettings.checkinTimes
                 req.checkinJitterMinutes = currentSettings.checkinJitterMinutes
-                req.learningEnabled = currentSettings.learningEnabled
-                req.memoryShortTermRetentionDays = currentSettings.memoryShortTermRetentionDays
-                req.memoryLongTermRetentionDays = currentSettings.memoryLongTermRetentionDays
                 req.conversationAutoCloseMinutes = currentSettings.conversationAutoCloseMinutes
-                req.conversationSummaryEnabled = currentSettings.conversationSummaryEnabled
-                req.toolsEnabled = currentSettings.toolsEnabled
-                req.toolsMaxIterations = currentSettings.toolsMaxIterations
-                _ = try await DaemonClient.shared.updateSettings(req)
+
+                let resp = try await DaemonClient.shared.updateSettings(req)
                 self.error = nil
+                self.applyRestartFields(touched: touchedFields, response: resp)
             } catch {
                 self.error = error.localizedDescription
             }
             self.isSaving = false
         }
+    }
+
+    private func collectTouchedFields(initial: String?) -> Set<String> {
+        var fields: Set<String> = []
+        if let initial { fields.insert(initial) }
+        return fields
+    }
+
+    private func applyRestartFields(touched: Set<String>, response: SettingsUpdateResponse) {
+        let shadowed = touched.intersection(Self.deferToRestartFields)
+        let daemonReported = Set(response.restartRequiredFields)
+        let combined = shadowed.union(daemonReported)
+        if combined.isEmpty { return }
+        self.restartFields = self.restartFields.union(combined)
+        self.bannerDismissed = false
     }
 
     private func addCheckinTime() {
@@ -223,12 +243,12 @@ struct BehaviorPanel: View {
         guard !(self.settings?.checkinTimes.contains(trimmed) ?? false) else { return }
         self.settings?.checkinTimes.append(trimmed)
         self.newCheckinTime = ""
-        self.debounceSave()
+        self.debounceSave(touched: "checkin_times")
     }
 
     private func removeCheckinTime(_ time: String) {
         self.settings?.checkinTimes.removeAll { $0 == time }
-        self.debounceSave()
+        self.debounceSave(touched: "checkin_times")
     }
 
     private func loadSettings() async {
