@@ -30,8 +30,7 @@ impl CaptureLearner {
         }
     }
 
-    /// Ok("") = empty/uninformative screen (no-op). Err = worker failure;
-    /// surfaced so trigger can back off instead of spinning.
+    /// `Ok("")` = uninformative screen (no-op); `Err` = worker failure, trigger backs off.
     pub(crate) async fn learn(
         &self,
         screenshot: Vec<u8>,

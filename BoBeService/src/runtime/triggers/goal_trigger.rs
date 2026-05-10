@@ -1,5 +1,4 @@
-//! Decide worker reads the goals dir directly via its skill; we pass only
-//! the goal title as a starting hint.
+//! Decide worker reads goals dir via its skill; we pass only the title as a hint.
 
 use std::sync::Arc;
 

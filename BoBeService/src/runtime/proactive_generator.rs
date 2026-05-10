@@ -1,5 +1,4 @@
-//! Proactive replies stream through the same SSE pipe as user-initiated chat;
-//! an empty agent response is the "no-op" signal and is intentionally not persisted.
+//! Same SSE pipe as user chat; empty agent response = no-op (not persisted).
 
 use std::sync::Arc;
 

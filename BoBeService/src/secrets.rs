@@ -56,7 +56,7 @@ fn base_query(account: &str) -> CFMutableDictionary {
     query
 }
 
-/// Store a secret, replacing any existing entry.
+/// Replaces any existing entry; empty value = delete.
 pub(crate) fn store_secret(account: &str, value: &str) -> Result<(), String> {
     if value.is_empty() {
         let _ignored = delete_secret(account);

@@ -1,5 +1,4 @@
-//! Decisions run on `WorkerClass::Decide` (separate from the chat agent) so
-//! that a "do not engage" outcome produces no user-visible reply.
+//! Separate from chat agent so "do not engage" produces no user-visible reply.
 
 use std::sync::Arc;
 

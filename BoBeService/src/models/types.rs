@@ -46,8 +46,7 @@ impl std::fmt::Display for TurnRole {
     }
 }
 
-/// Goals are file-backed (`~/.bobe/goals/<id>.md`); priority lives on
-/// `GoalDoc` as a raw `u8` for finer gradations without type changes.
+/// File-backed at `~/.bobe/goals/<id>.md`; priority is `u8` on `GoalDoc`, not an enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum GoalStatus {

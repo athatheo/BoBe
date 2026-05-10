@@ -1,5 +1,4 @@
-//! Context (memory.md), history, and tools are owned by the Copilot SDK;
-//! we only append the user turn and persist the final assistant turn.
+//! We persist user turn + final assistant turn; SDK owns context/history/tools.
 
 use std::sync::Arc;
 

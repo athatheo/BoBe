@@ -245,7 +245,6 @@ final class BobeStore {
         L10n.setLocaleOverride(newOverride.isEmpty ? nil : newOverride)
     }
 
-    /// Apply persisted override on app launch.
     func applyPersistedLocale() {
         L10n.setLocaleOverride(self.localeOverride.isEmpty ? nil : self.localeOverride)
     }

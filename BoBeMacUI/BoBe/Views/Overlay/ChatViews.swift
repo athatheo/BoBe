@@ -2,8 +2,7 @@ import SwiftUI
 
 // MARK: - Visual Segment
 
-/// One bubble in the UI: keeps the 1-SSE-message = 1-`ChatMessage` invariant
-/// while letting paragraphs render as separate pills.
+/// 1 SSE message = 1 `ChatMessage`; paragraphs render as separate pills.
 private struct ChatSegment: Identifiable {
     var id: String { self.message.id }
     let message: ChatMessage
@@ -19,8 +18,7 @@ struct ChatStack: View {
 
     @State private var isExpanded = false
     @State private var expandedBubbleIds: Set<String> = []
-    /// Just-finalized messages stay single-bubble for 300 ms before paragraph
-    /// splitting kicks in — avoids a jarring cut when streaming ends.
+    /// 300ms single-bubble grace after streaming ends — avoids a jarring split cut.
     @State private var deferSplitIds: Set<String> = []
     @Environment(\.theme) private var theme
 

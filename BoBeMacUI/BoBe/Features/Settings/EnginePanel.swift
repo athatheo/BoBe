@@ -447,8 +447,7 @@ struct EnginePanel: View {
     }
 }
 
-/// Drives Copilot CLI's interactive device-flow sign-in via Terminal.app
-/// (the CLI is bundled and extracted; we can't replicate the prompt in Swift).
+/// Terminal.app handoff for the bundled CLI's device-flow prompt (can't replicate in Swift).
 enum CopilotSignIn {
     static func openLogin(cliPath: String?) {
         let command: String
