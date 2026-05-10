@@ -42,18 +42,20 @@ struct WelcomeStepView: View {
     }
 }
 
-// MARK: - Copilot check step
-
-private enum CopilotCheckState {
-    case checking
-    case found(path: String)
-    case missing
-}
+// MARK: - Engine ready step
+//
+// Pre-bundling, this step probed `which copilot` and offered install
+// instructions if the binary was missing. Now the Copilot CLI is bundled
+// into the BoBe daemon binary via the `embedded-cli` cargo feature
+// (extracted lazily to ~/.cache/github-copilot-sdk-{ver}/copilot on first
+// SDK call). The user never has to install anything, so the probe is
+// dead code — this step now just affirms the engine is available.
+//
+// TODO(phase-2): replace with EngineChoiceStepView (cloud vs local) +
+// conditional auth/server-detection step. See ENGINE_PROVIDER_NOTES.md.
 
 struct CopilotCheckStepView: View {
     let onContinue: () -> Void
-
-    @State private var state: CopilotCheckState = .checking
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -71,30 +73,6 @@ struct CopilotCheckStepView: View {
 
             Spacer()
 
-            self.statusCard
-
-            Spacer()
-
-            self.actionRow
-        }
-        .task { await self.runCheck() }
-    }
-
-    @ViewBuilder
-    private var statusCard: some View {
-        switch self.state {
-        case .checking:
-            HStack(spacing: 10) {
-                BobeSpinner(size: 16)
-                Text(L10n.tr("setup.copilot.checking"))
-                    .bobeTextStyle(.setupBody)
-                    .foregroundStyle(self.theme.colors.textMuted)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(20)
-            .background(self.cardBackground(color: self.theme.colors.border.opacity(0.5)))
-
-        case let .found(path):
             VStack(spacing: 10) {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 32))
@@ -102,106 +80,24 @@ struct CopilotCheckStepView: View {
                 Text(L10n.tr("setup.copilot.found"))
                     .bobeTextStyle(.setupHeading)
                     .foregroundStyle(self.theme.colors.text)
-                Text(path)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(self.theme.colors.textMuted)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
             .frame(maxWidth: .infinity)
             .padding(20)
-            .background(self.cardBackground(color: self.theme.colors.secondary.opacity(0.5)))
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(self.theme.colors.secondary.opacity(0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(self.theme.colors.secondary.opacity(0.5), lineWidth: 1)
+                    )
+            )
 
-        case .missing:
-            VStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(self.theme.colors.tertiary)
-                Text(L10n.tr("setup.copilot.missing"))
-                    .bobeTextStyle(.setupHeading)
-                    .foregroundStyle(self.theme.colors.text)
-                Text(L10n.tr("setup.copilot.missing_hint"))
-                    .bobeTextStyle(.helper)
-                    .foregroundStyle(self.theme.colors.textMuted)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(20)
-            .background(self.cardBackground(color: self.theme.colors.tertiary.opacity(0.5)))
-        }
-    }
+            Spacer()
 
-    @ViewBuilder
-    private var actionRow: some View {
-        switch self.state {
-        case .checking:
-            EmptyView()
-        case .found:
             Button(L10n.tr("setup.welcome.continue"), action: self.onContinue)
                 .bobeButton(.primary, size: .regular)
                 .keyboardShortcut(.defaultAction)
-        case .missing:
-            VStack(spacing: 8) {
-                HStack(spacing: 10) {
-                    Button(L10n.tr("setup.copilot.install_link")) {
-                        if let url = URL(string: "https://docs.github.com/en/copilot/cli") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
-                    .bobeButton(.secondary, size: .small)
-                    Button(L10n.tr("setup.copilot.retry")) {
-                        Task { await self.runCheck() }
-                    }
-                    .bobeButton(.primary, size: .small)
-                    .keyboardShortcut(.defaultAction)
-                }
-                Button(L10n.tr("setup.copilot.continue_anyway"), action: self.onContinue)
-                    .bobeButton(.ghost, size: .small)
-            }
         }
-    }
-
-    private func cardBackground(color: Color) -> some View {
-        RoundedRectangle(cornerRadius: 12)
-            .fill(color.opacity(0.12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(color, lineWidth: 1)
-            )
-    }
-
-    /// Runs `which copilot` to detect Copilot CLI presence. May miss
-    /// non-PATH installs — "Continue anyway" is the escape hatch.
-    private func runCheck() async {
-        self.state = .checking
-        let path = await Self.detectCopilotCLI()
-        if let path {
-            self.state = .found(path: path)
-        } else {
-            self.state = .missing
-        }
-    }
-
-    private static func detectCopilotCLI() async -> String? {
-        await Task.detached(priority: .userInitiated) { () -> String? in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["which", "copilot"]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-            do {
-                try process.run()
-                process.waitUntilExit()
-                guard process.terminationStatus == 0 else { return nil }
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let path = String(data: data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                return (path?.isEmpty ?? true) ? nil : path
-            } catch {
-                return nil
-            }
-        }.value
     }
 }
 

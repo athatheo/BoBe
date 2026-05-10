@@ -231,13 +231,7 @@
 "settings.window.title" = "BoBe 設定";
 
 "setup.copilot.body" = "BoBe uses GitHub Copilot CLI as its language engine. We'll check that it's installed and signed in.";
-"setup.copilot.checking" = "Checking for Copilot CLI...";
-"setup.copilot.continue_anyway" = "Continue anyway";
 "setup.copilot.found" = "GitHub Copilot CLI found.";
-"setup.copilot.install_link" = "Install instructions";
-"setup.copilot.missing" = "Copilot CLI not found";
-"setup.copilot.missing_hint" = "Install the GitHub Copilot CLI and sign in, then click Retry.";
-"setup.copilot.retry" = "Retry";
 "setup.copilot.title" = "GitHub Copilot CLI";
 "setup.done.body" = "BoBe is ready. You can change everything in Settings later.";
 "setup.done.launch" = "Open BoBe";

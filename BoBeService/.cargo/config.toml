@@ -1,0 +1,21 @@
+# Build-time configuration for the BoBe daemon.
+#
+# `[env]` here is consumed by all build scripts in the workspace (including
+# the github-copilot-sdk crate's build.rs). Setting COPILOT_CLI_VERSION
+# triggers the SDK's `embedded-cli` feature to download the matching
+# Copilot CLI release from
+# `github.com/github/copilot-cli/releases/download/v{VERSION}/`,
+# verify its SHA-256, zstd-compress it, and embed it as include_bytes!
+# in the resulting BoBe binary.
+#
+# The runtime resolver (rust/src/resolve.rs in the SDK) extracts the
+# bundled binary lazily to ~/.cache/github-copilot-sdk-{VERSION}/copilot
+# on first call, falling back to PATH lookup only if the bundle is
+# disabled or extraction fails.
+#
+# Bumping this version is a deliberate action — diff the upstream
+# changelog at https://github.com/github/copilot-cli/releases before
+# moving forward.
+
+[env]
+COPILOT_CLI_VERSION = "1.0.44"

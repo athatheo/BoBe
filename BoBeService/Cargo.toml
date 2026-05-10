@@ -120,4 +120,9 @@ tower = { version = "0.5.3", features = ["timeout", "limit"] }
 # Official GitHub Copilot SDK (Rust). Programmatic Copilot CLI control via
 # JSON-RPC over stdio. Spawns + manages the CLI process per Client. We use one
 # shared Client across the daemon and create one Session per worker class.
-github-copilot-sdk = "0.1"
+#
+# `embedded-cli` feature bundles the Copilot CLI binary into our binary at
+# build time (downloaded + verified against SHA256SUMS, zstd-compressed,
+# extracted lazily to ~/.cache/github-copilot-sdk-{ver}/copilot on first use).
+# The version is pinned via .cargo/config.toml `[env] COPILOT_CLI_VERSION`.
+github-copilot-sdk = { version = "0.1", features = ["embedded-cli"] }
