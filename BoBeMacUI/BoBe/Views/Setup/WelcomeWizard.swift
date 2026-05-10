@@ -3,12 +3,32 @@ import SwiftUI
 
 enum WelcomeStep: CaseIterable {
     case welcome
-    case copilotCheck
+    case engineChoice
     case permissions
     case done
 
     var index: Int {
         Self.allCases.firstIndex(of: self) ?? 0
+    }
+}
+
+/// User's selection in the engine-choice step. Persisted to UserDefaults
+/// so the daemon can read it on next start. Daemon-side wiring lands in
+/// the Phase 1 commit (see ENGINE_PROVIDER_NOTES.md); for now we just
+/// record the user's choice here.
+enum EngineChoice: String {
+    case copilot
+    case local
+
+    static let userDefaultsKey = "bobe.engine_choice"
+
+    static var current: EngineChoice? {
+        UserDefaults.standard.string(forKey: Self.userDefaultsKey)
+            .flatMap { EngineChoice(rawValue: $0) }
+    }
+
+    func persist() {
+        UserDefaults.standard.set(self.rawValue, forKey: Self.userDefaultsKey)
     }
 }
 
@@ -29,8 +49,8 @@ struct WelcomeWizard: View {
                 switch self.currentStep {
                 case .welcome:
                     WelcomeStepView(onContinue: { self.advance() })
-                case .copilotCheck:
-                    CopilotCheckStepView(onContinue: { self.advance() })
+                case .engineChoice:
+                    EngineChoiceStepView(onContinue: { self.advance() })
                 case .permissions:
                     PermissionsStepView(onContinue: { self.advance() })
                 case .done:

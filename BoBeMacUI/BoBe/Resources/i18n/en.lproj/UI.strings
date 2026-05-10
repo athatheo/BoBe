@@ -246,12 +246,16 @@
 "settings.window.sidebar_title" = "BOBE TUNING";
 "settings.window.title" = "BoBe Settings";
 
-"setup.copilot.body" = "BoBe ships with the GitHub Copilot CLI built in — no extra install needed. You can sign in to Copilot or switch to a local model later in Settings.";
-"setup.copilot.found" = "Engine ready.";
-"setup.copilot.title" = "Engine";
 "setup.done.body" = "BoBe is ready. You can change everything in Settings later.";
 "setup.done.launch" = "Open BoBe";
 "setup.done.title" = "All set";
+"setup.engine.body" = "BoBe needs an AI to think with. Pick the option that fits you — you can switch any time in Settings.";
+"setup.engine.copilot.subtitle" = "Sign in with your GitHub Copilot subscription. Smart, fast, and works out of the box.";
+"setup.engine.copilot.title" = "Use GitHub Copilot";
+"setup.engine.footer" = "Don't have Copilot or a beefy Mac? Pick whichever, you can change later.";
+"setup.engine.local.subtitle" = "Runs on your Mac. Nothing leaves your computer. Works best with 32 GB+ memory.";
+"setup.engine.local.title" = "Run AI on this Mac";
+"setup.engine.title" = "How should BoBe think?";
 "setup.permissions.body" = "BoBe glances at your screen periodically so it can offer relevant help. Screenshots stay on this Mac.";
 "setup.permissions.denied" = "Screen Recording was denied";
 "setup.permissions.denied_hint" = "Open System Settings → Privacy & Security → Screen Recording to grant access.";
@@ -260,7 +264,7 @@
 "setup.permissions.open_settings" = "Open System Settings";
 "setup.permissions.skip" = "Skip — set up later";
 "setup.permissions.title" = "Screen Recording";
-"setup.welcome.body" = "BoBe is a private, local-first companion. It glances at your screen to help, takes notes in ~/.bobe/memory.md, and learns the goals you care about over time.";
+"setup.welcome.body" = "BoBe is your personal companion. It watches your screen when you let it, remembers what matters, and learns your goals over time.";
 "setup.welcome.continue" = "Let's get set up";
 "setup.welcome.title" = "Welcome to BoBe";
 "setup.window.title" = "BoBe Setup";

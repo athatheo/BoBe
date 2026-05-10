@@ -230,12 +230,16 @@
 "settings.window.sidebar_title" = "ΡΥΘΜΙΣΕΙΣ BOBE";
 "settings.window.title" = "Ρυθμίσεις BoBe";
 
-"setup.copilot.body" = "BoBe uses GitHub Copilot CLI as its language engine. We'll check that it's installed and signed in.";
-"setup.copilot.found" = "GitHub Copilot CLI found.";
-"setup.copilot.title" = "GitHub Copilot CLI";
 "setup.done.body" = "BoBe is ready. You can change everything in Settings later.";
 "setup.done.launch" = "Open BoBe";
 "setup.done.title" = "All set";
+"setup.engine.body" = "BoBe needs an AI to think with. Pick the option that fits you — you can switch any time in Settings.";
+"setup.engine.copilot.subtitle" = "Sign in with your GitHub Copilot subscription. Smart, fast, and works out of the box.";
+"setup.engine.copilot.title" = "Use GitHub Copilot";
+"setup.engine.footer" = "Don't have Copilot or a beefy Mac? Pick whichever, you can change later.";
+"setup.engine.local.subtitle" = "Runs on your Mac. Nothing leaves your computer. Works best with 32 GB+ memory.";
+"setup.engine.local.title" = "Run AI on this Mac";
+"setup.engine.title" = "How should BoBe think?";
 "setup.permissions.body" = "BoBe glances at your screen periodically so it can offer relevant help. Screenshots stay on this Mac.";
 "setup.permissions.denied" = "Screen Recording was denied";
 "setup.permissions.denied_hint" = "Open System Settings → Privacy & Security → Screen Recording to grant access.";
