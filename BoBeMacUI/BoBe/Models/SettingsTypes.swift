@@ -4,9 +4,14 @@ import Foundation
 
 /// Mirrors the daemon's `/settings` GET response. Capture/checkin/
 /// conversation/goal-cadence/mcp are the runtime knobs; the engine
-/// section selects whether the Copilot CLI subprocess drives GitHub
-/// Copilot's cloud or a user-managed local OpenAI-compat server
-/// (typically a managed Ollama).
+/// section selects whether the (one shared) Copilot CLI subprocess
+/// drives GitHub Copilot's cloud or a user-managed local OpenAI-compat
+/// server (typically Ollama). Each of the five worker classes maps to
+/// one of three model slots (chat / batch / vision) — the daemon sets
+/// `model` + `provider` per session via the SDK builder.
+///
+/// Engine fields are hot-swap: PATCHing any of them triggers a
+/// daemon-side worker registry reload (no app restart).
 struct DaemonSettings: Codable, Sendable {
     var captureEnabled: Bool
     var captureIntervalSeconds: Int
@@ -17,10 +22,14 @@ struct DaemonSettings: Codable, Sendable {
     var conversationAutoCloseMinutes: Int
     var goalCheckIntervalSeconds: Double
     var mcpEnabled: Bool
-    /// "copilot_cloud" (default) or "local". Restart-required.
+    /// "copilot_cloud" (default) or "local". Hot-swap.
     var engine: String
     var providerBaseUrl: String?
-    var providerTextModel: String?
+    /// Model used by the user-facing Chat worker.
+    var providerChatModel: String?
+    /// Model used by the autopilot batch workers (goals / decide / consolidate).
+    var providerBatchModel: String?
+    /// Model used by the Vision worker (capture pipeline).
     var providerVisionModel: String?
     var providerOffline: Bool
 
@@ -36,7 +45,8 @@ struct DaemonSettings: Codable, Sendable {
         case mcpEnabled = "mcp_enabled"
         case engine
         case providerBaseUrl = "provider_base_url"
-        case providerTextModel = "provider_text_model"
+        case providerChatModel = "provider_chat_model"
+        case providerBatchModel = "provider_batch_model"
         case providerVisionModel = "provider_vision_model"
         case providerOffline = "provider_offline"
     }
@@ -56,7 +66,8 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var mcpEnabled: Bool?
     var engine: String?
     var providerBaseUrl: String?
-    var providerTextModel: String?
+    var providerChatModel: String?
+    var providerBatchModel: String?
     var providerVisionModel: String?
     var providerOffline: Bool?
 
@@ -72,7 +83,8 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case mcpEnabled = "mcp_enabled"
         case engine
         case providerBaseUrl = "provider_base_url"
-        case providerTextModel = "provider_text_model"
+        case providerChatModel = "provider_chat_model"
+        case providerBatchModel = "provider_batch_model"
         case providerVisionModel = "provider_vision_model"
         case providerOffline = "provider_offline"
     }

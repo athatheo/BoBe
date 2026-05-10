@@ -48,6 +48,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let workers = {
         let data_dir = crate::util::paths::bobe_data_dir();
         crate::copilot::registry::WorkerRegistry::new(
+            Arc::clone(&infra.config_arc),
             Arc::clone(&memory_file),
             data_dir,
             mcp_servers,
@@ -60,6 +61,20 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     workers.prune_old_chat_sessions().await;
 
     let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
+
+    // Wire ConfigManager → WorkerRegistry hot-swap. Engine-config changes
+    // (cloud↔local, per-class models, base URL, offline flag) trigger a
+    // registry reload in the background — the CLI restarts and sessions
+    // re-spawn against the new config on next access. No daemon restart.
+    {
+        let registry_for_listener = Arc::clone(&workers);
+        wired.config_manager.set_engine_change_listener(move || {
+            let registry = Arc::clone(&registry_for_listener);
+            tokio::spawn(async move {
+                registry.reload().await;
+            });
+        });
+    }
 
     if config.seed_default_documents {
         if let Err(e) = crate::db::seeding::seed_default_souls(repos.soul_repo.as_ref()).await {

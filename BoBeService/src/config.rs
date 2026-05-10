@@ -180,33 +180,46 @@ impl Default for GoalsConfig {
     }
 }
 
-/// Engine + LLM provider configuration. Determines whether the daemon
+/// Engine + LLM model configuration. Determines whether the daemon
 /// drives Copilot CLI against GitHub Copilot's cloud (default) or against
 /// a local OpenAI-compatible server (typically a managed Ollama).
 ///
-/// In local mode the daemon spawns two Copilot CLI subprocesses, each
-/// pinned to a different `COPILOT_MODEL` (text + vision) since BYOK
-/// fixes the model at process spawn. Both clients point at the same
-/// `COPILOT_PROVIDER_BASE_URL`; Ollama routes by `model` field.
+/// One shared CLI subprocess in either mode. Per-session model + provider
+/// is set at session-create time via the SDK's `SessionConfig.with_model`
+/// / `with_provider` builders (verified in github-copilot-sdk 0.1.0). Each
+/// of BoBe's five worker classes maps to one of three model slots:
+/// - **chat** (the user-facing dialogue worker)
+/// - **batch** (goals / decide / consolidate — autopilot background jobs)
+/// - **vision** (capture pipeline — needs a VL model in local mode)
 ///
-/// Engine + provider fields are restart-required — the spawned CLI
-/// captures env at boot.
+/// Engine changes are hot-applied: `ConfigManager` notifies the
+/// `WorkerRegistry`, which stops the existing CLI and clears its session
+/// caches so subsequent worker accesses re-spawn against the new config.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct EngineConfig {
     /// `"copilot_cloud"` (default) drives GitHub-hosted Copilot models.
-    /// `"local"` drives a user-managed OpenAI-compat server.
+    /// `"local"` drives a user-managed OpenAI-compat server (typically
+    /// Ollama on `:11434`).
     pub(crate) engine: String,
     /// Local-mode provider URL, e.g. `http://127.0.0.1:11434/v1`. Ignored
-    /// in cloud mode.
+    /// in cloud mode (the signed-in user's GitHub Copilot endpoint is
+    /// implicit).
     pub(crate) provider_base_url: Option<String>,
-    /// Local-mode model for chat / decide / goals / consolidate workers.
-    pub(crate) provider_text_model: Option<String>,
-    /// Local-mode model for the vision worker (capture pipeline).
+    /// Model used by the user-facing Chat worker. Cloud: a Copilot-served
+    /// model (e.g. `"claude-sonnet-4"`); local: an Ollama tag (e.g.
+    /// `"qwen2.5:7b-instruct"`). `None` = use the CLI's default.
+    pub(crate) provider_chat_model: Option<String>,
+    /// Model used by the autopilot batch workers (goals / decide /
+    /// consolidate). May be the same as `provider_chat_model` or a
+    /// cheaper / faster alternative for headless jobs.
+    pub(crate) provider_batch_model: Option<String>,
+    /// Model used by the Vision worker (capture pipeline). Must support
+    /// image inputs in local mode (e.g. `"qwen2.5-vl:7b"`).
     pub(crate) provider_vision_model: Option<String>,
-    /// Local-mode flag — sets `COPILOT_OFFLINE=true` to suppress GitHub
-    /// telemetry/metadata calls. Default true for local; ignored in
-    /// cloud mode.
+    /// Sets `COPILOT_OFFLINE=true` on the spawned CLI to suppress GitHub
+    /// telemetry / metadata calls. Default true; mostly relevant for
+    /// local-mode users who want strict no-network-to-GitHub.
     pub(crate) provider_offline: bool,
 }
 
@@ -215,7 +228,8 @@ impl Default for EngineConfig {
         Self {
             engine: "copilot_cloud".into(),
             provider_base_url: None,
-            provider_text_model: None,
+            provider_chat_model: None,
+            provider_batch_model: None,
             provider_vision_model: None,
             provider_offline: true,
         }

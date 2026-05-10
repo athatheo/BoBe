@@ -85,8 +85,11 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             "engine.provider_base_url" => {
                 set_parsed!(config.engine.provider_base_url, value, k);
             }
-            "engine.provider_text_model" => {
-                set_parsed!(config.engine.provider_text_model, value, k);
+            "engine.provider_chat_model" => {
+                set_parsed!(config.engine.provider_chat_model, value, k);
+            }
+            "engine.provider_batch_model" => {
+                set_parsed!(config.engine.provider_batch_model, value, k);
             }
             "engine.provider_vision_model" => {
                 set_parsed!(config.engine.provider_vision_model, value, k);
@@ -140,7 +143,8 @@ fn normalize_key(key: &str) -> String {
         "goal_check_interval_seconds" => "goals.check_interval_seconds",
         "engine" => "engine.engine",
         "provider_base_url" => "engine.provider_base_url",
-        "provider_text_model" => "engine.provider_text_model",
+        "provider_chat_model" => "engine.provider_chat_model",
+        "provider_batch_model" => "engine.provider_batch_model",
         "provider_vision_model" => "engine.provider_vision_model",
         "provider_offline" => "engine.provider_offline",
         other => other,
