@@ -12,6 +12,7 @@ mod db;
 mod error;
 mod mcp;
 mod models;
+mod ollama_manager;
 mod runtime;
 #[allow(unsafe_code)]
 mod secrets;

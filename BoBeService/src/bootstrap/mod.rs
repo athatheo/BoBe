@@ -93,6 +93,41 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     print_banner(&infra.config_arc.load());
 
+    // Ollama install service — orchestrates the wizard's local-mode
+    // first-launch flow. Idle until POST /local-runtime/install fires.
+    // Reuses a single reqwest::Client (rustls-tls) for both the binary
+    // download and the Ollama API; cheap to share since reqwest::Client
+    // is internally reference-counted.
+    let ollama_install = {
+        let data_dir = crate::util::paths::bobe_data_dir();
+        let http = Arc::new(
+            reqwest::Client::builder()
+                .build()
+                .map_err(|e| AppError::Internal(format!("reqwest client build: {e}")))?,
+        );
+        let binary = Arc::new(crate::binary_manager::BinaryManager::new(
+            &data_dir,
+            Arc::clone(&http),
+        ));
+        // Use the configured base URL when present, falling back to the
+        // standard Ollama localhost endpoint. The provider URL has a `/v1`
+        // suffix for OpenAI-compat; OllamaManager strips it via
+        // `root_from_provider_url` to get the native API root.
+        let base_url = config
+            .engine
+            .provider_base_url
+            .as_deref()
+            .map(crate::ollama_manager::OllamaManager::root_from_provider_url)
+            .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
+        let manager = Arc::new(crate::ollama_manager::OllamaManager::new(
+            Arc::clone(&http),
+            &base_url,
+        ));
+        crate::services::ollama_install_service::OllamaInstallService::new(
+            binary, manager, data_dir,
+        )
+    };
+
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
@@ -108,6 +143,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         mdns_announcer: infra.mdns_announcer,
         workers,
         memory_file,
+        ollama_install,
     });
 
     Ok(state)

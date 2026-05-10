@@ -105,6 +105,18 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/status", get(handlers::engine::get_auth_status))
         .route("/models", get(handlers::engine::list_models))
         .route(
+            "/local-runtime/install",
+            post(handlers::local_runtime::start_install),
+        )
+        .route(
+            "/local-runtime/cancel",
+            post(handlers::local_runtime::cancel_install),
+        )
+        .route(
+            "/local-runtime/status",
+            get(handlers::local_runtime::install_status_stream),
+        )
+        .route(
             "/tools/mcp/config",
             get(handlers::tools_mcp::get_mcp_config)
                 .put(handlers::tools_mcp::save_mcp_config)

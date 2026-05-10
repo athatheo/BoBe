@@ -11,6 +11,7 @@ use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
+use crate::services::ollama_install_service::OllamaInstallService;
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -31,6 +32,7 @@ pub(crate) struct AppState {
     pub(crate) mdns_announcer: Arc<MdnsAnnouncer>,
     pub(crate) workers: Arc<WorkerRegistry>,
     pub(crate) memory_file: Arc<MemoryFile>,
+    pub(crate) ollama_install: Arc<OllamaInstallService>,
 }
 
 impl AppState {
