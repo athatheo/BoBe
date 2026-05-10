@@ -1,5 +1,3 @@
-//! Entry point for scheduled check-ins: schedule -> conversation check -> cooldown -> send.
-
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;

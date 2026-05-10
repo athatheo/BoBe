@@ -2,16 +2,7 @@ import Foundation
 
 // MARK: - Settings
 
-/// Mirrors the daemon's `/settings` GET response. Capture/checkin/
-/// conversation/goal-cadence/mcp are the runtime knobs; the engine
-/// section selects whether the (one shared) Copilot CLI subprocess
-/// drives GitHub Copilot's cloud or a user-managed local OpenAI-compat
-/// server (typically Ollama). Each of the five worker classes maps to
-/// one of three model slots (chat / batch / vision) — the daemon sets
-/// `model` + `provider` per session via the SDK builder.
-///
-/// Engine fields are hot-swap: PATCHing any of them triggers a
-/// daemon-side worker registry reload (no app restart).
+/// Engine fields hot-swap: PATCH triggers daemon worker registry reload.
 struct DaemonSettings: Codable, Sendable {
     var captureEnabled: Bool
     var captureIntervalSeconds: Int
@@ -22,14 +13,10 @@ struct DaemonSettings: Codable, Sendable {
     var conversationAutoCloseMinutes: Int
     var goalCheckIntervalSeconds: Double
     var mcpEnabled: Bool
-    /// "copilot_cloud" (default) or "local". Hot-swap.
     var engine: String
     var providerBaseUrl: String?
-    /// Model used by the user-facing Chat worker.
     var providerChatModel: String?
-    /// Model used by the autopilot batch workers (goals / decide / consolidate).
     var providerBatchModel: String?
-    /// Model used by the Vision worker (capture pipeline).
     var providerVisionModel: String?
     var providerOffline: Bool
 
@@ -52,8 +39,6 @@ struct DaemonSettings: Codable, Sendable {
     }
 }
 
-/// All-optional payload for PATCH /settings. Server only applies fields
-/// that are present.
 struct SettingsUpdateRequest: Codable, Sendable {
     var captureEnabled: Bool?
     var captureIntervalSeconds: Int?
@@ -94,9 +79,7 @@ struct SettingsUpdateResponse: Codable, Sendable {
     let message: String
     let appliedFields: [String]
     let restartRequiredFields: [String]
-    /// Daemon flips this to `true` when the in-memory swap succeeded but
-    /// writing to ~/.bobe/config.toml failed. Settings are live for this
-    /// session but won't survive a restart — surface to the user.
+    /// `true` = in-memory swap OK but writing config.toml failed; won't survive restart.
     var persistFailed: Bool?
 
     enum CodingKeys: String, CodingKey {
@@ -121,9 +104,7 @@ struct SendMessageResponse: Codable, Sendable {
     }
 }
 
-/// `/health` body — the daemon always returns 200 even when the DB is
-/// in error, so callers must inspect `services.database` rather than
-/// the HTTP status.
+/// Always returns 200 even on DB error — inspect `services.database`, not status.
 struct HealthResponse: Codable, Sendable {
     let status: String
     let version: String?
@@ -134,9 +115,6 @@ struct HealthServices: Codable, Sendable {
     let database: String
 }
 
-/// `/status` body — runtime snapshot used to seed local state on SSE
-/// reconnect. `accepting_user_messages` is the daemon's authoritative
-/// answer to "can the user send right now?"; UI should mirror it.
 struct StatusResponse: Codable, Sendable {
     let indicator: String
     let capturing: Bool

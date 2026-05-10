@@ -1,15 +1,3 @@
-//! `ChatWorker` — streaming chat with the user. Long-lived session per
-//! local date (rotation handled by [`super::super::session_store`]).
-//!
-//! Per-turn lifecycle:
-//! 1. Acquire `submit_lock` so only one turn is in flight per worker.
-//! 2. `session.subscribe()` to receive events from now on.
-//! 3. `session.send(opts)` to enqueue the prompt.
-//! 4. Yield `ChatDelta`s until `session.idle` (success) or
-//!    `session.error` (failure).
-//! 5. Drop the lock when the stream completes or is dropped (the
-//!    `AbortGuard` cancels any in-flight turn on premature drop).
-
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,11 +22,7 @@ pub(crate) struct CopilotChatWorker {
     submit_lock: Arc<Mutex<()>>,
 }
 
-/// RAII guard that aborts an in-flight Copilot turn when the chat
-/// stream is dropped without seeing `Done`/`Error`. Without this, a
-/// caller that drops the stream early leaks a generating turn —
-/// continued cost, possibly mis-attributed `assistant.usage` events,
-/// and the next `send` racing the dying turn's residual events.
+/// Without this, a dropped stream leaks an in-flight turn — wasted tokens + residual events.
 struct AbortGuard {
     session: Arc<Session>,
     completed: Arc<AtomicBool>,
@@ -50,9 +34,6 @@ impl Drop for AbortGuard {
             return;
         }
         let session = Arc::clone(&self.session);
-        // We're in a sync `Drop`; spawn the async abort. Failures here
-        // are best-effort — the worst case is we waste tokens on a
-        // turn the caller doesn't want.
         tokio::spawn(async move {
             if let Err(e) = session.abort().await {
                 tracing::warn!(err = %e, "chat stream dropped; abort failed");
@@ -72,15 +53,11 @@ impl CopilotChatWorker {
     }
 
     pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
-        // Disconnect (not destroy) — preserves on-disk state so the
-        // session resumes on next daemon start (within the same date).
+        // disconnect (not destroy) preserves on-disk state for resume within the same date.
         self.session.disconnect().await?;
         Ok(())
     }
 
-    /// Borrow the underlying `Session` for sideband RPC queries that
-    /// don't go through the chat-turn path (e.g. `session.mcp.list` for
-    /// the Settings → MCP panel's live status).
     pub(crate) fn session(&self) -> Arc<Session> {
         Arc::clone(&self.session)
     }
@@ -95,11 +72,6 @@ impl ChatWorker for CopilotChatWorker {
         let session = Arc::clone(&self.session);
         let lock = Arc::clone(&self.submit_lock);
 
-        // Tracks whether the stream completed naturally (saw `Done` or
-        // `Error`). Cleared in the success path; the AbortGuard's Drop
-        // checks this and fires `session.abort()` only if the stream is
-        // dropped mid-turn (caller cancelled). Without this, a dropped
-        // stream leaks an in-flight Copilot turn — wasted quota + drift.
         let abort_guard = AbortGuard {
             session: Arc::clone(&session),
             completed: Arc::new(AtomicBool::new(false)),
@@ -107,11 +79,7 @@ impl ChatWorker for CopilotChatWorker {
         let completed = Arc::clone(&abort_guard.completed);
 
         let s = stream! {
-            // Move the AbortGuard into the stream. On stream drop, its
-            // Drop impl fires abort if `completed` is still false.
             let _abort_on_drop = abort_guard;
-            // Acquire lock inside the stream so a queued caller waits
-            // cleanly, and releases on completion / drop.
             let _guard = lock.lock_owned().await;
 
             let mut events = session.subscribe();
@@ -163,9 +131,6 @@ impl ChatWorker for CopilotChatWorker {
     }
 }
 
-/// Build SDK `MessageOptions` from a `ChatPrompt`. Maps each
-/// `ChatAttachment` to the right `Attachment` variant — blob for
-/// in-memory bytes (preferred for screenshots), file for paths.
 fn build_message_options(
     prompt: ChatPrompt,
     class: WorkerClass,
@@ -175,9 +140,8 @@ fn build_message_options(
         attachments.push(to_sdk_attachment(att)?);
     }
 
-    // Session mode (interactive) set at session-create time on
-    // `SessionConfig`. `MessageOptions::with_mode` is delivery-mode only.
-    let _ = class; // accepted for signature symmetry; mode lives on the session
+    // Mode lives on SessionConfig; this signature exists for symmetry.
+    let _ = class;
     let mut opts = MessageOptions::new(prompt.text);
     if !attachments.is_empty() {
         opts = opts.with_attachments(attachments);
@@ -194,9 +158,6 @@ fn to_sdk_attachment(att: ChatAttachment) -> Result<Attachment, std::io::Error> 
     })
 }
 
-/// Map an SDK `SessionEvent` to a BoBe `ChatDelta`. Returns `None` for
-/// events we don't surface (turn_start/turn_end, intent, reasoning,
-/// usage — usage is observed by `BobeHandler`, not the chat stream).
 fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
     match event.event_type.as_str() {
         "assistant.message_delta" => event

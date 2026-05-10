@@ -1,10 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Steps the wizard can land on. The set is fixed but the *path* depends
-/// on the user's engine choice — cloud users see `cloudAuth`, local users
-/// see `localSetup`. `progressOrdinal` collapses both branches to a
-/// single 0..4 axis for the progress dots.
 enum WelcomeStep: Hashable {
     case welcome
     case engineChoice
@@ -13,9 +9,7 @@ enum WelcomeStep: Hashable {
     case permissions
     case done
 
-    /// 0..4 — used to color the progress dots. Both `cloudAuth` and
-    /// `localSetup` map to position 2 since they're the engine-specific
-    /// step.
+    /// 0..4 axis for progress dots; cloud/local share position 2.
     var progressOrdinal: Int {
         switch self {
         case .welcome: 0
@@ -27,10 +21,6 @@ enum WelcomeStep: Hashable {
     }
 }
 
-/// User's selection in the engine-choice step. Held in wizard `@State`
-/// during the flow; applied to the daemon (`PATCH /settings`) on the
-/// Done step. No UserDefaults persistence — `Config.engine` on disk is
-/// the source of truth once the wizard finishes.
 enum EngineChoice: String, Sendable {
     case copilot
     case local
@@ -91,8 +81,6 @@ struct WelcomeWizard: View {
         }
     }
 
-    /// State machine for step transitions. Branches at engineChoice and
-    /// reconverges at permissions.
     private func advance() {
         let next: WelcomeStep
         switch self.currentStep {

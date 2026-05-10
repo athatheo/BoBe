@@ -1,25 +1,4 @@
-//! Binary manager for the Ollama runtime — discovery, download, validation.
-//!
-//! Used in `engine == "local"` mode to ensure a usable Ollama binary
-//! exists at `~/.bobe/ollama/bin/ollama`. Strategy:
-//!
-//! 1. **Detect existing**: if `localhost:11434` already responds, the
-//!    user has Ollama installed (Homebrew, official installer, prior
-//!    BoBe install) — we reuse theirs and skip download. (This check
-//!    lives in `ollama_manager`, not here.)
-//! 2. **Else download managed**: GitHub release `ollama-darwin.tgz`,
-//!    streamed to `~/.bobe/ollama/ollama-darwin.tgz` with progress
-//!    events on `watch::Sender<DownloadProgress>`.
-//! 3. **Extract**: gzip + tar, walk entries looking for the `ollama`
-//!    binary (path traversal protected). Write to managed path with
-//!    +x perms. Delete archive.
-//! 4. **Validate**: `ollama --version` exits 0.
-//!
-//! Trust model: GitHub HTTPS + the redirect chain to `releases/latest/
-//! download/ollama-darwin.tgz`. We do not pin a SHA today — Ollama's
-//! release page doesn't publish a stable SHA256SUMS file alongside
-//! `latest`. When we move to a pinned version we should add hash
-//! verification.
+//! No SHA pin — Ollama's `latest` release lacks stable SHA256SUMS; trust = GitHub HTTPS.
 
 mod download;
 mod extract;
@@ -35,10 +14,7 @@ use tracing::info;
 
 use crate::error::AppError;
 
-/// Streamed installation progress. `percent` is best-effort:
-/// - `0..90` during the HTTP download (scaled against `Content-Length`)
-/// - `92` once download completes, before extraction
-/// - `100` once the binary is on disk + executable
+/// `percent` is best-effort: 0..90 download, 92 post-download, 100 ready.
 #[derive(Debug, Clone)]
 pub(crate) struct DownloadProgress {
     pub(crate) current_bytes: u64,
@@ -69,8 +45,6 @@ impl BinaryManager {
         }
     }
 
-    /// Returns the managed binary path if it already exists on disk,
-    /// regardless of whether it works. Cheap — just a `stat`.
     pub(crate) fn find_managed_ollama(&self) -> Option<PathBuf> {
         let managed = self.managed_binary_path();
         if managed.exists() {
@@ -80,8 +54,7 @@ impl BinaryManager {
         None
     }
 
-    /// Idempotent: returns the managed binary path, downloading +
-    /// extracting only if absent. Progress streamed via `progress_tx`.
+    /// Idempotent: downloads + extracts only if absent.
     pub(crate) async fn ensure_managed_ollama(
         &self,
         progress_tx: &watch::Sender<DownloadProgress>,
@@ -159,9 +132,7 @@ impl BinaryManager {
         Ok(target_path)
     }
 
-    /// Sanity-check a managed binary by invoking `--version`. Catches
-    /// half-extracted / corrupt downloads before they bite at the
-    /// `ollama serve` step.
+    /// `--version` catches half-extracted / corrupt downloads.
     pub(crate) async fn validate_ollama_binary(&self, path: &Path) -> Result<(), AppError> {
         let metadata = tokio::fs::metadata(path)
             .await
@@ -202,8 +173,6 @@ impl BinaryManager {
         Ok(())
     }
 
-    /// Where the managed binary lives. Stable so other modules can
-    /// reference without depending on an instance.
     pub(crate) fn managed_binary_path(&self) -> PathBuf {
         self.data_dir.join("ollama").join("bin").join("ollama")
     }

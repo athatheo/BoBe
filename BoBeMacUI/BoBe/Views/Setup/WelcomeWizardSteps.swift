@@ -43,11 +43,6 @@ struct WelcomeStepView: View {
 }
 
 // MARK: - Engine choice step
-//
-// Asks the user how BoBe should think: GitHub Copilot subscription
-// (cloud) or a local AI model running on their Mac. Selection is held
-// in the parent wizard's `@State`; the daemon learns about it on the
-// Done step via PATCH /settings.
 
 struct EngineChoiceStepView: View {
     @Binding var selection: EngineChoice?
@@ -292,12 +287,6 @@ struct PermissionsStepView: View {
 }
 
 // MARK: - Cloud auth step
-//
-// Shown when the user picked the cloud (GitHub Copilot) engine. Hits
-// the daemon's `/auth/status` endpoint which wraps the SDK's
-// `Client::get_auth_status()`. If the user has authed Copilot CLI
-// before (via `gh auth login` or `copilot login`), they see "signed in
-// as @login" and continue. Otherwise we offer a path to sign in.
 
 private enum CloudAuthState {
     case checking
@@ -419,10 +408,7 @@ struct CloudAuthStepView: View {
             VStack(spacing: 8) {
                 Button(L10n.tr("setup.cloud_auth.open_terminal")) {
                     CopilotSignIn.openLogin(cliPath: cliPath)
-                    // Once we hand the user off to Terminal, start
-                    // polling /auth/status in the background so the
-                    // wizard auto-advances when they finish — no need
-                    // to come back and click "Check again."
+                    // Auto-advance when Terminal sign-in finishes.
                     self.startAuthPolling()
                 }
                 .bobeButton(.primary, size: .regular)
@@ -473,13 +459,7 @@ struct CloudAuthStepView: View {
         }
     }
 
-    /// Polls `/auth/status` every 2s after the user starts the device
-    /// flow in Terminal, advancing automatically once
-    /// `is_authenticated` flips. SDK doesn't expose a `login()` /
-    /// `poll_for_token()` method, but we don't need one — the CLI
-    /// persists the token to keychain as soon as the user completes
-    /// the flow, and `get_auth_status` reads that. Capped at 5 minutes
-    /// so a forgotten Terminal window doesn't poll forever.
+    /// Polls every 2s; caps at 5min so a forgotten Terminal doesn't poll forever.
     private func startAuthPolling() {
         self.pollTask?.cancel()
         self.pollTask = Task { @MainActor in
@@ -495,9 +475,7 @@ struct CloudAuthStepView: View {
                         return
                     }
                 } catch {
-                    // Transient errors during polling are expected (the
-                    // CLI may briefly be unresponsive while completing
-                    // the flow). Keep polling until the deadline.
+                    // CLI may briefly be unresponsive mid-flow; keep polling.
                 }
             }
         }
@@ -505,11 +483,6 @@ struct CloudAuthStepView: View {
 }
 
 // MARK: - Local setup step
-//
-// Shown when the user picked the local engine. Triggers
-// `POST /local-runtime/install` with default model selections, then
-// streams the `/local-runtime/status` SSE channel into three progress
-// bars (Ollama runtime / chat model / vision model). Cancellable.
 
 private struct LocalDefaults {
     static let chatModel = "qwen2.5:7b-instruct"
@@ -682,8 +655,7 @@ struct LocalSetupStepView: View {
             _ = try await DaemonClient.shared.startLocalRuntimeInstall(request)
             self.hasStarted = true
         } catch {
-            // 409 just means an install is already in flight — that's
-            // fine, we still want to subscribe to status.
+            // 409 = install already in flight; still subscribe to status.
             if !error.localizedDescription.lowercased().contains("conflict") {
                 self.startError = error.localizedDescription
             }
@@ -769,10 +741,6 @@ struct DoneStepView: View {
         }
     }
 
-    /// PATCH /settings with the engine choice (and per-class model
-    /// defaults for the local branch). Daemon's hot-swap listener
-    /// rebuilds the worker registry against the new config without an
-    /// app restart.
     private func applyEngineSettings() async {
         let request: SettingsUpdateRequest
         switch self.engineChoice {
@@ -793,14 +761,13 @@ struct DoneStepView: View {
             self.settingsApplied = true
         } catch {
             self.settingsError = error.localizedDescription
-            // Don't block — user can still launch the app and fix
-            // settings from Settings → Engine.
+            // Don't block — user can fix from Settings → Engine.
             self.settingsApplied = true
         }
     }
 }
 
-// MARK: - SettingsUpdateRequest convenience init for the wizard
+// MARK: - SettingsUpdateRequest convenience init
 
 private extension SettingsUpdateRequest {
     init(

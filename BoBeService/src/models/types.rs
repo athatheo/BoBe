@@ -1,5 +1,3 @@
-// ─── Conversation ───────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
@@ -48,12 +46,8 @@ impl std::fmt::Display for TurnRole {
     }
 }
 
-// ─── Goal ───────────────────────────────────────────────────────────────────
-
-/// Goals are file-backed (`~/.bobe/goals/<id>.md`); this enum is the
-/// stable wire shape the API + skill files reference. Priority is a
-/// raw `u8` on `GoalDoc`, not an enum, so the agent can express finer
-/// gradations without changing types.
+/// Goals are file-backed (`~/.bobe/goals/<id>.md`); priority lives on
+/// `GoalDoc` as a raw `u8` for finer gradations without type changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum GoalStatus {

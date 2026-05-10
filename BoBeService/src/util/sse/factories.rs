@@ -65,9 +65,7 @@ pub(crate) fn error_event(
     }
 }
 
-/// Trigger-shaped error event (used by background workers like the
-/// capture trigger). Distinct payload shape from chat-stream errors:
-/// the consumer keys off `trigger` rather than `code`.
+/// Distinct payload from chat-stream errors: consumer keys off `trigger`, not `code`.
 pub(crate) fn trigger_error_event(trigger: &str, message: &str, recoverable: bool) -> StreamBundle {
     StreamBundle {
         event_type: EventType::Error,

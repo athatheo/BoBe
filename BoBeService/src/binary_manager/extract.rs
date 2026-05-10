@@ -1,8 +1,4 @@
-//! Archive extraction for the Ollama runtime (`.tgz`).
-//!
-//! Walks the gzip+tar stream, extracts the `ollama` entry to the target
-//! path, sets +x. Any entry whose path contains `..` is skipped (defense
-//! in depth — we don't trust the archive provider blindly).
+//! Path-traversal: any entry containing `..` is skipped.
 
 use std::path::Path;
 

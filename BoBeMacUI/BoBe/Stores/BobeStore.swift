@@ -18,11 +18,8 @@ final class BobeStore {
     private var hasConnectedOnce = false
 
     // MARK: - Locale (client-side only)
-    //
-    // Locale is purely a SwiftUI concern post-Copilot-SDK pivot — the
-    // daemon doesn't translate anything. Persist to UserDefaults so
-    // the choice survives restarts; empty string means "follow system".
 
+    /// Empty string means "follow system locale".
     private static let localeOverrideKey = "bobe.locale_override"
     static let supportedLocales = [
         "en-US", "el-GR", "zh-CN", "de-DE", "es-ES", "pt-BR", "ko-KR", "ja-JP", "fr-FR",
@@ -110,9 +107,7 @@ final class BobeStore {
         if self.context.captureInProgress {
             return .capturing
         }
-        // Daemon owns the authoritative "accepting" flag — covers the
-        // gap between try_begin_user_message setting it false and the
-        // indicator transitioning. Without this, rapid double-sends 409.
+        // Daemon flag covers SSE-vs-daemon race; without this, rapid double-sends 409.
         if !self.context.acceptingUserMessages {
             return .thinking
         }
@@ -268,9 +263,6 @@ final class BobeStore {
         self.updateState { $0.softWarning = nil }
     }
 
-    /// Push a non-fatal warning (e.g. backend degraded subsystem) through
-    /// the same banner channel as transient errors. The user can dismiss
-    /// it via the X button on the overlay error banner.
     func surfaceWarning(_ message: String) {
         self.updateState { ctx in
             ctx.errorMessage = message
@@ -320,16 +312,11 @@ final class BobeStore {
             try await client.sendMessage(content)
             self.updateState { ctx in
                 Self.markMessageSent(userMessage.id, messages: &ctx.messages)
-                // Optimistically lock the composer until the indicator
-                // catches up — closes the SSE-vs-daemon race window.
+                // Optimistic lock — closes SSE-vs-daemon indicator race.
                 ctx.acceptingUserMessages = false
             }
         } catch {
-            // Daemon returns 409 when busy with one of 4 hardcoded
-            // "BoBe is still..." strings. The retry banner is the right
-            // affordance — don't double up with a fatal-looking red
-            // error banner. For other failures (network, etc.) we DO
-            // surface errorMessage so the user knows it wasn't busy.
+            // 409 = daemon busy; retry banner suffices, skip red banner.
             let isBusy409 = Self.isBusy409(error)
             logger.error("sendMessage failed: \(error.localizedDescription)")
             self.updateState { ctx in
@@ -391,9 +378,7 @@ final class BobeStore {
                 self.handleIndicator(payload)
             }
         case .textDelta:
-            // The daemon emits a `text_delta` with `done: true` as the
-            // end-of-turn marker; `handleTextDelta` calls
-            // `finalizeStreamingMessage` when it sees that flag.
+            // `done: true` is the end-of-turn marker.
             if let payload = try? bundle.payload.decode(as: TextDeltaPayload.self) {
                 self.handleTextDelta(payload, messageId: bundle.messageId)
             }
@@ -457,11 +442,7 @@ final class BobeStore {
         }
     }
 
-    /// Decode either chat-stream errors (`code` discriminator) or
-    /// background trigger errors (`trigger` discriminator). Recoverable
-    /// trigger errors land in the soft-warning banner; recoverable chat
-    /// errors do nothing (the stream may continue); fatal errors stop
-    /// the world via the red banner.
+    /// Recoverable trigger errors → soft warning; chat → no-op; fatal → red banner.
     private func handleErrorPayload(_ payload: ErrorPayload) {
         if payload.recoverable {
             if payload.isTriggerError {
@@ -496,9 +477,7 @@ final class BobeStore {
             return
         }
 
-        // Throttle UI updates: flush at ~150ms intervals for a typing appearance.
-        // Task existence is the dirty flag — if a task is already scheduled, new
-        // deltas just accumulate in streamingMessage until the timer fires.
+        // Task existence is the dirty flag — accumulated deltas flush on timer.
         if self.textDeltaFlushTask == nil {
             self.textDeltaFlushTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(StoreTiming.textDeltaFlushMilliseconds))
@@ -650,11 +629,7 @@ final class BobeStore {
         self.scheduleReconnectStatusTransition()
     }
 
-    /// Seed `acceptingUserMessages`, `capturing`, and the indicator state
-    /// from the daemon's authoritative `/status` snapshot. Without this,
-    /// SSE-only state can drift on mid-turn reconnects — the composer
-    /// re-enables before the daemon is actually ready and the first send
-    /// 409s.
+    /// Without this, mid-turn SSE reconnects let the composer re-enable too early and 409.
     private func synchronizeStatus() {
         Task { @MainActor [weak self] in
             guard let self else { return }

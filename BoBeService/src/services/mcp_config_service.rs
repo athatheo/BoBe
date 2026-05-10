@@ -1,12 +1,3 @@
-//! MCP configuration service — schema validation, secret normalization,
-//! file persistence, and runtime adapter reload.
-//!
-//! Design follows Claude Code / VS Code Copilot patterns:
-//! - **Validate** is schema-only (pure, no subprocesses, no side effects).
-//! - **Save** persists config + reloads adapter; server connections happen
-//!   lazily during adapter reload (per-server failures are non-blocking).
-//! - **GET** returns persisted config + live runtime state from the adapter.
-
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -17,8 +8,6 @@ use crate::app_state::AppState;
 use crate::error::AppError;
 use crate::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
 use crate::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
-
-// ── Response / request DTOs ────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub(crate) struct McpToolMetadata {
@@ -34,10 +23,7 @@ pub(crate) struct McpServerSummary {
     pub(crate) args: Vec<String>,
     pub(crate) enabled: bool,
     pub(crate) connected: bool,
-    /// Live status from `session.mcp.list` when chat session is alive.
-    /// One of: `connected | failed | needs-auth | pending | disabled |
-    /// not_configured`. `None` when chat session hasn't spawned yet —
-    /// UI should treat that as "indeterminate" rather than disconnected.
+    /// `None` means "indeterminate"; chat session not yet spawned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) status: Option<String>,
     pub(crate) tool_count: usize,
@@ -87,8 +73,6 @@ pub(crate) struct McpConfigResetResponse {
     pub(crate) raw_json: String,
     pub(crate) count: usize,
 }
-
-// ── Public API ─────────────────────────────────────────────────────────────
 
 pub(crate) async fn get_document(state: &AppState) -> Result<McpConfigDocumentResponse, AppError> {
     let (_path, file) = load_mcp_file(state)?;
@@ -186,8 +170,6 @@ pub(crate) async fn reset_document(state: &AppState) -> Result<McpConfigResetRes
     })
 }
 
-// ── Internals ──────────────────────────────────────────────────────────────
-
 fn parse_and_validate(
     raw_json: &str,
     blocked_commands: &[String],
@@ -266,11 +248,6 @@ async fn build_runtime_summaries(state: &AppState, file: &McpConfigFile) -> Vec<
     let mut entries: Vec<(&String, &McpServerEntry)> = file.mcp_servers.iter().collect();
     entries.sort_by_key(|(name, _)| *name);
 
-    // Query live MCP state from the chat session (the only one with
-    // MCP servers attached). Returns `None` when chat hasn't spawned
-    // yet — UI then renders "indeterminate" for `connected`/`status`.
-    // This is best-effort; we don't force-spawn the CLI just for the
-    // Settings panel.
     let live = state.workers.live_mcp_servers().await;
     let live_map: HashMap<String, mcp_live::ServerEntry> = live
         .map(|servers| {
@@ -297,10 +274,7 @@ async fn build_server_summary(
     env_keys.sort();
     secret_env_keys.sort();
 
-    // SDK's `session.mcp.list` reports `name`, `status`, optional
-    // `error`. Per-server tool count + tools list aren't exposed at
-    // v0.1.0 — leave them at defaults. UI surfaces status badge from
-    // the enum string.
+    // Per-server tools/tool_count not exposed by SDK v0.1.0; leave defaulted.
     let (connected, status, error) = match live {
         Some(s) => (s.connected, Some(s.status.clone()), s.error.clone()),
         None => (false, None, None),
@@ -322,10 +296,6 @@ async fn build_server_summary(
     }
 }
 
-/// Adapter between the SDK's `McpServer` (which has a typed enum status)
-/// and the wire-format we send to Swift (status as a flat string). Kept
-/// in a small private module so the SDK type doesn't leak into the
-/// service's public surface.
 mod mcp_live {
     use github_copilot_sdk::generated::api_types::{McpServer, McpServerStatus};
 
@@ -345,7 +315,6 @@ mod mcp_live {
                 McpServerStatus::Pending => "pending",
                 McpServerStatus::Disabled => "disabled",
                 McpServerStatus::NotConfigured => "not-configured",
-                // Forward-compat: SDK adds new states, we surface as-is.
                 McpServerStatus::Unknown => "unknown",
             }
             .to_string();
@@ -357,8 +326,6 @@ mod mcp_live {
         }
     }
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 fn load_mcp_file(state: &AppState) -> Result<(PathBuf, McpConfigFile), AppError> {
     let path = resolve_config_path(state)?;

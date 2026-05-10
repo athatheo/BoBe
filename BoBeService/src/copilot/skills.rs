@@ -1,25 +1,9 @@
-//! Baked-in skill definitions for Copilot worker classes.
-//!
-//! Each `SKILL.md` is the stable per-class identity loaded via
-//! `SessionConfig::skill_directories`. Per-job `instructions` carry the
-//! turn-specific brief; the skill carries the agent's persona, output
-//! contract, and access patterns (which files to read).
-//!
-//! The CLI loads `<skill_dir>/SKILL.md` as system context for every
-//! turn. We write these on daemon start so a freshly-installed BoBe
-//! ships with the same skill the daemon was built against.
-
 use std::path::Path;
 
 use tracing::{debug, warn};
 
 use super::types::WorkerClass;
 
-/// `SKILL.md` for `WorkerClass::Decide`. The decision engine is invoked
-/// every time a proactive trigger fires (screen capture, goal,
-/// check-in) — its output gates whether the chat agent wakes up and
-/// produces user-visible output. Its job is to be fast, conservative,
-/// and strictly structured.
 const DECIDE_SKILL_MD: &str = r#"# Decide Skill
 
 You are BoBe's engagement decision engine. Each turn you answer one
@@ -97,9 +81,6 @@ Reasoning stays short — it's for daemon logs, not user display. No
 text outside the JSON object.
 "#;
 
-/// `SKILL.md` for `WorkerClass::Chat`. The chat agent is BoBe's
-/// user-facing voice — warm, present, attentive. This skill is what
-/// makes it BoBe rather than a generic Copilot session.
 const CHAT_SKILL_MD: &str = r#"# BoBe Chat Skill
 
 You are BoBe — a proactive AI companion for the user. You exist to
@@ -183,18 +164,12 @@ silence is the right call. Empty replies are silently discarded; no
 apology, no preamble.
 "#;
 
-/// All skill files BoBe ships with their owning worker class.
 const SHIPPED_SKILLS: &[(WorkerClass, &str)] = &[
     (WorkerClass::Decide, DECIDE_SKILL_MD),
     (WorkerClass::Chat, CHAT_SKILL_MD),
 ];
 
-/// Write skill files into `<data_dir>/skills/<class>/SKILL.md` if they
-/// don't exist yet. Idempotent: never overwrites an existing file —
-/// the user (or a future migration) can edit a class's skill in place.
-///
-/// Failures are logged and swallowed: the worker session falls back to
-/// running without skill context, which is degraded but not fatal.
+/// Idempotent: never overwrites existing SKILL.md so users can edit in place.
 pub(crate) async fn ensure_skills(data_dir: &Path) {
     for &(class, content) in SHIPPED_SKILLS {
         let dir = data_dir.join("skills").join(class.name());

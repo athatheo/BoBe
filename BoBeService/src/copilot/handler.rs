@@ -1,8 +1,3 @@
-//! `BobeHandler` — `SessionHandler` impl for BoBe sessions. Auto-approves
-//! permission requests (workers run inside `~/.bobe/`) and forwards
-//! `session.error` events to the tracing log so failures surface even
-//! when the worker swallows them.
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -29,9 +24,7 @@ impl SessionHandler for BobeHandler {
         _request_id: RequestId,
         _data: PermissionRequestData,
     ) -> PermissionResult {
-        // Workers run inside ~/.bobe/ — by design they can do anything in
-        // there. Centralized so future tightening (e.g. block network
-        // tools for batch workers) lands in one place.
+        // Workers sandboxed to ~/.bobe/; centralized for future per-class restrictions.
         PermissionResult::Approved
     }
 

@@ -1,10 +1,4 @@
-//! HTTP handlers for `/goals/*`.
-//!
-//! Goals are file-backed: each lives at `~/.bobe/goals/<id>.md`. The
-//! API exposes the `GoalDoc` shape (rich sections + metadata header)
-//! to the SwiftUI overlay so users can see + edit Why It Matters,
-//! Notes, etc. directly. The chat agent edits the same files via the
-//! SDK's Read/Write/Edit tools — both paths hit `GoalsService`.
+//! Goals are file-backed at `~/.bobe/goals/<id>.md`; chat agent edits via SDK tools hit the same `GoalsService`.
 
 use std::sync::Arc;
 
@@ -79,8 +73,6 @@ pub(crate) struct GoalActionResponse {
 #[derive(Debug, Deserialize)]
 pub(crate) struct GoalListQuery {
     pub(crate) status: Option<String>,
-    /// Defaults to false; pass `?include_archived=true` to include
-    /// `archived` goals in `list_goals`.
     #[serde(default)]
     pub(crate) include_archived: bool,
 }

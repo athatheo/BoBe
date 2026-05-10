@@ -130,7 +130,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)
-        // SSE unaffected — its handler returns the Sse response immediately.
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::GATEWAY_TIMEOUT,
             std::time::Duration::from_secs(30),

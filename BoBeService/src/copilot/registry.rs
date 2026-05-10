@@ -1,36 +1,4 @@
-//! `WorkerRegistry` — owns the shared `ClientHandle` and the per-class
-//! `Session`s.
-//!
-//! Each worker class has its own `Mutex<Option<...>>` for precise return
-//! types (`Arc<BatchWorker>` for goals/decide/consolidate, `Arc<VisionWorker>`
-//! for vision, `Arc<CopilotChatWorker>` for chat). Sessions are lazy: the
-//! first call to a class accessor spawns the `Session` (after establishing
-//! the shared CLI process via `ClientHandle::ensure_started`). Subsequent
-//! calls return the cached `Arc`. `reload` drops every cached session +
-//! stops the CLI so the next access re-spawns.
-//!
-//! Sessions persist across daemon restarts via `SessionStore`. Chat
-//! rotates daily; everything else uses a stable per-class ID.
-//!
-//! ## Per-session BYOK
-//!
-//! `create_or_resume` builds each `SessionConfig` with class-appropriate
-//! `model` + `provider` derived from the live `EngineConfig`:
-//! - **Chat**   → `engine.provider_chat_model`
-//! - **Vision** → `engine.provider_vision_model`
-//! - **Goals / Decide / Consolidate** → `engine.provider_batch_model`
-//!
-//! In cloud mode (`engine == "copilot_cloud"`) only the `model` is set;
-//! the CLI uses the signed-in user's GitHub Copilot endpoint. In local
-//! mode the `provider` is also set (`{type:"openai", base_url:...}`),
-//! pointing the CLI at Ollama.
-//!
-//! ## Hot-swap on engine change
-//!
-//! `ConfigManager::update` fires the engine-change listener after the
-//! arc-swap `Config` is replaced. Bootstrap wires that listener to
-//! `reload()`. The next worker access transparently re-spawns against
-//! the new config — clients see no daemon restart.
+//! Chat rotates daily; other worker classes use stable per-class session IDs.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -58,9 +26,6 @@ use super::workers::batch::BatchWorker;
 use super::workers::chat::CopilotChatWorker;
 use super::workers::vision::VisionWorker;
 
-/// Default Ollama OpenAI-compat endpoint. Used when `engine == "local"`
-/// and `provider_base_url` is unset (typical post-wizard state once the
-/// runtime is provisioned).
 const DEFAULT_LOCAL_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 
 pub(crate) struct WorkerRegistry {
@@ -69,25 +34,16 @@ pub(crate) struct WorkerRegistry {
     session_store: SessionStore,
     memory_file: Arc<MemoryFile>,
     data_dir: PathBuf,
-    /// MCP servers passed into every Copilot session via
-    /// `SessionConfig::mcp_servers`. Loaded from `~/.bobe/mcp.json` at
-    /// daemon start; changes still require restart to take effect (the
-    /// SDK captures the map at session creation, and our sessions are
-    /// long-lived).
+    /// SDK captures this map at session creation; restart required to apply changes.
     mcp_servers: HashMap<String, McpServerConfig>,
 
     goals: Mutex<Option<Arc<BatchWorker>>>,
     consolidate: Mutex<Option<Arc<BatchWorker>>>,
     decide: Mutex<Option<Arc<BatchWorker>>>,
     vision: Mutex<Option<Arc<VisionWorker>>>,
-    /// Chat is keyed by local date so the cache invalidates at the
-    /// midnight boundary. The mutex is contended only at session-spawn
-    /// time, not on every `send`.
+    /// Date-keyed; cache invalidates at local midnight.
     chat: Mutex<Option<DatedChatWorker>>,
-    /// Serializes engine-change reloads. Without it, two PATCHes
-    /// landing back-to-back fire two concurrent `reload()` tasks that
-    /// can race on `client.stop()` while a worker is mid-`create_session`
-    /// — the second `stop()` would crash the in-flight session.
+    /// Without this, back-to-back PATCHes fire concurrent reloads and `client.stop()` races mid-`create_session`.
     reload_lock: Mutex<()>,
 }
 
@@ -119,16 +75,6 @@ impl WorkerRegistry {
         })
     }
 
-    /// Best-effort cleanup of chat session-id files older than
-    /// `CHAT_RETENTION_DAYS`. For each one, we try to `destroy` the
-    /// SDK-side session (so the upstream Copilot CLI releases its
-    /// state too) and then delete the local pointer file. Failures
-    /// are logged but never propagated — leftover files don't break
-    /// anything, they just leak state.
-    ///
-    /// Called at boot from `bootstrap::run` after the registry is
-    /// constructed but before any worker is spawned, so we don't
-    /// race with the chat worker creating today's session.
     pub(crate) async fn prune_old_chat_sessions(&self) {
         let now = Local::now();
         let victims = match self
@@ -155,9 +101,6 @@ impl WorkerRegistry {
                     count = victims.len(),
                     "registry.prune_chat.client_unavailable_skipping_destroy"
                 );
-                // Even without the client we can still nuke the local
-                // files — the SDK-side state will simply linger until
-                // the user clears it manually.
                 for (path, _) in &victims {
                     drop(tokio::fs::remove_file(path).await);
                 }
@@ -167,10 +110,6 @@ impl WorkerRegistry {
 
         let mut destroyed = 0usize;
         for (path, id) in victims {
-            // Try to destroy the SDK-side session. If it's already
-            // gone (NotFound), that's fine. If destroy fails, we
-            // still remove the local pointer — there's nothing
-            // useful for us to do with a stale id.
             let resume_cfg = github_copilot_sdk::types::ResumeSessionConfig::new(id.clone());
             if let Ok(session) = client.resume_session(resume_cfg).await
                 && let Err(e) = session.destroy().await
@@ -201,38 +140,19 @@ impl WorkerRegistry {
         }
     }
 
-    /// The single-writer memory.md handle this registry was constructed
-    /// with. Consumers (capture learner, consolidation, memories
-    /// handler) take an `Arc<MemoryFile>` from here rather than
-    /// reaching back to bootstrap.
     pub(crate) fn memory_file(&self) -> Arc<MemoryFile> {
         Arc::clone(&self.memory_file)
     }
 
-    /// The shared `ClientHandle`. Exposed for sideband endpoints
-    /// (`/auth/status`, `/models`) that need to query the SDK without
-    /// going through a worker session.
     pub(crate) fn client_handle(&self) -> Arc<ClientHandle> {
         Arc::clone(&self.client)
     }
 
-    /// Live MCP server state from the chat session, if it's already
-    /// running. Returns `None` (not `Vec::new()`) when the chat session
-    /// hasn't been spawned yet — that's the signal to UI that "live
-    /// status isn't available, fall back to config-only fields."
-    ///
-    /// Doesn't force-spawn the chat session: opening Settings → MCP
-    /// shouldn't burn a CLI process if the user hasn't chatted yet.
-    /// Callers should treat `None` as "indeterminate" rather than
-    /// "all servers disconnected."
-    ///
-    /// The `session.mcp.list` RPC is marked **experimental** by the
-    /// SDK — pin both SDK and CLI versions, expect breakage on upgrade.
+    /// Returns `None` (not empty Vec) when chat is unspawned, signaling "indeterminate" to UI.
+    /// `session.mcp.list` is marked experimental by the SDK; pin versions.
     pub(crate) async fn live_mcp_servers(
         &self,
     ) -> Option<Vec<github_copilot_sdk::generated::api_types::McpServer>> {
-        // Acquire the chat session WITHOUT calling `chat()` — that
-        // method spawns on cache miss. We just peek.
         let session = {
             let guard = self.chat.lock().await;
             let dated = guard.as_ref()?;
@@ -292,9 +212,6 @@ impl WorkerRegistry {
     }
 
     pub(crate) async fn chat(&self) -> Result<Arc<CopilotChatWorker>, AppError> {
-        // Date-keyed cache: at local midnight the previous day's worker
-        // is dropped (its `Drop` calls `disconnect`, preserving on-disk
-        // state) and a new one is spawned against today's persistent ID.
         let today = Local::now().date_naive();
         let mut guard = self.chat.lock().await;
 
@@ -304,18 +221,13 @@ impl WorkerRegistry {
             return Ok(Arc::clone(&existing.worker));
         }
 
-        // Either no chat worker, or yesterday's. Spawn fresh for today.
         if let Some(stale) = guard.take() {
             tracing::info!(
                 old_date = %stale.date,
                 new_date = %today,
                 "chat worker rotating across local-date boundary"
             );
-            // Best-effort disconnect of yesterday's session so it
-            // releases its idle_waiter slot and the SDK can clean up
-            // promptly. The on-disk session state is preserved by
-            // disconnect (vs destroy), so the prior day's history is
-            // still queryable via the SDK if we ever want to.
+            // disconnect (not destroy) preserves prior day's history on disk.
             if let Err(e) = stale.worker.shutdown().await {
                 tracing::warn!(err = %e, "chat rotation: stale shutdown failed");
             }
@@ -330,31 +242,10 @@ impl WorkerRegistry {
         Ok(worker)
     }
 
-    /// Drop every cached session + stop the underlying Copilot CLI +
-    /// forget every persisted session ID. Subsequent worker accessors
-    /// transparently re-spawn against the current `Config` (which the
-    /// caller is expected to have updated before invoking this).
-    ///
-    /// Called by `ConfigManager`'s engine-change listener wired in
-    /// `bootstrap::run`. Forgetting session IDs is necessary because
-    /// `ResumeSessionConfig` cannot override the `model` — a session
-    /// created against `claude-sonnet-4` would resume with that model
-    /// even if the engine flipped to local Ollama. Forgetting forces
-    /// the fresh-create path, which honors the new model + provider.
-    ///
-    /// Best-effort: shutdown failures are logged but don't block the
-    /// rebuild — leaving a stale session would be worse than a leak.
-    ///
-    /// Serialized via `reload_lock` — only one reload runs at a time.
-    /// A second concurrent call awaits the first to finish before
-    /// starting its own. (Coalesces back-to-back PATCHes safely.)
+    /// Forgets session IDs because `ResumeSessionConfig` cannot override `model` — forces fresh-create.
     pub(crate) async fn reload(&self) {
         let _reload_guard = self.reload_lock.lock().await;
 
-        // Drain caches first, before stopping the client, so any in-flight
-        // worker access lands on the cleared cache and either waits on a
-        // restart (if it grabbed the stale Arc earlier, that path is fine)
-        // or re-spawns against the new client below.
         if let Some(w) = self.goals.lock().await.take() {
             log_shutdown("goals", w.shutdown().await);
         }
@@ -372,8 +263,6 @@ impl WorkerRegistry {
         }
         self.client.stop().await;
 
-        // Forget on-disk session IDs so the next access creates fresh
-        // sessions in the new engine.
         let now = Local::now();
         for class in [
             WorkerClass::Goals,
@@ -390,63 +279,36 @@ impl WorkerRegistry {
         tracing::info!("registry.reload_complete");
     }
 
-    /// Best-effort shutdown of every spawned session, then the shared
-    /// CLI process. Logged warnings only — daemon shutdown shouldn't
-    /// fail because one worker's destroy errored.
     pub(crate) async fn shutdown_all(&self) {
         self.reload().await;
     }
 
-    /// Build a `Session` for `class` — try resume from disk, fall back
-    /// to creating a fresh one. Always installs `BobeHandler` (auto-
-    /// approve permissions + observe usage) and `BobeHooks` (memory.md
-    /// injection + structured error logging + per-turn context). Per-class
-    /// model + provider come from the live `EngineConfig` snapshot.
     async fn create_or_resume(&self, class: WorkerClass) -> Result<Arc<Session>, AppError> {
         let client = self.client.ensure_started().await?;
         let now = Local::now();
         let handler = BobeHandler::new(class);
         let hooks = BobeHooks::new(class, Arc::clone(&self.memory_file));
 
-        // Snapshot engine config once for this build. If it changes
-        // mid-build, the next `reload()` will drop and re-spawn cleanly.
         let engine_snapshot = self.config.load().engine.clone();
         let (class_model, class_provider) = session_extras_for_class(&engine_snapshot, class);
 
-        // Session mode (autopilot/interactive/plan) isn't a `SessionConfig`
-        // field — it's set at runtime via `session.rpc().mode().set(...)`
-        // once the session is up. `apply_runtime_mode` handles that below.
+        // Session mode set at runtime via `apply_runtime_mode`, not via `SessionConfig`.
         let cfg_template = || {
             let mut cfg = SessionConfig::default()
                 .with_handler(Arc::clone(&handler) as _)
                 .with_hooks(Arc::clone(&hooks) as _);
             cfg.streaming = Some(class == WorkerClass::Chat);
-            // Auto-compaction on every class. Chat needs it because
-            // user dialogue grows unboundedly within a day. Batch
-            // classes need it because their sessions persist across
-            // daemon restarts and the Goals worker in particular is
-            // shared across goal-extraction, agent-job evaluation,
-            // and conversation summary jobs — without compaction the
-            // history grows monotonically over weeks.
             cfg.infinite_sessions = Some(InfiniteSessionConfig::new());
             if let Some(skill_dir) = self.skill_dir(class) {
                 cfg.skill_directories = Some(vec![skill_dir]);
             }
-            // MCP tools belong to interactive chat — batch classes
-            // have narrow autopilot jobs and don't need extra tools.
             if class == WorkerClass::Chat && !self.mcp_servers.is_empty() {
                 cfg.mcp_servers = Some(self.mcp_servers.clone());
             }
-            // Autopilot classes (Goals/Decide/Consolidate/Vision) run
-            // without a user present — the `ask_user` tool would
-            // deadlock them waiting for input that's never coming.
-            // Disabling it maps to the CLI's `--no-ask-user` flag.
-            // Chat keeps the default (Some(true)) so the model can
-            // ask clarifying questions mid-turn when needed.
+            // Autopilot classes have no user; `ask_user` would deadlock them.
             if class != WorkerClass::Chat {
                 cfg = cfg.with_request_user_input(false);
             }
-            // Per-class model + provider from EngineConfig snapshot.
             if let Some(m) = class_model.clone() {
                 cfg = cfg.with_model(m);
             }
@@ -456,7 +318,6 @@ impl WorkerRegistry {
             cfg
         };
 
-        // Try resume from disk first.
         if let Some(saved) = self.session_store.load(class, now).await? {
             let mut resume_cfg = ResumeSessionConfig::new(saved.clone())
                 .with_handler(Arc::clone(&handler) as _)
@@ -469,29 +330,18 @@ impl WorkerRegistry {
             if class == WorkerClass::Chat && !self.mcp_servers.is_empty() {
                 resume_cfg.mcp_servers = Some(self.mcp_servers.clone());
             }
-            // Same `request_user_input` policy as the create path —
-            // autopilot classes have no user to ask. Has to be set on
-            // resume too because session params don't carry across the
-            // disconnect/resume boundary.
+            // Session params don't carry across disconnect/resume — must re-set.
             if class != WorkerClass::Chat {
                 resume_cfg.request_user_input = Some(false);
             }
-            // `ResumeSessionConfig` exposes `provider` but not `model` — the
-            // model is locked to whatever the session was created with. If
-            // the engine config changed, `reload()` clears the session_store
-            // so we land on the fresh-create path below instead of resuming
-            // a model-locked session into a new provider.
+            // `ResumeSessionConfig` lacks `model`; engine change clears store and routes to fresh-create.
             if let Some(p) = class_provider.clone() {
                 resume_cfg.provider = Some(p);
             }
             match client.resume_session(resume_cfg).await {
                 Ok(session) => {
                     apply_runtime_mode(&session, class).await?;
-                    // The CLI may reassign the session id on resume (per the
-                    // SDK docstring on `Session::resume`). If so, re-save so
-                    // the next daemon start resumes the *current* id rather
-                    // than a stale one — otherwise resume silently fails
-                    // and we lose accumulated context every restart.
+                    // CLI may reassign session id on resume (per SDK docstring); re-save to avoid stale id.
                     let live_id = session.id().clone();
                     if live_id != saved {
                         tracing::info!(
@@ -521,7 +371,6 @@ impl WorkerRegistry {
             }
         }
 
-        // Create fresh.
         let session = client
             .create_session(cfg_template())
             .await
@@ -537,25 +386,12 @@ impl WorkerRegistry {
         Ok(Arc::new(session))
     }
 
-    /// Path to `~/.bobe/skills/<class>/` if the directory exists. Loaded
-    /// into `SessionConfig::skill_directories` so each worker sees its
-    /// own `SKILL.md` as system context — the stable identity for the
-    /// class, complementing per-job `instructions`.
     fn skill_dir(&self, class: WorkerClass) -> Option<PathBuf> {
         let p = self.data_dir.join("skills").join(class.name());
         if p.exists() { Some(p) } else { None }
     }
 }
 
-/// Resolve the per-class `(model, provider)` overrides for `SessionConfig`.
-///
-/// - Chat / Decide / Goals / Consolidate / Vision each have a dedicated
-///   model slot in `EngineConfig`.
-/// - In cloud mode (`engine == "copilot_cloud"`) only the `model` is set;
-///   the CLI uses the signed-in user's GitHub Copilot endpoint by default.
-/// - In local mode (`engine == "local"`) we also build a `ProviderConfig`
-///   pointing at the configured base URL (defaulting to `:11434/v1`),
-///   provider type `"openai"`, no API key (Ollama doesn't require one).
 fn session_extras_for_class(
     cfg: &EngineConfig,
     class: WorkerClass,
@@ -592,15 +428,7 @@ fn log_shutdown(class: &str, result: Result<(), super::error::WorkerError>) {
     }
 }
 
-/// Apply the worker class's mode (autopilot / interactive / plan) to a
-/// freshly-created or resumed `Session`. Wire method: `session.mode.set`.
-///
-/// **Failure policy:** for non-chat classes, mode mismatch is functionally
-/// fatal — autopilot is what makes batch jobs auto-loop to
-/// `task_complete`; without it `send_and_wait` hangs until the per-class
-/// turn timeout (3-15 minutes). We propagate the error so consumers see
-/// it immediately. Chat's default mode is interactive anyway, so a
-/// failed `set("interactive")` is recoverable; we log + continue.
+/// Non-chat mode failures are fatal: autopilot drives batch auto-loop; without it `send_and_wait` hangs.
 async fn apply_runtime_mode(session: &Session, class: WorkerClass) -> Result<(), AppError> {
     let mode = match class.mode() {
         "interactive" => SessionMode::Interactive,

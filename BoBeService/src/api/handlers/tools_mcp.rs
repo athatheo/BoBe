@@ -13,7 +13,6 @@ pub(crate) async fn get_mcp_config(
     Ok(Json(mcp_svc::get_document(state.as_ref()).await?))
 }
 
-/// Pure schema check, no subprocesses spawned.
 pub(crate) async fn validate_mcp_config(
     State(state): State<Arc<AppState>>,
     Json(body): Json<McpConfigMutationRequest>,

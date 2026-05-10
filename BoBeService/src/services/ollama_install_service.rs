@@ -1,11 +1,4 @@
-//! Orchestrates the wizard's local-mode install flow: download Ollama
-//! runtime → start it → pull required models. Each stage publishes
-//! progress on its own `watch::Sender` so the SSE endpoint can stream
-//! all three concurrently to the UI.
-//!
-//! Concurrency: only one install runs at a time. Holding a `Mutex`
-//! around the in-flight task handle lets `POST /local-runtime/install`
-//! return 409 if a second start is requested mid-pull.
+//! One install at a time; mutex on in-flight handle lets POST /local-runtime/install return 409.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,9 +11,6 @@ use crate::binary_manager::{BinaryManager, DownloadProgress};
 use crate::error::AppError;
 use crate::ollama_manager::{OllamaManager, PullProgress};
 
-/// One stage of the model-pull pipeline. UI binds a progress bar to each.
-/// (The runtime-download stage isn't tagged because it writes its own
-/// snapshot field directly via the `runtime_pump` task.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallStage {
     TextModel,
@@ -38,8 +28,6 @@ impl InstallStage {
     }
 }
 
-/// Snapshot of the install pipeline's state. Latest values for each
-/// stage; the SSE endpoint emits these on each tick.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct InstallSnapshot {
     pub(crate) runtime: DownloadProgress,
@@ -59,12 +47,9 @@ pub(crate) enum InstallStatus {
     Failed(String),
 }
 
-/// Inputs the wizard sends to start an install.
 #[derive(Debug, Clone)]
 pub(crate) struct InstallRequest {
     pub(crate) chat_model: String,
-    /// Same value as `chat_model` if the user wants one model for both;
-    /// distinct value if they want a smaller batch model.
     pub(crate) batch_model: String,
     pub(crate) vision_model: String,
 }
@@ -100,13 +85,10 @@ impl OllamaInstallService {
         })
     }
 
-    /// SSE endpoint subscribes here to receive install snapshots.
     pub(crate) async fn subscribe(&self) -> watch::Receiver<InstallSnapshot> {
         self.state.lock().await.snapshot_rx.clone()
     }
 
-    /// Start an install if none is in flight; otherwise returns
-    /// `AppError::Conflict`.
     pub(crate) async fn start(self: &Arc<Self>, req: InstallRequest) -> Result<(), AppError> {
         let mut state = self.state.lock().await;
         if let Some(h) = state.in_flight.as_ref()
@@ -148,7 +130,6 @@ impl OllamaInstallService {
         Ok(())
     }
 
-    /// Signal the in-flight install (if any) to bail out.
     pub(crate) async fn cancel(&self) {
         let state = self.state.lock().await;
         if let Some(tx) = state.cancel_tx.as_ref() {
@@ -162,7 +143,6 @@ impl OllamaInstallService {
         snapshot_tx: watch::Sender<InstallSnapshot>,
         cancel_rx: watch::Receiver<bool>,
     ) -> Result<(), AppError> {
-        // Stage 1: ensure managed Ollama binary exists on disk.
         let (runtime_tx, mut runtime_rx) = watch::channel(DownloadProgress::default());
         let runtime_snapshot_tx = snapshot_tx.clone();
         let runtime_pump = tokio::spawn(async move {
@@ -178,7 +158,6 @@ impl OllamaInstallService {
             }
         });
 
-        // If Ollama is already running on :11434, skip the binary download.
         let needs_managed_binary = !self.ollama_manager.health_check().await;
         let binary_path = if needs_managed_binary {
             info!("ollama_install.runtime_missing_downloading");
@@ -202,15 +181,13 @@ impl OllamaInstallService {
             return Err(AppError::Canceled("Install canceled".into()));
         }
 
-        // Validate before starting daemon — catches partial extracts.
+        // Validate before daemon start to catch partial extracts.
         if needs_managed_binary {
             self.binary_manager
                 .validate_ollama_binary(&binary_path)
                 .await?;
         }
 
-        // Stage 2: ensure the daemon is running. Reuses external Ollama
-        // if user already has one; spawns ours otherwise.
         self.ollama_manager
             .ensure_daemon_running(Some(&binary_path), true)
             .await?;
@@ -219,9 +196,7 @@ impl OllamaInstallService {
             return Err(AppError::Canceled("Install canceled".into()));
         }
 
-        // Stage 3+4+5: pull each model. Skip if already installed.
-        // Run sequentially — Ollama already serializes pulls on the
-        // server side, and concurrent pulls just thrash the network.
+        // Sequential pulls: Ollama serializes server-side anyway; concurrent thrashes the network.
         let installed = self
             .ollama_manager
             .list_installed_models()
@@ -239,7 +214,6 @@ impl OllamaInstallService {
         )
         .await?;
 
-        // Skip the batch pull if the user picked the same model as chat.
         if req.batch_model != req.chat_model {
             let installed_now = self
                 .ollama_manager
@@ -341,7 +315,6 @@ impl OllamaInstallService {
             .pull_model(name, &pull_tx, cancel_check)
             .await;
         pump.abort();
-        // Give the spawned pump a moment to drain final state.
         tokio::time::sleep(Duration::from_millis(20)).await;
         result
     }

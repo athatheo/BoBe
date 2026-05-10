@@ -1,8 +1,3 @@
-//! `GoalsService` — file-backed business logic over `~/.bobe/goals/`.
-//! Each goal is its own MD file; the chat agent edits them via SDK
-//! Read/Write/Edit. This is the daemon-side wrapper that reads the
-//! files, mutates fields, and writes back atomically.
-
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -24,16 +19,13 @@ impl GoalsService {
         Self { store }
     }
 
-    /// All goals on disk, sorted by priority (highest first), then
-    /// updated-at (newest first). Same priority ordering the API +
-    /// trigger want.
+    /// Priority desc, then updated_at desc.
     pub(crate) async fn list_all(&self) -> Result<Vec<GoalDoc>, AppError> {
         let mut goals = self.store.list().await?;
         sort_goals(&mut goals);
         Ok(goals)
     }
 
-    /// Goals in `Active` status, sorted as in `list_all`.
     pub(crate) async fn list_active(&self) -> Result<Vec<GoalDoc>, AppError> {
         let mut goals = self.store.list().await?;
         goals.retain(|g| g.status == GoalStatus::Active);
@@ -45,9 +37,7 @@ impl GoalsService {
         self.store.get(id).await
     }
 
-    /// Create a fresh goal. Generates a new id (the doc that callers
-    /// pass in is consumed; we always use a fresh id to avoid clashes
-    /// with files the agent may have written).
+    /// Always assigns fresh id to avoid clashes with agent-written files.
     pub(crate) async fn create(&self, mut doc: GoalDoc) -> Result<GoalDoc, AppError> {
         doc.id = GoalId::new();
         let now = Utc::now();
@@ -65,9 +55,7 @@ impl GoalsService {
         Ok(doc)
     }
 
-    /// Patch-style update. Each `Some(...)` argument overwrites the
-    /// corresponding field; `None` leaves it as-is. `updated_at`
-    /// always bumps to now on any change.
+    /// `Some` overwrites, `None` leaves as-is; bumps `updated_at` on any change.
     #[allow(
         clippy::too_many_arguments,
         reason = "patch surface mirrors the API request shape; explicit options are clearer than a builder"
@@ -122,8 +110,6 @@ impl GoalsService {
         Ok(Some(doc))
     }
 
-    /// Convenience: set status only. Returns `Ok(None)` if the goal
-    /// is missing.
     pub(crate) async fn set_status(
         &self,
         id: GoalId,
@@ -145,7 +131,6 @@ impl GoalsService {
 }
 
 fn sort_goals(goals: &mut [GoalDoc]) {
-    // Highest priority first; tiebreak by most-recently-updated.
     goals.sort_by(|a, b| {
         b.priority
             .cmp(&a.priority)
@@ -158,9 +143,6 @@ trait GoalDocExt {
 }
 
 impl GoalDocExt for GoalDoc {
-    /// Treat `Active` as the implicit default for new goals; lets the
-    /// API accept payloads without a status field without leaving the
-    /// new file in a weird state.
     fn status_is_default(&self) -> bool {
         self.status == GoalStatus::Active
     }

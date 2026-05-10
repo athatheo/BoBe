@@ -17,7 +17,6 @@ pub(crate) struct ConversationMessageResponse {
     pub(crate) message_id: String,
 }
 
-/// Returns message ID immediately; LLM response streams via SSE.
 pub(crate) async fn send_message(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConversationMessageRequest>,

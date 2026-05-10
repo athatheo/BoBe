@@ -1,11 +1,4 @@
-//! Single-writer to `~/.bobe/memory.md`. The whole BoBe daemon writes
-//! through one of these — workers never touch the file directly. Atomic
-//! rename keeps readers (Copilot CLI workers via the symlink at
-//! `<worker_dir>/.github/copilot-instructions.md`) from seeing torn writes.
-//!
-//! Concurrency model: `tokio::Mutex<()>` serializes the read-modify-write
-//! sequence inside `append_under`. Callers can hold the lock manually for
-//! larger ops (consolidation rewrites the whole file under the lock).
+//! Single-writer to `~/.bobe/memory.md`; atomic rename keeps readers from seeing torn writes.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,22 +12,15 @@ use crate::error::AppError;
 const DEFAULT_BODY: &str =
     "# BoBe Memory\n\n## Profile\n\n## Active Goals\n\n## Long-term\n\n## Recent\n";
 
-/// Pruning cap that the consolidation worker is supposed to maintain.
-/// The writer doesn't enforce it on every write — that's a fast-path
-/// concern; consolidation shrinks the file nightly.
+/// Soft cap enforced only by the nightly consolidation worker.
 pub(crate) const TARGET_MAX_BYTES: usize = 50 * 1024;
 
 pub(crate) struct MemoryFile {
     path: PathBuf,
-    /// Async mutex held for the duration of every write. Long-running
-    /// callers (consolidation) acquire it via `acquire_writer` to gate
-    /// out concurrent appends across the entire read-process-write cycle.
     write_lock: Arc<Mutex<()>>,
 }
 
-/// RAII guard for an exclusive writer session. Held across the whole
-/// consolidate cycle so appends queue behind it instead of getting
-/// silently overwritten by `replace_all`.
+/// Hold across consolidate cycle so appends queue behind it instead of being clobbered.
 pub(crate) struct WriterGuard<'a> {
     file: &'a MemoryFile,
     _guard: OwnedMutexGuard<()>,
@@ -57,9 +43,6 @@ impl MemoryFile {
         })
     }
 
-    /// Acquire the exclusive writer lock — held across reads + writes
-    /// in long-running operations like nightly consolidation. Appends
-    /// from other tasks block until the guard drops.
     pub(crate) async fn acquire_writer(&self) -> WriterGuard<'_> {
         let guard = Arc::clone(&self.write_lock).lock_owned().await;
         WriterGuard {
@@ -68,9 +51,6 @@ impl MemoryFile {
         }
     }
 
-    /// Read the whole file. Concurrent with writers — the atomic rename in
-    /// `commit` guarantees readers see either the old or new contents
-    /// whole, never a partial.
     pub(crate) async fn read(&self) -> Result<String, AppError> {
         self.read_unlocked().await
     }
@@ -83,8 +63,7 @@ impl MemoryFile {
         }
     }
 
-    /// Append a bullet under `section` (e.g. "Recent"). Creates the
-    /// section if missing. Adds an ISO-8601 date prefix to each entry.
+    /// Creates section if missing; prefixes each entry with ISO-8601 date.
     pub(crate) async fn append_under(&self, section: &str, entry: &str) -> Result<(), AppError> {
         let _guard = self.write_lock.lock().await;
         let body = self.read_unlocked().await?;
@@ -95,9 +74,7 @@ impl MemoryFile {
         commit(&self.path, &new_body).await
     }
 
-    /// Replace the entire file. Holds the writer lock for the duration
-    /// of the rewrite. For the consolidation case where the lock must
-    /// span both the read and the write, see [`acquire_writer`].
+    /// For consolidation requiring lock across read+write, see [`acquire_writer`].
     #[allow(
         dead_code,
         reason = "Phase 2: consumed by the consolidation worker added in Phase 4"
@@ -108,12 +85,9 @@ impl MemoryFile {
     }
 }
 
-/// Insert `line` at the end of the section identified by `## {heading}`,
-/// or append `## {heading}` + `line` if the section is missing.
 fn upsert_bullet(body: &str, heading: &str, line: &str) -> String {
     let header = format!("## {heading}");
     let Some(start) = body.find(&header) else {
-        // Section missing — append both header and entry.
         let mut out = body.trim_end().to_string();
         if !out.is_empty() {
             out.push_str("\n\n");
@@ -125,7 +99,6 @@ fn upsert_bullet(body: &str, heading: &str, line: &str) -> String {
         return out;
     };
 
-    // Find the next `## ` after our heading (or EOF).
     let body_after_header = &body[start..];
     let next_section = body_after_header[header.len()..]
         .find("\n## ")

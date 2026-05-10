@@ -1,16 +1,3 @@
-//! `SessionHooks` impl that composes BoBe's lifecycle behavior:
-//!
-//! * **`SessionStart`** — inject `memory.md` body as `additional_context`
-//!   so every Copilot turn sees BoBe's current pruned memory at the
-//!   start of the system message.
-//! * **`UserPromptSubmitted`** — inject per-turn fresh context (current
-//!   local time, recent capture timestamp). Cheap; runs every turn.
-//! * **`ErrorOccurred`** — structured logging via `tracing` so daemon
-//!   logs surface CLI-side errors with context.
-//!
-//! Each session takes one `Arc<dyn SessionHooks>`, so we compose all
-//! concerns into a single impl rather than registering separate ones.
-
 use std::sync::Arc;
 
 use async_trait::async_trait;

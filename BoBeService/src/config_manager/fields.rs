@@ -1,5 +1,4 @@
-//! Field-name → Config-field mapping for runtime updates.
-//! Accepts both dotted keys (`"capture.enabled"`) and flat legacy keys (`"capture_enabled"`).
+//! Accepts dotted keys (`"capture.enabled"`) and flat legacy keys (`"capture_enabled"`).
 
 use std::collections::HashMap;
 
@@ -17,12 +16,7 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
         };
     }
 
-    /// Like `set_parsed!` but for `Option<String>` fields where an empty
-    /// string from the wire should mean "clear / use default" rather than
-    /// "set to empty string." Swift omits `nil` fields entirely
-    /// (`JSONEncoder` default), so the only way the UI can clear an
-    /// already-set provider model is to send `""` — this macro routes
-    /// `""` and `null` to `None`, real strings to `Some(_)`.
+    /// Swift omits `nil` via `JSONEncoder` default, so `""` from the wire means "clear".
     macro_rules! set_opt_string {
         ($field:expr, $value:expr, $key:expr) => {
             match $value {
@@ -41,22 +35,18 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
         let k = dotted.as_str();
 
         match k {
-            // ── Server ────────────────────────────────────────────────
             "server.host" => set_parsed!(config.server.host, value, k),
             "server.port" => set_parsed!(config.server.port, value, k),
             "server.mdns_enabled" => set_parsed!(config.server.mdns_enabled, value, k),
             "server.cors_origins" => set_parsed!(config.server.cors_origins, value, k),
 
-            // ── Database ──────────────────────────────────────────────
             "database.url" => set_parsed!(config.database.url, value, k),
 
-            // ── Capture ───────────────────────────────────────────────
             "capture.enabled" => set_parsed!(config.capture.enabled, value, k),
             "capture.interval_seconds" => {
                 set_parsed!(config.capture.interval_seconds, value, k);
             }
 
-            // ── Check-in ──────────────────────────────────────────────
             "checkin.enabled" => set_parsed!(config.checkin.enabled, value, k),
             "checkin.times" => set_parsed!(config.checkin.times, value, k),
             "checkin.jitter_minutes" => set_parsed!(config.checkin.jitter_minutes, value, k),
@@ -64,7 +54,6 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
                 set_parsed!(config.checkin.interval_minutes, value, k);
             }
 
-            // ── Conversation ──────────────────────────────────────────
             "conversation.inactivity_timeout_seconds" => {
                 set_parsed!(config.conversation.inactivity_timeout_seconds, value, k);
             }
@@ -72,12 +61,10 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
                 set_parsed!(config.conversation.auto_close_minutes, value, k);
             }
 
-            // ── Logging ───────────────────────────────────────────────
             "logging.level" => set_parsed!(config.logging.level, value, k),
             "logging.json" => set_parsed!(config.logging.json, value, k),
             "logging.file" => set_parsed!(config.logging.file, value, k),
 
-            // ── Decision ──────────────────────────────────────────────
             "decision.cooldown_minutes" => {
                 set_parsed!(config.decision.cooldown_minutes, value, k);
             }
@@ -88,18 +75,15 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
                 set_parsed!(config.decision.recent_ai_messages_limit, value, k);
             }
 
-            // ── MCP ───────────────────────────────────────────────────
             "mcp.enabled" => set_parsed!(config.mcp.enabled, value, k),
             "mcp.config_file" => set_parsed!(config.mcp.config_file, value, k),
             "mcp.blocked_commands" => set_parsed!(config.mcp.blocked_commands, value, k),
             "mcp.dangerous_env_keys" => set_parsed!(config.mcp.dangerous_env_keys, value, k),
 
-            // ── Goals ─────────────────────────────────────────────────
             "goals.check_interval_seconds" => {
                 set_parsed!(config.goals.check_interval_seconds, value, k);
             }
 
-            // ── Engine / provider ─────────────────────────────────────
             "engine.engine" => set_parsed!(config.engine.engine, value, k),
             "engine.provider_base_url" => {
                 set_opt_string!(config.engine.provider_base_url, value, k);
@@ -117,10 +101,9 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
                 set_parsed!(config.engine.provider_offline, value, k);
             }
 
-            // ── Top-level ─────────────────────────────────────────────
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
 
-            _ => {} // Unknown — already warned during classification
+            _ => {}
         }
     }
 }
@@ -129,7 +112,6 @@ pub(crate) fn normalize_key_pub(key: &str) -> String {
     normalize_key(key)
 }
 
-/// Normalize flat legacy keys to dotted notation. Already-dotted keys pass through.
 fn normalize_key(key: &str) -> String {
     if key.contains('.') {
         return key.to_string();

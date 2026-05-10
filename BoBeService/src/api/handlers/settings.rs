@@ -1,5 +1,3 @@
-//! Read + patch the live config.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -21,15 +19,11 @@ pub(crate) struct SettingsResponse {
     pub(crate) conversation_auto_close_minutes: u64,
     pub(crate) goal_check_interval_seconds: f64,
     pub(crate) mcp_enabled: bool,
-    /// `"copilot_cloud"` (default) or `"local"`. Hot-swap — daemon
-    /// rebuilds the Copilot CLI and worker sessions on change.
+    /// Hot-swap; daemon rebuilds Copilot CLI and worker sessions on change.
     pub(crate) engine: String,
     pub(crate) provider_base_url: Option<String>,
-    /// Model used by the user-facing Chat worker.
     pub(crate) provider_chat_model: Option<String>,
-    /// Model used by the autopilot batch workers (goals/decide/consolidate).
     pub(crate) provider_batch_model: Option<String>,
-    /// Model used by the Vision worker (capture pipeline).
     pub(crate) provider_vision_model: Option<String>,
     pub(crate) provider_offline: bool,
 }

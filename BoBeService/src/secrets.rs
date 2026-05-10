@@ -1,6 +1,4 @@
-//! macOS Data Protection Keychain integration for API key storage.
-//!
-//! Uses code-signing identity auth (macOS 10.15+, signed binaries, same team ID).
+//! Data Protection Keychain (macOS 10.15+); auth via code-signing identity.
 
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
@@ -13,10 +11,8 @@ use security_framework_sys::item::{
 };
 use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
 
-// Not always in security_framework_sys — declare it ourselves.
-// SAFETY: kSecUseDataProtectionKeychain is a well-known Security framework symbol
-// available on macOS 10.15+. We declare it as an extern static because some versions
-// of security_framework_sys do not export it.
+// SAFETY: well-known Security framework symbol (macOS 10.15+);
+// some `security_framework_sys` versions don't export it, so we declare here.
 unsafe extern "C" {
     static kSecUseDataProtectionKeychain: core_foundation_sys::string::CFStringRef;
 }
@@ -123,9 +119,8 @@ pub(crate) fn read_secret(account: &str) -> Option<String> {
         return None;
     }
 
-    // SAFETY: SecItemCopyMatching returned errSecSuccess and a non-null result,
-    // which follows the Create Rule — we own the reference and must release it.
-    // Casting to CFDataRef is valid because we requested kSecReturnData.
+    // SAFETY: success + non-null result → Create Rule → we own and must release.
+    // Cast to CFDataRef valid because we requested kSecReturnData above.
     let data = unsafe { CFData::wrap_under_create_rule(result.cast()) };
     String::from_utf8(data.bytes().to_vec()).ok()
 }

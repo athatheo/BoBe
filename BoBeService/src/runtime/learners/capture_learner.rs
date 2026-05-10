@@ -1,7 +1,3 @@
-//! Screen-capture learner: ask `VisionWorker` what's on the screen,
-//! append a one-liner under `## Recent` in `memory.md`. The nightly
-//! Consolidate worker prunes that section.
-
 use std::sync::Arc;
 
 use tracing::{debug, info, warn};
@@ -12,12 +8,9 @@ use crate::copilot::types::ChatAttachment;
 use crate::error::AppError;
 use crate::util::text::truncate_str;
 
-/// Section heading inside `memory.md` where capture descriptions land.
-/// Matches the section the consolidation prompt is told to prune.
+/// Must match the section the consolidation prompt prunes.
 const RECENT_SECTION: &str = "Recent";
 
-/// Soft cap on the description we hand to the agent. Anything longer
-/// just bloats memory.md before consolidation runs.
 const DESCRIPTION_MAX_LEN: usize = 280;
 
 const VISION_QUESTION: &str = "Describe in one sentence what the user is doing on screen right now. \
@@ -37,19 +30,8 @@ impl CaptureLearner {
         }
     }
 
-    /// Vision-describe the screenshot, append the description to
-    /// memory.md, return it. The returned string is what the trigger
-    /// hands to `DecisionEngine` as `context_text`.
-    ///
-    /// Return-value semantics:
-    /// - `Ok(non_empty)` — vision produced a usable description; the
-    ///   trigger may proceed to the decision step.
-    /// - `Ok("")` — vision produced an empty description (the screen
-    ///   was uninformative). Treat as a no-op cycle.
-    /// - `Err(_)` — vision worker failed. Trigger should back off
-    ///   instead of retrying immediately. This used to be swallowed
-    ///   into `Ok("")`, which spun forever when the SDK was
-    ///   unavailable; surfacing the error lets the trigger debounce.
+    /// Ok("") = empty/uninformative screen (no-op). Err = worker failure;
+    /// surfaced so trigger can back off instead of spinning.
     pub(crate) async fn learn(
         &self,
         screenshot: Vec<u8>,
@@ -80,8 +62,6 @@ impl CaptureLearner {
         let entry = format_entry(description, active_window);
         if let Err(e) = self.memory_file.append_under(RECENT_SECTION, &entry).await {
             warn!(error = %e, "capture_learner.memory_append_failed");
-            // Description is still valuable for the decision-engine
-            // call even if persistence failed.
         }
 
         info!(

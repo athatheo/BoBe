@@ -55,9 +55,7 @@ final class TrayManager: NSObject, NSMenuDelegate {
         self.rebuildMenu()
     }
 
-    /// Clears and rebuilds all items in the existing menu.
-    /// Because we mutate the same NSMenu instance (rather than replacing it),
-    /// changes are visible immediately — even inside `menuWillOpen`.
+    /// Mutates the same NSMenu instance so changes apply during `menuWillOpen`.
     private func rebuildMenu() {
         guard let menu = self.statusItem?.menu else { return }
         menu.removeAllItems()

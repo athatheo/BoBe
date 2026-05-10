@@ -1,5 +1,3 @@
-//! Schedules periodic check-ins at configured times and/or intervals with jitter.
-
 use chrono::{DateTime, Duration, Local, NaiveTime, Utc};
 use rand::RngExt;
 use tracing::{debug, info, warn};

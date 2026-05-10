@@ -1,14 +1,4 @@
-//! File IO for `~/.bobe/goals/`. Each goal is `<id>.md`. Treats the
-//! goals dir as the single source of truth — no caching, every list
-//! call re-reads. The directory is small (dozens of goals at most),
-//! the filesystem is fast, and any external editor (the chat agent,
-//! the user, an external script) sees changes immediately.
-//!
-//! Concurrency: writes go through a tokio Mutex so the chat agent
-//! and the API don't trample each other on the same file. Reads are
-//! lock-free and rely on POSIX rename atomicity for consistency.
-//!
-//! Errors bubble up as [`AppError`] so `?` in handlers stays clean.
+//! No caching — every `list` re-reads. POSIX rename atomicity protects readers.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,13 +12,8 @@ use crate::models::ids::GoalId;
 use super::goal_md::{GoalDoc, parse, to_md};
 
 pub(crate) struct GoalFileStore {
-    /// Directory holding `<goal-id>.md` files.
     dir: PathBuf,
-    /// Serializes writes — the chat agent (via SDK Write/Edit tools)
-    /// and the API both touch this dir; the mutex eliminates
-    /// last-writer-wins races on the daemon side. Concurrent edits
-    /// from outside the daemon (user editor) are still possible but
-    /// the atomic rename keeps readers consistent.
+    /// Serializes daemon-side writes (chat agent + API); external editors race rename.
     write_lock: Arc<Mutex<()>>,
 }
 
@@ -40,14 +25,11 @@ impl GoalFileStore {
         })
     }
 
-    /// Path of the file backing `id`.
     fn path_for(&self, id: GoalId) -> PathBuf {
         self.dir.join(format!("{id}.md"))
     }
 
-    /// Read every goal in the directory. Files that fail to parse are
-    /// logged and skipped — a malformed file shouldn't take down the
-    /// whole list endpoint. Order is unspecified; callers sort.
+    /// Unparseable files are logged + skipped (don't 500 the endpoint). Order unspecified.
     pub(crate) async fn list(&self) -> Result<Vec<GoalDoc>, AppError> {
         let mut goals = Vec::new();
         let mut read_dir = match tokio::fs::read_dir(&self.dir).await {
@@ -90,8 +72,6 @@ impl GoalFileStore {
         Ok(goals)
     }
 
-    /// Read a single goal by id. Returns `Ok(None)` when the file
-    /// doesn't exist (lets handlers map that to 404 cleanly).
     pub(crate) async fn get(&self, id: GoalId) -> Result<Option<GoalDoc>, AppError> {
         let path = self.path_for(id);
         let body = match tokio::fs::read_to_string(&path).await {
@@ -115,8 +95,6 @@ impl GoalFileStore {
         }
     }
 
-    /// Write a goal. Creates the dir if missing. Atomic via rename so
-    /// concurrent readers never see a partial write.
     pub(crate) async fn save(&self, doc: &GoalDoc) -> Result<(), AppError> {
         let _guard = self.write_lock.lock().await;
         tokio::fs::create_dir_all(&self.dir).await?;
@@ -130,8 +108,7 @@ impl GoalFileStore {
         Ok(())
     }
 
-    /// Delete the goal file. Returns `Ok(false)` when the file is
-    /// already gone — idempotent.
+    /// Idempotent: returns `Ok(false)` when the file is already gone.
     pub(crate) async fn delete(&self, id: GoalId) -> Result<bool, AppError> {
         let _guard = self.write_lock.lock().await;
         let path = self.path_for(id);
@@ -208,7 +185,6 @@ mod tests {
     async fn delete_is_idempotent() {
         let store = GoalFileStore::new(tempdir());
         let id = GoalId::new();
-        // Deleting a missing file returns false but doesn't error.
         assert!(!store.delete(id).await.unwrap());
 
         let mut doc = GoalDoc::new("X", "Y");
@@ -221,8 +197,6 @@ mod tests {
     #[tokio::test]
     async fn list_filters_non_md_files() {
         let dir = tempdir();
-        // Drop a stray file in the goals dir (e.g., a backup); list()
-        // must skip it without erroring.
         tokio::fs::write(dir.join("notes.txt"), b"unrelated")
             .await
             .unwrap();

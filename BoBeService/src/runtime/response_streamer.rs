@@ -1,6 +1,3 @@
-//! Adapts a `ChatDelta` stream (from the Copilot SDK chat worker)
-//! into the SSE `EventQueue` that the SwiftUI overlay consumes.
-
 use std::pin::Pin;
 use std::time::Instant;
 
@@ -16,7 +13,6 @@ use crate::util::sse::factories::{
     tool_call_start_event,
 };
 
-/// Result of streaming a chat-worker response into SSE.
 #[derive(Debug)]
 pub(crate) struct StreamResult {
     pub(crate) full_response: String,
@@ -74,10 +70,6 @@ impl StreamAccumulator {
     }
 }
 
-/// Pump a `ChatDelta` stream into the SSE event queue. Mapping:
-/// `MessageDelta` → text_delta_event; `MessageComplete` (no prior
-/// deltas) → single text_delta_event; `ToolStart/Complete` → tool
-/// events; `Done` → terminator; `Error` → recoverable stream error.
 pub(crate) async fn stream_chat_delta_response<F>(
     mut stream: Pin<Box<dyn Stream<Item = ChatDelta> + Send>>,
     event_queue: &EventQueue,
@@ -116,10 +108,7 @@ where
                     output_tokens = ?output_tokens,
                     "stream_chat_delta.message_complete"
                 );
-                // If the SDK didn't emit deltas (some models / non-streaming
-                // mode), push the whole content as one delta so the UI sees
-                // something. When deltas were already streamed, the
-                // accumulated buffer already matches `content` and we skip.
+                // Non-streaming SDK paths emit no deltas; surface the full content as one.
                 if state.full_response.is_empty() && !content.is_empty() {
                     if state.first_token_time.is_none() {
                         state.first_token_time = Some(Instant::now());

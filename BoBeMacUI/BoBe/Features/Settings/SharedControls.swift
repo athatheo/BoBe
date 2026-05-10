@@ -190,9 +190,6 @@ struct CollapsibleSection<Content: View>: View {
     let icon: String
     var description: String?
     var toggleBinding: Binding<Bool>?
-    /// When true, renders an "AI-curated" badge in the section header.
-    /// Used by Goals editor for sections that the chat agent edits via
-    /// SDK file ops (read-only via API).
     var aiCuratedBadge = false
     var initiallyExpanded = true
     @ViewBuilder let content: Content

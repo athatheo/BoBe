@@ -1,17 +1,4 @@
-//! Ollama daemon lifecycle: detect running, start managed binary,
-//! pull models with streamed progress, list installed tags.
-//!
-//! This module is the daemon-side counterpart to `binary_manager` —
-//! `binary_manager` ensures the binary file exists; `ollama_manager`
-//! drives the running process. The `services::ollama_install_service`
-//! orchestrator strings them together for the wizard install flow.
-//!
-//! Detection-first policy: if the user already runs Ollama (Homebrew,
-//! official installer, prior BoBe install), `health_check()` returns
-//! true and we reuse theirs. We only start a managed `ollama serve`
-//! when the user has nothing on `:11434`. Models the user has already
-//! pulled in `~/.ollama/models` are visible to us regardless of who
-//! started the daemon.
+//! Detection-first: reuse user's existing Ollama on `:11434`; only spawn managed `ollama serve` if absent.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -30,12 +17,9 @@ const PULL_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const STARTUP_MAX_ATTEMPTS: u32 = 30;
 
-/// Streamed model-pull progress. `percent` is computed from
-/// `completed / total` reported by Ollama's NDJSON protocol; both
-/// fields can be `None` early in the pull (manifest fetch phase).
+/// `completed`/`total` are `None` early in the pull (manifest fetch phase).
 #[derive(Debug, Clone, Default)]
-pub(crate) struct PullProgress {
-    pub(crate) status: String,
+pub(crate) struct PullProgress {    pub(crate) status: String,
     pub(crate) completed_bytes: Option<u64>,
     pub(crate) total_bytes: Option<u64>,
     pub(crate) percent: Option<u8>,
@@ -64,21 +48,15 @@ struct OllamaPullEvent {
     error: Option<String>,
 }
 
-/// Manages an Ollama daemon: detection, optional spawn, model pulls.
-///
-/// Stateful only with respect to the (optional) child process we
-/// spawned. If `ensure_daemon_running` finds an externally-managed
-/// daemon, `child` stays `None` and `stop()` is a no-op.
 pub(crate) struct OllamaManager {
     http_client: Arc<reqwest::Client>,
     base_url: String,
-    /// Owned child if WE started Ollama; `None` if reusing user's daemon.
+    /// `Some` only if WE started Ollama; reused daemons stay `None` so `stop()` is a no-op.
     child: Mutex<Option<tokio::process::Child>>,
 }
 
 impl OllamaManager {
-    /// `base_url` should be the host root, e.g. `http://127.0.0.1:11434`
-    /// (no `/v1` suffix — Ollama's native API isn't OpenAI-compat-prefixed).
+    /// `base_url` is the root (no `/v1`); Ollama's native API isn't OpenAI-prefixed.
     pub(crate) fn new(http_client: Arc<reqwest::Client>, base_url: &str) -> Self {
         Self {
             http_client,
@@ -87,9 +65,6 @@ impl OllamaManager {
         }
     }
 
-    /// Cheap GET on `/api/tags`; success means "Ollama is reachable on
-    /// this base URL." Used as both health check and "did the daemon
-    /// finish starting up?" probe.
     pub(crate) async fn health_check(&self) -> bool {
         let url = format!("{}/api/tags", self.base_url);
         match self
@@ -104,12 +79,6 @@ impl OllamaManager {
         }
     }
 
-    /// Make sure an Ollama daemon is responding on `base_url`. If one
-    /// already is, returns immediately. If none and `auto_start` is
-    /// `true`, spawns `binary_path serve`, polls health for up to 30s,
-    /// retains the `Child` for `stop()` cleanup. If `auto_start` is
-    /// `false` and no daemon exists, returns
-    /// `AppError::ServiceUnavailable`.
     pub(crate) async fn ensure_daemon_running(
         &self,
         binary_path: Option<&Path>,
@@ -138,9 +107,7 @@ impl OllamaManager {
     async fn spawn_daemon(&self, binary: &Path) -> Result<(), AppError> {
         info!(binary = %binary.display(), "ollama_manager.spawning");
 
-        // OLLAMA_HOST + OLLAMA_ORIGINS pin the daemon to localhost so it
-        // can't be reached from other machines. Matches the security
-        // posture of the BoBe daemon itself.
+        // OLLAMA_HOST + OLLAMA_ORIGINS pin to localhost; mirrors daemon's security posture.
         let child = tokio::process::Command::new(binary)
             .arg("serve")
             .stdout(Stdio::null())
@@ -161,8 +128,6 @@ impl OllamaManager {
             }
         }
 
-        // Startup timed out — best-effort kill the child so we don't
-        // leak a half-running process.
         if let Some(mut child) = self.child.lock().await.take()
             && let Err(e) = child.start_kill()
         {
@@ -175,12 +140,7 @@ impl OllamaManager {
         )))
     }
 
-    /// Pull a model from `registry.ollama.ai` via `/api/pull`. Streams
-    /// NDJSON progress events to `progress_tx`. Idempotent — pulling
-    /// an already-installed model just resolves immediately.
-    ///
-    /// `is_canceled` is checked between chunks so the wizard's cancel
-    /// button can abort a multi-GB download promptly.
+    /// `is_canceled` checked between chunks so wizard cancel aborts multi-GB downloads promptly.
     pub(crate) async fn pull_model(
         &self,
         name: &str,
@@ -265,15 +225,12 @@ impl OllamaManager {
             }
         }
 
-        // Stream ended without a `"status":"success"` line — typically
-        // means the connection dropped mid-pull. Caller should retry.
+        // No `"status":"success"` line — usually a mid-pull disconnect; caller retries.
         Err(AppError::ServiceUnavailable(
             "Ollama pull ended without success confirmation".into(),
         ))
     }
 
-    /// Returns the list of installed model tags via `/api/tags`. Empty
-    /// list on parse failure (logged).
     pub(crate) async fn list_installed_models(&self) -> Result<Vec<String>, AppError> {
         let url = format!("{}/api/tags", self.base_url);
         let resp = self
@@ -298,9 +255,7 @@ impl OllamaManager {
         Ok(tags.models.into_iter().map(|m| m.name).collect())
     }
 
-    /// Best-effort SIGTERM of our managed daemon. No-op if we never
-    /// spawned one (i.e. user's existing Ollama is in use). Held for
-    /// future wiring into the daemon-shutdown path; not called today.
+    /// No-op if we never spawned the daemon (i.e. reusing user's Ollama).
     #[allow(dead_code)]
     pub(crate) async fn stop(&self) {
         let mut guard = self.child.lock().await;
@@ -318,8 +273,7 @@ impl OllamaManager {
         }
     }
 
-    /// Convenience helper: parse the user's `provider_base_url`
-    /// (`http://host/v1`) into the Ollama-native root (`http://host`).
+    /// `http://host/v1` → `http://host` for Ollama's native API root.
     pub(crate) fn root_from_provider_url(provider_url: &str) -> String {
         provider_url
             .trim_end_matches('/')

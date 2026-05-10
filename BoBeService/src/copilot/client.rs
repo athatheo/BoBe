@@ -1,25 +1,3 @@
-//! `ClientHandle` — single shared `github_copilot_sdk::Client` for the
-//! entire daemon. Lazy-started: the CLI process spawns on first use, not
-//! at boot. All `Session`s in the daemon share this one CLI.
-//!
-//! Lifecycle:
-//!
-//! ```text
-//!   ClientHandle::new(config_arc)   // bookkeeping only
-//!         ↓
-//!   .ensure_started()                // first call: build ClientOptions from
-//!         ↓                          // current Config snapshot, Client::start
-//!   ...
-//!         ↓
-//!   .stop()                          // Client::stop, drains the CLI process
-//! ```
-//!
-//! On engine config change (cloud↔local toggle, offline flag, etc.) the
-//! `WorkerRegistry::reload()` calls `stop()`, which clears the inner
-//! `Option`. The next `ensure_started()` rebuilds against the new
-//! `Config`. The session-level `model` / `provider` overrides are passed
-//! per-session via `SessionConfig` — see `registry.rs::create_or_resume`.
-
 use std::ffi::OsString;
 use std::sync::Arc;
 
@@ -44,9 +22,6 @@ impl ClientHandle {
         })
     }
 
-    /// Spawn the CLI process if not already running, return a handle to
-    /// the `Client`. Concurrent callers serialize through the inner
-    /// mutex; only one spawns, the rest wait for the cached `Arc`.
     pub(crate) async fn ensure_started(&self) -> Result<Arc<Client>, AppError> {
         let mut guard = self.inner.lock().await;
         if let Some(client) = guard.as_ref() {
@@ -62,9 +37,6 @@ impl ClientHandle {
         Ok(arc)
     }
 
-    /// Best-effort shutdown of the underlying CLI process. Idempotent —
-    /// no-op if the client never started. Clears the cached handle so
-    /// the next `ensure_started()` re-spawns.
     pub(crate) async fn stop(&self) {
         let taken = {
             let mut guard = self.inner.lock().await;
@@ -79,19 +51,7 @@ impl ClientHandle {
     }
 }
 
-/// Build `ClientOptions` from the daemon's live `Config` snapshot.
-///
-/// Today this only flips `COPILOT_OFFLINE` based on `engine.provider_offline`
-/// — every other engine field (model + provider base URL + API key) is set
-/// per-session via `SessionConfig::with_model` / `with_provider`, which gives
-/// us per-class flexibility without forcing a CLI process restart on a
-/// vision-only model swap.
-///
-/// `COPILOT_OFFLINE` is **only** set when the engine is `local`. In cloud
-/// mode the CLI needs GitHub network access, and setting offline=true
-/// without a `COPILOT_PROVIDER_BASE_URL` (which we never set process-wide;
-/// it's per-session) makes the CLI refuse to start with "Offline mode
-/// requires a local model provider."
+/// Only sets `COPILOT_OFFLINE` in local mode; cloud mode requires network access.
 fn client_options_from_config(config: &Config) -> ClientOptions {
     let mut opts = ClientOptions::default();
     if config.engine.engine == "local" && config.engine.provider_offline {

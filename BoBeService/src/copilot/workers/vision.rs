@@ -1,10 +1,3 @@
-//! `VisionWorker` — image-input batch worker. Builds a
-//! `MessageOptions` with an `Attachment::Blob` (in-memory base64 — no
-//! temp files) or `Attachment::File`, sends in autopilot mode, blocks
-//! on `send_and_wait`, returns the assistant's reply as plain text.
-//! Vision answers don't need to be JSON; the caller usually wants
-//! natural-language descriptions.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,9 +13,7 @@ use crate::copilot::types::{ChatAttachment, WorkerClass};
 
 #[derive(Debug, Clone)]
 pub(crate) struct VisionAnswer {
-    /// Natural-language answer from the model.
     pub(crate) text: String,
-    /// Output token count if reported by the SDK; useful for cost rollups.
     pub(crate) output_tokens: Option<u64>,
 }
 
@@ -41,7 +32,6 @@ impl VisionWorker {
         })
     }
 
-    /// Send an image + question, get a natural-language answer.
     pub(crate) async fn analyze(
         &self,
         question: &str,
@@ -51,8 +41,6 @@ impl VisionWorker {
         let request_id = Uuid::new_v4();
 
         let attachment = to_sdk_attachment(image)?;
-        // Session mode (autopilot) set on the SessionConfig in registry,
-        // not on MessageOptions (which is delivery-mode only).
         let opts = MessageOptions::new(question.to_string())
             .with_wait_timeout(self.turn_timeout)
             .with_attachments(vec![attachment]);

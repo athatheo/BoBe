@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// User-editable subset of a Goal. The four AI-curated sections
-/// (`how_working_on_it`, `patterns_observed`, `attitude_feelings`,
-/// `open_questions`) are read-only via the API — the chat agent
-/// edits them on disk via SDK file ops.
+/// Read-only on API: AI-curated sections (how/patterns/attitude/questions) are agent-written.
 private struct GoalDraft: Equatable {
     var title = ""
     var summary = ""
@@ -532,7 +529,6 @@ struct GoalsEditor: View {
         }
     }
 
-    /// `2026-05-09T14:23:01Z` → `May 9, 2026` (or just yyyy-mm-dd as fallback).
     private static func relativeDate(_ iso: String) -> String {
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

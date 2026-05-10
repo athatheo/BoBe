@@ -11,9 +11,7 @@ struct AdvancedPanel: View {
     @State private var bannerDismissed = false
     @Environment(\.theme) private var theme
 
-    /// Fields the daemon claims to hot-apply but actually doesn't —
-    /// MCP server map is captured by Copilot SDK sessions at boot.
-    /// Shadowed locally so we always show the banner.
+    /// Daemon claims hot-apply but MCP map is captured at boot — force banner locally.
     private static let deferToRestartFields: Set<String> = [
         "mcp_enabled",
     ]

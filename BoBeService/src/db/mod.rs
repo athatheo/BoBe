@@ -1,5 +1,3 @@
-// ─── SQLite repository implementations ──────────────────────────────────────
-
 mod conversation_repo;
 mod cooldown_repo;
 mod soul_repo;
@@ -11,8 +9,6 @@ pub(crate) use conversation_repo::SqliteConversationRepo;
 pub(crate) use cooldown_repo::SqliteCooldownRepo;
 pub(crate) use soul_repo::SqliteSoulRepo;
 pub(crate) use user_profile_repo::SqliteUserProfileRepo;
-
-// ─── Repository trait definitions ───────────────────────────────────────────
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};

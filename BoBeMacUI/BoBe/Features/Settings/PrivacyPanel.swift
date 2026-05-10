@@ -129,8 +129,7 @@ struct PrivacyPanel: View {
             errors.append(L10n.tr("settings.privacy.danger.error.goals"))
         }
 
-        // Memory is a single document — reset to skeleton, not per-row
-        // delete (which doesn't exist post-pivot).
+        // Memory is one document; reset to skeleton — no per-row delete post-pivot.
         do {
             _ = try await DaemonClient.shared.updateMemory(memoryDefaultBody)
         } catch {

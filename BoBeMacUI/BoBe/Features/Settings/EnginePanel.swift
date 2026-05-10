@@ -1,16 +1,6 @@
 import SwiftUI
 
-/// Settings → Engine. Radio between cloud (GitHub Copilot) and local
-/// (Ollama). For each mode, exposes:
-/// - Cloud: signed-in @login banner + per-class model dropdowns from
-///   `/models?engine=copilot_cloud`.
-/// - Local: provider URL + per-class model dropdowns from
-///   `/models?engine=local` + offline toggle.
-///
-/// Engine fields are hot-swap on the daemon side: PATCHing any of them
-/// triggers `WorkerRegistry::reload()`. No restart-required banner —
-/// we just show "Saved" toast and let the worker registry catch up
-/// silently in the background.
+/// Engine fields hot-swap via daemon `WorkerRegistry::reload()`; no restart banner.
 struct EnginePanel: View {
     @State private var settings: DaemonSettings?
     @State private var auth: AuthStatusResponse?
@@ -222,7 +212,7 @@ struct EnginePanel: View {
         visionOnly: Bool
     ) -> some View {
         let pool = visionOnly ? self.availableModels.filter(\.vision) : self.availableModels
-        // The "—" sentinel means "use the CLI's default model."
+        // "—" sentinel means "use the CLI's default model."
         let options: [String] = ["—"] + pool.map(\.id)
         let displayName = { (id: String) -> String in
             if id == "—" {
@@ -234,18 +224,12 @@ struct EnginePanel: View {
         let binding = Binding<String>(
             get: {
                 let raw = self.settings?[keyPath: keyPath]
-                // Server may return `nil` (never set) or `""` (cleared
-                // via the empty-string sentinel) — both render as `—`.
                 if let raw, !raw.isEmpty { return raw }
                 return "—"
             },
             set: { newValue in
                 guard var current = self.settings else { return }
-                // Swift's `JSONEncoder` omits `nil` Optional fields by
-                // default — sending `nil` here would silently no-op on
-                // the daemon's PATCH handler. Use empty string as the
-                // clear sentinel; the daemon's `set_opt_string!` macro
-                // normalizes `""` back to `None` in Config.
+                // Empty string is the clear sentinel; daemon normalizes "" back to None.
                 current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
                 self.settings = current
                 self.debounceSave()
@@ -344,12 +328,10 @@ struct EnginePanel: View {
         current.engine = mode
         self.settings = current
         Task {
-            // Engine mode flip is a deliberate user action; save without
-            // debounce so the registry rebuilds quickly.
+            // Skip debounce: user-initiated flip, registry should rebuild now.
             self.saveTask?.cancel()
             await self.persist()
         }
-        // Reload model list for the new engine.
         Task { await self.loadModels() }
     }
 
@@ -413,9 +395,7 @@ struct EnginePanel: View {
         do {
             self.auth = try await DaemonClient.shared.getAuthStatus()
         } catch {
-            // Don't surface — auth probe is best-effort. If the daemon
-            // can't reach the CLI, the settings pane still works for
-            // configuring everything else.
+            // Auth probe is best-effort; pane still works without it.
         }
     }
 
@@ -431,14 +411,11 @@ struct EnginePanel: View {
                     : L10n.tr("settings.engine.models.cloud_empty")
             }
         } catch let DaemonError.httpError(statusCode, _) where statusCode == 503 {
-            // Expected: Ollama not running yet (local mode without
-            // setup) or Copilot CLI not reachable.
+            // 503: Ollama not running or Copilot CLI not reachable.
             self.modelsHint = self.currentEngine == "local"
                 ? L10n.tr("settings.engine.models.local_unavailable")
                 : L10n.tr("settings.engine.models.cloud_unavailable")
         } catch {
-            // Daemon down, parse error, network issue — surface it so
-            // the user knows the dropdowns aren't empty by design.
             self.modelsHint = String(
                 format: L10n.tr("settings.engine.models.error_format"),
                 error.localizedDescription
@@ -448,9 +425,7 @@ struct EnginePanel: View {
 
     private func openSignInTerminal() {
         CopilotSignIn.openLogin(cliPath: self.auth?.cliPath)
-        // Same pattern as the wizard: once we hand off to Terminal,
-        // poll /auth/status in the background so the pane auto-refreshes
-        // when the user finishes signing in.
+        // Poll /auth/status after Terminal hand-off so the pane auto-refreshes.
         self.startAuthPolling()
     }
 
@@ -466,44 +441,16 @@ struct EnginePanel: View {
                     self.auth = resp
                     if resp.isAuthenticated { return }
                 } catch {
-                    // Transient — keep polling.
                 }
             }
         }
     }
 }
 
-/// Helpers for kicking off the Copilot CLI sign-in flow from Swift.
-/// Shared between the welcome wizard's `CloudAuthStepView` and the
-/// Settings → Engine pane.
-///
-/// The Copilot CLI is bundled inside BoBe (via the SDK's `embedded-cli`
-/// feature) and extracted to `~/.cache/github-copilot-sdk-{ver}/copilot`
-/// on first `Client::start()`. Its sign-in is interactive (GitHub device
-/// flow: prints a code, asks the user to enter it at github.com/login/
-/// device, polls for the token, writes it to the macOS keychain).
-///
-/// We can't drive that programmatically from Swift, so the workflow is:
-/// 1. Daemon's `/auth/status` returns the extracted CLI's absolute path.
-/// 2. We open Terminal.app and run that binary directly (no args — the
-///    CLI's interactive prompt handles the device flow on first run).
-/// 3. User completes the flow in Terminal; auth is persisted to keychain.
-/// 4. User clicks "Check again" in the wizard / Settings; `/auth/status`
-///    now reports `is_authenticated: true`.
-///
-/// `gh` is intentionally NOT used. Copilot CLI and `gh` are separate
-/// tools — Copilot CLI has its own auth flow and its own keychain entry.
-/// We bundle the binary the user needs; no external install required.
+/// Drives Copilot CLI's interactive device-flow sign-in via Terminal.app
+/// (the CLI is bundled and extracted; we can't replicate the prompt in Swift).
 enum CopilotSignIn {
-    /// Open Terminal.app and run the bundled Copilot CLI's interactive
-    /// prompt. The CLI handles auth on first run via GitHub's device
-    /// flow. If `cliPath` is `nil` (daemon hasn't started a Client yet
-    /// — unusual), we just open Terminal with no command so the user
-    /// can run whatever Copilot CLI they have on PATH themselves.
     static func openLogin(cliPath: String?) {
-        // Shell-escape the path: wrap in single quotes and escape any
-        // embedded single quotes. macOS user paths don't normally
-        // contain quotes, but defensive coding is cheap here.
         let command: String
         if let cliPath {
             let escaped = cliPath.replacingOccurrences(of: "'", with: "'\\''")

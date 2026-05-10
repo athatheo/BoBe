@@ -9,7 +9,6 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::app_state::AppState;
 
-/// SSE endpoint. Single-consumer; `ConnectionManager` handles reconnection.
 pub(crate) async fn stream_events(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {

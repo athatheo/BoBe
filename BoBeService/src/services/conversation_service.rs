@@ -1,5 +1,3 @@
-//! ConversationService — manages conversation lifecycle and turn management.
-
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -32,8 +30,6 @@ impl ConversationService {
             streaming_assistant_turns: DashMap::new(),
         }
     }
-
-    // ── Conversation Lifecycle ──────────────────────────────────────────
 
     pub(crate) async fn append_user_turn_or_create_active(
         &self,
@@ -263,8 +259,6 @@ impl ConversationService {
         self.repo.get_last_closed().await
     }
 
-    // ── Turn Management ─────────────────────────────────────────────────
-
     pub(crate) async fn add_turn(
         &self,
         conversation_id: ConversationId,
@@ -288,8 +282,6 @@ impl ConversationService {
         );
         Ok(Some(saved))
     }
-
-    // ── Queries ─────────────────────────────────────────────────────────
 
     pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
         self.repo.get_pending_or_active().await

@@ -110,10 +110,6 @@ pub(crate) fn load_mcp_config(
     parse_enabled_servers(file, blocked_commands, dangerous_env_keys)
 }
 
-/// Translate `Vec<McpParsedServer>` (BoBe's mcp.json shape) into the
-/// `HashMap<String, McpServerConfig>` shape the Copilot SDK takes via
-/// `SessionConfig::mcp_servers`. The SDK takes ownership of process
-/// spawn + lifecycle + tool dispatch from this point.
 pub(crate) fn to_sdk_mcp_servers(
     servers: Vec<McpParsedServer>,
 ) -> HashMap<String, github_copilot_sdk::types::McpServerConfig> {
@@ -123,10 +119,7 @@ pub(crate) fn to_sdk_mcp_servers(
         .into_iter()
         .map(|s| {
             let timeout_ms = (s.timeout_seconds * 1000.0) as i64;
-            // `tools = ["*"]` exposes everything, `[]` exposes nothing.
-            // We can't compute the inverse of `excluded_tools` without
-            // querying the live tool list (open task: #31), so we
-            // expose all and ignore `excluded_tools` for now.
+            // `excluded_tools` ignored: SDK has no negation; needs live tool list (#31).
             let cfg = McpStdioServerConfig {
                 tools: vec!["*".into()],
                 timeout: Some(timeout_ms),

@@ -1,35 +1,18 @@
-//! Shared types for the Copilot worker system. Data shapes only.
-//! Workers, hooks, and the registry all import from here.
-
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Stable identifier for a worker class. Used as the session label, the
-/// directory name under `~/.bobe/workers/`, and the skill directory under
-/// `~/.bobe/skills/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum WorkerClass {
-    /// Goal extraction from conversation history. Also serves as the
-    /// generic batch worker for jobs without a dedicated class
-    /// (conversation summary, agent-job DONE/CONTINUE evaluation).
     Goals,
-    /// Vision answering — image attachment + question.
     Vision,
-    /// Live conversation with the user. Long-lived session, daily rotation.
     Chat,
-    /// Nightly memory.md compaction.
     Consolidate,
-    /// Engagement gate — fast yes/no on whether to invoke the chat agent
-    /// from a proactive trigger. Output is JSON parsed in the daemon and
-    /// never streamed to the user.
     Decide,
 }
 
 impl WorkerClass {
-    /// Stable ASCII name. Also the session identifier and the directory
-    /// component under `~/.bobe/workers/`.
     pub(crate) const fn name(self) -> &'static str {
         match self {
             WorkerClass::Goals => "goals",
@@ -40,23 +23,17 @@ impl WorkerClass {
         }
     }
 
-    /// Per-turn deadline. Vision and consolidation need longer than chat.
     pub(crate) const fn turn_timeout(self) -> Duration {
         match self {
             WorkerClass::Goals => Duration::from_mins(3),
             WorkerClass::Vision => Duration::from_mins(5),
             WorkerClass::Chat => Duration::from_mins(2),
             WorkerClass::Consolidate => Duration::from_mins(15),
-            // Decision is hot-path: every screen capture trigger waits on
-            // it before the chat session can engage. Tighter cap than
-            // batch classes.
+            // Decide is hot-path: every screen capture waits on it.
             WorkerClass::Decide => Duration::from_secs(45),
         }
     }
 
-    /// Mode the SDK should use for this class. Autopilot for headless
-    /// batch jobs (model auto-loops to `task_complete`); Interactive
-    /// for live conversation where each turn returns a single reply.
     pub(crate) const fn mode(self) -> &'static str {
         match self {
             WorkerClass::Chat => "interactive",
@@ -65,8 +42,6 @@ impl WorkerClass {
     }
 }
 
-/// Batch worker job request. `instructions` is freeform per-job context;
-/// the worker's stable identity comes from its `SKILL.md`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct JobInput {
     pub(crate) job_id: Uuid,
@@ -76,8 +51,6 @@ pub(crate) struct JobInput {
     pub(crate) input: serde_json::Value,
 }
 
-/// Result of a batch job. Workers return JSON; we parse `output` from the
-/// assistant message and surface raw text + parse error if it fails.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct JobOutput {
     pub(crate) job_id: Uuid,
@@ -89,7 +62,6 @@ pub(crate) struct JobOutput {
     pub(crate) error: Option<String>,
 }
 
-/// User-side input to a chat turn. Attachments cover image / file inputs.
 #[derive(Debug, Clone)]
 pub(crate) struct ChatPrompt {
     pub(crate) text: String,
@@ -105,44 +77,31 @@ impl ChatPrompt {
     }
 }
 
-/// Inputs we forward to the Copilot SDK as `Attachment` variants. Subset
-/// of the SDK's full `Attachment` enum — only what BoBe currently emits.
 #[derive(Debug, Clone)]
 pub(crate) enum ChatAttachment {
-    /// In-memory image bytes. Lifted into the SDK as `Attachment::Blob`
-    /// (no disk I/O — base64 inline). Preferred for screenshots.
+    /// Lifted to `Attachment::Blob` (base64 inline, no disk I/O).
     ImageBytes {
         bytes: Vec<u8>,
         mime_type: &'static str,
     },
 }
 
-/// Streaming chunks from a chat turn. Adapter from the SDK's session
-/// event stream into a BoBe-shaped vocabulary the SwiftUI overlay can
-/// render.
 #[derive(Debug, Clone)]
 pub(crate) enum ChatDelta {
-    /// Token-level streaming text — append to the current message bubble.
     MessageDelta(String),
-    /// Final, authoritative message body (deltas may have been re-streamed
-    /// or out-of-order; this is the source of truth).
+    /// Authoritative final body; deltas may have been re-streamed out-of-order.
     MessageComplete {
         content: String,
         output_tokens: Option<u64>,
     },
-    /// A tool the assistant is invoking. `id` correlates with the
-    /// matching `ToolComplete` for SSE display.
     ToolStart { id: String, name: String },
-    /// Tool finished. `success` reflects exit, not whether the model was
-    /// happy with the result. `id` matches the corresponding `ToolStart`.
+    /// `success` reflects exit, not model satisfaction.
     ToolComplete {
         id: String,
         name: String,
         success: bool,
     },
-    /// Recoverable error mid-stream. Stream may continue.
     Error(String),
-    /// Turn complete. Stream ends after this.
     Done,
 }
 

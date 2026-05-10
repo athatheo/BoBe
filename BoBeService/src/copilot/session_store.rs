@@ -1,28 +1,5 @@
-//! Persistent session IDs per worker class. Survives daemon restarts so
-//! `client.resume_session(id)` can pick up where we left off. Without
-//! this, every BoBe restart loses every worker's accumulated context.
-//!
-//! On-disk shape (human-readable on purpose — easy to inspect / clear):
-//!
-//! ```text
-//! ~/.bobe/workers/
-//!   goals/session.id
-//!   vision/session.id
-//!   consolidate/session.id
-//!   decide/session.id
-//!   chat/session-2026-05-08.id    ← daily rotation: one ID per local date
-//!   chat/session-2026-05-07.id    ← yesterday's, retained for `prune`
-//! ```
-//!
-//! Chat rotates daily so morning conversations don't inherit yesterday's
-//! noise; cross-day continuity comes from `memory.md`, not from raw chat
-//! history. Old chat session-id files past `CHAT_RETENTION_DAYS` are
-//! removed by `prune_old_chat_sessions` so we don't leak SDK-side
-//! session state forever.
+//! Chat rotates daily; cross-day continuity comes from `memory.md`, not chat history.
 
-/// Number of days of rotated chat session-id files to keep on disk.
-/// Anything older is deleted at boot. Tuned for "useful for last-week
-/// debug recovery" without keeping stale state forever.
 pub(crate) const CHAT_RETENTION_DAYS: i64 = 7;
 
 use std::path::PathBuf;
@@ -35,7 +12,6 @@ use crate::error::AppError;
 use super::types::WorkerClass;
 
 pub(crate) struct SessionStore {
-    /// `~/.bobe/workers/`. Each class lives under `<this>/<class.name()>/`.
     workers_root: PathBuf,
 }
 
@@ -46,8 +22,7 @@ impl SessionStore {
         }
     }
 
-    /// Path of the session-id file for `class` at the given local date.
-    /// All classes except Chat ignore the date and use a stable file.
+    /// Only Chat uses the date; other classes share a stable `session.id` file.
     pub(crate) fn id_path(&self, class: WorkerClass, now_local: DateTime<Local>) -> PathBuf {
         let dir = self.workers_root.join(class.name());
         if class == WorkerClass::Chat {
@@ -57,9 +32,6 @@ impl SessionStore {
         }
     }
 
-    /// Read the saved session ID for `class`, if any. Returns `Ok(None)`
-    /// when the file is missing or empty — caller should `create_session`
-    /// and `save` the new ID.
     pub(crate) async fn load(
         &self,
         class: WorkerClass,
@@ -80,8 +52,6 @@ impl SessionStore {
         }
     }
 
-    /// Persist `id` for `class`. Atomic rename so concurrent readers never
-    /// see a partial file.
     pub(crate) async fn save(
         &self,
         class: WorkerClass,
@@ -105,9 +75,6 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Delete the saved session ID — used when `resume_session` fails
-    /// with NotFound and we fell back to creating a fresh one. Never
-    /// errors on missing file.
     pub(crate) async fn forget(
         &self,
         class: WorkerClass,
@@ -121,10 +88,6 @@ impl SessionStore {
         }
     }
 
-    /// Read the session ID at a specific arbitrary path. Used by
-    /// `prune_old_chat_sessions` to recover the SessionId for a
-    /// dated file before deleting it (so the caller can `destroy`
-    /// the SDK-side session before forgetting the local pointer).
     pub(crate) async fn load_path(
         &self,
         path: &std::path::Path,
@@ -143,9 +106,6 @@ impl SessionStore {
         }
     }
 
-    /// List all chat session-id files older than `today - retention_days`.
-    /// Returns `(path, session_id)` pairs so the caller can destroy the
-    /// SDK-side session before deleting the local file.
     pub(crate) async fn old_chat_sessions(
         &self,
         now_local: DateTime<Local>,
@@ -166,7 +126,6 @@ impl SessionStore {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            // Filename shape: "session-YYYY-MM-DD.id".
             let Some(date_part) = name
                 .strip_prefix("session-")
                 .and_then(|rest| rest.strip_suffix(".id"))
@@ -233,7 +192,6 @@ mod tests {
             .save(WorkerClass::Chat, mon, &SessionId::new("mon-id"))
             .await
             .unwrap();
-        // Tuesday should be empty even though Monday was saved.
         assert!(store.load(WorkerClass::Chat, tue).await.unwrap().is_none());
         assert_eq!(
             store.load(WorkerClass::Chat, mon).await.unwrap(),
@@ -245,7 +203,6 @@ mod tests {
     async fn forget_is_idempotent() {
         let store = SessionStore::new(&tempdir());
         let now = Local.with_ymd_and_hms(2026, 5, 8, 10, 0, 0).unwrap();
-        // Forgetting a never-saved class is fine.
         store.forget(WorkerClass::Goals, now).await.unwrap();
 
         store
@@ -278,8 +235,7 @@ mod tests {
 
         let victims = store.old_chat_sessions(today, 7).await.unwrap();
 
-        // Only two_weeks_ago is past the 7-day cutoff. (week_ago is
-        // exactly 7 days; cutoff is `< today - 7d` so it's kept.)
+        // week_ago is exactly 7 days; cutoff is `< today - 7d` so it's kept.
         assert_eq!(victims.len(), 1);
         assert_eq!(victims[0].1, SessionId::new("old-id"));
     }

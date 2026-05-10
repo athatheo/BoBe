@@ -1,5 +1,3 @@
-//! Database pool creation and schema initialization.
-
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use tracing::info;
 

@@ -59,7 +59,6 @@ extension DaemonClient {
 
     // MARK: Status
 
-    /// Snapshot of `accepting_user_messages` + indicator + capturing.
     /// Used to seed local state after SSE reconnect.
     func getStatus() async throws -> StatusResponse {
         try await fetch("/status")
@@ -67,17 +66,11 @@ extension DaemonClient {
 
     // MARK: Engine + auth + models
 
-    /// Wraps the SDK's `Client::get_auth_status()`. Returns whether the
-    /// bundled CLI sees the user signed in to GitHub Copilot — same auth
-    /// the user's `gh` / `copilot` commands see (no separate login).
     func getAuthStatus() async throws -> AuthStatusResponse {
         try await fetch("/auth/status")
     }
 
-    /// Lists models available in the given engine. `engine == nil` falls
-    /// back to the daemon's current `Config.engine`. Cloud returns
-    /// subscription-gated Copilot models; local hits the user's Ollama
-    /// `/api/tags` (returns 503 if Ollama isn't running).
+    /// `engine == nil` uses daemon's current `Config.engine`. Local returns 503 if Ollama is down.
     func listModels(engine: String? = nil) async throws -> ListModelsResponse {
         let suffix = engine.map { "?engine=\($0)" } ?? ""
         return try await fetch("/models\(suffix)")
@@ -92,11 +85,7 @@ struct AuthStatusResponse: Codable, Sendable {
     let host: String?
     let login: String?
     let statusMessage: String?
-    /// Absolute path to the bundled Copilot CLI binary on disk (the one
-    /// the SDK extracted from BoBe's own binary). Use this to launch
-    /// Terminal with the bundled CLI for sign-in — no external `gh`,
-    /// no separate install. `nil` only if the bundled-CLI feature is
-    /// disabled or extraction hasn't happened yet.
+    /// `nil` if the bundled-CLI feature is disabled or not yet extracted.
     let cliPath: String?
     let cliVersion: String?
 
@@ -112,23 +101,15 @@ struct AuthStatusResponse: Codable, Sendable {
 }
 
 struct ListModelsResponse: Codable, Sendable {
-    /// `"copilot_cloud"` or `"local"` — echoes the engine that was queried.
     let engine: String
     let models: [ModelInfo]
 }
 
 struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
-    /// Stable identifier — `"claude-sonnet-4.5"` for cloud,
-    /// `"qwen2.5:7b-instruct"` for local Ollama tags.
     let id: String
-    /// Display name — falls back to `id` when not provided.
     let name: String
-    /// Whether the model accepts image inputs. Filters the Vision model
-    /// dropdown to exclude text-only models.
     let vision: Bool
-    /// Maximum context window in tokens, when reported. Cloud models
-    /// always populate this; Ollama doesn't expose it via `/api/tags`
-    /// so it'll be `nil` there.
+    /// `nil` for Ollama — `/api/tags` doesn't expose context window.
     let contextWindow: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -142,26 +123,18 @@ struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
 // MARK: - Local-runtime install DTOs
 
 extension DaemonClient {
-    /// Kicks off the wizard's local-mode install: ensures Ollama is
-    /// running (downloading the runtime if needed), pulls each model.
-    /// Returns 202 immediately; the wizard listens on
-    /// `streamLocalRuntimeStatus()` for progress.
+    /// Returns 202 immediately; listen on `streamLocalRuntimeStatus()` for progress.
     @discardableResult
     func startLocalRuntimeInstall(_ request: LocalRuntimeInstallRequest) async throws -> LocalRuntimeMessageResponse {
         try await fetch("/local-runtime/install", method: "POST", body: request)
     }
 
-    /// Signals the daemon to abort an in-flight install. Snapshot stream
-    /// will emit `status: "canceled"` shortly after.
     @discardableResult
     func cancelLocalRuntimeInstall() async throws -> LocalRuntimeMessageResponse {
         try await fetch("/local-runtime/cancel", method: "POST")
     }
 
-    /// Open an SSE connection to `/local-runtime/status`, call
-    /// `onSnapshot` for each parsed event. Returns when a terminal
-    /// status arrives (`complete` / `canceled` / `failed`) or when the
-    /// caller's `Task` is cancelled.
+    /// Returns on terminal status (`complete`/`canceled`/`failed`) or task cancel.
     func streamLocalRuntimeStatus(
         onSnapshot: @Sendable @escaping (LocalRuntimeSnapshot) -> Void
     ) async throws {
@@ -212,12 +185,8 @@ struct LocalRuntimeMessageResponse: Codable, Sendable {
     let message: String
 }
 
-/// Snapshot the daemon emits on the install-status SSE stream. UI binds
-/// progress bars to `runtime.percent`, `chatModel.percent`, etc.
 struct LocalRuntimeSnapshot: Codable, Sendable {
-    /// `"idle"`, `"running"`, `"complete"`, `"canceled"`, or `"failed"`.
     let status: String
-    /// Set when `status == "failed"`.
     let error: String?
     let runtime: LocalRuntimeDownload
     let chatModel: LocalRuntimePull
@@ -247,9 +216,6 @@ struct LocalRuntimeDownload: Codable, Sendable {
 }
 
 struct LocalRuntimePull: Codable, Sendable {
-    /// Phase string from Ollama (`"pulling manifest"`, `"downloading"`,
-    /// `"verifying sha256 digest"`, `"writing manifest"`, `"success"`)
-    /// or our own (`"already installed"`, `"skipped (same as chat)"`).
     let status: String
     let completedBytes: UInt64?
     let totalBytes: UInt64?

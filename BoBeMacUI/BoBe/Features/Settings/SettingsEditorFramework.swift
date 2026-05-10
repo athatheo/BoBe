@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Shared state for split-pane CRUD settings editors.
 struct SettingsEditorState<SelectionID: Hashable>: Equatable {
     var selectedId: SelectionID?
     var isDirty = false

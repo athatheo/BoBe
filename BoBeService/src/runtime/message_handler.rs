@@ -1,8 +1,5 @@
-//! Handles incoming user messages: append the user turn, drive the
-//! chat stream into SSE, persist the final assistant turn. The SDK
-//! owns per-turn context (memory.md via `BobeHooks::SessionStart`),
-//! conversation history (Copilot session + `InfiniteSessionConfig`
-//! auto-compaction), tool dispatch, and streaming.
+//! Context (memory.md), history, and tools are owned by the Copilot SDK;
+//! we only append the user turn and persist the final assistant turn.
 
 use std::sync::Arc;
 
@@ -54,10 +51,6 @@ impl MessageHandler {
             return;
         };
 
-        // User message lives in the local conversation log AND in the
-        // Copilot session (via `chat_worker.send`). Memory distillation
-        // happens in the nightly consolidation worker reading chat
-        // history — no parallel SQL observation insert.
         self.respond_to_message(message_id, content, conversation_id)
             .await;
     }
@@ -97,9 +90,6 @@ impl MessageHandler {
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
-    /// Lazy-spawn the chat worker (idempotent — registry caches it),
-    /// send the user turn, pump the resulting `Stream<ChatDelta>` into
-    /// the SSE event queue.
     async fn send_via_chat_worker(
         &self,
         user_content: &str,

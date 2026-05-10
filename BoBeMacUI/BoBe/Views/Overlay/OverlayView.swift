@@ -332,8 +332,7 @@ struct OverlayView: View {
         if let tool = self.store.runningTools.first {
             return L10n.tr("overlay.status.using_tool_format", tool.toolName)
         }
-        // Daemon-supplied progress label from indicator.message — wins
-        // over generic "Thinking..." when present.
+        // Daemon-supplied progress label wins over generic "Thinking..." when present.
         if let label = self.store.indicatorMessage,
            !label.isEmpty,
            self.store.stateType == .thinking || self.store.stateType == .speaking {

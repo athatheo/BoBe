@@ -95,14 +95,11 @@ mod tests {
         let json = serde_json::to_string(&id).unwrap();
         let back: SoulId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, back);
-        // Should serialize as bare UUID string, not wrapped object
         assert_eq!(json, format!("\"{}\"", id));
     }
 
     #[test]
     fn different_id_types_are_incompatible() {
-        // This test verifies the types exist and are distinct.
-        // Compile-time safety: you can't pass a SoulId where a GoalId is expected.
         let _goal = GoalId::new();
         let _soul = SoulId::new();
     }

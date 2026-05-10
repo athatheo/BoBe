@@ -1,12 +1,6 @@
 import Foundation
 
 // MARK: - Goals
-//
-// Goals are file-backed living documents (`~/.bobe/goals/<id>.md`) that
-// the chat agent edits via SDK Read/Write/Edit during conversation.
-// The daemon's `/goals` API exposes the parsed projection — title,
-// status, integer priority 0-5, and the rich sections that BoBe uses
-// to discover the user's relationship to each goal.
 
 enum GoalStatus: String, Codable, Sendable, CaseIterable {
     case active, paused, completed, archived, unknown
@@ -56,9 +50,6 @@ struct GoalListResponse: Codable, Sendable {
     }
 }
 
-/// Request body for `POST /goals`. The chat agent populates the deeper
-/// sections (patterns, attitude, etc.) over time; the API only lets
-/// the user seed `title` + `summary` + `why_it_matters` + `priority`.
 struct GoalCreateRequest: Codable, Sendable {
     let title: String
     var summary: String?
@@ -71,10 +62,7 @@ struct GoalCreateRequest: Codable, Sendable {
     }
 }
 
-/// Request body for `PATCH /goals/{id}`. Mirrors the daemon's
-/// `GoalUpdateRequest` — `how_working_on_it`, `patterns_observed`,
-/// `attitude_feelings`, `open_questions` are deliberately not exposed
-/// here; those belong to the chat agent.
+/// Deeper sections (patterns, attitude, etc.) belong to the chat agent only.
 struct GoalUpdateRequest: Codable, Sendable {
     var title: String?
     var status: GoalStatus?
@@ -96,11 +84,6 @@ struct GoalActionResponse: Codable, Sendable {
 }
 
 // MARK: - Memory (single document)
-//
-// `~/.bobe/memory.md` is the single durable narrative store; the
-// daemon exposes it through GET/PUT /memory rather than the
-// pre-pivot row-oriented CRUD surface. Pruned nightly by the
-// Consolidate worker.
 
 struct MemoryResponse: Codable, Sendable {
     let content: String
@@ -208,18 +191,6 @@ struct UserProfileActionResponse: Codable, Sendable {
 }
 
 // MARK: - MCP Servers
-//
-// The daemon owns the on-disk `mcp.json` file. The Copilot SDK manages
-// MCP server lifecycle (process spawn + tool dispatch) via
-// `SessionConfig::mcp_servers` once the daemon hands it the parsed map
-// at session creation.
-//
-// Live runtime state (`connected` + `status`) comes from the SDK's
-// `session.mcp.list` RPC, queried via the chat session if it's alive.
-// `status == nil` means the chat session hasn't spawned yet — UI
-// should render "indeterminate" rather than "disconnected" in that case.
-// Per-server `toolCount` and `tools` aren't exposed by the SDK at
-// v0.1.0 and stay stubbed at 0/empty.
 
 struct MCPServerTool: Codable, Sendable, Hashable {
     let name: String
@@ -236,9 +207,7 @@ struct MCPServer: Identifiable, Codable, Sendable {
     let command: String
     let args: [String]
     var connected: Bool
-    /// One of: `connected | failed | needs-auth | pending | disabled |
-    /// not-configured | unknown`. `nil` = live state unavailable
-    /// (chat session not spawned yet — open Settings before chatting).
+    /// `nil` = chat session not spawned yet; render indeterminate, not disconnected.
     var status: String?
     var enabled: Bool
     var toolCount: Int

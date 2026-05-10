@@ -9,10 +9,7 @@ pub(crate) struct CooldownInfo {
     pub(crate) cooldown_type: String,
 }
 
-/// Tracks cooldown state for proactive engagement.
-///
-/// Single-row table — enforced by application logic.
-/// Survives server restarts (ADR-0003).
+/// Single-row table (enforced by application). Survives restarts (ADR-0003).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Cooldown {
     pub(crate) id: CooldownId,
@@ -34,7 +31,6 @@ impl Cooldown {
         }
     }
 
-    /// Returns `Some(CooldownInfo)` if in cooldown, `None` if ready to engage.
     pub(crate) fn check_cooldown(
         &self,
         base_minutes: i64,

@@ -1,7 +1,3 @@
-//! Dependency wiring — connects services, learners, triggers, and the
-//! runtime session into a coherent application graph. The only module
-//! that knows all concrete types.
-
 use std::sync::Arc;
 
 use tracing::info;
@@ -52,8 +48,6 @@ impl Wired {
     }
 }
 
-// ── Assembly ───────────────────────────────────────────────────────────────
-
 pub(crate) async fn wire(
     config: &Config,
     infra: &Infrastructure,
@@ -66,15 +60,9 @@ pub(crate) async fn wire(
         &repos.conversation_repo,
     )));
 
-    // File-backed goals: each goal is `~/.bobe/goals/<id>.md`. The
-    // chat agent reads/edits these via SDK Read/Write/Edit; the API +
-    // trigger go through `GoalsService` for the same dir.
     let goal_file_store = GoalFileStore::new(crate::util::paths::bobe_data_dir().join("goals"));
     let goals_service = Arc::new(GoalsService::new(Arc::clone(&goal_file_store)));
 
-    // Memory.md is the single durable narrative store. The capture
-    // learner appends one-liners under `## Recent`; the consolidate
-    // worker prunes the section nightly.
     let capture_learner = Arc::new(CaptureLearner::new(
         Arc::clone(&workers),
         workers.memory_file(),

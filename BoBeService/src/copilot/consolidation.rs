@@ -1,9 +1,4 @@
-//! Nightly memory.md consolidation. Spawns the `bobe-consolidate` worker,
-//! hands it the current body, atomically writes the pruned result.
-//!
-//! Single-writer rule preserved: the worker never touches memory.md
-//! directly. It returns the new body in `output.body`; this trigger
-//! calls `MemoryFile::replace_all` (the only writer in the daemon).
+//! Single-writer: worker returns the body; only `MemoryFile::replace_all` writes memory.md.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,8 +14,6 @@ use super::memory_file::{MemoryFile, TARGET_MAX_BYTES};
 use super::registry::WorkerRegistry;
 use super::types::JobInput;
 
-/// Default fire-time: 03:00 local. Quiet hour, well clear of typical
-/// active learner traffic.
 const DEFAULT_FIRE_AT: (u32, u32) = (3, 0);
 
 pub(crate) struct ConsolidationTrigger {
@@ -31,10 +24,6 @@ pub(crate) struct ConsolidationTrigger {
 
 impl ConsolidationTrigger {
     pub(crate) fn new(workers: Arc<WorkerRegistry>, memory_file: Arc<MemoryFile>) -> Self {
-        // `from_hms_opt(3,0,0)` is constant-input — the only failure case
-        // is invalid hour/minute/second, which 03:00:00 isn't. Fall back
-        // to midnight if the unreachable happens; the trigger still fires
-        // daily, just at a different time.
         let fire_at = NaiveTime::from_hms_opt(DEFAULT_FIRE_AT.0, DEFAULT_FIRE_AT.1, 0)
             .unwrap_or(NaiveTime::MIN);
         Self {
@@ -44,8 +33,6 @@ impl ConsolidationTrigger {
         }
     }
 
-    /// Long-running task. Sleeps until the next fire time, runs
-    /// consolidation, repeats. Bails on shutdown signal.
     pub(crate) async fn run(self, mut shutdown: broadcast::Receiver<()>) {
         loop {
             let wait = duration_until_next(self.fire_at, Utc::now());
@@ -65,8 +52,6 @@ impl ConsolidationTrigger {
 
             match self.consolidate_once().await {
                 Ok(_) => {}
-                // `Conflict` means a writer slipped in mid-pass; expected,
-                // we just skip this run and the next night tries fresh.
                 Err(AppError::Conflict(reason)) => {
                     tracing::info!(reason = %reason, "consolidation_trigger.skipped");
                 }
@@ -77,25 +62,10 @@ impl ConsolidationTrigger {
         }
     }
 
-    /// Run one consolidation pass. Public for manual triggering / tests.
-    ///
-    /// Optimistic concurrency: reads memory.md without holding any
-    /// lock, runs the worker (up to 15 min), then takes the writer
-    /// lock briefly to verify+commit. If memory.md changed mid-flight
-    /// (an `append_under` from `CaptureLearner` slipped through, or
-    /// the user edited the file by hand), the pass aborts cleanly
-    /// instead of clobbering the concurrent change. Next night runs
-    /// fresh.
-    ///
-    /// Why this matters: pre-fix the writer lock was held for the
-    /// full worker turn, so every `CaptureLearner.append_under` (and
-    /// any other writer) blocked indefinitely. With capture cycles
-    /// running at 45-second cadence, even a 10-minute consolidation
-    /// could queue up a dozen waiters.
+    /// Optimistic concurrency: reads lock-free, holds writer lock only for verify+commit.
     pub(crate) async fn consolidate_once(&self) -> Result<(), AppError> {
         let started = Instant::now();
 
-        // Lock-free pre-read.
         let before = self.memory_file.read().await?;
         let before_bytes = before.len();
 
@@ -137,9 +107,6 @@ impl ConsolidationTrigger {
 
         let after_bytes = new_body.len();
 
-        // Take the writer guard for the freshness check + replace. The
-        // guard scope is now milliseconds instead of the full worker
-        // turn, so concurrent appends only stall briefly.
         let writer = self.memory_file.acquire_writer().await;
         let current = writer.read().await?;
         if current != before {
@@ -177,7 +144,6 @@ fn duration_until_next(fire_at: NaiveTime, now_utc: DateTime<Utc>) -> Duration {
     let target = match today_target {
         Some(t) if t > now_local => t,
         _ => {
-            // Already past today's fire time → next is tomorrow.
             let tomorrow = now_local.date_naive().succ_opt().unwrap_or_else(|| {
                 tracing::warn!("date overflow; defaulting to 24h");
                 now_local.date_naive()
@@ -190,8 +156,6 @@ fn duration_until_next(fire_at: NaiveTime, now_utc: DateTime<Utc>) -> Duration {
     };
 
     let delta = target.signed_duration_since(now_local);
-    // 24h fallback. `Duration::from_days` is unstable on our MSRV; using
-    // explicit seconds is clear enough.
     #[allow(clippy::duration_suboptimal_units, reason = "from_days is unstable")]
     let one_day = Duration::from_secs(60 * 60 * 24);
     delta.to_std().unwrap_or(one_day)
@@ -205,19 +169,16 @@ mod tests {
 
     #[test]
     fn duration_until_next_picks_today_when_in_future() {
-        // Faux "now" at 2026-05-08 01:00 local; fire at 03:00 → 2 hours.
         let now_local = Local.with_ymd_and_hms(2026, 5, 8, 1, 0, 0).unwrap();
         let now_utc = now_local.with_timezone(&Utc);
         let fire = NaiveTime::from_hms_opt(3, 0, 0).unwrap();
         let d = duration_until_next(fire, now_utc);
-        // 2h with some leeway for DST/test-harness time skew.
         assert!(d.as_secs() <= 2 * 60 * 60 + 1);
         assert!(d.as_secs() >= 2 * 60 * 60 - 1);
     }
 
     #[test]
     fn duration_until_next_picks_tomorrow_when_past() {
-        // Faux "now" at 04:00; fire at 03:00 → 23 hours.
         let now_local = Local.with_ymd_and_hms(2026, 5, 8, 4, 0, 0).unwrap();
         let now_utc = now_local.with_timezone(&Utc);
         let fire = NaiveTime::from_hms_opt(3, 0, 0).unwrap();

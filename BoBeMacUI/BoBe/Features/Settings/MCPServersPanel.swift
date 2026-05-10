@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Edits the raw `mcp.json` document with validate-before-save flow.
 struct MCPServersPanel: View {
     @State private var rawJson = ""
     @State private var servers: [MCPServer] = []
@@ -157,10 +156,7 @@ struct MCPServersPanel: View {
                         .background(RoundedRectangle(cornerRadius: 6).fill(self.theme.colors.surface))
                     }
 
-                    // Live status comes from the chat session's
-                    // `session.mcp.list` RPC — when the chat session
-                    // hasn't been spawned yet, we render an
-                    // "indeterminate" hint instead of misleading badges.
+                    // Status comes from `session.mcp.list` RPC; absent until session spawns.
                     if self.servers.contains(where: { $0.status == nil }) {
                         Text(L10n.tr("settings.mcp.discovery.runtime_state_pending"))
                             .font(.system(size: 10).italic())
@@ -172,16 +168,6 @@ struct MCPServersPanel: View {
         }
     }
 
-    /// Renders the live runtime-state badge for a server. Mirrors the
-    /// SDK's `McpServerStatus` enum:
-    /// - `connected` → green dot
-    /// - `failed` → red badge
-    /// - `needs-auth` → orange badge with "needs auth"
-    /// - `pending` → muted spinner-feel
-    /// - `disabled` / `not-configured` → muted neutral
-    /// - `nil` (chat session not spawned) → no badge; the
-    ///   "live status pending" hint at the bottom of the section
-    ///   explains why
     @ViewBuilder
     private func statusBadge(for server: MCPServer) -> some View {
         if let status = server.status {
@@ -199,7 +185,7 @@ struct MCPServersPanel: View {
                 self.badge(text: L10n.tr("settings.mcp.runtime.pending"),
                            color: self.theme.colors.textMuted)
             case "disabled", "not-configured":
-                EmptyView()  // already covered by the enabled/disabled label
+                EmptyView()
             default:
                 self.badge(text: status, color: self.theme.colors.textMuted)
             }

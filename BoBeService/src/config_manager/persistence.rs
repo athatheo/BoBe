@@ -1,5 +1,3 @@
-//! Atomic `config.toml` persistence via temp-write + rename.
-
 use std::collections::BTreeMap;
 
 use tracing::{error, info};

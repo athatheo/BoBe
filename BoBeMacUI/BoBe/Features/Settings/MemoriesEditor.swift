@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Skeleton mirroring the daemon's `MemoryFile::DEFAULT_BODY`. Used by
-/// the "Reset to default" action and PrivacyPanel's nuke flow.
+/// Mirrors daemon `MemoryFile::DEFAULT_BODY`; used by Reset and PrivacyPanel nuke.
 let memoryDefaultBody = """
 # BoBe Memory
 

@@ -1,13 +1,4 @@
-//! `BatchWorker` — headless batch jobs (goals, observe, decide,
-//! consolidate). Sessions run in `autopilot` mode so the model
-//! agent-loops to completion (auto-nudged toward `task_complete`); we
-//! block on `send_and_wait`, parse the assistant message as JSON, and
-//! surface the structured `output` field.
-//!
-//! Submission is serialized per worker — only one job in flight at a
-//! time. The SDK's `idle_waiter` slot is also a single-flight gate, but
-//! holding our own mutex preserves strict job ordering and means
-//! cancellation in `submit()` doesn't race a queued caller.
+//! Our own submit mutex (beyond the SDK's idle_waiter) preserves strict job ordering.
 
 use std::sync::Arc;
 
@@ -47,9 +38,7 @@ impl BatchWorker {
             input = serde_json::to_string(&job.input).unwrap_or_else(|_| "null".into()),
         );
 
-        // Session mode (autopilot vs interactive) is set on `SessionConfig`
-        // at create time — see `registry::create_or_resume`. `MessageOptions::with_mode`
-        // controls *delivery* (Enqueue vs Immediate) which we leave defaulted.
+        // Session mode set on SessionConfig in registry; MessageOptions::with_mode is delivery-only.
         let opts = MessageOptions::new(prompt).with_wait_timeout(self.class.turn_timeout());
 
         let event = self
@@ -81,29 +70,13 @@ impl BatchWorker {
         })
     }
 
-    /// Tear the session down. Other classes (sharing the same Client)
-    /// keep running.
     pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
         self.session.destroy().await?;
         Ok(())
     }
 }
 
-/// Find a balanced JSON object in `text` that looks like a real worker
-/// answer. Returns the **last** parseable top-level object that
-/// contains a `job_id` or `output` key — i.e. our canonical answer
-/// shape. Falls back to the last parseable object regardless of keys
-/// if none match (e.g. a worker producing a slightly different
-/// shape).
-///
-/// Why "last that matches": the BatchWorker prompt itself contains a
-/// shape example (`Required shape: {"job_id":"<uuid>","output":<...>}`)
-/// and per-call instructions often include another (e.g. the decision
-/// engine's `{"decision":"reach_out|...","reasoning":"..."}`). A model
-/// that paraphrases the schema in its preamble produces a parseable
-/// object before the real answer; a "first match" parser would grab
-/// the example and downgrade silently. Scanning to the end picks the
-/// real answer past any preamble.
+/// Scan-to-end picks real answer past any schema-example preamble in the prompt.
 fn extract_json(text: &str) -> Option<serde_json::Value> {
     let bytes = text.as_bytes();
     let mut depth = 0usize;
@@ -149,7 +122,6 @@ fn extract_json(text: &str) -> Option<serde_json::Value> {
         return None;
     }
 
-    // Prefer the last candidate carrying our canonical answer keys.
     if let Some(answer) = candidates
         .iter()
         .rev()
@@ -158,8 +130,6 @@ fn extract_json(text: &str) -> Option<serde_json::Value> {
         return Some(answer.clone());
     }
 
-    // No candidate with canonical keys — return the last parseable
-    // object as a best effort.
     candidates.pop()
 }
 
@@ -204,10 +174,6 @@ mod tests {
 
     #[test]
     fn extract_json_prefers_canonical_answer_after_example() {
-        // The model paraphrased the schema before producing the real
-        // answer. The first balanced object is the example; the
-        // second is the actual answer. A first-match parser would
-        // pick the example and silently downgrade.
         let s = r#"
             I'll output {"decision":"<one of reach_out, idle, need_more_info>", "reasoning":"<why>"}.
             Here's my answer: {"job_id":"abc","output":{"decision":"reach_out","reasoning":"user looks stuck"}}
@@ -219,8 +185,6 @@ mod tests {
 
     #[test]
     fn extract_json_falls_back_to_last_when_no_canonical_keys() {
-        // Worker produced a non-canonical shape; we still return the
-        // last parseable object rather than nothing.
         let s = r#"Notes: {"foo":1} Result: {"bar":2}"#;
         let v = extract_json(s).unwrap();
         assert_eq!(v["bar"], 2);

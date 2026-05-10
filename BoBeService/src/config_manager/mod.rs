@@ -1,7 +1,3 @@
-//! Runtime configuration manager — classifies each PATCH /settings
-//! field as hot-applicable or restart-required, persists to
-//! `config.toml`, and atomically swaps the in-memory `Config`.
-
 mod fields;
 pub(crate) mod persistence;
 
@@ -13,8 +9,7 @@ use tracing::{info, warn};
 
 use crate::config::Config;
 
-/// Fields that require a full daemon restart to apply (network
-/// bindings, on-disk DB path, mDNS toggles, etc.).
+/// Require full daemon restart to apply.
 static STATIC_FIELDS: &[&str] = &[
     "server.host",
     "server.port",
@@ -23,13 +18,7 @@ static STATIC_FIELDS: &[&str] = &[
     "logging.file",
 ];
 
-/// Fields safe to swap at runtime via `fields::apply`.
-///
-/// `engine.*` are hot-swap: when any change, `ConfigManager` fires the
-/// `engine_change` listener which the bootstrap wires to
-/// `WorkerRegistry::reload()`. The registry stops the shared Copilot CLI
-/// and clears its session caches; the next worker access re-spawns
-/// against the new config. No restart needed.
+/// `engine.*` changes fire the listener wired to `WorkerRegistry::reload()`.
 static HOT_SWAP_FIELDS: &[&str] = &[
     "capture.enabled",
     "capture.interval_seconds",
@@ -59,8 +48,6 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "seed_default_documents",
 ];
 
-/// Dotted-key prefix used to detect engine-config changes that require
-/// the worker registry to rebuild its sessions.
 const ENGINE_FIELD_PREFIX: &str = "engine.";
 
 #[derive(Debug)]
@@ -70,9 +57,6 @@ pub(crate) struct UpdateResult {
     pub(crate) persist_failed: bool,
 }
 
-/// Listener invoked when any `engine.*` field changes via `update()`.
-/// Bootstrap wires this to `WorkerRegistry::reload()` so the next worker
-/// access re-spawns the Copilot CLI with the new model + provider config.
 type EngineChangeListener = Box<dyn Fn() + Send + Sync>;
 
 pub(crate) struct ConfigManager {
@@ -88,10 +72,6 @@ impl ConfigManager {
         }
     }
 
-    /// Install (or replace) the engine-change callback. Called from the
-    /// bootstrap once both `ConfigManager` and `WorkerRegistry` exist.
-    /// The closure should be cheap — typically it just spawns a tokio
-    /// task that calls `registry.reload().await`.
     pub(crate) fn set_engine_change_listener<F>(&self, listener: F)
     where
         F: Fn() + Send + Sync + 'static,

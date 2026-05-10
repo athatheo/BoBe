@@ -1,21 +1,5 @@
-//! Decision engine — gates whether BoBe reaches out proactively.
-//!
-//! Triggers (capture / goal / check-in) call `decide()` *before* the
-//! chat session is invoked. The decision call goes through
-//! `WorkerClass::Decide`, a dedicated batch worker session whose output
-//! is JSON parsed in the daemon and **never** streamed to the user.
-//! Only on `Decision::Engage` does the trigger then call
-//! `ProactiveGenerator`, which wakes the chat session.
-//!
-//! Why a separate worker rather than asking the chat agent: the chat
-//! agent always replies (an "I won't reach out" reply is still a reply
-//! that costs tokens and creates user-visible chat history). The
-//! decision belongs in a structured-output channel.
-//!
-//! Memory.md is auto-injected at session start (via `BobeHooks`), and
-//! the decide skill instructs the agent to read `~/.bobe/goals/*.md`
-//! when the trigger could relate to a goal — so this module no longer
-//! needs to assemble context, embed queries, or query observations.
+//! Decisions run on `WorkerClass::Decide` (separate from the chat agent) so
+//! that a "do not engage" outcome produces no user-visible reply.
 
 use std::sync::Arc;
 
@@ -52,11 +36,6 @@ impl DecisionEngine {
         }
     }
 
-    /// Route to the right decision path based on trigger type. Capture
-    /// and Goal both go through the same Decide worker; the difference
-    /// is the `kind` field and the input shape so the agent can tailor
-    /// its heuristics. Check-in unconditionally engages (the user
-    /// signed up for these).
     pub(crate) async fn decide(&self, context: &TriggerContext) -> Decision {
         match context.trigger_type {
             TriggerType::Capture => self.decide_on_capture(&context.context_text).await,
@@ -104,9 +83,7 @@ impl DecisionEngine {
         self.run_decision("goal_engagement_decision", input).await
     }
 
-    /// True when there is a pending or active conversation that has
-    /// been touched within the inactivity timeout — proactive
-    /// engagement on top of an in-progress conversation is rude.
+    /// Suppress proactive engagement while a conversation is still warm.
     async fn blocked_by_active_conversation(&self) -> bool {
         let Ok(Some(active)) = self.conversation.get_pending_or_active().await else {
             return false;
@@ -130,9 +107,7 @@ impl DecisionEngine {
         }
     }
 
-    /// Submit the decision job to the Decide worker and parse the
-    /// structured output. Any failure path falls back to `Idle` — when
-    /// in doubt, leave the user alone.
+    /// Any failure path falls back to `Idle` — when in doubt, leave user alone.
     async fn run_decision(&self, kind: &str, input: Value) -> Decision {
         let worker = match self.workers.decide().await {
             Ok(w) => w,
@@ -202,7 +177,6 @@ mod tests {
 
     #[test]
     fn parse_decision_idle_default() {
-        // unknown values map to idle (conservative)
         let v = json!({"decision": "shrug", "reasoning": ""});
         assert_eq!(parse_decision(&v), Decision::Idle);
     }
@@ -215,9 +189,7 @@ mod tests {
 
     #[test]
     fn parse_decision_handles_multibyte_reasoning() {
-        // Reasoning > 150 bytes with multi-byte chars at the boundary.
-        // Pre-fix this panicked because byte-slicing `len().min(150)`
-        // could land mid-codepoint. truncate_str is char-boundary safe.
+        // Regression: byte-slicing `len().min(150)` could land mid-codepoint.
         let mostly_ascii = "x".repeat(140);
         let trailing_emoji = "\u{1F600}\u{1F600}\u{1F600}\u{1F600}";
         let reasoning = format!("{mostly_ascii}{trailing_emoji}");

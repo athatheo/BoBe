@@ -31,17 +31,13 @@ mod tests {
 
     #[test]
     fn multibyte_boundary() {
-        // '€' is 3 bytes (E2 82 AC). "a€b" = 5 bytes.
         let s = "a€b";
-        // Truncate at 2 bytes — inside the '€' — must not panic
         assert_eq!(truncate_str(s, 2), "a");
-        // Truncate at 4 bytes — after '€'
         assert_eq!(truncate_str(s, 4), "a€");
     }
 
     #[test]
     fn emoji_boundary() {
-        // '👋' is 4 bytes
         let s = "hi👋ok";
         assert_eq!(truncate_str(s, 3), "hi");
         assert_eq!(truncate_str(s, 6), "hi👋");

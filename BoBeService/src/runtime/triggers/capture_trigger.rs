@@ -1,24 +1,11 @@
-//! Capture-based proactive engagement: screenshot → vision-describe →
-//! cooldown → decision → response. The vision learner returns the
-//! description directly (after appending a one-liner to memory.md),
-//! so the trigger feeds that string straight into the decision engine.
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
 use tracing::{debug, error, info, warn};
 
-/// Threshold of consecutive vision failures before we enter the
-/// circuit-breaker cooldown. Below this we still log warnings each
-/// cycle but keep trying — transient vision hiccups are common
-/// during model warm-up.
 const VISION_FAILURE_BREAKER_THRESHOLD: u32 = 3;
 
-/// How long to suppress capture cycles after the breaker trips.
-/// Long enough that vision can recover (model reload, CLI restart)
-/// without us hammering it; short enough that the user sees screen
-/// awareness come back within a few minutes of stability.
 const VISION_FAILURE_COOLDOWN: Duration = Duration::from_secs(180);
 
 use crate::config::Config;
@@ -42,16 +29,9 @@ pub(crate) struct CaptureTrigger {
     config: Arc<ArcSwap<Config>>,
     enabled: bool,
     context_count: usize,
-    /// Consecutive vision-worker failures observed since the last
-    /// successful describe. Drives the circuit breaker.
     vision_failure_count: u32,
-    /// When the breaker tripped — we suppress new cycles until this
-    /// instant + `VISION_FAILURE_COOLDOWN`. Cleared on next success.
     vision_breaker_tripped_at: Option<Instant>,
-    /// Whether we've already pushed the "paused" SSE event to clients.
-    /// Cleared after we've announced "restored" on actual recovery —
-    /// stops us from spamming alternating paused/resumed events when
-    /// vision stays broken across multiple cooldown cycles.
+    /// Suppresses alternating paused/restored SSE events while broken.
     vision_pause_announced: bool,
 }
 
@@ -81,20 +61,13 @@ impl CaptureTrigger {
         }
     }
 
-    /// True when the vision circuit breaker is open: skip the cycle
-    /// without spinning vision again. Reset automatically after the
-    /// cooldown elapses.
     fn vision_breaker_open(&mut self) -> bool {
         let Some(tripped_at) = self.vision_breaker_tripped_at else {
             return false;
         };
         if tripped_at.elapsed() >= VISION_FAILURE_COOLDOWN {
-            // Cool-down elapsed — let the next cycle attempt vision.
-            // Failure count stays high until a success clears it,
-            // so a single recovery cycle re-trips the breaker if
-            // vision is still broken. We DON'T announce "resuming"
-            // here because it'd be misleading if vision is still
-            // broken; the success path emits "restored" once we know.
+            // Failure count stays high until a success clears it, so the
+            // breaker re-trips if vision is still broken.
             self.vision_breaker_tripped_at = None;
             info!("capture_trigger.vision_breaker_reopened");
             false
@@ -155,10 +128,6 @@ impl CaptureTrigger {
         decision
     }
 
-    /// Capture the screen, hand the bytes to the learner, return its
-    /// description. `None` means the cycle should be treated as a
-    /// no-op (capture failed, vision broken under the breaker, or
-    /// the model produced an empty description).
     async fn run_capture_cycle(&mut self) -> Option<String> {
         if self.vision_breaker_open() {
             debug!("capture_trigger.vision_breaker_open_skipping_cycle");
@@ -209,9 +178,7 @@ impl CaptureTrigger {
                 Some(description)
             }
             Ok(_) => {
-                // Empty description = uninformative screen. Don't
-                // count it as a failure; vision worked, the screen
-                // just wasn't worth describing.
+                // Empty description = uninformative screen, not a failure.
                 self.vision_failure_count = 0;
                 self.vision_breaker_tripped_at = None;
                 if self.vision_pause_announced {

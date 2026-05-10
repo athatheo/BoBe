@@ -1,13 +1,3 @@
-//! Local-runtime install endpoints — wizard-driven Ollama setup.
-//!
-//! - `POST /local-runtime/install` — body
-//!   `{ chat_model, batch_model, vision_model }`. Returns 202 if the
-//!   install task started, 409 if one is already in flight.
-//! - `GET /local-runtime/status` (SSE) — streams `InstallSnapshot`
-//!   on every state change. One connection per UI session.
-//! - `POST /local-runtime/cancel` — signals the in-flight install to
-//!   abort. The status stream emits `status: "canceled"` shortly after.
-
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,12 +57,6 @@ pub(crate) async fn cancel_install(
         message: "Cancel requested".into(),
     }))
 }
-
-// ── SSE DTOs ───────────────────────────────────────────────────────────
-//
-// We project the daemon's internal `InstallSnapshot` into a snake_case
-// JSON shape the Swift UI consumes. Keeps the daemon's enum private and
-// gives Swift a stable wire format.
 
 #[derive(Debug, Serialize)]
 struct DownloadProgressDto {

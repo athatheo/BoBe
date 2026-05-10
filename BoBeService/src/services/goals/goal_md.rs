@@ -1,51 +1,3 @@
-//! Goal MD file format — the on-disk shape of a goal under
-//! `~/.bobe/goals/<id>.md`.
-//!
-//! Goals are *living documents*: the chat agent reads them on every
-//! relevant turn and edits sections via the SDK Edit tool as it
-//! learns more about the user's relationship to the goal. This module
-//! owns the parser/serializer; consumers (`GoalsService`, the API
-//! layer) treat goal files as opaque [`GoalDoc`] values.
-//!
-//! ## File shape
-//!
-//! ```md
-//! > This is a living document. Update any section as you learn more
-//! > about the user's relationship to this goal.
-//!
-//! # {title}
-//!
-//! **ID**: <uuid>
-//! **Status**: active|paused|completed|archived
-//! **Priority**: 0-5
-//! **Created**: <iso-8601>
-//! **Updated**: <iso-8601>
-//!
-//! ## Summary
-//! ...
-//!
-//! ## Why It Matters
-//! ...
-//!
-//! ## How They're Working On It
-//! ...
-//!
-//! ## Patterns Observed
-//! ...
-//!
-//! ## Attitude & Feelings
-//! ...
-//!
-//! ## Open Questions
-//! ...
-//!
-//! ## Notes
-//! - YYYY-MM-DD — entry
-//! ```
-//!
-//! Sections are optional in the file (a fresh goal may only have
-//! Summary populated). Empty sections round-trip as empty strings.
-
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
@@ -53,16 +5,10 @@ use chrono::{DateTime, Utc};
 use crate::models::ids::GoalId;
 use crate::models::types::GoalStatus;
 
-/// Reminder injected as the first content of every goal file. The
-/// chat agent sees this each Read; helps anchor the "you may Edit
-/// this" framing without a separate skill block.
+/// Injected on every Read so the chat agent treats the file as editable.
 pub(crate) const LIVING_DOCUMENT_PREAMBLE: &str = "> This is a living document. Update any section as you learn more\n\
      > about the user's relationship to this goal.\n";
 
-/// Stable section names, in canonical order. The serializer always
-/// emits sections in this order (skipping empty ones counts the same
-/// as emitting empty headers — we always emit headers so the agent
-/// has a stable place to write).
 #[cfg(test)]
 const SECTIONS: &[&str] = &[
     "Summary",
@@ -74,17 +20,12 @@ const SECTIONS: &[&str] = &[
     "Notes",
 ];
 
-/// Parsed goal document. Round-trips through [`to_md`] and [`parse`]
-/// without losing fields the parser knows about. Unknown sections in
-/// a user-edited file are preserved in [`GoalDoc::extra_sections`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GoalDoc {
     pub(crate) id: GoalId,
     pub(crate) title: String,
     pub(crate) status: GoalStatus,
-    /// Priority on 0-5 — 0=low, 5=urgent. Stored as raw integer rather
-    /// than the legacy `GoalPriority` enum so the agent can express
-    /// finer gradation without the daemon changing types.
+    /// 0=low, 5=urgent; `u8` lets agent express finer gradation than an enum.
     pub(crate) priority: u8,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
@@ -95,16 +36,11 @@ pub(crate) struct GoalDoc {
     pub(crate) attitude_feelings: String,
     pub(crate) open_questions: String,
     pub(crate) notes: String,
-    /// Any `## Section` headers the parser doesn't know about,
-    /// preserved in original order. Lets the agent invent sections
-    /// without them being silently stripped on the next round-trip.
+    /// Preserves user-invented sections across round-trip.
     pub(crate) extra_sections: Vec<(String, String)>,
 }
 
 impl GoalDoc {
-    /// Build a fresh doc with a new id, current timestamps, just the
-    /// title + summary populated. Used when the chat agent or the API
-    /// proposes a brand-new goal.
     pub(crate) fn new(title: impl Into<String>, summary: impl Into<String>) -> Self {
         let now = Utc::now();
         Self {
@@ -142,10 +78,6 @@ pub(crate) enum GoalParseError {
     InvalidTimestamp { field: &'static str, value: String },
 }
 
-/// Serialize a [`GoalDoc`] to MD. Always emits the living-document
-/// preamble, the title heading, the metadata header, then every
-/// canonical section (empty ones get a header with no body), then
-/// any extra sections in their original order.
 pub(crate) fn to_md(doc: &GoalDoc) -> String {
     use std::fmt::Write;
 
@@ -204,9 +136,7 @@ fn canonical_sections(doc: &GoalDoc) -> [(&'static str, &str); 7] {
     ]
 }
 
-/// Parse a goal MD file. Tolerates extra whitespace, missing optional
-/// sections, and section names in any order. Required: title (`# `
-/// heading) and `**ID**:` line.
+/// Requires `# title` and `**ID**:` lines; section order is free.
 pub(crate) fn parse(input: &str) -> Result<GoalDoc, GoalParseError> {
     let mut title: Option<String> = None;
     let mut id: Option<GoalId> = None;
@@ -222,7 +152,6 @@ pub(crate) fn parse(input: &str) -> Result<GoalDoc, GoalParseError> {
         let line = raw_line.trim_end();
 
         if let Some(rest) = line.strip_prefix("# ") {
-            // Title
             if title.is_none() {
                 title = Some(rest.trim().to_string());
             }
@@ -230,7 +159,6 @@ pub(crate) fn parse(input: &str) -> Result<GoalDoc, GoalParseError> {
         }
 
         if let Some(rest) = line.strip_prefix("## ") {
-            // Section start: flush the previous section, begin a new one.
             if let Some((name, body)) = current.take() {
                 sections.push((name, body));
             }
@@ -238,7 +166,7 @@ pub(crate) fn parse(input: &str) -> Result<GoalDoc, GoalParseError> {
             continue;
         }
 
-        // Metadata header lines (only honored before we hit the first `##`).
+        // Metadata only honored before the first `##` section.
         if current.is_none()
             && let Some((key, value)) = parse_metadata_line(line)
         {
@@ -263,12 +191,11 @@ pub(crate) fn parse(input: &str) -> Result<GoalDoc, GoalParseError> {
                 "Updated" => {
                     updated_at = Some(parse_iso_8601(value, "Updated")?);
                 }
-                _ => {} // Unknown metadata keys are ignored.
+                _ => {}
             }
             continue;
         }
 
-        // Body content for the current section, if any.
         if let Some((_, ref mut body)) = current {
             body.push_str(line);
             body.push('\n');
@@ -316,8 +243,6 @@ pub(crate) fn parse(input: &str) -> Result<GoalDoc, GoalParseError> {
     Ok(doc)
 }
 
-/// `**Key**: value` parser tolerating whitespace, returning the
-/// trimmed value if the line matches the pattern.
 fn parse_metadata_line(line: &str) -> Option<(&str, &str)> {
     let line = line.trim_start();
     let rest = line.strip_prefix("**")?;
@@ -457,7 +382,6 @@ mod tests {
              **Created**: 2026-05-09T10:00:00Z\n**Updated**: 2026-05-09T10:00:00Z\n\
              **NewKey**: future-field\n"
         );
-        // Should parse without error.
         let doc = parse(&md).unwrap();
         assert_eq!(doc.id, id);
     }

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Eye expression dispatcher; delegates to state-specific views in `EyeExpressions.swift`.
 struct EyesIndicator: View {
     let state: BobeStateType
     var chatOpen: Bool = false

@@ -23,11 +23,7 @@ pub(crate) enum AppError {
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
 
-    /// User-initiated cancellation. Maps to HTTP 409 to distinguish it
-    /// from a hard failure — the action didn't fail, the user stopped
-    /// it. Matched by variant (not message) in the install-status
-    /// machinery so subsequent `AppError::Conflict` producers can't
-    /// accidentally demote to "canceled" via string-match.
+    /// Distinct variant so install-status doesn't string-match against Conflict.
     #[error("Canceled: {0}")]
     Canceled(String),
 

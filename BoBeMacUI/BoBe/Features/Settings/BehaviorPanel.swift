@@ -14,9 +14,7 @@ struct BehaviorPanel: View {
     @State private var bannerDismissed = false
     @Environment(\.theme) private var theme
 
-    /// Fields the daemon claims to hot-apply but actually doesn't —
-    /// CheckinScheduler captured these at boot and only re-reads them
-    /// on restart. Shadowed locally so we always show the banner.
+    /// CheckinScheduler captures these at boot and only re-reads on restart.
     private static let deferToRestartFields: Set<String> = [
         "checkin_enabled",
         "checkin_times",
@@ -190,9 +188,6 @@ struct BehaviorPanel: View {
         )
     }
 
-    /// Map `WritableKeyPath` → wire field name. Used to figure out which
-    /// fields each save touches so we can show the restart banner only
-    /// when relevant.
     private static func fieldKey<V>(for keyPath: WritableKeyPath<DaemonSettings, V>) -> String? {
         switch keyPath {
         case \DaemonSettings.captureEnabled: "capture_enabled"
@@ -299,7 +294,6 @@ struct BehaviorPanel: View {
 
 // MARK: - Shared Components
 
-/// Simple flow layout for pills/tags
 struct FlowLayout: Layout {
     let spacing: CGFloat
 

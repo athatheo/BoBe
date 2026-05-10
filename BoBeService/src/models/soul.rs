@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 
 use super::ids::SoulId;
 
-/// Personality document injected into LLM prompts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Soul {
     pub(crate) id: SoulId,

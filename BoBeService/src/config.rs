@@ -1,4 +1,4 @@
-//! Application configuration. Layered: defaults → config.toml → BOBE_* env vars.
+//! Layered: defaults → config.toml → BOBE_* env vars.
 
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
@@ -180,69 +180,29 @@ impl Default for GoalsConfig {
     }
 }
 
-/// Engine + LLM model configuration. Determines whether the daemon
-/// drives Copilot CLI against GitHub Copilot's cloud (default) or against
-/// a local OpenAI-compatible server (typically a managed Ollama).
-///
-/// One shared CLI subprocess in either mode. Per-session model + provider
-/// is set at session-create time via the SDK's `SessionConfig.with_model`
-/// / `with_provider` builders (verified in github-copilot-sdk 0.1.0). Each
-/// of BoBe's five worker classes maps to one of three model slots:
-/// - **chat** (the user-facing dialogue worker)
-/// - **batch** (goals / decide / consolidate — autopilot background jobs)
-/// - **vision** (capture pipeline — needs a VL model in local mode)
-///
-/// Engine changes are hot-applied: `ConfigManager` notifies the
-/// `WorkerRegistry`, which stops the existing CLI and clears its session
-/// caches so subsequent worker accesses re-spawn against the new config.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct EngineConfig {
-    /// `"copilot_cloud"` (default) drives GitHub-hosted Copilot models.
-    /// `"local"` drives a user-managed OpenAI-compat server (typically
-    /// Ollama on `:11434`).
+    /// `"copilot_cloud"` or `"local"`. Hot-applied via `ConfigManager`.
     pub(crate) engine: String,
-    /// Local-mode provider URL, e.g. `http://127.0.0.1:11434/v1`. Ignored
-    /// in cloud mode (the signed-in user's GitHub Copilot endpoint is
-    /// implicit).
     #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_base_url: Option<String>,
-    /// Model used by the user-facing Chat worker. Cloud: a Copilot-served
-    /// model (e.g. `"claude-sonnet-4"`); local: an Ollama tag (e.g.
-    /// `"qwen2.5:7b-instruct"`). `None` = use the CLI's default.
-    ///
-    /// `provider_text_model` is the pre-foundation name (this branch
-    /// only — never shipped to users). Aliased here so any local checkout
-    /// that still has `provider_text_model = "…"` in `config.toml` loads
-    /// the value as the chat model rather than dropping it.
+    /// Alias `provider_text_model` retained for pre-foundation configs on this branch.
     #[serde(
         alias = "provider_text_model",
         deserialize_with = "empty_string_as_none",
         default
     )]
     pub(crate) provider_chat_model: Option<String>,
-    /// Model used by the autopilot batch workers (goals / decide /
-    /// consolidate). May be the same as `provider_chat_model` or a
-    /// cheaper / faster alternative for headless jobs.
     #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_batch_model: Option<String>,
-    /// Model used by the Vision worker (capture pipeline). Must support
-    /// image inputs in local mode (e.g. `"qwen2.5-vl:7b"`).
     #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_vision_model: Option<String>,
-    /// Sets `COPILOT_OFFLINE=true` on the spawned CLI to suppress GitHub
-    /// telemetry / metadata calls. Only takes effect in `local` engine
-    /// mode (cloud mode needs GitHub network access and would refuse to
-    /// start with offline=true).
+    /// Only effective in local mode; cloud mode refuses `COPILOT_OFFLINE=true`.
     pub(crate) provider_offline: bool,
 }
 
-/// Deserializer that maps `""` and absent fields to `None`. Paired with
-/// `config_manager::fields::set_opt_string!` which already normalizes
-/// the runtime PATCH path; this handles the on-disk side. Without it,
-/// a cleared field that gets persisted as `provider_x = ""` would
-/// deserialize back as `Some("")` on next daemon start and pass an
-/// empty model name to the SDK.
+/// Without this, a persisted `provider_x = ""` would deserialize as `Some("")` and pass an empty model to the SDK.
 fn empty_string_as_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -264,14 +224,11 @@ impl Default for EngineConfig {
     }
 }
 
-/// Application configuration. Layered: defaults → config.toml → BOBE_* env vars.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct Config {
-    /// Schema version for future migrations.
     pub(crate) config_version: u32,
 
-    /// Base data directory (default: `~/.bobe`).
     pub(crate) data_dir: String,
 
     pub(crate) server: ServerConfig,

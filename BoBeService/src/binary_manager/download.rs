@@ -1,9 +1,4 @@
-//! Streaming HTTP download for the Ollama runtime tarball.
-//!
-//! Writes to a `.part` file first, renames on success — interrupted
-//! downloads leave only the partial file behind, which the next call
-//! discards. Progress callback fires every ~1 MB so the UI bar moves
-//! smoothly without flooding `watch::Sender`.
+//! Atomic `.part` rename; interrupted downloads are discarded on next call.
 
 use std::path::Path;
 use std::time::Duration;
@@ -13,7 +8,6 @@ use tracing::info;
 
 use crate::error::AppError;
 
-/// macOS-arm64 + macOS-x64 universal binary, published as a single tgz.
 const OLLAMA_DARWIN_URL: &str =
     "https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz";
 const OLLAMA_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);

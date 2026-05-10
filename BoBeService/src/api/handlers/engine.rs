@@ -1,16 +1,3 @@
-//! Engine + provider info endpoints.
-//!
-//! - `GET /auth/status` — wraps the SDK's `Client::get_auth_status()` so
-//!   the wizard / Settings can show the user "signed in as @login"
-//!   without shelling out to `copilot` or `gh`.
-//! - `GET /models` — lists the models the user has access to in the
-//!   current engine mode. Cloud mode hits the SDK's `Client::list_models()`
-//!   (returns subscription-gated models). Local mode hits the user's
-//!   Ollama at `:11434/api/tags` and reports installed model tags.
-//!
-//! Both endpoints call into the shared `WorkerRegistry`'s `ClientHandle`
-//! via `ensure_started()` to lazy-spawn the Copilot CLI on first use.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::AppState;
 use crate::error::AppError;
 
-// ── /auth/status ────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
 pub(crate) struct AuthStatusResponse {
     pub(crate) is_authenticated: bool,
@@ -30,32 +15,16 @@ pub(crate) struct AuthStatusResponse {
     pub(crate) host: Option<String>,
     pub(crate) login: Option<String>,
     pub(crate) status_message: Option<String>,
-    /// Absolute path to the bundled Copilot CLI binary that the SDK
-    /// extracted into `~/.cache/github-copilot-sdk-{ver}/copilot`. Swift
-    /// uses this to open Terminal with the *bundled* CLI for the user's
-    /// sign-in flow — no external tools required, no "install gh"
-    /// detour. `None` if the bundled-CLI feature is disabled or
-    /// extraction failed (shouldn't happen post-`Client::start`).
+    /// Bundled CLI path; Swift uses this to open Terminal for sign-in.
     pub(crate) cli_path: Option<String>,
-    /// The bundled CLI's pinned version (from `.cargo/config.toml`'s
-    /// `COPILOT_CLI_VERSION` env). Useful for debug surface only.
     pub(crate) cli_version: Option<String>,
 }
 
 pub(crate) async fn get_auth_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AuthStatusResponse>, AppError> {
-    // We need a started Client to query auth — `Client::get_auth_status`
-    // is an RPC into the spawned CLI. Lazy-spawn if cold. Side effect:
-    // `Client::start` invokes the SDK's `embeddedcli::path()`, which
-    // extracts the bundled binary to `~/.cache/...` if it isn't already
-    // there. So by the time this function returns, the CLI path is
-    // populated.
-    //
-    // Note: this works in both engine modes. In `local` mode the bundled
-    // CLI still has a notion of "is the user signed in to GitHub?";
-    // BoBe doesn't *need* GitHub auth in local mode but the daemon
-    // still surfaces it accurately.
+    // `Client::start` extracts the bundled CLI as a side effect; required
+    // before `embeddedcli::path()` returns Some.
     let client = state
         .workers
         .client_handle()
@@ -84,36 +53,23 @@ pub(crate) async fn get_auth_status(
     }))
 }
 
-// ── /models ────────────────────────────────────────────────────────────
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct ListModelsQuery {
-    /// Override the engine for this query — useful when the wizard wants
-    /// to preview the local Ollama list before flipping `Config.engine`.
-    /// When unset, falls back to the daemon's current `Config.engine`.
+    /// Override engine for preview before flipping `Config.engine`.
     #[serde(default)]
     pub(crate) engine: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ModelInfo {
-    /// Stable identifier (cloud: `"claude-sonnet-4.5"`; local: an Ollama
-    /// tag like `"qwen2.5:7b-instruct"`).
     pub(crate) id: String,
-    /// Display name. Cloud SDK provides one; for Ollama we reuse the tag.
     pub(crate) name: String,
-    /// Whether the model accepts images. Drives the Vision dropdown in
-    /// Settings (which only shows vision-capable models).
     pub(crate) vision: bool,
-    /// Maximum context window in tokens, when reported. Surfaced in
-    /// Settings to help users gauge "is this model big enough for the
-    /// 21K-token Copilot CLI system prompt?"
     pub(crate) context_window: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ListModelsResponse {
-    /// `"copilot_cloud"` or `"local"` — echoes which engine was queried.
     pub(crate) engine: String,
     pub(crate) models: Vec<ModelInfo>,
 }
@@ -186,9 +142,6 @@ struct OllamaTag {
 
 #[derive(Debug, Deserialize)]
 struct OllamaTagDetails {
-    /// Ollama reports the model family as a string like "qwen2", "llama".
-    /// We use it as a weak hint for vision support — `qwen2_vl`, `llava`,
-    /// etc. are common vision families.
     #[serde(default)]
     families: Vec<String>,
     #[serde(default)]
@@ -196,9 +149,7 @@ struct OllamaTagDetails {
 }
 
 async fn list_local_models(base_url: Option<&str>) -> Result<Vec<ModelInfo>, AppError> {
-    // `provider_base_url` looks like `http://127.0.0.1:11434/v1` for the
-    // OpenAI-compat side. Ollama's native `/api/tags` is on the root,
-    // not the `/v1` prefix.
+    // Ollama's `/api/tags` lives on the root, not the `/v1` OpenAI-compat prefix.
     let root = base_url
         .map(|u| u.trim_end_matches('/').trim_end_matches("/v1").to_string())
         .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
@@ -210,8 +161,7 @@ async fn list_local_models(base_url: Option<&str>) -> Result<Vec<ModelInfo>, App
         .map_err(|e| AppError::Internal(format!("list_local_models: client build: {e}")))?;
 
     let resp = client.get(&url).send().await.map_err(|e| {
-        // Surface "not running" as a structured signal — the wizard /
-        // Settings can render "Ollama not running" rather than a 500.
+        // Surface "not running" as 503 so UI can render "Ollama not running" instead of a 500.
         AppError::ServiceUnavailable(format!("list_local_models: {e}"))
     })?;
 
@@ -236,16 +186,13 @@ async fn list_local_models(base_url: Option<&str>) -> Result<Vec<ModelInfo>, App
                 id: m.name.clone(),
                 name: m.name,
                 vision,
-                context_window: None, // Ollama doesn't report this in /api/tags
+                context_window: None,
             }
         })
         .collect())
 }
 
-/// Heuristic: a model is vision-capable if its family name contains a
-/// known vision marker. The Copilot CLI itself will reject vision calls
-/// to non-vision models with a clear error, so this is a UX hint, not a
-/// security/safety check.
+/// UX hint only; the Copilot CLI rejects vision calls to non-vision models.
 fn guess_vision(details: Option<&OllamaTagDetails>) -> bool {
     let Some(d) = details else { return false };
     let mut all = d.families.clone();

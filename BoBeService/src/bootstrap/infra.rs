@@ -1,8 +1,3 @@
-//! Infrastructure layer — transports and ambient process state. The
-//! Copilot SDK manages its own CLI process via `copilot::client`, so
-//! this layer only owns the SSE event queue, connection manager, mDNS
-//! announcer, and the live `Config` arc-swap.
-
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;

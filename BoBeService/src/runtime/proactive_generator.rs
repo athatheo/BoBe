@@ -1,15 +1,5 @@
-//! Generates BoBe-initiated (proactive) responses using the Copilot
-//! chat session.
-//!
-//! The agent receives a synthetic "[BoBe proactive check]" prompt as
-//! the next turn; memory.md context (injected via `BobeHooks`) plus
-//! recent session history give it the signal to either produce a
-//! proactive message or return an empty/no-op response. Streaming
-//! goes through the same SSE pipe as user-initiated chat — the
-//! SwiftUI overlay can't tell the difference, which is intentional.
-//!
-//! Conversation summary at session-close uses the goals batch worker
-//! (autopilot mode + JSON output) — independent of the chat session.
+//! Proactive replies stream through the same SSE pipe as user-initiated chat;
+//! an empty agent response is the "no-op" signal and is intentionally not persisted.
 
 use std::sync::Arc;
 
@@ -152,8 +142,6 @@ impl ProactiveGenerator {
         };
 
         if result.full_response.trim().is_empty() {
-            // The agent declined to engage — discard the partial stream
-            // state without finalizing a turn.
             self.conversation.discard_proactive_stream(conversation_id);
         } else {
             self.persist_proactive_response(&result, target_conversation)
@@ -277,8 +265,6 @@ impl ProactiveGenerator {
         }
     }
 
-    /// Generate a one-paragraph summary of `turns` via the goals batch
-    /// worker (autopilot + JSON output). Returns None on failure.
     async fn generate_summary(
         &self,
         turns: &[crate::models::conversation::ConversationTurn],

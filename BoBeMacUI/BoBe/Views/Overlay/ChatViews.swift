@@ -2,10 +2,8 @@ import SwiftUI
 
 // MARK: - Visual Segment
 
-/// A visual unit within the chat — either a complete short message or
-/// one paragraph of a multi-paragraph response. Keeps the data model
-/// clean (1 SSE message = 1 `ChatMessage`) while letting the UI break
-/// long responses into digestible pills.
+/// One bubble in the UI: keeps the 1-SSE-message = 1-`ChatMessage` invariant
+/// while letting paragraphs render as separate pills.
 private struct ChatSegment: Identifiable {
     var id: String { self.message.id }
     let message: ChatMessage
@@ -20,12 +18,9 @@ struct ChatStack: View {
     var maxViewportHeight: CGFloat = WindowSizes.heightChatViewportMax
 
     @State private var isExpanded = false
-    /// Per-bubble expand — lets users reveal truncated text without expanding
-    /// the entire chat history.
     @State private var expandedBubbleIds: Set<String> = []
-    /// IDs of messages that just finished streaming. While present the message
-    /// stays as a single bubble; after 300 ms it splits into paragraph pills
-    /// so the transition feels like a natural "unfold" instead of a jarring cut.
+    /// Just-finalized messages stay single-bubble for 300 ms before paragraph
+    /// splitting kicks in — avoids a jarring cut when streaming ends.
     @State private var deferSplitIds: Set<String> = []
     @Environment(\.theme) private var theme
 
@@ -48,8 +43,6 @@ struct ChatStack: View {
         return Array(self.allSegments.suffix(Self.maxCompactSegments))
     }
 
-    /// Only counts segments hidden above the visible window.
-    /// Per-bubble truncation is handled separately by "read more" links.
     private var hiddenCount: Int {
         if self.isExpanded { return 0 }
         return max(0, self.allSegments.count - Self.maxCompactSegments)
@@ -88,16 +81,12 @@ struct ChatStack: View {
                     .padding(.top, 2)
                     .padding(.bottom, 2)
                 }
-                // Shrink-to-fit: ScrollView takes only the space its content
-                // needs, up to maxViewportHeight. Without fixedSize the
-                // ScrollView is greedy and creates a huge gap above messages.
+                // Without fixedSize, ScrollView is greedy and gaps above messages.
                 .defaultScrollAnchor(.bottom)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxHeight: self.maxViewportHeight, alignment: .bottom)
-                // Disable bounce when content fits — prevents rubberbanding
-                // on short conversations.
                 .scrollBounceBehavior(.basedOnSize)
-                // Allow bubble shadows to render outside the scroll clip rect.
+                // Let bubble shadows escape the scroll clip rect.
                 .scrollClipDisabled()
                 .onAppear {
                     self.scrollToBottom(proxy)
@@ -132,9 +121,7 @@ struct ChatStack: View {
     }
 
     private func toggleExpanded() {
-        // No withAnimation — the window resize (triggered by GeometryReader
-        // preference key) fights with content animation, causing shake.
-        // Individual view transitions still fire from conditional presence.
+        // No withAnimation: window resize fights content animation, causing shake.
         self.isExpanded.toggle()
         if !self.isExpanded {
             self.expandedBubbleIds.removeAll()
@@ -153,8 +140,6 @@ struct ChatStack: View {
         return Self.compactLineLimit
     }
 
-    /// Keeps a just-finalized message as a single bubble for 300 ms, then
-    /// removes the deferral so paragraph splitting kicks in with animation.
     private func scheduleDeferredSplit(for id: String) {
         self.deferSplitIds.insert(id)
         Task { @MainActor in
@@ -185,8 +170,7 @@ struct ChatStack: View {
         return paragraphs.enumerated().map { index, paragraph in
             ChatSegment(
                 message: ChatMessage(
-                    // First paragraph keeps the original ID so SwiftUI animates
-                    // it as an update rather than a remove+insert.
+                    // First paragraph keeps original ID so SwiftUI animates update, not remove+insert.
                     id: index == 0 ? message.id : "\(message.id)-p\(index)",
                     sender: message.sender,
                     content: paragraph,

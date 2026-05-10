@@ -1,10 +1,5 @@
-//! Checks active goals against current context, engages on first match.
-//!
-//! Goals are file-backed (`~/.bobe/goals/<id>.md`); we read them
-//! through `GoalsService` rather than `GoalRepository` (which is
-//! gone). The Decide worker has access to the goals dir directly via
-//! its skill, so we only need to pass the goal title as
-//! `context_text` to give the engine a starting hint.
+//! Decide worker reads the goals dir directly via its skill; we pass only
+//! the goal title as a starting hint.
 
 use std::sync::Arc;
 

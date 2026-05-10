@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-/// Decision result from the decision engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Decision {
@@ -9,7 +8,6 @@ pub(crate) enum Decision {
     NeedMoreInfo,
 }
 
-/// Type of trigger that initiated a proactive action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TriggerType {
@@ -18,7 +16,6 @@ pub(crate) enum TriggerType {
     Checkin,
 }
 
-/// Context for a triggered proactive action.
 #[derive(Debug, Clone)]
 pub(crate) struct TriggerContext {
     pub(crate) trigger_type: TriggerType,

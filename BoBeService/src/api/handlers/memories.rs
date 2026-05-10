@@ -1,7 +1,3 @@
-//! HTTP handlers for `/memory`. Memory is a single living document at
-//! `~/.bobe/memory.md` — the durable narrative store, pruned nightly
-//! by the Consolidate worker. The UI reads + writes the file whole.
-
 use std::sync::Arc;
 
 use axum::Json;
@@ -13,10 +9,7 @@ use crate::error::AppError;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct MemoryResponse {
-    /// Full contents of `memory.md`.
     pub(crate) content: String,
-    /// Size in bytes — useful for the UI to gauge how close we are
-    /// to the consolidation worker's prune threshold.
     pub(crate) bytes: usize,
 }
 

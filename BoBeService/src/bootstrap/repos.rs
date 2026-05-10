@@ -1,5 +1,3 @@
-//! Repository trait-object construction from a database pool.
-
 use std::sync::Arc;
 
 use sqlx::sqlite::SqlitePool;

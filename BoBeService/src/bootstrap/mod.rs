@@ -1,11 +1,3 @@
-//! Application bootstrap — wires all dependencies and starts background services.
-//!
-//! Submodules by lifecycle phase:
-//! - `database` — pool creation and migrations
-//! - `infra`    — SSE, mDNS, config arc-swap
-//! - `repos`    — repository trait object construction
-//! - `wiring`   — services, learners, triggers, runtime session assembly
-
 mod database;
 mod infra;
 mod repos;
@@ -32,18 +24,13 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         warn!(error = %e, "bootstrap.ensure_mcp_config_failed");
     }
 
-    // Memory.md + WorkerRegistry constructed up-front so `wiring` can
-    // pass `workers` into the components that need it.
     let memory_file = {
         let path = crate::util::paths::bobe_data_dir().join("memory.md");
         crate::copilot::memory_file::MemoryFile::new(path)
     };
-    // Default SKILL.md files for worker classes that ship with one.
     // Idempotent: existing skills are never overwritten.
     crate::copilot::skills::ensure_skills(&crate::util::paths::bobe_data_dir()).await;
-    // Parse mcp.json once at boot. The Copilot SDK takes the resulting
-    // map via `SessionConfig::mcp_servers` and owns process spawn +
-    // tool dispatch — BoBe no longer manages MCP server lifecycles.
+    // SDK owns MCP process spawn + tool dispatch via `SessionConfig::mcp_servers`.
     let mcp_servers = load_mcp_servers_for_sdk(&config);
     let workers = {
         let data_dir = crate::util::paths::bobe_data_dir();
@@ -55,17 +42,11 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         )
     };
 
-    // Best-effort cleanup of chat session-id files older than the
-    // retention window. Removes both the SDK-side session state and
-    // the local pointer; logs and continues on failure.
     workers.prune_old_chat_sessions().await;
 
     let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
-    // Wire ConfigManager → WorkerRegistry hot-swap. Engine-config changes
-    // (cloud↔local, per-class models, base URL, offline flag) trigger a
-    // registry reload in the background — the CLI restarts and sessions
-    // re-spawn against the new config on next access. No daemon restart.
+    // Engine-config changes trigger registry reload; no daemon restart needed.
     {
         let registry_for_listener = Arc::clone(&workers);
         wired.config_manager.set_engine_change_listener(move || {
@@ -93,11 +74,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     print_banner(&infra.config_arc.load());
 
-    // Ollama install service — orchestrates the wizard's local-mode
-    // first-launch flow. Idle until POST /local-runtime/install fires.
-    // Reuses a single reqwest::Client (rustls-tls) for both the binary
-    // download and the Ollama API; cheap to share since reqwest::Client
-    // is internally reference-counted.
     let ollama_install = {
         let data_dir = crate::util::paths::bobe_data_dir();
         let http = Arc::new(
@@ -109,10 +85,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             &data_dir,
             Arc::clone(&http),
         ));
-        // Use the configured base URL when present, falling back to the
-        // standard Ollama localhost endpoint. The provider URL has a `/v1`
-        // suffix for OpenAI-compat; OllamaManager strips it via
-        // `root_from_provider_url` to get the native API root.
+        // Strip `/v1` OpenAI-compat suffix to get the native Ollama API root.
         let base_url = config
             .engine
             .provider_base_url

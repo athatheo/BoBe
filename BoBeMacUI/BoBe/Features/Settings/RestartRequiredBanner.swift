@@ -1,15 +1,6 @@
 import SwiftUI
 
-/// Surfaces fields whose change requires a daemon restart to actually
-/// take effect. The daemon's `PATCH /settings` response carries
-/// `restart_required_fields`, but a few subsystems (CheckinScheduler,
-/// SDK MCP map) capture their config at boot and have no live reload —
-/// for those, the daemon claims hot-applied while in reality only a
-/// restart honors the change. Each pane shadows the daemon signal with
-/// its own `DEFER_TO_RESTART_FIELDS` constant.
-///
-/// TODO(daemon): drop the shadow sets once CheckinScheduler reads from
-/// ConfigManager live and SDK sessions accept hot MCP map swaps.
+/// Surfaces fields needing daemon restart; some subsystems (Checkin, MCP) ignore live PATCH.
 struct RestartRequiredBanner: View {
     let fields: Set<String>
     let onDismiss: () -> Void

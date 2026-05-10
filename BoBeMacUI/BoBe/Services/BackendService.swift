@@ -26,9 +26,7 @@ actor BackendService {
     private let dataDir: URL
     private let pidFilePath: URL
     private(set) var lastError: String?
-    /// Non-fatal startup signal — daemon spawned and answered /health
-    /// successfully, but a subsystem (e.g. database) reported degraded.
-    /// Cleared on each healthy spawn.
+    /// Non-fatal — daemon /health OK but a subsystem reported degraded.
     private(set) var startupWarning: String?
     private var stateContinuation: AsyncStream<ServiceState>.Continuation?
     nonisolated let stateStream: AsyncStream<ServiceState>
@@ -177,9 +175,7 @@ actor BackendService {
         logger.info("bobe backend healthy (PID: \(proc.processIdentifier))")
     }
 
-    /// Exponential backoff health polling. Daemon returns 200 even when
-    /// `services.database` is degraded — inspect the body and capture
-    /// the degradation as a non-fatal `startupWarning`.
+    /// Daemon returns 200 even on degraded DB — inspect body, not status.
     private func waitForHealth() async throws {
         var delay: TimeInterval = 0.2
         let maxAttempts = 30

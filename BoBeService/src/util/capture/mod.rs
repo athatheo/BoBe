@@ -65,8 +65,7 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
         tracing::warn!(path = %capture_path, error = %e, "capture.temp_file_cleanup_failed");
     }
 
-    // Detect blank frame — macOS returns all-black PNG when screen recording
-    // permission is not granted. Check a sample of pixels.
+    // macOS returns an all-black PNG when screen recording permission is denied.
     if data.len() > 1000 && is_blank_image(&data) {
         return Err(std::io::Error::other(
             "Screen capture returned a blank frame — screen recording permission may not be granted",
