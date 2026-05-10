@@ -123,9 +123,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             Arc::clone(&http),
             &base_url,
         ));
-        crate::services::ollama_install_service::OllamaInstallService::new(
-            binary, manager, data_dir,
-        )
+        crate::services::ollama_install_service::OllamaInstallService::new(binary, manager)
     };
 
     let state = Arc::new(AppState {

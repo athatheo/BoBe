@@ -3,7 +3,7 @@
 > **File:** `ENGINE_PROVIDER_NOTES.md` (repo root)
 > **Branch:** `feat/copilot-sdk-pivot`
 > **Last updated:** 2026-05-10
-> **Status of work:** Phase 0 + Phase 1 shipped. Wizard engine-choice cards (Phase 2a) shipped. Phases 5a–5d, 3, 4, and auth-check (Phase 2b) scoped and ready to land. See [What's been shipped](#whats-been-shipped) for the commit list.
+> **Status of work:** **All planned phases shipped.** Foundation + endpoints + Phase 5a-5d + Phase 2b + Phase 3 + Phase 4 are landed locally on `feat/copilot-sdk-pivot`. Smoke test against a live daemon (#28) and live MCP runtime state (#31) remain. See [What's been shipped](#whats-been-shipped) for the full commit list.
 
 ---
 
@@ -27,36 +27,44 @@
 ## TL;DR
 
 1. **One agent loop**: stay on `github-copilot-sdk` (Rust). It's bundled into BoBe via the `embedded-cli` feature so users never have to install Copilot CLI separately. No second SDK.
-2. **Two engine modes**: `copilot_cloud` (default) and `local` (Ollama). User picks at first-launch wizard; configurable later in Settings. Restart-required because the spawned CLI captures env at boot.
-3. **Local runtime is downloaded on demand, not bundled**: Ollama (~200 MB) and the Qwen models (~10 GB total) are fetched the first time the user picks local mode. Existing Ollama on `:11434` is detected and reused.
-4. **Two Copilot CLI subprocesses in local mode** (text-client + vision-client). They can point at the **same** Ollama model or **different** ones — the architecture supports both. Default config points both at the same VL-capable model; power users can split for higher text quality.
-5. **BoBe never proxies inference**: daemon's only job is wiring `COPILOT_PROVIDER_BASE_URL` at Client construction. SDK + spawned CLI handle every actual call. No in-process HTTP shim, no FFI, no proxy.
-6. **Images stay in-memory** via `Attachment::Blob` (base64 in JSON-RPC). No disk roundtrip — already optimal.
+2. **Two engine modes**: `copilot_cloud` (default) and `local` (Ollama). User picks at first-launch wizard; configurable later in Settings → Engine. **Hot-swap** — `ConfigManager` notifies `WorkerRegistry::reload()` on engine changes; the next worker access re-spawns the CLI against the new config. No daemon restart.
+3. **One shared Copilot CLI subprocess in either mode**. Per-session `model` + `provider` overrides via `SessionConfig::with_model` / `with_provider` (verified in `github-copilot-sdk` 0.1.0 source). The two-CLI plan was based on an incorrect "model is process-fixed" assumption — reading the SDK confirmed model is *session*-fixed.
+4. **Per-class model slots**: chat (user-facing dialogue), batch (goals / decide / consolidate autopilot jobs), vision (capture pipeline). Five worker classes, three model slots — Decide / Goals / Consolidate share the batch slot.
+5. **Local runtime is downloaded on demand, not bundled**: Ollama (~200 MB) and the Qwen models (~10 GB total) are fetched the first time the user picks local mode. Existing Ollama on `:11434` is detected and reused.
+6. **BoBe never proxies inference**: daemon configures the SDK's `SessionConfig` per worker. SDK + spawned CLI handle every actual call. No in-process HTTP shim, no FFI, no proxy.
+7. **Images stay in-memory** via `Attachment::Blob` (base64 in JSON-RPC). No disk roundtrip — already optimal.
 
 ---
 
 ## What's been shipped
 
-This branch (`feat/copilot-sdk-pivot`) on top of the daemon-side cleanup that landed earlier in the session:
+All commits on `feat/copilot-sdk-pivot`. The engine-pivot work is everything from `f47c7a3` forward:
 
 ```
-cb65116 engine(plan)           — comprehensive plan-of-record (this doc, prior version)
-bc7dc8b engine(phase-1)        — engine + provider settings DTO (data plumbing)
-43278f8 engine(plan)           — early doc revision: download-on-demand pivot
-76f0e52 engine(wizard)         — wizard step 2 = cloud-vs-local cards
-f47c7a3 engine(phase-0)        — bundle Copilot CLI via embedded-cli feature
+9c9b931 engine(phase-3)         — Settings → Engine pane (radio + model dropdowns)
+18961ad engine(phase-5d+2b)     — wizard local-setup + cloud-auth steps
+6154688 engine(phase-5b+5c)     — ollama_manager + install service + SSE endpoints
+8fc1bad engine(phase-5a)        — resurrect binary_manager for Ollama download
+2e2a96c engine(endpoints)       — GET /auth/status + GET /models (cloud or local)
+f08b34c engine(foundation)      — hot-swap engine + per-session BYOK + chat/batch/vision split
+415e3b7 engine(plan)            — expand discoveries + clarify two-CLI != two-models
+cb65116 engine(plan)            — comprehensive plan-of-record (this doc, prior version)
+bc7dc8b engine(phase-1)         — engine + provider settings DTO (data plumbing)
+43278f8 engine(plan)            — early doc revision: download-on-demand pivot
+76f0e52 engine(wizard)          — wizard step 2 = cloud-vs-local cards
+f47c7a3 engine(phase-0)         — bundle Copilot CLI via embedded-cli feature
 1ee9164 fidelity(swift-overlay) — /status sync, soft warnings, tool badge, busy 409
-686dbf9 fidelity(swift-mcp)    — hide stub connected/tool_count
+686dbf9 fidelity(swift-mcp)     — hide stub connected/tool_count
 0661443 fidelity(swift-settings) — persist_failed + saved-toast + DB-degraded
-cc6e8d2 fidelity(daemon)       — vision breaker SSE + drop dead by-name routes
-631a51f swiftui(i18n)          — purge dead namespaces, add wizard + section keys
-c11f501 swiftui(welcome)       — first-launch wizard (4 steps)
-22076cd swiftui(settings)      — sidebar trim + locale rerender + 4-card overview
-a9c4a03 swiftui(privacy)       — split off PrivacyPanel, drop GoalWorkerPanel
-2997967 swiftui(memory)        — single-doc MemoriesEditor over GET/PUT /memory
-0ae0a1a swiftui(goals)         — rich-section GoalsEditor with archived CRUD
-74c1a49 swiftui(advanced)      — rebuild AdvancedPanel + RestartRequiredBanner
-62c38e1 swiftui(behavior)      — rebuild BehaviorPanel for 9-field DTO
+cc6e8d2 fidelity(daemon)        — vision breaker SSE + drop dead by-name routes
+631a51f swiftui(i18n)           — purge dead namespaces, add wizard + section keys
+c11f501 swiftui(welcome)        — first-launch wizard (4 steps)
+22076cd swiftui(settings)       — sidebar trim + locale rerender + 4-card overview
+a9c4a03 swiftui(privacy)        — split off PrivacyPanel, drop GoalWorkerPanel
+2997967 swiftui(memory)         — single-doc MemoriesEditor over GET/PUT /memory
+0ae0a1a swiftui(goals)          — rich-section GoalsEditor with archived CRUD
+74c1a49 swiftui(advanced)       — rebuild AdvancedPanel + RestartRequiredBanner
+62c38e1 swiftui(behavior)       — rebuild BehaviorPanel for 9-field DTO
 ```
 
 ### Phase 0 — Bundle Copilot CLI
@@ -65,7 +73,73 @@ a9c4a03 swiftui(privacy)       — split off PrivacyPanel, drop GoalWorkerPanel
 
 ### Phase 1 — Engine + provider settings DTO
 
-`config.rs`: new `EngineConfig { engine, provider_base_url, provider_text_model, provider_vision_model, provider_offline }`. Defaults `{engine: "copilot_cloud", provider_offline: true}`. Wired into `Config`. `config_manager`: 5 keys added to `STATIC_FIELDS` (restart-required); `fields.rs` parser arms + flat-key normalization. `api/handlers/settings.rs`: `SettingsResponse` + `SettingsUpdateRequest` extended; `get_settings` projects, `update_settings` collects via `collect_opt!`. Swift `Models/SettingsTypes.swift` mirrored. **Daemon reads the fields but doesn't yet act on them** — env-var passthrough at Client construction lands with Phase 5b.
+`config.rs`: new `EngineConfig { engine, provider_base_url, provider_text_model, provider_vision_model, provider_offline }`. Defaults `{engine: "copilot_cloud", provider_offline: true}`. Wired into `Config`. `config_manager`: 5 keys added to `STATIC_FIELDS` (restart-required at the time); `fields.rs` parser arms + flat-key normalization. `api/handlers/settings.rs`: `SettingsResponse` + `SettingsUpdateRequest` extended; `get_settings` projects, `update_settings` collects via `collect_opt!`. Swift `Models/SettingsTypes.swift` mirrored. *(Both the schema and the restart-required classification were revised in the foundation commit — see below.)*
+
+### Foundation — schema rev + hot-swap + per-session BYOK
+
+Verified the SDK source (`~/.cargo/registry/.../github-copilot-sdk-0.1.0/src/types.rs`): `SessionConfig.provider: Option<ProviderConfig>` + `SessionConfig.model: Option<String>` are first-class fields, with `with_model` / `with_provider` builders. That collapses the two-CLI-subprocess plan: one shared CLI hosts all five sessions, each configured per-class.
+
+Schema rev: `provider_text_model` → `provider_chat_model` + `provider_batch_model`. Vision keeps its own slot. Three model knobs map to five worker classes:
+- **Chat** → `provider_chat_model`
+- **Vision** → `provider_vision_model`
+- **Goals / Decide / Consolidate** → `provider_batch_model`
+
+Hot-swap mechanism: all `engine.*` keys move from `STATIC_FIELDS` to `HOT_SWAP_FIELDS`. `ConfigManager` gains an `EngineChangeListener` callback hook; bootstrap wires it to `WorkerRegistry::reload()`. `ClientHandle` and the worker session caches switch from `OnceCell` to `Mutex<Option<Arc<…>>>` so they can be drained and rebuilt. `reload()` shuts down cached sessions, stops the CLI, **and forgets on-disk session IDs** — because `ResumeSessionConfig` has no `model` field, the only safe way to honor a model swap is fresh-create.
+
+`session_extras_for_class(cfg, class)` resolves `(model, provider)` per worker class from the live `EngineConfig` snapshot at session-create time. Cloud mode sets only `model`; local mode sets both.
+
+### Endpoints — `/auth/status` + `/models`
+
+Two sideband endpoints the wizard + Settings need:
+- `GET /auth/status` wraps `Client::get_auth_status()`. Returns `{is_authenticated, auth_type, host, login, status_message}`. The bundled CLI shares auth state with the user's existing `gh` / `copilot` login — no separate BoBe sign-in.
+- `GET /models?engine=…` lists models. Cloud → `Client::list_models()` (subscription-gated, includes vision flag + context window). Local → Ollama `/api/tags` (Ollama doesn't report context window). Engine override lets the wizard preview before flipping.
+
+`reqwest` added as a top-level dep (rustls-tls + stream + json). `AppError::ServiceUnavailable` (HTTP 503) mapped for the local "Ollama not running" path.
+
+### Phase 5a — `binary_manager` resurrected
+
+Lifts the pre-pivot module structure (`mod` / `download` / `extract`) for the Ollama runtime: stat-only `find_managed_ollama`, idempotent `ensure_managed_ollama` with `watch::Sender<DownloadProgress>` events, gzip+tar extraction with path-traversal guard, `--version` validate. Adds `flate2` + `tar` deps.
+
+### Phase 5b — `ollama_manager` + `OllamaInstallService`
+
+`ollama_manager.rs`: thin wrapper around the user's (or our) Ollama daemon. Detection-first: `health_check` probes `:11434`, returning true if anyone is already running one. Spawns a managed `ollama serve` only when nobody is — and only SIGTERMs daemons we spawned (`Mutex<Option<Child>>` tracks ownership). `pull_model` streams Ollama's NDJSON pull events into a `watch::Sender<PullProgress>`, supports cancellation between chunks.
+
+`services/ollama_install_service.rs` orchestrates the wizard's local-mode flow: ensure runtime → pull each model. Skips already-installed models, skips the batch pull when the same as chat. Single `watch::Sender<InstallSnapshot>` the SSE endpoint subscribes to.
+
+### Phase 5c — `/local-runtime/{install, status, cancel}` endpoints
+
+- `POST /local-runtime/install` body `{chat_model, batch_model, vision_model}`. Returns 202 + starts the task; 409 if one is in flight.
+- `GET /local-runtime/status` (SSE) streams `InstallSnapshot` DTOs on every state change.
+- `POST /local-runtime/cancel` flips a `watch` to true; the next chunk read in `pull_model` returns `Conflict("canceled")`.
+
+`AppState` gains an `Arc<OllamaInstallService>` instantiated at bootstrap. Idle until the wizard fires a request — no background work for cloud-mode users.
+
+### Phase 5d + 2b — wizard local-setup + cloud-auth
+
+Restructures the linear 4-step wizard into a 6-step branched state machine. After engine choice, cloud users land on `CloudAuthStepView`; local users land on `LocalSetupStepView`. Both branches converge at permissions → done.
+
+`LocalSetupStepView` auto-fires `POST /local-runtime/install` on appear with default models (`qwen2.5:7b-instruct` × 2 + `qwen2.5vl:7b`), subscribes to the SSE channel, binds three progress bars. RAM hint via `sysctlbyname("hw.memsize")`. Cancel button.
+
+`CloudAuthStepView` hits `/auth/status`. Shows "@login signed in" if the bundled CLI sees existing auth; otherwise offers a "Sign in via Terminal" button that runs `osascript … gh auth login --scopes copilot`. Retry / Skip available throughout.
+
+`DoneStepView` PATCHes `/settings` with the engine choice + per-class model defaults. The hot-swap listener catches the change and rebuilds the worker registry — launching the overlay lands on the chosen engine without a daemon restart.
+
+Drops the `bobe.engine_choice` UserDefault — `Config.engine` is the authoritative source.
+
+### Phase 3 — Settings → Engine pane
+
+New `EnginePanel.swift` slotted into the Settings sidebar's integrations group. Exposes every engine field:
+- **Mode** (radio): cloud / local. Hot-swap; flipping fires PATCH /settings; daemon's listener calls `WorkerRegistry::reload()`.
+- **GitHub sign-in** (cloud only): pings `/auth/status`, shows "@login" or a "Sign in via Terminal" button.
+- **Local server** (local only): editable `provider_base_url`, defaults to `http://127.0.0.1:11434/v1`.
+- **Models** (always): three dropdowns (chat / batch / vision) populated from `/models?engine=…`. Vision dropdown filters to vision-capable models. "Use default" sentinel sets the field to nil.
+- **Strict offline** (local only): toggles `provider_offline`.
+
+Debounced save reuses the BehaviorPanel/AdvancedPanel convention. Engine-mode flip skips the debounce so the registry rebuilds promptly.
+
+### Phase 4 — Returning-user migration
+
+Zero-effort: returning users on upgrade get the default `engine: "copilot_cloud"` from `EngineConfig::default`. Hot-swap means they can switch via Settings → Engine without any restart prompt. No code change needed.
 
 ### Wizard cards (Phase 2a)
 
@@ -314,58 +388,61 @@ For Hacker News, `https://hn.algolia.com/api/v1/search?query=X&tags=story` retur
 ┌──────────────────────────────────────────────────────────────────┐
 │ BoBe daemon (Rust binary, ~120 MB after stripping)               │
 │                                                                  │
-│   github-copilot-sdk (with embedded-cli feature, Phase 0 ✅)    │
+│   github-copilot-sdk (with embedded-cli feature)                 │
 │   ├─ extracts copilot CLI to ~/.cache/github-copilot-sdk-{ver}/  │
-│   └─ spawns 1 client (cloud) or 2 clients (local: text+vision)   │
+│   ├─ ONE shared Client + ONE CLI subprocess                      │
+│   └─ Per-session model + provider via SessionConfig.with_model   │
+│      / with_provider                                             │
 │                                                                  │
-│   binary_manager (resurrected from main, Phase 5a)               │
-│   ├─ downloads Ollama to ~/.bobe/runtimes/ollama if absent       │
-│   ├─ SHA-256 verified against official release SHA256SUMS.txt    │
-│   └─ progress streamed via watch::Sender<DownloadProgress>       │
+│   ConfigManager listens for engine.* PATCH                       │
+│   └─ on change: registry.reload() → drops sessions, stops CLI,   │
+│      forgets session IDs → next worker access re-spawns          │
 │                                                                  │
-│   ollama_manager + runtime service (Phase 5b)                    │
+│   binary_manager / ollama_manager / OllamaInstallService         │
 │   ├─ probes localhost:11434 → uses user's Ollama if present      │
-│   ├─ otherwise spawns `ollama serve` and supervises              │
-│   └─ orchestrates `ollama pull qwen2.5:7b-instruct` + `:vl-7b`   │
-│      with per-stage progress events                              │
+│   ├─ else downloads ollama-darwin.tgz → /api/pull each model     │
+│   └─ progress streamed on watch::Sender<InstallSnapshot>          │
 │                                                                  │
-│   /local-runtime/install (POST) + /local-runtime/status (SSE)    │
-│   wired into the wizard's local-card flow (Phase 5c)             │
+│   Endpoints:                                                     │
+│   ├─ GET /auth/status     → wraps Client.get_auth_status         │
+│   ├─ GET /models?engine=… → cloud: SDK list_models;              │
+│   │                          local: Ollama /api/tags             │
+│   ├─ POST /local-runtime/install + /local-runtime/cancel          │
+│   └─ GET /local-runtime/status (SSE)                             │
 │                                                                  │
 └──┬───────────────────────────────────────────────────────────────┘
-   │ stdio JSON-RPC                          (env vars set ↑ at Client.start)
+   │ stdio JSON-RPC
    ▼
 ┌─────────────────────────────────┐
-│ Copilot CLI subprocesses        │  COPILOT_PROVIDER_BASE_URL =
-│                                 │      http://127.0.0.1:11434/v1 (local)
-│   Cloud mode: 1 client          │              ─OR─
-│   Local mode: 2 clients         │      (unset for cloud — defaults to GitHub)
-│     text-client COPILOT_MODEL=  │
-│       qwen2.5:7b-instruct       │ ──────────┐
-│     vision-client COPILOT_MODEL=│            ▼
-│       qwen2.5-vl:7b             │   ┌────────────────────────┐
-│                                 │   │ Local: ollama serve    │
-│   (Both can also point at the   │   │ Native multi-model     │
-│    same model — saves RAM at    │   │ OLLAMA_MAX_LOADED=2    │
-│    the cost of text quality)    │   │ Models in ~/.ollama/   │
-└──┬──────────────────────────────┘   └────────────────────────┘
-   │ HTTPS (cloud)         (local)    (NOT in BoBe's request path —
-   ▼                                   SDK + CLI handle calls direct)
-GitHub Copilot
-(no Ollama in this path)
+│ ONE Copilot CLI subprocess      │
+│                                 │
+│  Sessions configured per-class: │
+│    Chat        → chat_model     │  ──→  HTTPS (cloud) or
+│    Goals       → batch_model    │       http://127.0.0.1:11434/v1
+│    Decide      → batch_model    │       (local)
+│    Consolidate → batch_model    │
+│    Vision      → vision_model   │
+└──┬──────────────────────────────┘
+   ▼
+GitHub Copilot   ─OR─   Ollama (managed by us, or user's existing)
+                            │
+                            ▼
+                       Qwen 2.5 7B + Qwen 2.5-VL 7B
+                       (default models; user can change in Settings → Engine)
 ```
 
-Worker-class routing in local mode:
-- `Chat`, `Decide`, `Goals`, `Consolidate` → **text-client**
-- `Vision` (capture pipeline) → **vision-client**
+Worker-class routing (uniform across cloud / local):
+- **Chat** → `provider_chat_model` (the user-facing dialogue model)
+- **Goals / Decide / Consolidate** → `provider_batch_model` (autopilot batch jobs — can be cheaper / faster)
+- **Vision** → `provider_vision_model` (capture pipeline — must support image inputs in local mode)
 
-In cloud mode there's one client and all worker classes share it (current behavior, unchanged).
+If `chat_model == batch_model == vision_model`, the CLI session config is identical across all five workers and Ollama keeps one model resident. If they differ, Ollama's `OLLAMA_MAX_LOADED_MODELS` keeps as many resident as fit.
 
 ---
 
-## Phased plan (remaining)
+## Phased plan — historical reference
 
-Phases 0, 1, and 2a are shipped (see [What's been shipped](#whats-been-shipped) above). Remaining phases are scoped here.
+> **Note:** All phases listed below are now **shipped**. Sketches preserved here for cross-reference with commit history. See [What's been shipped](#whats-been-shipped) for the actual implementation summaries.
 
 ### Phase 5a — Resurrect `binary_manager` (#58)
 
@@ -518,17 +595,19 @@ Wizard surfaces a warning if `sysctl hw.memsize` returns < 16 GB. User can proce
 
 ## Open questions
 
-- **Two Copilot CLI subprocesses' RAM**: ~430 MB just for the orchestrators. Acceptable on 16+ GB Macs. Tight squeeze on 16 GB once model weights load. Profile and consider single-Client fallback for low-memory users.
-- **Default model size**: 5 GB × 2 = 10 GB download. Some users on metered connections will resent this. Consider "smaller models — needs less disk" option behind an advanced toggle. Possible smaller default: `qwen2.5:3b-instruct` + `qwen2.5-vl:3b` (~4 GB total) for resource-constrained hardware.
-- **Single VL model as default?**: an alternative architectural default — point both clients at `qwen2.5-vl:7b`, half the disk + RAM cost. Text quality is slightly worse than Qwen 2.5 7B Instruct at the 7B class, but simpler. Could ship as default and let power users opt INTO two-model setup. Watch user feedback after Phase 5d.
-- **Qwen 2.5-VL 7B text quality vs Qwen 2.5 7B**: I claimed there's a meaningful gap but couldn't find a clean head-to-head benchmark. Empirical question — verify before deciding the default.
+- **Hot-swap timing edge case**: `WorkerRegistry::reload()` shuts down sessions + stops the CLI + forgets session IDs. If a worker is mid-turn when the user toggles the engine in Settings, that turn's response stream cancels. Acceptable trade-off for "no daemon restart" — but worth a smoke test (#28) to verify the user-visible failure mode is clean.
+- **First chat after engine swap**: chat session ID is forgotten on reload, so the chat resumes "fresh" in the new engine — yesterday's history is gone. This is intentional (the model changed, the prior history was generated by a different model). Surface a "your chat history reset because the model changed" notice on the next turn? Defer.
+- **Default model size**: 5 GB × 2 = 10 GB download. Some users on metered connections will resent this. Consider "smaller models — needs less disk" option behind an advanced toggle. Possible smaller default: `qwen2.5:3b-instruct` + `qwen2.5vl:3b` (~4 GB total) for resource-constrained hardware.
+- **Single VL model as default?**: an alternative — set `chat_model = batch_model = vision_model = qwen2.5vl:7b`, half the disk + RAM cost. Text quality is slightly worse than Qwen 2.5 7B Instruct at the 7B class, but simpler. Watch user feedback after the first wave of local-mode users.
+- **Qwen 2.5-VL 7B text quality vs Qwen 2.5 7B**: claimed gap but no clean head-to-head benchmark. Empirical question — verify before locking the default.
 - **CLI version pinning**: `COPILOT_CLI_VERSION = "1.0.44"` is hand-set. Need a process for upstream releases — eventually wire to dependabot or a CI alert.
 - **Cache cleanup on Copilot CLI upgrade**: when we bump `COPILOT_CLI_VERSION`, the old `~/.cache/github-copilot-sdk-{old-ver}/` dir lingers. One-time cleanup task on first run after upgrade.
 - **Ollama auto-update**: managed-by-BoBe Ollama doesn't auto-update (user's brew-installed Ollama would). Surface "newer Ollama available" in Settings → Engine, prompt to re-run `binary_manager` with new version. Defer until users hit it.
 - **Cancellation mid-pull**: if user cancels during `ollama pull`, a partial blob is left in `~/.ollama/models`. Ollama tolerates this on retry but it takes disk. Background task to clean partial pulls? Defer.
-- **`reqwest` adds back ~70 dependencies** to BoBe's tree. Manageable but not free. Alternative: use `ureq` (sync, smaller, already a transitive dep via SDK build.rs) wrapped in `tokio::task::spawn_blocking`. Pick during Phase 5a.
-- **No clear "uninstall local mode" flow** — switching back to cloud leaves 10 GB of models in `~/.ollama/`. Surface a "Free disk space" button in Settings → Engine that calls `ollama rm qwen2.5:7b qwen2.5-vl:7b`?
-- **Subscription gate detection** for cloud is impossible pre-auth. Best we can do: warn in step 2 copy ("requires Copilot subscription"), fail gracefully on first call. Document the failure mode.
+- **No clear "uninstall local mode" flow** — switching back to cloud leaves 10 GB of models in `~/.ollama/`. Surface a "Free disk space" button in Settings → Engine that calls `ollama rm qwen2.5:7b qwen2.5vl:7b`?
+- **Subscription gate detection** for cloud is impossible pre-auth. Best we can do: warn in cloud-card copy ("requires Copilot subscription"), fail gracefully on first call. Document the failure mode.
+- **Live MCP runtime state** (#31): the MCP panel hides `connected` / `tool_count` today — values are stubbed. SDK doesn't yet expose a sideband query for live MCP server state. Track upstream.
+- **Smoke test** (#28): bring the daemon up live, exercise each flow end-to-end. The architecture is sound but hasn't been validated against a running stack since the foundation rev.
 
 ---
 

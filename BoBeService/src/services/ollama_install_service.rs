@@ -7,7 +7,6 @@
 //! around the in-flight task handle lets `POST /local-runtime/install`
 //! return 409 if a second start is requested mid-pull.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,19 +18,19 @@ use crate::binary_manager::{BinaryManager, DownloadProgress};
 use crate::error::AppError;
 use crate::ollama_manager::{OllamaManager, PullProgress};
 
-/// One stage of the install pipeline. UI binds a progress bar to each.
+/// One stage of the model-pull pipeline. UI binds a progress bar to each.
+/// (The runtime-download stage isn't tagged because it writes its own
+/// snapshot field directly via the `runtime_pump` task.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InstallStage {
-    Runtime,
+enum InstallStage {
     TextModel,
     BatchModel,
     VisionModel,
 }
 
 impl InstallStage {
-    pub(crate) const fn name(self) -> &'static str {
+    const fn name(self) -> &'static str {
         match self {
-            InstallStage::Runtime => "runtime",
             InstallStage::TextModel => "chat-model",
             InstallStage::BatchModel => "batch-model",
             InstallStage::VisionModel => "vision-model",
@@ -73,7 +72,6 @@ pub(crate) struct InstallRequest {
 pub(crate) struct OllamaInstallService {
     binary_manager: Arc<BinaryManager>,
     ollama_manager: Arc<OllamaManager>,
-    data_dir: PathBuf,
     state: Arc<Mutex<ServiceState>>,
 }
 
@@ -88,13 +86,11 @@ impl OllamaInstallService {
     pub(crate) fn new(
         binary_manager: Arc<BinaryManager>,
         ollama_manager: Arc<OllamaManager>,
-        data_dir: PathBuf,
     ) -> Arc<Self> {
         let (snapshot_tx, snapshot_rx) = watch::channel(InstallSnapshot::default());
         Arc::new(Self {
             binary_manager,
             ollama_manager,
-            data_dir,
             state: Arc::new(Mutex::new(ServiceState {
                 snapshot_tx,
                 snapshot_rx,
@@ -336,7 +332,6 @@ impl OllamaInstallService {
                         vision_model: progress,
                         ..snap
                     },
-                    InstallStage::Runtime => snap, // unreachable
                 };
                 pump_snapshot_tx.send(updated).ok();
             }
@@ -373,15 +368,7 @@ impl OllamaInstallService {
                 vision_model: progress,
                 ..snap
             },
-            InstallStage::Runtime => snap, // not used here
         };
         snapshot_tx.send(updated).ok();
-    }
-
-    /// Where the managed Ollama binary lives — exposed for handlers
-    /// that need to know whether to display "managed by BoBe" vs
-    /// "your existing install."
-    pub(crate) fn managed_binary_path(&self) -> PathBuf {
-        OllamaManager::default_managed_binary(&self.data_dir)
     }
 }

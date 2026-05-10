@@ -13,7 +13,7 @@
 //! pulled in `~/.ollama/models` are visible to us regardless of who
 //! started the daemon.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
@@ -299,7 +299,9 @@ impl OllamaManager {
     }
 
     /// Best-effort SIGTERM of our managed daemon. No-op if we never
-    /// spawned one (i.e. user's existing Ollama is in use).
+    /// spawned one (i.e. user's existing Ollama is in use). Held for
+    /// future wiring into the daemon-shutdown path; not called today.
+    #[allow(dead_code)]
     pub(crate) async fn stop(&self) {
         let mut guard = self.child.lock().await;
         let Some(mut child) = guard.take() else {
@@ -316,10 +318,6 @@ impl OllamaManager {
         }
     }
 
-    pub(crate) fn base_url(&self) -> &str {
-        &self.base_url
-    }
-
     /// Convenience helper: parse the user's `provider_base_url`
     /// (`http://host/v1`) into the Ollama-native root (`http://host`).
     pub(crate) fn root_from_provider_url(provider_url: &str) -> String {
@@ -327,11 +325,6 @@ impl OllamaManager {
             .trim_end_matches('/')
             .trim_end_matches("/v1")
             .to_string()
-    }
-
-    /// Default managed binary location, mirroring `binary_manager`.
-    pub(crate) fn default_managed_binary(data_dir: &Path) -> PathBuf {
-        data_dir.join("ollama").join("bin").join("ollama")
     }
 }
 
