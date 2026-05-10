@@ -447,64 +447,57 @@ struct EnginePanel: View {
     }
 
     private func openSignInTerminal() {
-        if !CopilotSignIn.ghIsInstalled() {
-            CopilotSignIn.openInstallInstructions()
-            return
-        }
-        CopilotSignIn.openTerminalLogin()
+        CopilotSignIn.openLogin(cliPath: self.auth?.cliPath)
     }
 }
 
-/// Helpers for kicking off the `gh auth login` flow from Swift. Shared
-/// between the welcome wizard's `CloudAuthStepView` and the Settings →
-/// Engine pane.
+/// Helpers for kicking off the Copilot CLI sign-in flow from Swift.
+/// Shared between the welcome wizard's `CloudAuthStepView` and the
+/// Settings → Engine pane.
 ///
-/// The bundled Copilot CLI shares its auth state with the system's `gh`
-/// install (per the BYOK docs: `gh` token → `~/.config/gh/hosts.yml` →
-/// keychain → SDK reads same auth). So "sign in" means "make the user's
-/// `gh` happy" — but if `gh` isn't installed, we have to send them
-/// elsewhere first.
+/// The Copilot CLI is bundled inside BoBe (via the SDK's `embedded-cli`
+/// feature) and extracted to `~/.cache/github-copilot-sdk-{ver}/copilot`
+/// on first `Client::start()`. Its sign-in is interactive (GitHub device
+/// flow: prints a code, asks the user to enter it at github.com/login/
+/// device, polls for the token, writes it to the macOS keychain).
+///
+/// We can't drive that programmatically from Swift, so the workflow is:
+/// 1. Daemon's `/auth/status` returns the extracted CLI's absolute path.
+/// 2. We open Terminal.app and run that binary directly (no args — the
+///    CLI's interactive prompt handles the device flow on first run).
+/// 3. User completes the flow in Terminal; auth is persisted to keychain.
+/// 4. User clicks "Check again" in the wizard / Settings; `/auth/status`
+///    now reports `is_authenticated: true`.
+///
+/// `gh` is intentionally NOT used. Copilot CLI and `gh` are separate
+/// tools — Copilot CLI has its own auth flow and its own keychain entry.
+/// We bundle the binary the user needs; no external install required.
 enum CopilotSignIn {
-    /// Detect whether `gh` is on the user's login-shell PATH. We can't
-    /// rely on the current process's `$PATH` (GUI apps launched from
-    /// Finder don't get the shell's PATH) so we invoke a login shell.
-    static func ghIsInstalled() -> Bool {
-        let process = Process()
-        process.launchPath = "/bin/zsh"
-        process.arguments = ["-l", "-c", "command -v gh"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
-            return false
+    /// Open Terminal.app and run the bundled Copilot CLI's interactive
+    /// prompt. The CLI handles auth on first run via GitHub's device
+    /// flow. If `cliPath` is `nil` (daemon hasn't started a Client yet
+    /// — unusual), we just open Terminal with no command so the user
+    /// can run whatever Copilot CLI they have on PATH themselves.
+    static func openLogin(cliPath: String?) {
+        // Shell-escape the path: wrap in single quotes and escape any
+        // embedded single quotes. macOS user paths don't normally
+        // contain quotes, but defensive coding is cheap here.
+        let command: String
+        if let cliPath {
+            let escaped = cliPath.replacingOccurrences(of: "'", with: "'\\''")
+            command = "'\(escaped)'"
+        } else {
+            command = "copilot"
         }
-    }
-
-    /// Open Terminal.app and run `gh auth login` so the user can finish
-    /// the OAuth flow there. Idempotent — running it twice just opens a
-    /// second tab.
-    static func openTerminalLogin() {
         let script = """
         tell application "Terminal"
             activate
-            do script "gh auth login --scopes copilot"
+            do script "\(command)"
         end tell
         """
         let process = Process()
         process.launchPath = "/usr/bin/osascript"
         process.arguments = ["-e", script]
         try? process.run()
-    }
-
-    /// Open the `cli.github.com` install page in the user's default
-    /// browser when we can't find `gh` locally.
-    static func openInstallInstructions() {
-        if let url = URL(string: "https://cli.github.com/") {
-            NSWorkspace.shared.open(url)
-        }
     }
 }

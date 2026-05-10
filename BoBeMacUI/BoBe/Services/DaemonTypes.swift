@@ -92,6 +92,13 @@ struct AuthStatusResponse: Codable, Sendable {
     let host: String?
     let login: String?
     let statusMessage: String?
+    /// Absolute path to the bundled Copilot CLI binary on disk (the one
+    /// the SDK extracted from BoBe's own binary). Use this to launch
+    /// Terminal with the bundled CLI for sign-in — no external `gh`,
+    /// no separate install. `nil` only if the bundled-CLI feature is
+    /// disabled or extraction hasn't happened yet.
+    let cliPath: String?
+    let cliVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case isAuthenticated = "is_authenticated"
@@ -99,6 +106,8 @@ struct AuthStatusResponse: Codable, Sendable {
         case host
         case login
         case statusMessage = "status_message"
+        case cliPath = "cli_path"
+        case cliVersion = "cli_version"
     }
 }
 

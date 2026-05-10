@@ -30,18 +30,32 @@ pub(crate) struct AuthStatusResponse {
     pub(crate) host: Option<String>,
     pub(crate) login: Option<String>,
     pub(crate) status_message: Option<String>,
+    /// Absolute path to the bundled Copilot CLI binary that the SDK
+    /// extracted into `~/.cache/github-copilot-sdk-{ver}/copilot`. Swift
+    /// uses this to open Terminal with the *bundled* CLI for the user's
+    /// sign-in flow — no external tools required, no "install gh"
+    /// detour. `None` if the bundled-CLI feature is disabled or
+    /// extraction failed (shouldn't happen post-`Client::start`).
+    pub(crate) cli_path: Option<String>,
+    /// The bundled CLI's pinned version (from `.cargo/config.toml`'s
+    /// `COPILOT_CLI_VERSION` env). Useful for debug surface only.
+    pub(crate) cli_version: Option<String>,
 }
 
 pub(crate) async fn get_auth_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AuthStatusResponse>, AppError> {
     // We need a started Client to query auth — `Client::get_auth_status`
-    // is an RPC into the spawned CLI. Lazy-spawn if cold.
+    // is an RPC into the spawned CLI. Lazy-spawn if cold. Side effect:
+    // `Client::start` invokes the SDK's `embeddedcli::path()`, which
+    // extracts the bundled binary to `~/.cache/...` if it isn't already
+    // there. So by the time this function returns, the CLI path is
+    // populated.
     //
     // Note: this works in both engine modes. In `local` mode the bundled
-    // CLI still has a notion of "is the user signed in to GitHub?" (used
-    // by the cloud-fallback path); BoBe doesn't *need* GitHub auth in
-    // local mode but the daemon still surfaces it accurately.
+    // CLI still has a notion of "is the user signed in to GitHub?";
+    // BoBe doesn't *need* GitHub auth in local mode but the daemon
+    // still surfaces it accurately.
     let client = state
         .workers
         .client_handle()
@@ -54,12 +68,19 @@ pub(crate) async fn get_auth_status(
         .await
         .map_err(|e| AppError::Internal(format!("auth_status: get_auth_status failed: {e}")))?;
 
+    let cli_path = github_copilot_sdk::embeddedcli::path()
+        .map(|p| p.to_string_lossy().into_owned());
+    let cli_version =
+        github_copilot_sdk::embeddedcli::bundled_version().map(std::string::ToString::to_string);
+
     Ok(Json(AuthStatusResponse {
         is_authenticated: status.is_authenticated,
         auth_type: status.auth_type,
         host: status.host,
         login: status.login,
         status_message: status.status_message,
+        cli_path,
+        cli_version,
     }))
 }
 

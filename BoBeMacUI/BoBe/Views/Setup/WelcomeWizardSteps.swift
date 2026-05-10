@@ -302,7 +302,7 @@ struct PermissionsStepView: View {
 private enum CloudAuthState {
     case checking
     case authenticated(login: String?, authType: String?)
-    case unauthenticated(message: String?)
+    case unauthenticated(message: String?, cliPath: String?)
     case error(message: String)
 }
 
@@ -368,7 +368,7 @@ struct CloudAuthStepView: View {
             .padding(20)
             .background(self.cardBackground(color: self.theme.colors.secondary.opacity(0.5)))
 
-        case let .unauthenticated(message):
+        case let .unauthenticated(message, _):
             VStack(spacing: 10) {
                 Image(systemName: "key.horizontal")
                     .font(.system(size: 32))
@@ -413,14 +413,25 @@ struct CloudAuthStepView: View {
             Button(L10n.tr("setup.welcome.continue"), action: self.onContinue)
                 .bobeButton(.primary, size: .regular)
                 .keyboardShortcut(.defaultAction)
-        case .unauthenticated, .error:
+        case let .unauthenticated(_, cliPath):
             VStack(spacing: 8) {
-                Button(L10n.tr("setup.cloud_auth.open_terminal"), action: self.openSignInTerminal)
-                    .bobeButton(.primary, size: .regular)
+                Button(L10n.tr("setup.cloud_auth.open_terminal")) {
+                    CopilotSignIn.openLogin(cliPath: cliPath)
+                }
+                .bobeButton(.primary, size: .regular)
                 Button(L10n.tr("setup.cloud_auth.retry")) {
                     Task { await self.refresh() }
                 }
                 .bobeButton(.secondary, size: .small)
+                Button(L10n.tr("setup.cloud_auth.skip"), action: self.onContinue)
+                    .bobeButton(.ghost, size: .small)
+            }
+        case .error:
+            VStack(spacing: 8) {
+                Button(L10n.tr("setup.cloud_auth.retry")) {
+                    Task { await self.refresh() }
+                }
+                .bobeButton(.primary, size: .regular)
                 Button(L10n.tr("setup.cloud_auth.skip"), action: self.onContinue)
                     .bobeButton(.ghost, size: .small)
             }
@@ -444,29 +455,13 @@ struct CloudAuthStepView: View {
                 if resp.isAuthenticated {
                     self.state = .authenticated(login: resp.login, authType: resp.authType)
                 } else {
-                    self.state = .unauthenticated(message: resp.statusMessage)
+                    self.state = .unauthenticated(message: resp.statusMessage, cliPath: resp.cliPath)
                 }
             }
         } catch {
             await MainActor.run {
                 self.state = .error(message: error.localizedDescription)
             }
-        }
-    }
-
-    /// Opens Terminal.app and runs `gh auth login --scopes copilot` so
-    /// the user can authenticate. The bundled CLI shares its auth state
-    /// with the system `gh` install — once they're logged in there, the
-    /// next "Retry check" lands on `.authenticated`.
-    ///
-    /// If `gh` isn't installed (common on fresh macOS), fall back to
-    /// opening cli.github.com so the user can install it first instead
-    /// of getting "command not found" in Terminal.
-    private func openSignInTerminal() {
-        if CopilotSignIn.ghIsInstalled() {
-            CopilotSignIn.openTerminalLogin()
-        } else {
-            CopilotSignIn.openInstallInstructions()
         }
     }
 }
