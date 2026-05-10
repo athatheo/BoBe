@@ -4,6 +4,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case souls, goals, memories
     case userProfiles = "user-profiles"
     case mcpServers = "mcp-servers"
+    case engine
     case appearance, behavior, privacy
     case advanced
 
@@ -18,6 +19,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .memories: L10n.tr("settings.category.memories")
         case .userProfiles: L10n.tr("settings.category.user_profiles")
         case .mcpServers: L10n.tr("settings.category.mcp_servers")
+        case .engine: L10n.tr("settings.category.engine")
         case .appearance: L10n.tr("settings.category.appearance")
         case .behavior: L10n.tr("settings.category.behavior")
         case .privacy: L10n.tr("settings.category.privacy")
@@ -32,6 +34,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .memories: "brain.head.profile"
         case .userProfiles: "person.fill"
         case .mcpServers: "server.rack"
+        case .engine: "cpu"
         case .appearance: "paintpalette.fill"
         case .behavior: "slider.horizontal.3"
         case .privacy: "shield.fill"
@@ -51,7 +54,7 @@ enum SettingsCategoryGroup: String, CaseIterable {
         case .context:
             [.souls, .goals, .memories, .userProfiles]
         case .integrations:
-            [.mcpServers]
+            [.mcpServers, .engine]
         case .preferences:
             [.appearance, .behavior, .privacy]
         case .advanced:
@@ -225,6 +228,8 @@ struct SettingsWindow: View {
             UserProfilesEditor()
         case .mcpServers:
             MCPServersPanel()
+        case .engine:
+            EnginePanel()
         case .appearance:
             AppearancePanel()
         case .behavior:
