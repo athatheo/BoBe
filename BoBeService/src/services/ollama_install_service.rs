@@ -130,9 +130,7 @@ impl OllamaInstallService {
             let result = svc.run(req, snapshot_tx.clone(), cancel_rx).await;
             let final_status = match result {
                 Ok(()) => InstallStatus::Complete,
-                Err(AppError::Conflict(msg)) if msg.contains("canceled") => {
-                    InstallStatus::Canceled
-                }
+                Err(AppError::Canceled(_)) => InstallStatus::Canceled,
                 Err(e) => {
                     warn!(err = %e, "ollama_install.failed");
                     InstallStatus::Failed(e.to_string())
@@ -201,7 +199,7 @@ impl OllamaInstallService {
         runtime_pump.abort();
 
         if *cancel_rx.borrow() {
-            return Err(AppError::Conflict("Install canceled".into()));
+            return Err(AppError::Canceled("Install canceled".into()));
         }
 
         // Validate before starting daemon — catches partial extracts.
@@ -218,7 +216,7 @@ impl OllamaInstallService {
             .await?;
 
         if *cancel_rx.borrow() {
-            return Err(AppError::Conflict("Install canceled".into()));
+            return Err(AppError::Canceled("Install canceled".into()));
         }
 
         // Stage 3+4+5: pull each model. Skip if already installed.

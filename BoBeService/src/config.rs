@@ -209,6 +209,12 @@ pub(crate) struct EngineConfig {
     /// Model used by the user-facing Chat worker. Cloud: a Copilot-served
     /// model (e.g. `"claude-sonnet-4"`); local: an Ollama tag (e.g.
     /// `"qwen2.5:7b-instruct"`). `None` = use the CLI's default.
+    ///
+    /// `provider_text_model` is the pre-foundation name (this branch
+    /// only — never shipped to users). Aliased here so any local checkout
+    /// that still has `provider_text_model = "…"` in `config.toml` loads
+    /// the value as the chat model rather than dropping it.
+    #[serde(alias = "provider_text_model")]
     pub(crate) provider_chat_model: Option<String>,
     /// Model used by the autopilot batch workers (goals / decide /
     /// consolidate). May be the same as `provider_chat_model` or a

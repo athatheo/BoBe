@@ -84,6 +84,11 @@ pub(crate) struct WorkerRegistry {
     /// midnight boundary. The mutex is contended only at session-spawn
     /// time, not on every `send`.
     chat: Mutex<Option<DatedChatWorker>>,
+    /// Serializes engine-change reloads. Without it, two PATCHes
+    /// landing back-to-back fire two concurrent `reload()` tasks that
+    /// can race on `client.stop()` while a worker is mid-`create_session`
+    /// — the second `stop()` would crash the in-flight session.
+    reload_lock: Mutex<()>,
 }
 
 struct DatedChatWorker {
@@ -110,6 +115,7 @@ impl WorkerRegistry {
             decide: Mutex::new(None),
             vision: Mutex::new(None),
             chat: Mutex::new(None),
+            reload_lock: Mutex::new(()),
         })
     }
 
@@ -307,7 +313,13 @@ impl WorkerRegistry {
     ///
     /// Best-effort: shutdown failures are logged but don't block the
     /// rebuild — leaving a stale session would be worse than a leak.
+    ///
+    /// Serialized via `reload_lock` — only one reload runs at a time.
+    /// A second concurrent call awaits the first to finish before
+    /// starting its own. (Coalesces back-to-back PATCHes safely.)
     pub(crate) async fn reload(&self) {
+        let _reload_guard = self.reload_lock.lock().await;
+
         // Drain caches first, before stopping the client, so any in-flight
         // worker access lands on the cleared cache and either waits on a
         // restart (if it grabbed the stale Arc earlier, that path is fine)

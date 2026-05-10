@@ -212,7 +212,7 @@ impl OllamaManager {
         while let Some(chunk) = stream.next().await {
             if is_canceled() {
                 info!(model = name, "ollama_manager.pull_canceled");
-                return Err(AppError::Conflict("Model pull canceled".into()));
+                return Err(AppError::Canceled("Model pull canceled".into()));
             }
 
             let bytes = chunk

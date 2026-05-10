@@ -17,6 +17,25 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
         };
     }
 
+    /// Like `set_parsed!` but for `Option<String>` fields where an empty
+    /// string from the wire should mean "clear / use default" rather than
+    /// "set to empty string." Swift omits `nil` fields entirely
+    /// (`JSONEncoder` default), so the only way the UI can clear an
+    /// already-set provider model is to send `""` — this macro routes
+    /// `""` and `null` to `None`, real strings to `Some(_)`.
+    macro_rules! set_opt_string {
+        ($field:expr, $value:expr, $key:expr) => {
+            match $value {
+                serde_json::Value::Null => $field = None,
+                serde_json::Value::String(s) if s.is_empty() => $field = None,
+                v => match serde_json::from_value::<String>(v.clone()) {
+                    Ok(s) => $field = Some(s),
+                    Err(_) => warn!(field = $key, "config_manager.parse_failed"),
+                },
+            }
+        };
+    }
+
     for (key, value) in changes {
         let dotted = normalize_key(key);
         let k = dotted.as_str();
@@ -83,16 +102,16 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             // ── Engine / provider ─────────────────────────────────────
             "engine.engine" => set_parsed!(config.engine.engine, value, k),
             "engine.provider_base_url" => {
-                set_parsed!(config.engine.provider_base_url, value, k);
+                set_opt_string!(config.engine.provider_base_url, value, k);
             }
             "engine.provider_chat_model" => {
-                set_parsed!(config.engine.provider_chat_model, value, k);
+                set_opt_string!(config.engine.provider_chat_model, value, k);
             }
             "engine.provider_batch_model" => {
-                set_parsed!(config.engine.provider_batch_model, value, k);
+                set_opt_string!(config.engine.provider_batch_model, value, k);
             }
             "engine.provider_vision_model" => {
-                set_parsed!(config.engine.provider_vision_model, value, k);
+                set_opt_string!(config.engine.provider_vision_model, value, k);
             }
             "engine.provider_offline" => {
                 set_parsed!(config.engine.provider_offline, value, k);
