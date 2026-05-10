@@ -203,6 +203,13 @@ impl WorkerRegistry {
         Arc::clone(&self.memory_file)
     }
 
+    /// The shared `ClientHandle`. Exposed for sideband endpoints
+    /// (`/auth/status`, `/models`) that need to query the SDK without
+    /// going through a worker session.
+    pub(crate) fn client_handle(&self) -> Arc<ClientHandle> {
+        Arc::clone(&self.client)
+    }
+
     pub(crate) async fn goals(&self) -> Result<Arc<BatchWorker>, AppError> {
         let mut guard = self.goals.lock().await;
         if let Some(w) = guard.as_ref() {

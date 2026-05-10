@@ -117,6 +117,14 @@ rand = "0.10.0"
 mdns-sd = { version = "0.18.1", features = ["async"] }
 dashmap = "6.1.0"
 tower = { version = "0.5.3", features = ["timeout", "limit"] }
+# Streaming HTTP client. Used for two purposes:
+#   1. Querying the user's Ollama install on `:11434` for available
+#      models (`/api/tags`) when `engine == "local"`.
+#   2. Phase 5a: downloading the Ollama runtime tarball with progress
+#      streaming (so the wizard can show a live progress bar).
+# rustls-tls keeps us off OpenSSL; `stream` lets us consume responses
+# incrementally for the download path.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
 # Official GitHub Copilot SDK (Rust). Programmatic Copilot CLI control via
 # JSON-RPC over stdio. Spawns + manages the CLI process per Client. We use one
 # shared Client across the daemon and create one Session per worker class.

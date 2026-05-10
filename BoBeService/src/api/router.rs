@@ -102,6 +102,8 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::settings::get_settings)
                 .patch(handlers::settings::update_settings),
         )
+        .route("/auth/status", get(handlers::engine::get_auth_status))
+        .route("/models", get(handlers::engine::list_models))
         .route(
             "/tools/mcp/config",
             get(handlers::tools_mcp::get_mcp_config)
