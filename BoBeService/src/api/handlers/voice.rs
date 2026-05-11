@@ -1,16 +1,19 @@
-//! WS endpoint `/voice/stream`. Phase 0.b shell: round-trip plumbing only.
+//! WS endpoint `/voice/stream`. Phase 0.c: daemon VAD pipeline + STT commit.
 //!
-//! What this layer does today:
-//!   - Accepts WS upgrade
-//!   - Validates `hello` handshake (rate + codec)
-//!   - Decodes incoming Opus frames into 16kHz f32 PCM, accumulates per-session
-//!   - Routes JSON control messages (vad_hint, barge_in, wake, playback_ack, control)
-//!   - Emits `state` transitions on connect / disconnect
+//! What this layer does:
+//!   - Handshake (rate + codec validation)
+//!   - Decode incoming Opus → 16kHz f32 PCM frames
+//!   - Push every frame into Silero VAD (daemon-side, authoritative)
+//!   - When Silero queues a speech segment, gate via smart-turn (stub passes
+//!     all for now; real ONNX in M4.5.2)
+//!   - Acquire UserMessageGuard, run STT on the segment, emit `transcript.final`
+//!   - Phase 0.c stops there — LLM + Kokoro TTS arrive in 0.d
 //!
-//! What lands later:
-//!   0.c — wire Silero VAD per-frame + smart-turn gating + STT commit
-//!   0.d — chat-pipeline observer + Kokoro sentence-streaming TTS
-//!   M4.5.5 — barge-in 3-event protocol
+//! State transitions emitted today:
+//!   on hello             → state(Listening)
+//!   on segment ready     → state(Thinking) with fresh turn_id
+//!   on transcript done   → state(Listening)
+//!   on control(Abort)    → state(Idle)
 
 use std::sync::Arc;
 
@@ -24,11 +27,18 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::app_state::AppState;
+use crate::runtime::session::RuntimeSession;
 use crate::speech::protocol::{ClientMessage, ControlAction, ServerMessage, VoicePhase};
+use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
 
 const OPUS_INPUT_SAMPLE_RATE: u32 = 16_000;
 const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
 const OPUS_MAX_FRAME_SAMPLES: usize = 2_880;
+
+/// Smart-turn threshold — segment is treated as a complete turn iff
+/// `probability_complete >= TURN_COMPLETE_THRESHOLD`. The stub always returns
+/// 1.0 so this is effectively a no-op until the real ONNX impl lands.
+const TURN_COMPLETE_THRESHOLD: f32 = 0.7;
 
 pub(crate) async fn voice_stream(
     ws: WebSocketUpgrade,
@@ -37,15 +47,35 @@ pub(crate) async fn voice_stream(
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
+struct VoiceEngines {
+    stt: Arc<dyn SttEngine>,
+    #[allow(dead_code, reason = "used by Kokoro pipeline in 0.d")]
+    tts: Arc<dyn TtsEngine>,
+    vad: Arc<dyn AcousticVad>,
+    smart_turn: Arc<dyn SemanticTurn>,
+}
+
+impl VoiceEngines {
+    fn from_state(state: &AppState) -> Option<Self> {
+        Some(Self {
+            stt: Arc::clone(state.voice_stt.as_ref()?),
+            tts: Arc::clone(state.voice_tts.as_ref()?),
+            vad: Arc::clone(state.voice_vad.as_ref()?),
+            smart_turn: Arc::clone(state.voice_smart_turn.as_ref()?),
+        })
+    }
+}
+
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
-    if state.voice_stt.is_none() || state.voice_tts.is_none() || state.voice_vad.is_none() {
+    let Some(engines) = VoiceEngines::from_state(&state) else {
         warn!("voice.engines_unavailable");
         close_with_error(socket, "engines_unavailable", "voice models not installed").await;
         return;
-    }
+    };
 
     let (mut tx, mut rx) = socket.split();
     let mut session: Option<VoiceSession> = None;
+    let runtime_session = Arc::clone(&state.runtime_session);
 
     while let Some(msg) = rx.next().await {
         let msg = match msg {
@@ -63,13 +93,32 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 }
             }
             Message::Binary(bytes) => {
-                if let Some(s) = session.as_mut() {
-                    match s.decode_opus(&bytes) {
-                        Ok(samples) => s.pcm.extend_from_slice(&samples),
-                        Err(e) => warn!(error = %e, "voice.opus_decode_failed"),
-                    }
-                } else {
+                let Some(s) = session.as_mut() else {
                     warn!("voice.binary_before_hello");
+                    continue;
+                };
+                let samples = match s.decode_opus(&bytes) {
+                    Ok(samples) => samples,
+                    Err(e) => {
+                        warn!(error = %e, "voice.opus_decode_failed");
+                        continue;
+                    }
+                };
+                if let Err(e) = engines.vad.accept(&samples) {
+                    warn!(error = %e, "voice.vad_accept_failed");
+                    continue;
+                }
+                while engines.vad.has_segment() {
+                    if let Some(segment) = engines.vad.pop_segment() {
+                        process_segment(
+                            segment,
+                            s,
+                            &engines,
+                            &runtime_session,
+                            &mut tx,
+                        )
+                        .await;
+                    }
                 }
             }
             Message::Close(_) => {
@@ -81,12 +130,87 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
 
     if let Some(s) = session {
-        info!(
-            session = %s.session_id,
-            pcm_samples = s.pcm.len(),
-            "voice.disconnect"
-        );
+        info!(session = %s.session_id, "voice.disconnect");
     }
+}
+
+async fn process_segment(
+    segment: crate::speech::vad::SpeechSegment,
+    session: &mut VoiceSession,
+    engines: &VoiceEngines,
+    runtime_session: &Arc<RuntimeSession>,
+    tx: &mut SplitSink<WebSocket, Message>,
+) {
+    // Semantic turn gate — discard segment if the user isn't really done
+    // speaking. Stub returns 1.0, so this never trips in Phase 0.c.
+    match engines.smart_turn.probability_complete(&segment.samples) {
+        Ok(p) if p < TURN_COMPLETE_THRESHOLD => {
+            debug!(p, "voice.smart_turn_incomplete_skip");
+            return;
+        }
+        Ok(p) => debug!(p, "voice.smart_turn_complete"),
+        Err(e) => {
+            warn!(error = %e, "voice.smart_turn_failed_passthrough");
+        }
+    }
+
+    // Acquire single-flight guard so text + voice can't race on the chat
+    // worker. Conflict → emit error + keep listening.
+    let guard = match runtime_session.try_begin_user_message() {
+        Ok(g) => g,
+        Err(reason) => {
+            send_error(tx, "conflict", reason).await;
+            return;
+        }
+    };
+
+    let new_turn_id = format!("voice_{}", Uuid::new_v4().simple());
+    session.turn_id = new_turn_id.clone();
+    send_state(tx, VoicePhase::Thinking, &new_turn_id).await;
+
+    let stt = Arc::clone(&engines.stt);
+    let samples = segment.samples;
+    let stt_result = tokio::task::spawn_blocking(move || stt.transcribe(&samples)).await;
+
+    let transcript = match stt_result {
+        Ok(Ok(text)) => text,
+        Ok(Err(e)) => {
+            error!(error = %e, "voice.stt_failed");
+            send_error(tx, "stt_failed", &e.to_string()).await;
+            send_state(tx, VoicePhase::Listening, &new_turn_id).await;
+            drop(guard);
+            return;
+        }
+        Err(e) => {
+            error!(error = %e, "voice.stt_join_failed");
+            send_error(tx, "stt_join_failed", &e.to_string()).await;
+            send_state(tx, VoicePhase::Listening, &new_turn_id).await;
+            drop(guard);
+            return;
+        }
+    };
+
+    let trimmed = transcript.trim();
+    if trimmed.is_empty() {
+        // Silent drop: no orphan turn in chat history; just a friendly nudge.
+        send_error(tx, "empty_transcript", "I didn't catch that").await;
+    } else {
+        info!(turn = %new_turn_id, transcript = %trimmed, "voice.transcript_final");
+        send_json(
+            tx,
+            &ServerMessage::TranscriptFinal {
+                turn_id: new_turn_id.clone(),
+                text: trimmed.to_string(),
+            },
+        )
+        .await;
+        // 0.d will hand the transcript to runtime_session.handle_user_message
+        // with a sentence-buffering observer that pipes to Kokoro TTS. Today
+        // we stop after transcript.final and return to listening.
+    }
+
+    send_state(tx, VoicePhase::Listening, &new_turn_id).await;
+    drop(guard);
 }
 
 /// Returns `false` to terminate the connection (after handshake errors).
@@ -123,8 +247,7 @@ async fn handle_control_text(
                 return false;
             }
             if codec != "opus" {
-                send_error(tx, "unsupported_codec", &format!("expected opus, got {codec}"))
-                    .await;
+                send_error(tx, "unsupported_codec", &format!("expected opus, got {codec}")).await;
                 return false;
             }
             match VoiceSession::new(session_id) {
@@ -142,7 +265,7 @@ async fn handle_control_text(
             }
         }
         Ok(ClientMessage::VadHint { .. }) => {
-            // Phase 0.b shell — accepted, ignored. Daemon Silero is authoritative.
+            // Accepted, ignored — daemon Silero is authoritative.
             true
         }
         Ok(ClientMessage::BargeIn {
@@ -159,7 +282,6 @@ async fn handle_control_text(
             ts_ms,
         }) => {
             info!(phrase = %phrase, score, ts_ms, "voice.wake_received");
-            // M5.1 territory; shell only logs.
             true
         }
         Ok(ClientMessage::PlaybackAck {
@@ -167,7 +289,6 @@ async fn handle_control_text(
             played_ms,
         }) => {
             debug!(chunk_id, played_ms, "voice.playback_ack");
-            // Truncation math; consumed by 0.d when sentence-streaming lands.
             true
         }
         Ok(ClientMessage::Control { action }) => {
@@ -204,7 +325,6 @@ struct VoiceSession {
     session_id: String,
     turn_id: String,
     decoder: OpusDecoder,
-    pcm: Vec<f32>,
 }
 
 impl VoiceSession {
@@ -215,7 +335,6 @@ impl VoiceSession {
             session_id,
             turn_id: format!("voice_{}", Uuid::new_v4().simple()),
             decoder,
-            pcm: Vec::new(),
         })
     }
 
