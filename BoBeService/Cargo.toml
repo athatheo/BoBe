@@ -138,3 +138,10 @@ tar = "0.4"
 # extracted lazily to ~/.cache/github-copilot-sdk-{ver}/copilot on first use).
 # The version is pinned via .cargo/config.toml `[env] COPILOT_CLI_VERSION`.
 github-copilot-sdk = { version = "0.1", features = ["embedded-cli"] }
+# Voice stack — STT (Moonshine) + TTS (Kokoro) via the official sherpa-onnx
+# Rust bindings (the upstream `sherpa-rs` crate is deprecated as of 2026).
+# `tts` enables the Kokoro/Vits TTS modules; `download-binaries` pulls a
+# prebuilt sherpa-onnx native dylib at build time, skipping CMake-from-source
+# and cutting cold build from ~20m to seconds. The Opus codec dep is added
+# with the /voice/stream WS handler; the speech module itself is codec-agnostic.
+sherpa-onnx = "1.13"

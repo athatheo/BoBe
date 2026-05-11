@@ -12,6 +12,7 @@ use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
+use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -33,6 +34,14 @@ pub(crate) struct AppState {
     pub(crate) workers: Arc<WorkerRegistry>,
     pub(crate) memory_file: Arc<MemoryFile>,
     pub(crate) ollama_install: Arc<OllamaInstallService>,
+    /// Voice — `None` when sherpa-onnx models aren't installed; `/voice/stream` 503s.
+    pub(crate) voice_stt: Option<Arc<dyn SttEngine>>,
+    pub(crate) voice_tts: Option<Arc<dyn TtsEngine>>,
+    /// Acoustic VAD (Silero v6.2.1 via sherpa-onnx). `None` when model is missing.
+    pub(crate) voice_vad: Option<Arc<dyn AcousticVad>>,
+    /// Semantic turn-detection. Stub for now (always returns 1.0); real
+    /// smart-turn-v3.1 impl wires in with the VAD pipeline.
+    pub(crate) voice_smart_turn: Option<Arc<dyn SemanticTurn>>,
 }
 
 impl AppState {

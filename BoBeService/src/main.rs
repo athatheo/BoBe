@@ -17,6 +17,7 @@ mod runtime;
 #[allow(unsafe_code)]
 mod secrets;
 mod services;
+mod speech;
 mod util;
 
 #[derive(Parser)]
