@@ -10,16 +10,18 @@
 
 | Layer | Pick | Variant | Why this, not alternatives |
 |---|---|---|---|
-| **STT** | sherpa-onnx Moonshine | **Small Streaming-en** (123MB, 7.84% WER) | Native cache-reuse streaming (NOT pseudo-streaming). No silence hallucinations (encoder-decoder Whisper has them). MIT. Daemon-portable (Apple SpeechAnalyzer = Mac-only, FluidAudio Parakeet = Swift/ANE-only, sherpa-onnx Parakeet pseudo-streaming only per Issue #2918). |
-| **TTS** | sherpa-onnx Kokoro | **v1.0 (82M)**, voice slot id (default `af_bella`) | TTS Arena #1 open-weight (ELO ~1505, no v1.5/v2 exists). Apache-2.0. CPU-runnable. Chatterbox is GPU-only + autoregressive end-token bugs; XTTS-v2 is dead post-Coqui-shutdown Dec 2025; AVSpeechSynthesizer is Mac-only and not SOTA. |
-| **Acoustic VAD** | sherpa-onnx | **TEN VAD** (fallback: Silero v5) | TEN beats Silero on F1 + detects short silences between adjacent speech segments (Silero v5 misses these — critical for natural turn-taking). Lower RTF, smaller. Daemon-side, NOT client. |
-| **Semantic VAD** | ONNX via `ort` | **smart-turn v3.1** (8MB int8) | Q1 2026 retrained drop-in for v3.0. 12ms CPU on M-class. LiveKit's 135M SmolLM-v2 turn-detector is 17× bigger for marginal gain. |
-| **Wake-word** | openWakeWord ONNX | **Custom-trained "Hey BoBe"** | Defaults are CC-BY-NC-SA (commercial-blocking). Picovoice Porcupine charges $6k/yr for custom. Train via Pipecat Colab notebook + piper-sample-generator (archived — mirror first). |
+| **STT** | sherpa-onnx 1.13.1 | **Moonshine base int8 (English, offline)** | We VAD-gate the buffer before STT, so we don't need true streaming — `OfflineRecognizer` is sufficient and simpler. Moonshine base is ~70MB, no silence hallucinations (vs Whisper encoder-decoder), MIT. Daemon-portable (Apple SpeechAnalyzer = Mac-only, FluidAudio Parakeet = Swift/ANE-only). If partial transcripts in the UI become a requirement later, swap to streaming Moonshine variant. |
+| **TTS** | sherpa-onnx 1.13.1 | **Kokoro v1.0 (82M)**, voice slot id (default `af_bella`) | TTS Arena #1 open-weight (ELO ~1505, no v1.5/v2 exists). Apache-2.0. CPU-runnable. Chatterbox is GPU-only + autoregressive end-token bugs; XTTS-v2 is dead post-Coqui-shutdown Dec 2025; AVSpeechSynthesizer is Mac-only and not SOTA. |
+| **Acoustic VAD** | sherpa-onnx 1.13.1 `VoiceActivityDetector` | **Silero v6.2.1 ONNX** (Feb 2025 release) | Silero v6.2.1 specifically addressed the short-inter-speech-silence miss case that TEN VAD's older-Silero benchmark claimed to beat. Silero is MIT (clean); TEN is Apache-2.0-with-additional-conditions + BSD-2 + BSD-3 (legal review burden). Silero ships in LiveKit Agents, Pipecat, Whisper.cpp — dozens of production agents. Same M1 RTF tier as TEN (~0.016). Daemon-side (co-locate with smart-turn so both see same audio frames). |
+| **Semantic VAD** | `ort` 2.0.0-rc.12 directly | **smart-turn v3.1** (8MB int8 ONNX) | Q1 2026 retrained drop-in for v3.0. 12ms CPU on M-class. NOT in sherpa-onnx, so loaded directly via ort. Whisper mel preprocessing reimplemented in Rust. LiveKit's 135M SmolLM-v2 turn-detector is 17× bigger for marginal gain. |
+| **Wake-word** | `ort` 2.0.0-rc.12 directly | **Custom-trained "Hey BoBe" openWakeWord ONNX** | Defaults are CC-BY-NC-SA (commercial-blocking). Picovoice Porcupine charges $6k/yr for custom. Train via Pipecat Colab notebook + piper-sample-generator (archived — mirror first). Client-side. |
 | **LLM** | github-copilot-sdk | **0.1.x** (already in pivot Cargo.toml) | Native `session.abort()`, `DeliveryMode::{Immediate, Enqueue}`, `session.subscribe()`. No alternative needed. |
-| **Codec** | `opus` crate | **0.3.x** | Industry standard for voice. 20ms frames, 24kbps VOIP. swift-opus on the Swift side (pinned revision from spike). |
+| **Codec** | `opus = "0.3"` (Rust) + swift-opus pinned revision (Swift) | 20ms frames, 24kbps VOIP | Industry standard for voice. |
 | **AEC** | AVAudioEngine | **VPIO on both input + output nodes**, single engine | Apple's full-duplex stack. `voiceProcessingOtherAudioDuckingConfiguration` with `.min` for soft barge-in. Half-duplex (mute-mic-during-TTS) is non-standard in 2026. |
 
-**Total model bundle**: ~340MB (Moonshine 123MB + Kokoro 85MB + smart-turn 8MB + TEN VAD ~2MB + wake-word ~250KB + espeak-ng-data ~30MB).
+**Two onnxruntime instances** loaded at startup (sherpa-onnx-sys for STT/TTS/VAD, ort for smart-turn + wake-word). This is unavoidable — smart-turn isn't in sherpa-onnx. Memory cost: ~30MB extra for the duplicate runtime, acceptable.
+
+**Total model bundle**: ~200MB (Moonshine base ~70MB + Kokoro 85MB + smart-turn 8MB + Silero v6.2.1 ~2MB + wake-word ~250KB + espeak-ng-data ~30MB).
 
 **Latency budget P95 (STT-final → first TTS audio)**:
 - TEN VAD per-frame: 10ms
@@ -174,6 +176,128 @@ Sample-rate strategy: **NO conversion at the boundary**. Uplink 16k (STT native)
 | **Voice modes** | Conversational (default, full-duplex), Dictation (no LLM response, text-only capture), Focus (mic muted, PTT only). | Aligns with Claude Code voice mode (Mar 2026) input-only pattern as one option. |
 | **Persona pushback** | System-prompt-driven. Include 3-5 verbatim pushback example phrases per soul in the prompt. NOT a hardcoded phrase library. | LiveKit "behaviors you can actually hear" guidance — phrasing must match soul persona. |
 | **Unified UI** | Voice transcripts render in the existing overlay chat history as normal messages (same `ChatMessage` model, sender `.user` or `.bobe`). Source flag for icon. | ChatGPT Nov 2025 unified voice+text confirms this is the right shape. BoBe overlay already does it. |
+
+---
+
+## 4.5. System architecture (Rust + Swift module layout)
+
+### Rust daemon (post-Phase 0)
+
+```
+BoBeService/src/
+├── speech/
+│   ├── mod.rs                    # re-exports
+│   ├── engines/                  # one trait + one impl per file
+│   │   ├── mod.rs
+│   │   ├── stt.rs                # SttEngine trait
+│   │   ├── tts.rs                # TtsEngine trait
+│   │   ├── vad.rs                # AcousticVad trait
+│   │   ├── turn.rs               # SemanticTurn trait
+│   │   ├── moonshine.rs          # SherpaMoonshineStt impl
+│   │   ├── kokoro.rs             # SherpaKokoroTts impl
+│   │   ├── silero.rs             # SherpaSileroVad impl (Silero v6.2.1)
+│   │   └── smart_turn.rs         # OrtSmartTurn impl (v3.1, mel preproc in-Rust)
+│   ├── protocol.rs               # 13-message WS DTOs
+│   ├── session.rs                # VoiceSession actor (per-WS connection)
+│   ├── sentence_buffer.rs        # LiveKit `_basic_sent.split_sentences` port (~50 LOC)
+│   ├── markdown_strip.rs         # streaming stripper (running-buffer + diff)
+│   └── pipeline/
+│       ├── mod.rs
+│       ├── vad_pipeline.rs       # frame → Silero → smart-turn → commit-ready signal
+│       └── tts_pipeline.rs       # sentence → Kokoro spawn_blocking → Opus → WS
+├── api/handlers/voice.rs         # thin WS upgrade; delegates to VoiceSession
+├── model_manager/                # new module (NOT extending binary_manager)
+│   ├── mod.rs
+│   ├── source.rs                 # ModelSource trait
+│   ├── hf.rs                     # HuggingFaceSource via hf-hub
+│   └── installer.rs              # atomic install + sha verify + `current` symlink
+├── app_state.rs                  # +voice_stt, voice_tts, voice_vad, voice_smart_turn,
+│                                 #  voice_session_handle (ArcSwap<Option<VoiceSessionHandle>>)
+└── runtime/
+    ├── message_handler.rs        # +handle_message_with_observer (text passes |_| {})
+    └── session.rs                # +handle_user_message_with_observer
+```
+
+### Swift client (post-Phase 0)
+
+```
+BoBeMacUI/BoBe/Voice/
+├── VoicePipeline.swift           # @MainActor Observable; owns state, WS, audio engines
+├── VoiceWS.swift                 # URLSessionWebSocketTask wrapper + protocol enc/dec
+├── AudioCapture.swift            # AVAudioEngine VPIO input + RMS hint + Opus encode
+├── AudioPlayback.swift           # AVAudioPlayerNode queue + crossfade + ducking
+├── VoiceState.swift              # State enum + transition rules
+├── MicButton.swift               # Overlay button view (integrates with composerSection)
+└── VoiceProtocol.swift           # 13-message Codable structs
+```
+
+### Voice session actor (per WS connection, Rust)
+
+```rust
+struct VoiceSession {
+    session_id: String,
+    pcm_buffer: Vec<f32>,                          // 16k mono PCM accumulator
+    vad_state: VadState,                           // listening / capturing / committed
+    silero: Arc<dyn AcousticVad>,
+    smart_turn: Arc<dyn SemanticTurn>,
+    stt: Arc<dyn SttEngine>,
+    tts: Arc<dyn TtsEngine>,
+    runtime_session: Arc<RuntimeSession>,          // for try_begin_user_message + chat path
+    sentence_tx: mpsc::Sender<String>,             // → tts_pipeline task
+    current_turn: Option<TurnState>,               // turn_id, _guard, handler JoinHandle
+}
+```
+
+### State machine (daemon-authoritative; client mirrors for UI)
+
+```
+Idle ──speech_start (Silero)─▶ Listening
+   ▲                              │
+   │                              ▼
+   │              silence (700ms) + smart_turn(complete)
+   │                              │
+   │              smart_turn(incomplete) → Listening (reset)
+   │                              │
+   │                              ▼
+   │                          Capturing ──STT done──▶ Thinking
+   │                                                     │
+   │                                                     ▼
+   │                                  first sentence ready → Speaking
+   │                                                     │
+   └──────────── all sentences done ────────────────────┘
+                                                         │
+client.barge_in + min_words≥3 (during Speaking) ────────▶ Cancelling
+                                                         │
+                                                drain + abort ─▶ Idle
+```
+
+### Single-flight invariant
+
+- `UserMessageGuard` acquired by VoiceSession at smart-turn confirmation (Capturing → Thinking transition)
+- Held through STT + LLM stream + last TTS Opus frame sent
+- Dropped on `tts.end` emission OR on barge-in cancel cleanup
+- `barge_in` event does NOT acquire the guard (the cancelling task already holds it)
+
+### Barge-in three-event protocol on pivot
+
+1. Drop the `Stream<ChatDelta>` returned from `worker.send()` → AbortGuard at `workers/chat.rs:26-45` fires `session.abort()` automatically (no manual SDK call needed)
+2. Send `truncate { turn_id, keep_ms = client_played_ms }` over WS → client drops queued audio beyond `keep_ms` and reports back its actual playback position
+3. Daemon updates persisted assistant turn to `text.truncate(char_offset_at_played_ms)` so memory matches what the user actually heard
+
+### Observer hook at `message_handler.rs:103`
+
+Currently `|_| {}` for text chat. For voice, replace with:
+
+```rust
+move |delta_str: &str| {
+    let clean = markdown_strip.feed(delta_str);    // running-buffer + diff
+    for sentence in sentence_buffer.feed(clean) {
+        let _ = sentence_tx.try_send(sentence);    // → Kokoro spawn_blocking task
+    }
+}
+```
+
+Text chat callers continue with `|_| {}`. Zero behavioral impact.
 
 ---
 
