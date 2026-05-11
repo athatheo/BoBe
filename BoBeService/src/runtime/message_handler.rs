@@ -39,7 +39,24 @@ impl MessageHandler {
         }
     }
 
+    /// Default text-chat entry point. The observer is a no-op so SSE deltas
+    /// are the only consumer of token text.
     pub(crate) async fn handle_message(&self, content: &str, message_id: &str) {
+        self.handle_message_with_observer(content, message_id, |_: &str| {})
+            .await;
+    }
+
+    /// Variant that lets the caller subscribe to text deltas in addition to
+    /// SSE delivery. Voice uses this to pipe the same tokens into a
+    /// sentence buffer for Kokoro TTS without touching the text-chat path.
+    pub(crate) async fn handle_message_with_observer<F>(
+        &self,
+        content: &str,
+        message_id: &str,
+        on_text_delta: F,
+    ) where
+        F: FnMut(&str) + Send,
+    {
         if let Err(e) = self.cooldown_repo.update_last_user_response(Utc::now()).await {
             warn!(error = %e, "message_handler.cooldown_update_failed");
         }
@@ -50,7 +67,7 @@ impl MessageHandler {
             return;
         };
 
-        self.respond_to_message(message_id, content, conversation_id)
+        self.respond_to_message(message_id, content, conversation_id, on_text_delta)
             .await;
     }
 
@@ -68,15 +85,21 @@ impl MessageHandler {
         }
     }
 
-    async fn respond_to_message(
+    async fn respond_to_message<F>(
         &self,
         msg_id: &str,
         user_content: &str,
         conversation_id: ConversationId,
-    ) {
+        on_text_delta: F,
+    ) where
+        F: FnMut(&str) + Send,
+    {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
-        let result = match self.send_via_chat_worker(user_content, msg_id).await {
+        let result = match self
+            .send_via_chat_worker(user_content, msg_id, on_text_delta)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "message_handler.chat_worker_failed");
@@ -89,18 +112,22 @@ impl MessageHandler {
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
-    async fn send_via_chat_worker(
+    async fn send_via_chat_worker<F>(
         &self,
         user_content: &str,
         msg_id: &str,
-    ) -> Result<crate::runtime::response_streamer::StreamResult, AppError> {
+        on_text_delta: F,
+    ) -> Result<crate::runtime::response_streamer::StreamResult, AppError>
+    where
+        F: FnMut(&str) + Send,
+    {
         let worker = self.workers.chat().await?;
         let chat_stream = worker
             .send(ChatPrompt::text(user_content))
             .await
             .map_err(|e| AppError::Internal(format!("chat_worker.send: {e}")))?;
         info!(msg_id, "message_handler.stream_start");
-        Ok(stream_chat_delta_response(chat_stream, &self.event_queue, Some(msg_id), |_| {}).await)
+        Ok(stream_chat_delta_response(chat_stream, &self.event_queue, Some(msg_id), on_text_delta).await)
     }
 
     async fn persist_response(

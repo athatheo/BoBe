@@ -149,3 +149,7 @@ sherpa-onnx = "1.13"
 # Vendors libopus through cmake; needs CMAKE_POLICY_VERSION_MINIMUM=3.5 in env
 # to build on toolchains where cmake's minimum-required version is enforced.
 opus = "0.3"
+# Markdown stripping before Kokoro TTS — Kokoro speaks **asterisks** and
+# `backticks` literally otherwise. Used by speech::markdown_strip with
+# precompiled LazyLock regex set.
+regex = "1"

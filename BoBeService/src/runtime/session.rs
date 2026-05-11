@@ -255,6 +255,22 @@ impl RuntimeSession {
             .await;
     }
 
+    /// Voice variant: caller installs a text-delta observer that runs in
+    /// addition to the SSE EventQueue path. Used to fan tokens into a
+    /// sentence buffer for Kokoro TTS without touching the text-chat flow.
+    pub(crate) async fn handle_user_message_with_observer<F>(
+        &self,
+        content: &str,
+        message_id: &str,
+        on_text_delta: F,
+    ) where
+        F: FnMut(&str) + Send,
+    {
+        self.message_handler
+            .handle_message_with_observer(content, message_id, on_text_delta)
+            .await;
+    }
+
     pub(crate) fn try_begin_user_message(&self) -> Result<UserMessageGuard, &'static str> {
         if self
             .user_message_in_flight
