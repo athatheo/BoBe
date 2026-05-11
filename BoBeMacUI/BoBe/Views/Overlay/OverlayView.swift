@@ -186,13 +186,17 @@ struct OverlayView: View {
     @ViewBuilder
     private var composerSection: some View {
         if self.isChatVisible {
-            MessageInput(
-                text: self.$draftMessage,
-                onSend: self.handleSendMessage,
-                onClose: { self.closeChat(userInitiated: true) },
-                feedbackMessage: self.composerFeedback,
-                isBusy: self.store.composerBlockReason != nil
-            )
+            HStack(alignment: .center, spacing: 8) {
+                MessageInput(
+                    text: self.$draftMessage,
+                    onSend: self.handleSendMessage,
+                    onClose: { self.closeChat(userInitiated: true) },
+                    feedbackMessage: self.composerFeedback,
+                    isBusy: self.store.composerBlockReason != nil
+                )
+                .layoutPriority(1)
+                MicButton()
+            }
             .padding(.horizontal, 12)
             .zIndex(1)
             .transition(self.overlaySectionTransition)

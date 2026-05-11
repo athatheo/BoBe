@@ -293,6 +293,24 @@ final class BobeStore {
         }
     }
 
+    /// Voice variant — the daemon has already persisted the user turn server-side
+    /// (via `handle_user_message_with_observer`), so we just mirror it into the
+    /// overlay chat history without firing another HTTP send.
+    func appendUserVoiceMessage(_ content: String) {
+        self.cancelConversationClear()
+        let userMessage = ChatMessage(
+            id: "voice-\(Int(Date().timeIntervalSince1970 * 1000))",
+            sender: .user,
+            content: content,
+            isPending: false
+        )
+        self.updateState { ctx in
+            ctx.errorMessage = nil
+            ctx.conversationEnding = false
+            ctx.messages.append(userMessage)
+        }
+    }
+
     func sendMessage(_ content: String) async {
         self.cancelConversationClear()
         let userMessage = ChatMessage(
