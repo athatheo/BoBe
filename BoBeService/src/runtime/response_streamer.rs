@@ -1,8 +1,8 @@
 use std::pin::Pin;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::constants::MILLIS_PER_SECOND;
@@ -12,6 +12,11 @@ use crate::util::sse::factories::{
     end_of_turn_event, error_event, text_delta_event, tool_call_complete_event,
     tool_call_start_event,
 };
+
+/// Inter-token gap above which we consider the LLM stream stalled. Production
+/// pattern (LiveKit, Pipecat) treats >500-800ms gaps as a stall worth audible
+/// feedback. M4.5.6 logs only; M4.5.4 will surface a cached filler clip.
+const STALL_THRESHOLD: Duration = Duration::from_millis(800);
 
 #[derive(Debug)]
 pub(crate) struct StreamResult {
@@ -80,14 +85,34 @@ where
     F: FnMut(&str) + Send,
 {
     let mut state = StreamAccumulator::new(msg_id);
+    let mut last_token_at: Option<Instant> = None;
+    let mut stall_count: u32 = 0;
 
     while let Some(delta) = stream.next().await {
         match delta {
             ChatDelta::MessageDelta(text) => {
                 if !text.is_empty() {
+                    let now = Instant::now();
                     if state.first_token_time.is_none() {
-                        state.first_token_time = Some(Instant::now());
+                        state.first_token_time = Some(now);
                     }
+                    // Stall watchdog (M4.5.6): emit a structured log every time
+                    // the inter-token gap exceeds the threshold. M4.5.4 will
+                    // hook this to fire a cached filler clip.
+                    if let Some(prev) = last_token_at {
+                        let gap = now.duration_since(prev);
+                        if gap > STALL_THRESHOLD {
+                            stall_count = stall_count.saturating_add(1);
+                            warn!(
+                                msg_id = state.msg_id(),
+                                gap_ms = gap.as_millis() as u64,
+                                stall_count,
+                                "voice.stream.inter_token_stall"
+                            );
+                        }
+                    }
+                    last_token_at = Some(now);
+
                     state.full_response.push_str(&text);
                     on_text_delta(&text);
                     event_queue.push(text_delta_event(
