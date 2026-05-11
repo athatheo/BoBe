@@ -83,7 +83,7 @@ anyhow = "1.0.102"
 async-stream = "0.3.6"
 arc-swap = "1.8.2"
 async-trait = "0.1.89"
-axum = { version = "0.8.8", features = ["macros"] }
+axum = { version = "0.8.8", features = ["macros", "ws"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.5.60", features = ["derive"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
@@ -145,3 +145,7 @@ github-copilot-sdk = { version = "0.1", features = ["embedded-cli"] }
 # and cutting cold build from ~20m to seconds. The Opus codec dep is added
 # with the /voice/stream WS handler; the speech module itself is codec-agnostic.
 sherpa-onnx = "1.13"
+# Opus codec for the /voice/stream WS — 20ms frames, VOIP profile, ~24kbps.
+# Vendors libopus through cmake; needs CMAKE_POLICY_VERSION_MINIMUM=3.5 in env
+# to build on toolchains where cmake's minimum-required version is enforced.
+opus = "0.3"

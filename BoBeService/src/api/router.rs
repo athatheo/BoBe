@@ -126,6 +126,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/tools/mcp/config/validate",
             post(handlers::tools_mcp::validate_mcp_config),
         )
+        .route("/voice/stream", get(handlers::voice::voice_stream))
         .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
