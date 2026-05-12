@@ -82,21 +82,31 @@ impl FillerLibrary {
         self.inner.get(&kind).map(Arc::clone)
     }
 
-    /// Synthesize every `FillerKind` variant using the provided TTS engine.
-    /// Failures are non-fatal — the missing kind is omitted from the map and
-    /// callers fall through to silence for that intent. Total synthesis is
-    /// blocking and sequential; bootstrap can afford a few hundred ms here.
+    /// Synthesize every `FillerKind` variant in parallel using the provided
+    /// TTS engine. Failures are non-fatal — the missing kind is omitted and
+    /// callers fall through to silence for that intent. spawn_blocking runs
+    /// each synth on the blocking pool; for 7 short phrases on a system
+    /// without per-engine locking this drops bootstrap delay from ~2-5s
+    /// (sequential) to roughly the longest single phrase.
     pub(crate) async fn render(tts: Arc<dyn TtsEngine>) -> Self {
         const VOICE: &str = "af_bella";
         let sample_rate = tts.sample_rate();
-        let mut inner = HashMap::new();
-        for kind in FillerKind::all() {
-            let phrase = kind.phrase();
+        let kinds = FillerKind::all();
+        let futs = kinds.iter().map(|kind| {
             let tts_clone = Arc::clone(&tts);
-            let result = tokio::task::spawn_blocking(move || {
-                tts_clone.synthesize(phrase, VOICE, 1.0)
-            })
-            .await;
+            let phrase = kind.phrase();
+            let k = *kind;
+            async move {
+                let result = tokio::task::spawn_blocking(move || {
+                    tts_clone.synthesize(phrase, VOICE, 1.0)
+                })
+                .await;
+                (k, phrase, result)
+            }
+        });
+        let results = futures::future::join_all(futs).await;
+        let mut inner = HashMap::new();
+        for (kind, phrase, result) in results {
             match result {
                 Ok(Ok(pcm)) => {
                     info!(
@@ -105,7 +115,7 @@ impl FillerLibrary {
                         samples = pcm.len(),
                         "voice.filler_rendered"
                     );
-                    inner.insert(*kind, Arc::new(pcm));
+                    inner.insert(kind, Arc::new(pcm));
                 }
                 Ok(Err(e)) => {
                     warn!(kind = ?kind, error = %e, "voice.filler_synth_failed");

@@ -298,7 +298,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
         info!(session = %s.session_id, "voice.disconnect");
     }
-    drop(keepalive);
     drop(out_tx);
     match writer.await {
         Ok(()) => {}
@@ -367,8 +366,6 @@ async fn process_turn(
     voice_cfg: SessionVoiceConfig,
 ) {
     let turn_start = Instant::now();
-    voice_turn_active.store(true, Ordering::Release);
-    let _voice_flag = VoiceTurnFlag(Arc::clone(&voice_turn_active));
 
     // Semantic turn gate — discard if the user isn't really done yet.
     match engines.smart_turn.probability_complete(&segment.samples) {
@@ -387,6 +384,14 @@ async fn process_turn(
             return;
         }
     };
+
+    // Flag set AFTER single-flight admission — otherwise a microsecond
+    // window between flag-set and try_begin_user_message failure could let
+    // another worker class's UserPromptSubmitted hook see voice_mode=true
+    // and inject the voice-tone hint into a non-voice turn. RAII guard
+    // clears on drop including panic-unwind.
+    voice_turn_active.store(true, Ordering::Release);
+    let _voice_flag = VoiceTurnFlag(Arc::clone(&voice_turn_active));
 
     send_state(&out_tx, VoicePhase::Thinking, &turn_id).await;
 

@@ -118,9 +118,19 @@ impl SessionHooks for BobeHooks {
                     original_chars = result_str.len(),
                     "voice.post_tool_summary"
                 );
+                // Include tool_name + the original `success`-shaped fields
+                // when present so the LLM keeps semantic context past the
+                // truncation boundary; mid-JSON cut inside `head` is
+                // expected.
+                let success = input
+                    .tool_result
+                    .get("success")
+                    .and_then(serde_json::Value::as_bool);
                 HookOutput::PostToolUse(PostToolUseOutput {
                     modified_result: Some(serde_json::json!({
+                        "tool_name": input.tool_name,
                         "summary": format!("{head}…"),
+                        "success": success,
                         "truncated_for_voice": true,
                         "original_chars": result_str.len(),
                     })),
