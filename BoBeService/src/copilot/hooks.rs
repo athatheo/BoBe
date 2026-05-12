@@ -1,5 +1,6 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
@@ -10,7 +11,7 @@ use github_copilot_sdk::hooks::{
 
 use super::memory_file::MemoryFile;
 use super::types::WorkerClass;
-use crate::voice::filler_library::FillerLibrary;
+use crate::voice::filler_library::{FillerKind, FillerLibrary};
 use crate::voice::sinks::{VoiceSink, emit_filler, filler_for_tool};
 
 /// Voice tone hint appended to UserPromptSubmitted context when the current
@@ -30,6 +31,11 @@ const VOICE_TONE_HINT: &str = concat!(
 /// Anthropic cookbook PostToolUse pattern.
 const VOICE_TOOL_RESULT_TRUNCATE_CHARS: usize = 800;
 
+/// If a second PreToolUse fires within this window of the first, switch
+/// the second tool's filler from per-tool to compound ("Looking into a
+/// few things") so two parallel tools don't read like a recipe.
+const COMPOUND_FILLER_WINDOW_MS: u64 = 100;
+
 pub(crate) struct BobeHooks {
     class: WorkerClass,
     memory_file: Arc<MemoryFile>,
@@ -40,6 +46,11 @@ pub(crate) struct BobeHooks {
     voice_sink: Arc<VoiceSink>,
     /// Pre-rendered filler PCM catalog. `None` when TTS isn't loaded.
     voice_filler_library: Option<Arc<FillerLibrary>>,
+    /// Wall-clock ms of the most recent PreToolUse fire; 0 means none yet.
+    /// Used to debounce parallel tool calls into a compound filler so two
+    /// tools firing within 100ms get one "Looking into a few things" instead
+    /// of stacked per-tool phrases.
+    last_pretool_at_ms: AtomicU64,
 }
 
 impl BobeHooks {
@@ -56,6 +67,7 @@ impl BobeHooks {
             voice_turn_active,
             voice_sink,
             voice_filler_library,
+            last_pretool_at_ms: AtomicU64::new(0),
         })
     }
 
@@ -134,14 +146,28 @@ impl SessionHooks for BobeHooks {
                 }
                 // Per-tool filler: emit cached PCM via the active voice sink
                 // so the user hears "Let me search the web…" / "One sec…"
-                // within ~50ms of the tool call starting. Side-effect only;
-                // we always allow the tool itself to proceed.
+                // within ~50ms of the tool call starting. If a second
+                // PreToolUse fires within COMPOUND_FILLER_WINDOW_MS the
+                // second emission becomes ToolGeneric ("Looking into a few
+                // things") instead of stacking another per-tool phrase.
                 if let Some(library) = self.voice_filler_library.as_ref() {
-                    let kind = filler_for_tool(&input.tool_name);
+                    let now_ms = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    let prev_ms = self.last_pretool_at_ms.swap(now_ms, Ordering::AcqRel);
+                    let in_burst =
+                        prev_ms != 0 && now_ms.saturating_sub(prev_ms) < COMPOUND_FILLER_WINDOW_MS;
+                    let kind = if in_burst {
+                        FillerKind::ToolGeneric
+                    } else {
+                        filler_for_tool(&input.tool_name)
+                    };
                     tracing::debug!(
                         session = %ctx.session_id,
                         tool = %input.tool_name,
                         ?kind,
+                        in_burst,
                         "voice.pre_tool_filler"
                     );
                     emit_filler(&self.voice_sink, library, kind).await;
