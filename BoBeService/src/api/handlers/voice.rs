@@ -12,6 +12,8 @@
 //!   - Disconnect → abort any in-flight turn before tearing down.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
@@ -27,7 +29,8 @@ use crate::app_state::AppState;
 use crate::runtime::session::RuntimeSession;
 use crate::speech::markdown_strip::MarkdownStripper;
 use crate::speech::protocol::{
-    encode_tts_frame, ClientMessage, ControlAction, ServerMessage, VoicePhase, FLAG_FIRST_OF_TURN,
+    encode_tts_frame, ClientMessage, ControlAction, ServerMessage, VoicePhase, FLAG_FILLER,
+    FLAG_FIRST_OF_TURN,
 };
 use crate::speech::sentence_buffer::SentenceBuffer;
 use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
@@ -45,6 +48,12 @@ const SENTENCE_CHANNEL_CAPACITY: usize = 16;
 /// Smart-turn pass-through threshold. Stub returns 1.0 → trivially passes;
 /// real smart-turn v3.1 (M4.5.2) will gate here.
 const TURN_COMPLETE_THRESHOLD: f32 = 0.7;
+
+/// Time-to-first-audio budget. If the Kokoro task hasn't pushed any audio
+/// frames by this deadline (the LLM is slow or the first sentence is still
+/// buffering), the filler watchdog emits the pre-rendered cached phrase.
+/// Matches LiveKit/Pipecat/ElevenLabs production threshold.
+const FILLER_TRIGGER: Duration = Duration::from_millis(800);
 
 /// Default voice slot — replaced by per-soul `voice_id` setting in M4.5.0c.
 const DEFAULT_KOKORO_VOICE: &str = "af_bella";
@@ -65,6 +74,10 @@ struct VoiceEngines {
     tts: Arc<dyn TtsEngine>,
     vad: Arc<dyn AcousticVad>,
     smart_turn: Arc<dyn SemanticTurn>,
+    /// Pre-rendered filler PCM, populated at bootstrap. `None` when TTS
+    /// failed to render it; turn still works, just silent during the
+    /// LLM-think gap.
+    filler_pcm: Option<Arc<Vec<f32>>>,
 }
 
 impl VoiceEngines {
@@ -74,6 +87,7 @@ impl VoiceEngines {
             tts: Arc::clone(state.voice_tts.as_ref()?),
             vad: Arc::clone(state.voice_vad.as_ref()?),
             smart_turn: Arc::clone(state.voice_smart_turn.as_ref()?),
+            filler_pcm: state.voice_filler_pcm.as_ref().map(Arc::clone),
         })
     }
 }
@@ -295,12 +309,19 @@ async fn process_turn(
 
     // Spin up the per-turn TTS pipeline
     send_state(&out_tx, VoicePhase::Speaking, &turn_id).await;
+    let first_audio_emitted = Arc::new(AtomicBool::new(false));
+    let filler_task = spawn_filler_watchdog(
+        engines.filler_pcm.as_ref().map(Arc::clone),
+        engines.tts.sample_rate(),
+        Arc::clone(&first_audio_emitted),
+        out_tx.clone(),
+    );
     let (sentence_tx, sentence_rx) = mpsc::channel::<String>(SENTENCE_CHANNEL_CAPACITY);
     let kokoro_task = spawn_kokoro_task(
         Arc::clone(&engines.tts),
         sentence_rx,
         out_tx.clone(),
-        turn_id.clone(),
+        Arc::clone(&first_audio_emitted),
     );
 
     let pipeline = Arc::new(std::sync::Mutex::new(SentencePipeline::new(
@@ -332,6 +353,12 @@ async fn process_turn(
             debug!("voice.kokoro_task_cancelled");
         }
         Err(e) => warn!(error = %e, "voice.kokoro_task_join_failed"),
+    }
+
+    // Cancel the filler watchdog if it hasn't fired yet (LLM was fast enough).
+    if let Some(handle) = filler_task {
+        handle.abort();
+        drop(handle.await);
     }
 
     send_json(
@@ -385,7 +412,7 @@ fn spawn_kokoro_task(
     tts: Arc<dyn TtsEngine>,
     mut sentence_rx: mpsc::Receiver<String>,
     out_tx: mpsc::Sender<Message>,
-    _turn_id: String,
+    first_audio_emitted: Arc<AtomicBool>,
 ) -> tokio::task::JoinHandle<()> {
     let sample_rate = tts.sample_rate();
     tokio::spawn(async move {
@@ -414,6 +441,9 @@ fn spawn_kokoro_task(
                 if first_chunk_pending {
                     flags |= FLAG_FIRST_OF_TURN;
                     first_chunk_pending = false;
+                    // Claim the "first audio emitted" slot so the filler
+                    // watchdog skips even if it's about to fire.
+                    first_audio_emitted.swap(true, Ordering::AcqRel);
                 }
                 let framed = encode_tts_frame(chunk_id, flags, &opus_packet);
                 chunk_id = chunk_id.saturating_add(1);
@@ -423,6 +453,37 @@ fn spawn_kokoro_task(
             }
         }
     })
+}
+
+/// 800ms TTFT filler watchdog. Sleeps then races the Kokoro task for the
+/// "first audio emitted" flag. If we win (Kokoro hasn't produced anything
+/// yet), encode the pre-rendered filler PCM as Opus 20ms frames and stream
+/// them with `FLAG_FILLER` set so the client knows they're preemptible.
+/// Returns `None` when there's no filler cache available (graceful no-op).
+fn spawn_filler_watchdog(
+    filler_pcm: Option<Arc<Vec<f32>>>,
+    sample_rate: u32,
+    first_audio_emitted: Arc<AtomicBool>,
+    out_tx: mpsc::Sender<Message>,
+) -> Option<JoinHandle<()>> {
+    let pcm = filler_pcm?;
+    Some(tokio::spawn(async move {
+        tokio::time::sleep(FILLER_TRIGGER).await;
+        // Atomic claim — if Kokoro already emitted, swap returns true and we exit.
+        if first_audio_emitted.swap(true, Ordering::AcqRel) {
+            debug!("voice.filler_skipped_kokoro_already_emitted");
+            return;
+        }
+        debug!(samples = pcm.len(), "voice.filler_emit");
+        let mut chunk_id: u64 = 0;
+        for opus_packet in encode_opus_frames(&pcm, sample_rate) {
+            let framed = encode_tts_frame(chunk_id, FLAG_FILLER, &opus_packet);
+            chunk_id = chunk_id.saturating_add(1);
+            if out_tx.send(Message::Binary(framed.into())).await.is_err() {
+                return;
+            }
+        }
+    }))
 }
 
 fn encode_opus_frames(pcm: &[f32], sample_rate: u32) -> Vec<Vec<u8>> {

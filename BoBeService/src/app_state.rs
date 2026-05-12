@@ -42,6 +42,11 @@ pub(crate) struct AppState {
     /// Semantic turn-detection. Stub for now (always returns 1.0); real
     /// smart-turn-v3.1 impl wires in with the VAD pipeline.
     pub(crate) voice_smart_turn: Option<Arc<dyn SemanticTurn>>,
+    /// Pre-rendered filler PCM ("Hmm, let me think.") — emitted by the
+    /// /voice/stream handler when LLM TTFT exceeds 800ms. `None` when TTS
+    /// engine isn't loaded or synthesis failed; voice still works, just
+    /// with silence during the LLM-think gap.
+    pub(crate) voice_filler_pcm: Option<Arc<Vec<f32>>>,
 }
 
 impl AppState {
