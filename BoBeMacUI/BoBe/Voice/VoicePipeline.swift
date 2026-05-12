@@ -62,6 +62,16 @@ public final class VoicePipeline {
 
     private var isWarm = false
 
+    /// Barge-in detection tuning. During `.speaking`, sustained mic energy
+    /// above `bargeInRmsDbfs` for `bargeInFramesNeeded` consecutive 20ms
+    /// frames (= 60ms) sends a `barge_in` message. VPIO AEC removes most of
+    /// BoBe's own voice from the mic; the higher dBFS floor (vs. normal
+    /// speech detection at -45) avoids residual-echo false positives.
+    private let bargeInRmsDbfs: Float = -40
+    private let bargeInFramesNeeded: Int = 3
+    private var bargeInCount: Int = 0
+    private var bargeInSent: Bool = false
+
     private init() {
         self.audioEngine.attach(self.playerNode)
         // Connect the player chain once with Kokoro's native format. This
@@ -252,11 +262,62 @@ public final class VoicePipeline {
         self.updateRms(samples: samples)
 
         // Encode + send full 20ms frames; daemon expects continuous stream.
+        // Per-frame RMS is also fed to the barge-in detector.
         while self.pcmAccumulator.count >= self.captureFrameSamples {
             let slice = Array(self.pcmAccumulator.prefix(self.captureFrameSamples))
             self.pcmAccumulator.removeFirst(self.captureFrameSamples)
+            let frameRms = self.rmsDbfs(of: slice)
+            self.checkBargeIn(frameRms: frameRms)
             self.sendEncodedFrame(samples: slice, encoder: encoder, task: task)
         }
+    }
+
+    private func rmsDbfs(of samples: [Int16]) -> Float {
+        guard !samples.isEmpty else { return -100 }
+        var sumSquares: Double = 0
+        for s in samples {
+            let f = Double(s) / 32_768.0
+            sumSquares += f * f
+        }
+        let rms = sqrt(sumSquares / Double(samples.count))
+        return rms > 1e-9 ? Float(20 * log10(rms)) : -100
+    }
+
+    /// Per-frame barge-in detector. Only fires during `.speaking`; resets in
+    /// every other state so we don't carry stale counts between turns. Sends
+    /// `barge_in` with the current playback position so the daemon can
+    /// truncate the persisted assistant turn to what the user actually heard.
+    private func checkBargeIn(frameRms: Float) {
+        guard self.state == .speaking else {
+            self.bargeInCount = 0
+            self.bargeInSent = false
+            return
+        }
+        if frameRms > self.bargeInRmsDbfs {
+            self.bargeInCount += 1
+            if self.bargeInCount >= self.bargeInFramesNeeded, !self.bargeInSent {
+                self.bargeInSent = true
+                let playedMs = self.currentPlaybackMs()
+                let tsMs = UInt64(Date().timeIntervalSince1970 * 1_000)
+                logger.info("voice.barge_in_sending playedMs=\(playedMs)")
+                Task { [weak self] in
+                    await self?.sendClient(.bargeIn(tsMs: tsMs, playbackMsPlayed: playedMs))
+                }
+            }
+        } else {
+            self.bargeInCount = 0
+        }
+    }
+
+    /// Best-effort current playback position in ms, derived from the player
+    /// node's render clock. ~100ms staleness is fine for truncation math.
+    private func currentPlaybackMs() -> UInt64 {
+        guard let lastRenderTime = self.playerNode.lastRenderTime,
+              let playerTime = self.playerNode.playerTime(forNodeTime: lastRenderTime) else {
+            return 0
+        }
+        let ms = Double(playerTime.sampleTime) * 1_000.0 / self.playbackSampleRate
+        return UInt64(max(0, ms))
     }
 
     private func sendEncodedFrame(
@@ -446,11 +507,22 @@ public final class VoicePipeline {
         }
     }
 
+    /// Drop any queued audio past `keepMs` of playback. AVAudioPlayerNode's
+    /// `stop()` unschedules all pending buffers; we then `reset()` to clear
+    /// the timeline and `play()` to keep the node ready for the next turn.
+    ///
+    /// Sample-accurate truncation (keeping the first `keepMs` of in-flight
+    /// audio and dropping only the tail) would require splitting the current
+    /// PCM buffer at the right sample offset. For barge-in v1 we just stop
+    /// everything immediately — the user's speech intent overrides whatever
+    /// fragment is in flight.
     private func truncatePlayback(keepMs _: UInt64) {
-        // Phase 0.e: simple stop+reset. M4.5.5 will refine this with a
-        // sample-accurate keep-window via the AVAudioPlayerNode timeline.
         self.playerNode.stop()
+        self.playerNode.reset()
         self.playerNode.play()
+        // Reset barge-in latch so the user can interrupt again on the next turn.
+        self.bargeInCount = 0
+        self.bargeInSent = false
     }
 
     private func sendClient(_ msg: ClientVoiceMessage) async {

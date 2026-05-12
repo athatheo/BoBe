@@ -1,24 +1,15 @@
-//! WS endpoint `/voice/stream`. Phase 0.d: end-to-end voice turn.
+//! WS endpoint `/voice/stream`.
 //!
-//! Flow on a complete turn:
-//!   1. Handshake → state(Listening)
-//!   2. audio.in binary → Opus decode → Silero VAD per-frame
-//!   3. Silero emits SpeechSegment → smart-turn gate → STT
-//!   4. transcript.final → state(Thinking) → state(Speaking)
-//!   5. Call runtime_session.handle_user_message_with_observer with a
-//!      sentence-buffer observer. Observer pipes deltas → markdown_stripper
-//!      → sentence_buffer → mpsc to a Kokoro spawn_blocking consumer.
-//!   6. Kokoro task synthesises per sentence → Opus 20ms frames → binary
-//!      tts.chunk over WS (single dedicated WS writer task; both the main
-//!      loop and Kokoro task post Messages via mpsc).
-//!   7. LLM stream ends → flush sentence buffer → close sentence_tx → Kokoro
-//!      drains → tts.end → state(Listening) → drop UserMessageGuard.
-//!
-//! Still TODO in M4.5.x:
-//!   - Barge-in (0.d is sequential — no mid-turn interrupt yet)
-//!   - Cached filler audio at 800ms TTFT
-//!   - Stall watchdog
-//!   - Wake-word integration
+//! Lifecycle per session:
+//!   - WS upgrade + handshake (rate + codec validation)
+//!   - Audio decode → Silero VAD per-frame → speech-segment queue
+//!   - On segment: smart-turn gate → spawn a per-turn task (`process_turn`)
+//!     that runs STT + chat pipeline + Kokoro TTS in the background while
+//!     the WS rx loop keeps reading control messages.
+//!   - Client BargeIn → main loop aborts the current turn JoinHandle →
+//!     UserMessageGuard drops + AbortGuard on the SDK stream fires
+//!     `session.abort()` → Truncate + state(Listening) sent to client.
+//!   - Disconnect → abort any in-flight turn before tearing down.
 
 use std::sync::Arc;
 
@@ -28,6 +19,7 @@ use axum::response::IntoResponse;
 use futures::{SinkExt, StreamExt};
 use opus::{Application, Channels, Decoder as OpusDecoder, Encoder as OpusEncoder};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -65,6 +57,9 @@ pub(crate) async fn voice_stream(
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
+/// Engines fanned out per WS connection. `Clone` is cheap (4 `Arc::clone`s)
+/// so we can pass an owned copy into each spawned turn task.
+#[derive(Clone)]
 struct VoiceEngines {
     stt: Arc<dyn SttEngine>,
     tts: Arc<dyn TtsEngine>,
@@ -83,6 +78,21 @@ impl VoiceEngines {
     }
 }
 
+/// Per-WS state — one struct, lives in the handle_socket future scope.
+struct VoiceSession {
+    session_id: String,
+    decoder: OpusDecoder,
+    /// JoinHandle on the spawned `process_turn` task plus the turn_id it owns.
+    /// `None` outside a turn; populated when audio commits, taken when a
+    /// barge-in or natural completion releases it.
+    current_turn: Option<TurnInFlight>,
+}
+
+struct TurnInFlight {
+    turn_id: String,
+    join: JoinHandle<()>,
+}
+
 #[allow(
     clippy::collapsible_match,
     reason = "outer match has Binary/Close arms that prevent if-let collapse; \
@@ -98,8 +108,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let (ws_tx, mut rx) = socket.split();
     let (out_tx, mut out_rx) = mpsc::channel::<Message>(OUTBOUND_CHANNEL_CAPACITY);
 
-    // Dedicated WS writer task — sole owner of ws_tx. Both the main loop and
-    // the per-turn Kokoro task fan messages in via cloned out_tx senders.
+    // Dedicated WS writer task — sole owner of ws_tx. Main loop, per-turn
+    // tasks, and the Kokoro task all post via cloned out_tx senders.
     let writer = tokio::spawn(async move {
         let mut ws_tx = ws_tx;
         while let Some(msg) = out_rx.recv().await {
@@ -144,9 +154,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     warn!(error = %e, "voice.vad_accept_failed");
                     continue;
                 }
+                // Reap a finished turn before processing the next segment.
+                reap_finished_turn(s);
                 while engines.vad.has_segment() {
                     if let Some(segment) = engines.vad.pop_segment() {
-                        process_segment(segment, s, &engines, &runtime_session, &out_tx).await;
+                        if s.current_turn.is_some() {
+                            // A turn is already running. Drop the segment for
+                            // now — M5.2 hammering pushback will queue these
+                            // and merge into the in-flight or next turn.
+                            debug!("voice.segment_dropped_turn_in_flight");
+                            continue;
+                        }
+                        let turn = spawn_turn(
+                            segment,
+                            engines.clone(),
+                            Arc::clone(&runtime_session),
+                            out_tx.clone(),
+                        );
+                        s.current_turn = Some(turn);
                     }
                 }
             }
@@ -158,7 +183,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    if let Some(s) = session {
+    // Clean up any in-flight turn before tearing down the socket.
+    if let Some(mut s) = session {
+        if let Some(turn) = s.current_turn.take() {
+            info!(turn_id = %turn.turn_id, "voice.disconnect_aborting_turn");
+            turn.join.abort();
+            drop(turn.join.await);
+        }
         info!(session = %s.session_id, "voice.disconnect");
     }
     drop(out_tx);
@@ -172,12 +203,36 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
 }
 
-async fn process_segment(
+/// If the current turn has completed naturally, clear the handle so a fresh
+/// turn can be admitted. Called opportunistically before each new segment.
+fn reap_finished_turn(session: &mut VoiceSession) {
+    if let Some(turn) = session.current_turn.as_ref()
+        && turn.join.is_finished()
+    {
+        session.current_turn = None;
+    }
+}
+
+fn spawn_turn(
     segment: crate::speech::vad::SpeechSegment,
-    session: &mut VoiceSession,
-    engines: &VoiceEngines,
-    runtime_session: &Arc<RuntimeSession>,
-    out_tx: &mpsc::Sender<Message>,
+    engines: VoiceEngines,
+    runtime_session: Arc<RuntimeSession>,
+    out_tx: mpsc::Sender<Message>,
+) -> TurnInFlight {
+    let turn_id = format!("voice_{}", Uuid::new_v4().simple());
+    let task_turn_id = turn_id.clone();
+    let join = tokio::spawn(async move {
+        process_turn(segment, engines, runtime_session, out_tx, task_turn_id).await;
+    });
+    TurnInFlight { turn_id, join }
+}
+
+async fn process_turn(
+    segment: crate::speech::vad::SpeechSegment,
+    engines: VoiceEngines,
+    runtime_session: Arc<RuntimeSession>,
+    out_tx: mpsc::Sender<Message>,
+    turn_id: String,
 ) {
     // Semantic turn gate — discard if the user isn't really done yet.
     match engines.smart_turn.probability_complete(&segment.samples) {
@@ -192,14 +247,12 @@ async fn process_segment(
     let guard = match runtime_session.try_begin_user_message() {
         Ok(g) => g,
         Err(reason) => {
-            send_error(out_tx, "conflict", reason).await;
+            send_error(&out_tx, "conflict", reason).await;
             return;
         }
     };
 
-    let new_turn_id = format!("voice_{}", Uuid::new_v4().simple());
-    session.turn_id.clone_from(&new_turn_id);
-    send_state(out_tx, VoicePhase::Thinking, &new_turn_id).await;
+    send_state(&out_tx, VoicePhase::Thinking, &turn_id).await;
 
     // STT
     let stt = Arc::clone(&engines.stt);
@@ -209,15 +262,15 @@ async fn process_segment(
         Ok(Ok(text)) => text,
         Ok(Err(e)) => {
             error!(error = %e, "voice.stt_failed");
-            send_error(out_tx, "stt_failed", &e.to_string()).await;
-            send_state(out_tx, VoicePhase::Listening, &new_turn_id).await;
+            send_error(&out_tx, "stt_failed", &e.to_string()).await;
+            send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
             drop(guard);
             return;
         }
         Err(e) => {
             error!(error = %e, "voice.stt_join_failed");
-            send_error(out_tx, "stt_join_failed", &e.to_string()).await;
-            send_state(out_tx, VoicePhase::Listening, &new_turn_id).await;
+            send_error(&out_tx, "stt_join_failed", &e.to_string()).await;
+            send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
             drop(guard);
             return;
         }
@@ -225,29 +278,29 @@ async fn process_segment(
 
     let trimmed = transcript.trim();
     if trimmed.is_empty() {
-        send_error(out_tx, "empty_transcript", "I didn't catch that").await;
-        send_state(out_tx, VoicePhase::Listening, &new_turn_id).await;
+        send_error(&out_tx, "empty_transcript", "I didn't catch that").await;
+        send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
         drop(guard);
         return;
     }
-    info!(turn = %new_turn_id, transcript = %trimmed, "voice.transcript_final");
+    info!(turn = %turn_id, transcript = %trimmed, "voice.transcript_final");
     send_json(
-        out_tx,
+        &out_tx,
         &ServerMessage::TranscriptFinal {
-            turn_id: new_turn_id.clone(),
+            turn_id: turn_id.clone(),
             text: trimmed.to_string(),
         },
     )
     .await;
 
     // Spin up the per-turn TTS pipeline
-    send_state(out_tx, VoicePhase::Speaking, &new_turn_id).await;
+    send_state(&out_tx, VoicePhase::Speaking, &turn_id).await;
     let (sentence_tx, sentence_rx) = mpsc::channel::<String>(SENTENCE_CHANNEL_CAPACITY);
     let kokoro_task = spawn_kokoro_task(
         Arc::clone(&engines.tts),
         sentence_rx,
         out_tx.clone(),
-        new_turn_id.clone(),
+        turn_id.clone(),
     );
 
     let pipeline = Arc::new(std::sync::Mutex::new(SentencePipeline::new(
@@ -260,19 +313,14 @@ async fn process_segment(
         }
     };
 
-    // Hand the transcript to the chat pipeline with our sentence-buffering
-    // observer. This persists the user voice turn, runs the SDK Chat worker,
-    // streams text_delta SSE for the overlay UI, and pipes the same tokens
-    // into our pipeline → Kokoro task.
     runtime_session
-        .handle_user_message_with_observer(trimmed, &new_turn_id, observer)
+        .handle_user_message_with_observer(trimmed, &turn_id, observer)
         .await;
 
-    // Flush any trailing sentence (LLM may have ended without trailing punctuation)
+    // Flush trailing sentence (LLM may end without trailing punctuation)
     if let Ok(mut p) = pipeline.lock() {
         p.flush();
     }
-    // Drop the sender so the Kokoro task drains and exits
     drop(pipeline);
     drop(sentence_tx);
     match kokoro_task.await {
@@ -287,13 +335,13 @@ async fn process_segment(
     }
 
     send_json(
-        out_tx,
+        &out_tx,
         &ServerMessage::TtsEnd {
-            turn_id: new_turn_id.clone(),
+            turn_id: turn_id.clone(),
         },
     )
     .await;
-    send_state(out_tx, VoicePhase::Listening, &new_turn_id).await;
+    send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
     drop(guard);
 }
 
@@ -454,9 +502,9 @@ async fn handle_control_text(
             }
             match VoiceSession::new(session_id) {
                 Ok(s) => {
-                    let turn_id = s.turn_id.clone();
+                    let initial_turn = format!("voice_{}", Uuid::new_v4().simple());
                     *session = Some(s);
-                    send_state(out_tx, VoicePhase::Listening, &turn_id).await;
+                    send_state(out_tx, VoicePhase::Listening, &initial_turn).await;
                     true
                 }
                 Err(e) => {
@@ -471,7 +519,8 @@ async fn handle_control_text(
             ts_ms,
             playback_ms_played,
         }) => {
-            debug!(ts_ms, playback_ms_played, "voice.barge_in_received");
+            info!(ts_ms, playback_ms_played, "voice.barge_in_received");
+            handle_barge_in(out_tx, session, playback_ms_played).await;
             true
         }
         Ok(ClientMessage::Wake {
@@ -501,6 +550,40 @@ async fn handle_control_text(
     }
 }
 
+/// 3-event barge-in: (1) abort the in-flight turn task — its drop fires the
+/// SDK AbortGuard which calls `session.abort()` and cascades to the Kokoro
+/// task via the dropped sentence channel; (2) send `truncate` so the client
+/// drops queued audio past `played_ms`; (3) send `state(Listening)` so the
+/// mic UI clears immediately. Daemon awaits the task's natural unwind (which
+/// can take up to one spawn_blocking call, since spawn_blocking isn't
+/// cooperatively cancellable) to ensure the UserMessageGuard releases before
+/// the next turn can begin.
+async fn handle_barge_in(
+    out_tx: &mpsc::Sender<Message>,
+    session: &mut Option<VoiceSession>,
+    played_ms: u64,
+) {
+    let Some(s) = session.as_mut() else { return };
+    let Some(turn) = s.current_turn.take() else {
+        debug!("voice.barge_in_no_turn");
+        return;
+    };
+    info!(turn_id = %turn.turn_id, played_ms, "voice.barge_in_aborting");
+    let TurnInFlight { turn_id, join } = turn;
+    join.abort();
+    // Await drop so UserMessageGuard releases before the next turn can begin.
+    drop(join.await);
+    send_json(
+        out_tx,
+        &ServerMessage::Truncate {
+            turn_id: turn_id.clone(),
+            keep_ms: played_ms,
+        },
+    )
+    .await;
+    send_state(out_tx, VoicePhase::Listening, &turn_id).await;
+}
+
 async fn handle_control_action(
     action: ControlAction,
     out_tx: &mpsc::Sender<Message>,
@@ -509,8 +592,10 @@ async fn handle_control_action(
     match action {
         ControlAction::Abort => {
             info!("voice.control.abort");
+            // Treat explicit abort like a barge-in with played_ms=0.
+            handle_barge_in(out_tx, session, 0).await;
             if let Some(s) = session.as_ref() {
-                send_state(out_tx, VoicePhase::Idle, &s.turn_id).await;
+                send_state(out_tx, VoicePhase::Idle, &s.session_id).await;
             }
         }
         ControlAction::Mute | ControlAction::Unmute | ControlAction::Reset => {
@@ -519,20 +604,14 @@ async fn handle_control_action(
     }
 }
 
-struct VoiceSession {
-    session_id: String,
-    turn_id: String,
-    decoder: OpusDecoder,
-}
-
 impl VoiceSession {
     fn new(session_id: String) -> Result<Self, &'static str> {
         let decoder = OpusDecoder::new(OPUS_INPUT_SAMPLE_RATE, Channels::Mono)
             .map_err(|_| "create Opus decoder failed")?;
         Ok(Self {
             session_id,
-            turn_id: format!("voice_{}", Uuid::new_v4().simple()),
             decoder,
+            current_turn: None,
         })
     }
 
