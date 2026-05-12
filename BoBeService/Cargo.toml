@@ -159,3 +159,9 @@ regex = "1"
 # via the daemon's existing axum router under GET /metrics.
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.18", default-features = false }
+# Smart-turn v3.2 ONNX inference. Pure-Rust tract avoids native-lib
+# duplication with the ONNX Runtime sherpa-onnx bundles. ~3x slower than
+# ort, but smart-turn is 8MB int8 and runs in <50ms regardless. mel_spec
+# is Whisper-compatible mel preprocessing for the model's [1,80,800] input.
+tract-onnx = "0.21"
+mel_spec = "0.3"

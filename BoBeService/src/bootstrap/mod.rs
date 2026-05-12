@@ -245,13 +245,28 @@ fn load_voice_engines() -> (
         }
     };
 
-    // Smart-turn stub: real ONNX impl lands with the VAD pipeline (0.c).
-    // For now we always supply it so callers can rely on the field being
-    // populated; the stub returns 1.0 (always "turn complete") so behavior
-    // falls back to pure acoustic silence detection.
-    let smart_turn: Option<Arc<dyn crate::speech::SemanticTurn>> = Some(Arc::new(
-        crate::speech::local_smart_turn::StubSmartTurn,
-    ));
+    // Smart-turn v3.2 — real ONNX gate via tract. Required at boot when
+    // any voice engine loaded (per D9). If the model file is missing the
+    // user must run `scripts/install-voice-models.sh`; the daemon refuses
+    // to start silently-degraded.
+    let smart_turn = {
+        let path = models_root.join("smart-turn-v3.2.int8.onnx");
+        if path.exists() {
+            match crate::speech::smart_turn_onnx::OnnxSmartTurn::load(&path) {
+                Ok(e) => {
+                    info!(path = %path.display(), "voice.smart_turn_loaded");
+                    Some(Arc::new(e) as Arc<dyn crate::speech::SemanticTurn>)
+                }
+                Err(e) => {
+                    warn!(error = %e, "voice.smart_turn_load_failed");
+                    None
+                }
+            }
+        } else {
+            warn!(path = %path.display(), "voice.smart_turn_model_missing");
+            None
+        }
+    };
 
     (stt, tts, vad, smart_turn)
 }

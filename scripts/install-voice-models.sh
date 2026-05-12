@@ -20,6 +20,7 @@ set -euo pipefail
 MODELS_DIR="${BOBE_MODELS_DIR:-${HOME}/.bobe/models}"
 SHERPA_RELEASE_BASE="https://github.com/k2-fsa/sherpa-onnx/releases/download"
 SILERO_RAW_BASE="https://github.com/snakers4/silero-vad/raw"
+SMART_TURN_HF_BASE="https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main"
 
 cyan() { printf "\033[36m%s\033[0m\n" "$*"; }
 green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -110,9 +111,17 @@ main() {
         "$SILERO_RAW_BASE/v6.2.1/src/silero_vad/data/silero_vad.onnx" \
         "$MODELS_DIR/silero-vad/silero_vad.onnx"
 
+    # Semantic VAD — Pipecat smart-turn v3 (int8 ONNX, ~8MB). The daemon
+    # looks for smart-turn-v3.2.int8.onnx so the v3 download is symlinked
+    # under that name. Daily.co's v3.2 paper-tagged release uses the same
+    # tensor layout; if a v3.2-only ONNX appears at Pipecat-AI on HF, swap
+    # the URL here.
+    ensure_single_file \
+        "$SMART_TURN_HF_BASE/smart_turn_v3.0.int8.onnx" \
+        "$MODELS_DIR/smart-turn-v3.2.int8.onnx"
+
     echo
     green "Voice models installed. Restart the BoBe daemon to pick them up."
-    gray "  Smart-turn-v3 (semantic VAD) is stubbed in this build — no model needed yet."
 }
 
 main "$@"

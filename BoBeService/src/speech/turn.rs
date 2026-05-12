@@ -2,9 +2,8 @@
 //! looking at audio prosody + content, beyond pure-acoustic silence.
 //!
 //! Implementations:
-//! - [`super::local_smart_turn::StubSmartTurn`] — always returns 1.0 (until
-//!   the real Pipecat smart-turn-v3.1 ONNX impl lands with the VAD pipeline).
-//! - Future: `OrtSmartTurn` via `ort 2.0` running the 8MB int8 ONNX.
+//! - [`super::smart_turn_onnx::OnnxSmartTurn`] — Pipecat smart-turn-v3.2
+//!   8MB int8 ONNX via tract + Whisper-compatible mel preprocessing.
 
 use crate::error::AppError;
 

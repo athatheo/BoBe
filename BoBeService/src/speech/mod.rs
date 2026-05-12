@@ -8,10 +8,10 @@
 pub(crate) mod local_kokoro;
 pub(crate) mod local_sherpa;
 pub(crate) mod local_silero;
-pub(crate) mod local_smart_turn;
 pub(crate) mod markdown_strip;
 pub(crate) mod protocol;
 pub(crate) mod sentence_buffer;
+pub(crate) mod smart_turn_onnx;
 pub(crate) mod stt;
 pub(crate) mod tts;
 pub(crate) mod turn;
