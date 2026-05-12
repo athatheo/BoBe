@@ -256,8 +256,11 @@ impl RuntimeSession {
     }
 
     /// Voice variant: caller installs a text-delta observer that runs in
-    /// addition to the SSE EventQueue path. Used to fan tokens into a
-    /// sentence buffer for Kokoro TTS without touching the text-chat flow.
+    /// addition to the SSE EventQueue path. The SDK send rides
+    /// `DeliveryMode::Immediate` (atomic server-side interrupt of any
+    /// in-flight turn), so a barge-in's new transcript replaces the prior
+    /// generation in a single RPC without depending on `AbortGuard` drop
+    /// timing.
     pub(crate) async fn handle_user_message_with_observer<F>(
         &self,
         content: &str,
@@ -267,7 +270,7 @@ impl RuntimeSession {
         F: FnMut(&str) + Send,
     {
         self.message_handler
-            .handle_message_with_observer(content, message_id, on_text_delta)
+            .handle_message_with_observer(content, message_id, true, on_text_delta)
             .await;
     }
 

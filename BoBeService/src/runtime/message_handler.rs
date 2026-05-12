@@ -42,17 +42,19 @@ impl MessageHandler {
     /// Default text-chat entry point. The observer is a no-op so SSE deltas
     /// are the only consumer of token text.
     pub(crate) async fn handle_message(&self, content: &str, message_id: &str) {
-        self.handle_message_with_observer(content, message_id, |_: &str| {})
+        self.handle_message_with_observer(content, message_id, false, |_: &str| {})
             .await;
     }
 
     /// Variant that lets the caller subscribe to text deltas in addition to
-    /// SSE delivery. Voice uses this to pipe the same tokens into a
-    /// sentence buffer for Kokoro TTS without touching the text-chat path.
+    /// SSE delivery. Voice uses this to pipe the same tokens into a sentence
+    /// buffer for Kokoro TTS and passes `voice_mode=true` so the SDK send
+    /// rides `DeliveryMode::Immediate` (atomic server-side interrupt).
     pub(crate) async fn handle_message_with_observer<F>(
         &self,
         content: &str,
         message_id: &str,
+        voice_mode: bool,
         on_text_delta: F,
     ) where
         F: FnMut(&str) + Send,
@@ -67,7 +69,7 @@ impl MessageHandler {
             return;
         };
 
-        self.respond_to_message(message_id, content, conversation_id, on_text_delta)
+        self.respond_to_message(message_id, content, conversation_id, voice_mode, on_text_delta)
             .await;
     }
 
@@ -90,6 +92,7 @@ impl MessageHandler {
         msg_id: &str,
         user_content: &str,
         conversation_id: ConversationId,
+        voice_mode: bool,
         on_text_delta: F,
     ) where
         F: FnMut(&str) + Send,
@@ -97,7 +100,7 @@ impl MessageHandler {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
         let result = match self
-            .send_via_chat_worker(user_content, msg_id, on_text_delta)
+            .send_via_chat_worker(user_content, msg_id, voice_mode, on_text_delta)
             .await
         {
             Ok(r) => r,
@@ -116,17 +119,23 @@ impl MessageHandler {
         &self,
         user_content: &str,
         msg_id: &str,
+        voice_mode: bool,
         on_text_delta: F,
     ) -> Result<crate::runtime::response_streamer::StreamResult, AppError>
     where
         F: FnMut(&str) + Send,
     {
         let worker = self.workers.chat().await?;
+        let prompt = if voice_mode {
+            ChatPrompt::voice(user_content)
+        } else {
+            ChatPrompt::text(user_content)
+        };
         let chat_stream = worker
-            .send(ChatPrompt::text(user_content))
+            .send(prompt)
             .await
             .map_err(|e| AppError::Internal(format!("chat_worker.send: {e}")))?;
-        info!(msg_id, "message_handler.stream_start");
+        info!(msg_id, voice_mode, "message_handler.stream_start");
         Ok(stream_chat_delta_response(chat_stream, &self.event_queue, Some(msg_id), on_text_delta).await)
     }
 

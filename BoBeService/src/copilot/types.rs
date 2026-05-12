@@ -62,10 +62,14 @@ pub(crate) struct JobOutput {
     pub(crate) error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ChatPrompt {
     pub(crate) text: String,
     pub(crate) attachments: Vec<ChatAttachment>,
+    /// Voice turns ride `DeliveryMode::Immediate` so a new transcript atomically
+    /// interrupts any in-flight LLM generation server-side. Default `false` keeps
+    /// text chat on the SDK's default `Enqueue` behavior.
+    pub(crate) voice_mode: bool,
 }
 
 impl ChatPrompt {
@@ -73,6 +77,15 @@ impl ChatPrompt {
         Self {
             text: text.into(),
             attachments: Vec::new(),
+            voice_mode: false,
+        }
+    }
+
+    pub(crate) fn voice(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            attachments: Vec::new(),
+            voice_mode: true,
         }
     }
 }

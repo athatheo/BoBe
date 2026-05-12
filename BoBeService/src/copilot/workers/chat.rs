@@ -9,7 +9,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use futures::Stream;
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::subscription::RecvError;
-use github_copilot_sdk::types::{Attachment, MessageOptions, SessionEvent};
+use github_copilot_sdk::types::{Attachment, DeliveryMode, MessageOptions, SessionEvent};
 use tokio::sync::Mutex;
 
 use crate::copilot::error::WorkerError;
@@ -140,11 +140,13 @@ fn build_message_options(
         attachments.push(to_sdk_attachment(att)?);
     }
 
-    // Mode lives on SessionConfig; this signature exists for symmetry.
     let _ = class;
     let mut opts = MessageOptions::new(prompt.text);
     if !attachments.is_empty() {
         opts = opts.with_attachments(attachments);
+    }
+    if prompt.voice_mode {
+        opts = opts.with_mode(DeliveryMode::Immediate);
     }
     Ok(opts)
 }
@@ -346,6 +348,7 @@ mod tests {
                 bytes: b"PNG-bytes".to_vec(),
                 mime_type: "image/png",
             }],
+            ..ChatPrompt::default()
         };
         let opts = build_message_options(prompt, WorkerClass::Vision).unwrap();
         let attachments = opts.attachments.unwrap();
@@ -361,4 +364,17 @@ mod tests {
         }
     }
 
+    #[test]
+    fn voice_prompt_sets_immediate_delivery() {
+        let prompt = ChatPrompt::voice("hello there");
+        let opts = build_message_options(prompt, WorkerClass::Chat).unwrap();
+        assert_eq!(opts.mode, Some(DeliveryMode::Immediate));
+    }
+
+    #[test]
+    fn text_prompt_leaves_default_delivery() {
+        let prompt = ChatPrompt::text("hello there");
+        let opts = build_message_options(prompt, WorkerClass::Chat).unwrap();
+        assert_eq!(opts.mode, None);
+    }
 }
