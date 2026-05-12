@@ -154,3 +154,70 @@ impl SessionHooks for BobeHooks {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "tests panic on precondition failures")]
+mod tests {
+    use super::*;
+    use github_copilot_sdk::hooks::{HookContext, UserPromptSubmittedInput};
+    use github_copilot_sdk::types::SessionId;
+    use std::path::PathBuf;
+
+    fn user_prompt_event() -> HookEvent {
+        HookEvent::UserPromptSubmitted {
+            input: UserPromptSubmittedInput {
+                timestamp: 0,
+                cwd: PathBuf::from("/tmp"),
+                prompt: "hello".into(),
+            },
+            ctx: HookContext {
+                session_id: SessionId::new("test-session"),
+            },
+        }
+    }
+
+    fn build_hooks(voice_active: bool) -> (Arc<BobeHooks>, Arc<AtomicBool>) {
+        let memory_file = MemoryFile::new(PathBuf::from("/tmp/bobe-test-memory.md"));
+        let flag = Arc::new(AtomicBool::new(voice_active));
+        let hooks = BobeHooks::new(WorkerClass::Chat, memory_file, Arc::clone(&flag));
+        (hooks, flag)
+    }
+
+    #[tokio::test]
+    async fn voice_tone_appended_when_flag_set() {
+        let (hooks, _) = build_hooks(true);
+        let output = hooks.on_hook(user_prompt_event()).await;
+        match output {
+            HookOutput::UserPromptSubmitted(UserPromptSubmittedOutput {
+                additional_context: Some(ctx),
+                ..
+            }) => {
+                assert!(
+                    ctx.contains(VOICE_TONE_HINT),
+                    "expected voice tone hint in context: {ctx}"
+                );
+            }
+            other => panic!("expected UserPromptSubmitted output, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn voice_tone_absent_when_flag_clear() {
+        let (hooks, _) = build_hooks(false);
+        let output = hooks.on_hook(user_prompt_event()).await;
+        match output {
+            HookOutput::UserPromptSubmitted(UserPromptSubmittedOutput {
+                additional_context: Some(ctx),
+                ..
+            }) => {
+                assert!(
+                    !ctx.contains(VOICE_TONE_HINT),
+                    "voice tone hint must not leak into text turns: {ctx}"
+                );
+                // Sanity — the time/class context is still emitted.
+                assert!(ctx.contains("Worker class:"));
+            }
+            other => panic!("expected UserPromptSubmitted output, got {other:?}"),
+        }
+    }
+}
