@@ -19,7 +19,7 @@ use axum::extract::State;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures::{SinkExt, StreamExt};
-use opus::{Application, Channels, Decoder as OpusDecoder, Encoder as OpusEncoder};
+use opus::{Channels, Decoder as OpusDecoder};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -35,11 +35,11 @@ use crate::speech::protocol::{
 use crate::speech::sentence_buffer::SentenceBuffer;
 use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
 use crate::voice::filler_library::{FillerKind, FillerLibrary};
+use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
 
 const OPUS_INPUT_SAMPLE_RATE: u32 = 16_000;
 const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
 const OPUS_MAX_FRAME_SAMPLES: usize = 2_880;
-const TTS_OPUS_BITRATE_BPS: i32 = 24_000;
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
 /// Server-initiated Ping cadence. The WS layer auto-responds to Pings with
 /// Pongs, so this also doubles as the client's freshness signal.
@@ -200,6 +200,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let mut session: Option<VoiceSession> = None;
     let runtime_session = Arc::clone(&state.runtime_session);
+
+    // Install the WS sink for the AppState's single-slot voice sink. The
+    // returned guard clears the slot on drop (this scope's end), so a
+    // mid-turn disconnect lets subsequent hook fires safely no-op.
+    let _sink_guard = state.voice_sink.install(out_tx.clone()).await;
 
     loop {
         let next = match tokio::time::timeout(KEEPALIVE_STALE_TIMEOUT, rx.next()).await {
@@ -643,56 +648,6 @@ fn spawn_filler_watchdog(
     }))
 }
 
-/// Build a fresh Opus encoder for 20ms VoIP-profile frames at the given
-/// sample rate. Returns `None` and warns on failure; callers fall through
-/// silently rather than crash the turn.
-fn make_opus_encoder(sample_rate: u32) -> Option<OpusEncoder> {
-    let mut encoder = match OpusEncoder::new(sample_rate, Channels::Mono, Application::Voip) {
-        Ok(e) => e,
-        Err(e) => {
-            warn!(error = %e, "voice.opus_encoder_failed");
-            return None;
-        }
-    };
-    if let Err(e) = encoder.set_bitrate(opus::Bitrate::Bits(TTS_OPUS_BITRATE_BPS)) {
-        warn!(error = %e, "voice.opus_bitrate_failed");
-    }
-    Some(encoder)
-}
-
-/// Encode PCM samples into 20ms Opus frames using an existing encoder.
-/// Reusing the encoder across sentences preserves internal entropy-coder
-/// state for marginally better compression than per-call construction.
-fn encode_pcm_with(
-    encoder: &mut OpusEncoder,
-    pcm: &[f32],
-    sample_rate: u32,
-) -> Vec<Vec<u8>> {
-    let frame_samples = (sample_rate as usize) / 50;
-    let mut frames = Vec::new();
-    for chunk in pcm.chunks(frame_samples) {
-        let mut input = chunk.to_vec();
-        if input.len() < frame_samples {
-            input.resize(frame_samples, 0.0);
-        }
-        let pcm_i16: Vec<i16> = input
-            .iter()
-            .map(|&s| (s.clamp(-1.0, 1.0) * 32_767.0) as i16)
-            .collect();
-        let mut out = vec![0_u8; 1500];
-        match encoder.encode(&pcm_i16, &mut out) {
-            Ok(n) => {
-                out.truncate(n);
-                frames.push(out);
-            }
-            Err(e) => {
-                warn!(error = %e, "voice.opus_encode_failed");
-                break;
-            }
-        }
-    }
-    frames
-}
 
 /// Returns `false` to terminate the connection (after handshake errors).
 async fn handle_control_text(

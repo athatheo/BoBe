@@ -42,6 +42,13 @@ pub(crate) struct WorkerRegistry {
     /// Safe because turns are serialized via `UserMessageGuard` + chat-worker
     /// `submit_lock`; only one turn is in flight at a time.
     voice_turn_active: Arc<AtomicBool>,
+    /// Single-slot voice sink, shared with AppState so the WS handler can
+    /// install on connect and hooks can read on PreToolUse.
+    voice_sink: Arc<crate::voice::sinks::VoiceSink>,
+    /// Pre-rendered filler PCM library — passed to BobeHooks so PreToolUse
+    /// can look up per-tool intent phrases. `None` when TTS isn't loaded
+    /// (voice still works, just silent fillers).
+    voice_filler_library: Option<Arc<crate::voice::filler_library::FillerLibrary>>,
 
     goals: Mutex<Option<Arc<BatchWorker>>>,
     consolidate: Mutex<Option<Arc<BatchWorker>>>,
@@ -65,6 +72,8 @@ impl WorkerRegistry {
         data_dir: PathBuf,
         mcp_servers: HashMap<String, McpServerConfig>,
         voice_turn_active: Arc<AtomicBool>,
+        voice_sink: Arc<crate::voice::sinks::VoiceSink>,
+        voice_filler_library: Option<Arc<crate::voice::filler_library::FillerLibrary>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             client: ClientHandle::new(Arc::clone(&config)),
@@ -74,6 +83,8 @@ impl WorkerRegistry {
             data_dir,
             mcp_servers,
             voice_turn_active,
+            voice_sink,
+            voice_filler_library,
             goals: Mutex::new(None),
             consolidate: Mutex::new(None),
             decide: Mutex::new(None),
@@ -302,6 +313,8 @@ impl WorkerRegistry {
             class,
             Arc::clone(&self.memory_file),
             Arc::clone(&self.voice_turn_active),
+            Arc::clone(&self.voice_sink),
+            self.voice_filler_library.as_ref().map(Arc::clone),
         );
 
         let engine_snapshot = self.config.load().engine.clone();

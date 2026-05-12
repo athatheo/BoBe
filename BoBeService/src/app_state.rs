@@ -15,6 +15,7 @@ use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
 use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
 use crate::voice::filler_library::FillerLibrary;
+use crate::voice::sinks::VoiceSink;
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -54,6 +55,9 @@ pub(crate) struct AppState {
     /// via the guard in `voice.rs::process_turn`. Safe under single-flight
     /// serialization (UserMessageGuard + chat submit_lock).
     pub(crate) voice_turn_active: Arc<AtomicBool>,
+    /// Single-slot voice sink that hooks (PreToolUse, ErrorOccurred) read
+    /// to push cached filler PCM directly to the active client.
+    pub(crate) voice_sink: Arc<VoiceSink>,
 }
 
 impl AppState {

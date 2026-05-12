@@ -4,12 +4,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use github_copilot_sdk::hooks::{
-    HookEvent, HookOutput, PostToolUseOutput, SessionHooks, SessionStartOutput,
+    HookEvent, HookOutput, PostToolUseOutput, PreToolUseOutput, SessionHooks, SessionStartOutput,
     UserPromptSubmittedOutput,
 };
 
 use super::memory_file::MemoryFile;
 use super::types::WorkerClass;
+use crate::voice::filler_library::FillerLibrary;
+use crate::voice::sinks::{VoiceSink, emit_filler, filler_for_tool};
 
 /// Voice tone hint appended to UserPromptSubmitted context when the current
 /// turn originated from the voice WS handler. Source: LiveKit "Prompting
@@ -34,6 +36,10 @@ pub(crate) struct BobeHooks {
     /// Flipped by the voice handler around `session.send`. Hooks branch off it
     /// without per-message metadata support (Copilot SDK 0.1 has none).
     voice_turn_active: Arc<AtomicBool>,
+    /// Active voice WS sink for PreToolUse / ErrorOccurred filler emission.
+    voice_sink: Arc<VoiceSink>,
+    /// Pre-rendered filler PCM catalog. `None` when TTS isn't loaded.
+    voice_filler_library: Option<Arc<FillerLibrary>>,
 }
 
 impl BobeHooks {
@@ -41,12 +47,20 @@ impl BobeHooks {
         class: WorkerClass,
         memory_file: Arc<MemoryFile>,
         voice_turn_active: Arc<AtomicBool>,
+        voice_sink: Arc<VoiceSink>,
+        voice_filler_library: Option<Arc<FillerLibrary>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             class,
             memory_file,
             voice_turn_active,
+            voice_sink,
+            voice_filler_library,
         })
+    }
+
+    fn is_voice_turn(&self) -> bool {
+        self.voice_turn_active.load(Ordering::Acquire)
     }
 }
 
@@ -95,6 +109,44 @@ impl SessionHooks for BobeHooks {
                     additional_context: Some(context),
                     ..Default::default()
                 })
+            }
+
+            HookEvent::PreToolUse { input, ctx } => {
+                if !self.is_voice_turn() {
+                    return HookOutput::None;
+                }
+                // ask_user blocks the LLM waiting on input — voice has no UI
+                // surface for that question. Deny it cleanly so the agent
+                // proceeds with a different plan instead of hanging.
+                if input.tool_name == "ask_user" {
+                    tracing::info!(
+                        session = %ctx.session_id,
+                        "voice.pre_tool_blocked_ask_user"
+                    );
+                    return HookOutput::PreToolUse(PreToolUseOutput {
+                        permission_decision: Some("deny".into()),
+                        permission_decision_reason: Some(
+                            "voice mode cannot collect user input; respond inline instead"
+                                .into(),
+                        ),
+                        ..Default::default()
+                    });
+                }
+                // Per-tool filler: emit cached PCM via the active voice sink
+                // so the user hears "Let me search the web…" / "One sec…"
+                // within ~50ms of the tool call starting. Side-effect only;
+                // we always allow the tool itself to proceed.
+                if let Some(library) = self.voice_filler_library.as_ref() {
+                    let kind = filler_for_tool(&input.tool_name);
+                    tracing::debug!(
+                        session = %ctx.session_id,
+                        tool = %input.tool_name,
+                        ?kind,
+                        "voice.pre_tool_filler"
+                    );
+                    emit_filler(&self.voice_sink, library, kind).await;
+                }
+                HookOutput::None
             }
 
             HookEvent::PostToolUse { input, ctx } => {
@@ -179,7 +231,14 @@ mod tests {
     fn build_hooks(voice_active: bool) -> (Arc<BobeHooks>, Arc<AtomicBool>) {
         let memory_file = MemoryFile::new(PathBuf::from("/tmp/bobe-test-memory.md"));
         let flag = Arc::new(AtomicBool::new(voice_active));
-        let hooks = BobeHooks::new(WorkerClass::Chat, memory_file, Arc::clone(&flag));
+        let sink = Arc::new(VoiceSink::new());
+        let hooks = BobeHooks::new(
+            WorkerClass::Chat,
+            memory_file,
+            Arc::clone(&flag),
+            sink,
+            None,
+        );
         (hooks, flag)
     }
 

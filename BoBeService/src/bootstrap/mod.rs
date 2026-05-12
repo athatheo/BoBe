@@ -35,6 +35,18 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // Voice-turn signal lives here so AppState (consumed by voice.rs) and
     // WorkerRegistry (consumed by BobeHooks) both reference the same Arc.
     let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Single-slot voice sink — same dual-consumer pattern as the flag.
+    let voice_sink = Arc::new(crate::voice::sinks::VoiceSink::new());
+    // Voice engines + filler library must be ready BEFORE the workers
+    // registry constructs BobeHooks, because the hooks hold the filler
+    // library to emit per-tool fillers via the sink on PreToolUse.
+    let (voice_stt, voice_tts, voice_vad, voice_smart_turn) = load_voice_engines();
+    let voice_filler_library = match voice_tts.as_ref() {
+        Some(tts) => Some(Arc::new(
+            crate::voice::filler_library::FillerLibrary::render(Arc::clone(tts)).await,
+        )),
+        None => None,
+    };
     let workers = {
         let data_dir = crate::util::paths::bobe_data_dir();
         crate::copilot::registry::WorkerRegistry::new(
@@ -43,6 +55,8 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             data_dir,
             mcp_servers,
             Arc::clone(&voice_turn_active),
+            Arc::clone(&voice_sink),
+            voice_filler_library.as_ref().map(Arc::clone),
         )
     };
 
@@ -103,14 +117,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         crate::services::ollama_install_service::OllamaInstallService::new(binary, manager)
     };
 
-    let (voice_stt, voice_tts, voice_vad, voice_smart_turn) = load_voice_engines();
-    let voice_filler_library = match voice_tts.as_ref() {
-        Some(tts) => Some(Arc::new(
-            crate::voice::filler_library::FillerLibrary::render(Arc::clone(tts)).await,
-        )),
-        None => None,
-    };
-
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
@@ -133,6 +139,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         voice_smart_turn,
         voice_filler_library,
         voice_turn_active,
+        voice_sink,
     });
 
     Ok(state)

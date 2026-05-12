@@ -4,3 +4,5 @@
 //! (M4.5.0c+), telemetry (D1), proactive-routing scaffold (M5.2).
 
 pub(crate) mod filler_library;
+pub(crate) mod opus;
+pub(crate) mod sinks;
