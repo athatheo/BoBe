@@ -9,7 +9,9 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use futures::Stream;
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::subscription::RecvError;
-use github_copilot_sdk::types::{Attachment, DeliveryMode, MessageOptions, SessionEvent};
+use github_copilot_sdk::types::{
+    Attachment, DeliveryMode, MessageOptions, SessionEvent, SetModelOptions,
+};
 use tokio::sync::Mutex;
 
 use crate::copilot::error::WorkerError;
@@ -20,6 +22,11 @@ use super::ChatWorker;
 pub(crate) struct CopilotChatWorker {
     session: Arc<Session>,
     submit_lock: Arc<Mutex<()>>,
+    /// Model name the session was created with. Needed so we can call
+    /// `Session::set_model` to tune `reasoning_effort` per-turn (low for
+    /// voice, medium for text). `None` means the SDK picked its default —
+    /// in that case we skip set_model and the default effort applies.
+    model: Option<String>,
 }
 
 /// Without this, a dropped stream leaks an in-flight turn — wasted tokens + residual events.
@@ -45,10 +52,11 @@ impl Drop for AbortGuard {
 }
 
 impl CopilotChatWorker {
-    pub(crate) fn new(session: Arc<Session>) -> Arc<Self> {
+    pub(crate) fn new(session: Arc<Session>, model: Option<String>) -> Arc<Self> {
         Arc::new(Self {
             session,
             submit_lock: Arc::new(Mutex::new(())),
+            model,
         })
     }
 
@@ -71,6 +79,8 @@ impl ChatWorker for CopilotChatWorker {
     ) -> Result<Pin<Box<dyn Stream<Item = ChatDelta> + Send>>, WorkerError> {
         let session = Arc::clone(&self.session);
         let lock = Arc::clone(&self.submit_lock);
+        let model = self.model.clone();
+        let voice_mode = prompt.voice_mode;
 
         let abort_guard = AbortGuard {
             session: Arc::clone(&session),
@@ -83,6 +93,22 @@ impl ChatWorker for CopilotChatWorker {
             let _guard = lock.lock_owned().await;
 
             let mut events = session.subscribe();
+
+            // Tune reasoning_effort per turn — low for voice (TTFT-critical),
+            // medium for text (default). Skipped when model is None because
+            // set_model requires an explicit model name.
+            if let Some(model_name) = model.as_deref() {
+                let effort = if voice_mode { "low" } else { "medium" };
+                let opts = SetModelOptions::default().with_reasoning_effort(effort);
+                if let Err(e) = session.set_model(model_name, Some(opts)).await {
+                    tracing::warn!(
+                        err = %e,
+                        voice_mode,
+                        effort,
+                        "chat.set_model_failed_continuing"
+                    );
+                }
+            }
 
             let opts = match build_message_options(prompt, WorkerClass::Chat) {
                 Ok(o) => o,

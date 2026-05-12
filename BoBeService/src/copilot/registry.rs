@@ -242,8 +242,10 @@ impl WorkerRegistry {
             }
         }
 
+        let engine_snapshot = self.config.load().engine.clone();
+        let (chat_model, _) = session_extras_for_class(&engine_snapshot, WorkerClass::Chat);
         let session = self.create_or_resume(WorkerClass::Chat).await?;
-        let worker = CopilotChatWorker::new(session);
+        let worker = CopilotChatWorker::new(session, chat_model);
         *guard = Some(DatedChatWorker {
             date: today,
             worker: Arc::clone(&worker),
