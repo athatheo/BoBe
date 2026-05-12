@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use github_copilot_sdk::hooks::{
-    HookEvent, HookOutput, SessionHooks, SessionStartOutput, UserPromptSubmittedOutput,
+    HookEvent, HookOutput, PostToolUseOutput, SessionHooks, SessionStartOutput,
+    UserPromptSubmittedOutput,
 };
 
 use super::memory_file::MemoryFile;
@@ -20,6 +21,12 @@ const VOICE_TONE_HINT: &str = concat!(
     "Spell out abbreviations as words. ",
     "If you can't help, suggest an alternative instead of refusing.",
 );
+
+/// Tool results above this serialized-char length get truncated for voice
+/// turns — reading a 5kB file dump aloud is a UX disaster. ~800 chars ≈ 200
+/// tokens, which is the rule-of-thumb summary threshold used in the
+/// Anthropic cookbook PostToolUse pattern.
+const VOICE_TOOL_RESULT_TRUNCATE_CHARS: usize = 800;
 
 pub(crate) struct BobeHooks {
     class: WorkerClass,
@@ -86,6 +93,37 @@ impl SessionHooks for BobeHooks {
                 }
                 HookOutput::UserPromptSubmitted(UserPromptSubmittedOutput {
                     additional_context: Some(context),
+                    ..Default::default()
+                })
+            }
+
+            HookEvent::PostToolUse { input, ctx } => {
+                // For voice turns: replace long tool results with a short
+                // marker so Kokoro doesn't read file dumps / search-result
+                // walls aloud. Text turns get the original result.
+                if !self.voice_turn_active.load(Ordering::Acquire) {
+                    return HookOutput::None;
+                }
+                let result_str = input.tool_result.to_string();
+                if result_str.len() <= VOICE_TOOL_RESULT_TRUNCATE_CHARS {
+                    return HookOutput::None;
+                }
+                let head: String = result_str
+                    .chars()
+                    .take(VOICE_TOOL_RESULT_TRUNCATE_CHARS)
+                    .collect();
+                tracing::debug!(
+                    session = %ctx.session_id,
+                    tool = %input.tool_name,
+                    original_chars = result_str.len(),
+                    "voice.post_tool_summary"
+                );
+                HookOutput::PostToolUse(PostToolUseOutput {
+                    modified_result: Some(serde_json::json!({
+                        "summary": format!("{head}…"),
+                        "truncated_for_voice": true,
+                        "original_chars": result_str.len(),
+                    })),
                     ..Default::default()
                 })
             }
