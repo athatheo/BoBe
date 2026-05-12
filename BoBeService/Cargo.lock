@@ -338,6 +338,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64",
+ "bzip2",
  "chrono",
  "clap",
  "core-foundation",

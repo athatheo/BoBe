@@ -121,6 +121,16 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         crate::services::ollama_install_service::OllamaInstallService::new(binary, manager)
     };
 
+    let voice_install = {
+        let http = reqwest::Client::builder()
+            .build()
+            .map_err(|e| AppError::Internal(format!("voice install http client: {e}")))?;
+        let models_root = dirs::home_dir()
+            .map(|h| h.join(".bobe").join("models"))
+            .ok_or_else(|| AppError::Internal("no home_dir for voice models root".into()))?;
+        crate::services::voice_install_service::VoiceInstallService::new(http, models_root)
+    };
+
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
@@ -137,6 +147,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         workers,
         memory_file,
         ollama_install,
+        voice_install,
         voice_streaming_stt,
         voice_tts,
         voice_vad,

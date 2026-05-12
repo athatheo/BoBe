@@ -13,6 +13,7 @@ use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
+use crate::services::voice_install_service::VoiceInstallService;
 use crate::speech::{AcousticVad, SemanticTurn, StreamingSttEngine, TtsEngine};
 use crate::voice::filler_library::FillerLibrary;
 use crate::voice::sinks::VoiceSink;
@@ -38,6 +39,9 @@ pub(crate) struct AppState {
     pub(crate) workers: Arc<WorkerRegistry>,
     pub(crate) memory_file: Arc<MemoryFile>,
     pub(crate) ollama_install: Arc<OllamaInstallService>,
+    /// Daemon-owned voice-model installer. Wizard + Settings call its
+    /// HTTP endpoints; legacy `scripts/install-voice-models.sh` is gone.
+    pub(crate) voice_install: Arc<VoiceInstallService>,
     /// Voice — `None` when sherpa-onnx models aren't installed; `/voice/stream` 503s.
     /// Streaming Zipformer fed live: every mic frame → `accept_audio` →
     /// partials over WS → `commit_final` on speech-end.

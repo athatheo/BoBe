@@ -12,6 +12,7 @@ pub(crate) mod souls;
 pub(crate) mod tools_mcp;
 pub(crate) mod user_profile;
 pub(crate) mod voice;
+pub(crate) mod voice_install;
 
 pub(super) const fn default_true() -> bool {
     true

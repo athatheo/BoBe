@@ -128,6 +128,18 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::tools_mcp::validate_mcp_config),
         )
         .route("/voice/stream", get(handlers::voice::voice_stream))
+        .route(
+            "/voice/install/status",
+            get(handlers::voice_install::status),
+        )
+        .route(
+            "/voice/install/start",
+            post(handlers::voice_install::start),
+        )
+        .route(
+            "/voice/install/cancel",
+            post(handlers::voice_install::cancel),
+        )
         .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
