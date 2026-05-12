@@ -33,7 +33,7 @@ use crate::speech::protocol::{
     FLAG_FIRST_OF_TURN,
 };
 use crate::speech::sentence_buffer::SentenceBuffer;
-use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
+use crate::speech::{AcousticVad, SemanticTurn, StreamingSttEngine, TtsEngine};
 use crate::voice::filler_library::{FillerKind, FillerLibrary};
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
 use crate::voice::telemetry::{
@@ -104,7 +104,7 @@ pub(crate) async fn voice_stream(
 /// so we can pass an owned copy into each spawned turn task.
 #[derive(Clone)]
 struct VoiceEngines {
-    stt: Arc<dyn SttEngine>,
+    stt: Arc<dyn StreamingSttEngine>,
     tts: Arc<dyn TtsEngine>,
     vad: Arc<dyn AcousticVad>,
     smart_turn: Arc<dyn SemanticTurn>,
@@ -116,7 +116,7 @@ struct VoiceEngines {
 impl VoiceEngines {
     fn from_state(state: &AppState) -> Option<Self> {
         Some(Self {
-            stt: Arc::clone(state.voice_stt.as_ref()?),
+            stt: Arc::clone(state.voice_streaming_stt.as_ref()?),
             tts: Arc::clone(state.voice_tts.as_ref()?),
             vad: Arc::clone(state.voice_vad.as_ref()?),
             smart_turn: Arc::clone(state.voice_smart_turn.as_ref()?),
@@ -148,6 +148,10 @@ struct VoiceSession {
     /// Per-WS voice preferences from the Hello handshake. Falls through to
     /// defaults if the client didn't specify any.
     voice_cfg: SessionVoiceConfig,
+    /// Most recent streaming-STT partial text, kept on the session so
+    /// MinWords barge-in gating (C3) + cancel-phrase detection (C7) can
+    /// inspect what the user has actually said so far this turn.
+    last_partial_text: String,
 }
 
 struct TurnInFlight {
@@ -249,6 +253,27 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         continue;
                     }
                 };
+                // Feed streaming Zipformer per-frame; emit any new partial.
+                // pop_partial dedupes so identical text doesn't get re-sent.
+                if let Err(e) = engines.stt.accept_audio(&samples) {
+                    warn!(error = %e, "voice.streaming_stt_accept_failed");
+                }
+                if let Some(partial) = engines.stt.pop_partial() {
+                    let turn_id = s
+                        .current_turn
+                        .as_ref()
+                        .map(|t| t.turn_id.clone())
+                        .unwrap_or_else(|| s.session_id.clone());
+                    s.last_partial_text = partial.clone();
+                    send_json(
+                        &out_tx,
+                        &ServerMessage::TranscriptPartial {
+                            turn_id,
+                            text: partial,
+                        },
+                    )
+                    .await;
+                }
                 if let Err(e) = engines.vad.accept(&samples) {
                     warn!(error = %e, "voice.vad_accept_failed");
                     continue;
@@ -408,23 +433,16 @@ async fn process_turn(
 
     send_state(&out_tx, VoicePhase::Thinking, &turn_id).await;
 
-    // STT
-    let stt = Arc::clone(&engines.stt);
-    let samples = segment.samples;
+    // STT — pull the final transcript out of the streaming Zipformer state
+    // (which has been accumulating partials as frames arrived) and reset it
+    // for the next turn. No more spawn_blocking on segment.samples.
+    drop(segment.samples); // smart-turn already consumed it above
     let stt_start = Instant::now();
-    let stt_result = tokio::task::spawn_blocking(move || stt.transcribe(&samples)).await;
-    let transcript = match stt_result {
-        Ok(Ok(text)) => text,
-        Ok(Err(e)) => {
+    let transcript = match engines.stt.commit_final() {
+        Ok(text) => text,
+        Err(e) => {
             error!(error = %e, "voice.stt_failed");
             send_error(&out_tx, "stt_failed", &e.to_string()).await;
-            send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
-            drop(guard);
-            return;
-        }
-        Err(e) => {
-            error!(error = %e, "voice.stt_join_failed");
-            send_error(&out_tx, "stt_join_failed", &e.to_string()).await;
             send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
             drop(guard);
             return;
@@ -869,6 +887,7 @@ impl VoiceSession {
             segments_dropped: 0,
             last_acked_played_ms: 0,
             voice_cfg,
+            last_partial_text: String::new(),
         })
     }
 

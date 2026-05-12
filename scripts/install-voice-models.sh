@@ -71,6 +71,47 @@ ensure_extracted_tarball() {
     rm -rf "$tmp"
 }
 
+install_streaming_zipformer_en() {
+    local target_dir="$MODELS_DIR/sherpa-onnx-streaming-zipformer-en"
+    if [[ -d "$target_dir" ]]; then
+        gray "  ✓ sherpa-onnx-streaming-zipformer-en already installed"
+        return 0
+    fi
+    local archive_url="$SHERPA_RELEASE_BASE/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2"
+    local tmp
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    local archive="$tmp/zipformer.tar.bz2"
+    cyan "  Downloading sherpa-onnx-streaming-zipformer-en..."
+    curl -L --fail --progress-bar -o "$archive" "$archive_url"
+    cyan "  Extracting..."
+    tar -xjf "$archive" -C "$tmp"
+    local extracted
+    extracted="$(find "$tmp" -maxdepth 1 -type d -name "sherpa-onnx-streaming-zipformer-en*" -print -quit)"
+    if [[ -z "$extracted" || ! -d "$extracted" ]]; then
+        red "tarball did not contain a sherpa-onnx-streaming-zipformer-en directory"
+        return 1
+    fi
+    # Rename the canonical encoder/decoder/joiner files to drop the
+    # epoch-NN-avg-N suffixes; the daemon loads encoder.onnx etc.
+    local enc dec join
+    enc="$(find "$extracted" -maxdepth 1 -type f -name 'encoder*.onnx' | head -1)"
+    dec="$(find "$extracted" -maxdepth 1 -type f -name 'decoder*.onnx' | head -1)"
+    join="$(find "$extracted" -maxdepth 1 -type f -name 'joiner*.onnx' | head -1)"
+    if [[ -z "$enc" || -z "$dec" || -z "$join" ]]; then
+        red "tarball missing encoder/decoder/joiner ONNX"
+        return 1
+    fi
+    mv "$enc" "$extracted/encoder.onnx"
+    mv "$dec" "$extracted/decoder.onnx"
+    mv "$join" "$extracted/joiner.onnx"
+    mkdir -p "$(dirname "$target_dir")"
+    mv "$extracted" "$target_dir"
+    green "  ✓ sherpa-onnx-streaming-zipformer-en installed"
+    trap - EXIT
+    rm -rf "$tmp"
+}
+
 ensure_single_file() {
     local file_url="$1"
     local target_file="$2"
@@ -96,10 +137,13 @@ main() {
     cyan "Installing voice models into $MODELS_DIR"
     mkdir -p "$MODELS_DIR"
 
-    # STT — sherpa-onnx Moonshine base int8 (English only, offline)
-    ensure_extracted_tarball \
-        "$SHERPA_RELEASE_BASE/asr-models/sherpa-onnx-moonshine-base-en-int8.tar.bz2" \
-        "$MODELS_DIR/sherpa-onnx-moonshine-base-en-int8"
+    # STT — sherpa-onnx streaming Zipformer English. Emits partials live as
+    # frames arrive, which Moonshine couldn't do; unlocks MinWords barge-in
+    # + cancel-phrase detection. Tarball contents are renamed to canonical
+    # names the daemon's loader expects (encoder.onnx etc.) so version
+    # drift on the upstream artifact doesn't break us.
+    install_streaming_zipformer_en
+
 
     # TTS — sherpa-onnx Kokoro v1.0 multilingual
     ensure_extracted_tarball \

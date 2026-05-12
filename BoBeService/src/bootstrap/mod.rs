@@ -44,7 +44,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // Voice engines + filler library must be ready BEFORE the workers
     // registry constructs BobeHooks, because the hooks hold the filler
     // library to emit per-tool fillers via the sink on PreToolUse.
-    let (voice_stt, voice_tts, voice_vad, voice_smart_turn) = load_voice_engines();
+    let (voice_streaming_stt, voice_tts, voice_vad, voice_smart_turn) = load_voice_engines();
     let voice_filler_library = match voice_tts.as_ref() {
         Some(tts) => Some(Arc::new(
             crate::voice::filler_library::FillerLibrary::render(Arc::clone(tts)).await,
@@ -137,7 +137,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         workers,
         memory_file,
         ollama_install,
-        voice_stt,
+        voice_streaming_stt,
         voice_tts,
         voice_vad,
         voice_smart_turn,
@@ -158,7 +158,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 /// Env overrides: `BOBE_VOICE_PROVIDER` (cpu|coreml|cuda|directml),
 /// `BOBE_VOICE_NUM_THREADS` (default 4).
 fn load_voice_engines() -> (
-    Option<Arc<dyn crate::speech::SttEngine>>,
+    Option<Arc<dyn crate::speech::StreamingSttEngine>>,
     Option<Arc<dyn crate::speech::TtsEngine>>,
     Option<Arc<dyn crate::speech::AcousticVad>>,
     Option<Arc<dyn crate::speech::SemanticTurn>>,
@@ -182,15 +182,17 @@ fn load_voice_engines() -> (
         .unwrap_or(4);
 
     let stt = {
-        let dir = models_root.join("sherpa-onnx-moonshine-base-en-int8");
+        let dir = models_root.join("sherpa-onnx-streaming-zipformer-en");
         if dir.exists() {
-            match crate::speech::local_sherpa::LocalSherpaStt::load(&dir, &provider, num_threads) {
+            match crate::speech::streaming_stt::LocalZipformerStt::load(
+                &dir, &provider, num_threads,
+            ) {
                 Ok(e) => {
-                    info!(path = %dir.display(), provider, "voice.stt_loaded");
-                    Some(Arc::new(e) as Arc<dyn crate::speech::SttEngine>)
+                    info!(path = %dir.display(), provider, "voice.streaming_stt_loaded");
+                    Some(Arc::new(e) as Arc<dyn crate::speech::StreamingSttEngine>)
                 }
                 Err(e) => {
-                    warn!(error = %e, "voice.stt_load_failed");
+                    warn!(error = %e, "voice.streaming_stt_load_failed");
                     None
                 }
             }

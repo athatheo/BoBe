@@ -13,7 +13,7 @@ use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
-use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
+use crate::speech::{AcousticVad, SemanticTurn, StreamingSttEngine, TtsEngine};
 use crate::voice::filler_library::FillerLibrary;
 use crate::voice::sinks::VoiceSink;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -39,7 +39,9 @@ pub(crate) struct AppState {
     pub(crate) memory_file: Arc<MemoryFile>,
     pub(crate) ollama_install: Arc<OllamaInstallService>,
     /// Voice — `None` when sherpa-onnx models aren't installed; `/voice/stream` 503s.
-    pub(crate) voice_stt: Option<Arc<dyn SttEngine>>,
+    /// Streaming Zipformer fed live: every mic frame → `accept_audio` →
+    /// partials over WS → `commit_final` on speech-end.
+    pub(crate) voice_streaming_stt: Option<Arc<dyn StreamingSttEngine>>,
     pub(crate) voice_tts: Option<Arc<dyn TtsEngine>>,
     /// Acoustic VAD (Silero v6.2.1 via sherpa-onnx). `None` when model is missing.
     pub(crate) voice_vad: Option<Arc<dyn AcousticVad>>,

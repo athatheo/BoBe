@@ -92,10 +92,6 @@ pub(crate) enum ClientMessage {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(
-    dead_code,
-    reason = "TranscriptPartial reserved for streaming-STT; Truncate reserved for M4.5.5 barge-in"
-)]
 pub(crate) enum ServerMessage {
     /// Authoritative phase transition. Sent on every state change.
     State {
