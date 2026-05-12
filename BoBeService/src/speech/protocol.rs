@@ -133,11 +133,162 @@ pub(crate) const FLAG_FIRST_OF_TURN: u8 = 0b0000_0010;
 #[allow(dead_code, reason = "used by tts_pipeline in 0.d")]
 pub(crate) const FLAG_LAST_OF_TURN: u8 = 0b0000_0100;
 
-#[allow(dead_code, reason = "used by tts_pipeline in 0.d")]
 pub(crate) fn encode_tts_frame(chunk_id: u64, flags: u8, opus: &[u8]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(TTS_FRAME_HEADER_LEN + opus.len());
     buf.extend_from_slice(&chunk_id.to_be_bytes());
     buf.push(flags);
     buf.extend_from_slice(opus);
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn hello_deserialize() {
+        let raw = r#"{"type":"hello","session_id":"abc","capture_rate":16000,"playback_rate":24000,"codec":"opus"}"#;
+        let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
+        match parsed {
+            ClientMessage::Hello {
+                session_id,
+                capture_rate,
+                playback_rate,
+                codec,
+            } => {
+                assert_eq!(session_id, "abc");
+                assert_eq!(capture_rate, 16_000);
+                assert_eq!(playback_rate, 24_000);
+                assert_eq!(codec, "opus");
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn vad_hint_deserialize() {
+        let raw = r#"{"type":"vad_hint","kind":"speech_start","rms_dbfs":-30.5,"ts_ms":1234}"#;
+        let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
+        assert!(matches!(
+            parsed,
+            ClientMessage::VadHint {
+                kind: VadHintKind::SpeechStart,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn barge_in_deserialize() {
+        let raw = r#"{"type":"barge_in","ts_ms":1000,"playback_ms_played":420}"#;
+        let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
+        match parsed {
+            ClientMessage::BargeIn {
+                ts_ms,
+                playback_ms_played,
+            } => {
+                assert_eq!(ts_ms, 1_000);
+                assert_eq!(playback_ms_played, 420);
+            }
+            other => panic!("expected BargeIn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn control_abort_deserialize() {
+        let raw = r#"{"type":"control","action":"abort"}"#;
+        let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
+        assert!(matches!(
+            parsed,
+            ClientMessage::Control {
+                action: ControlAction::Abort
+            }
+        ));
+    }
+
+    #[test]
+    fn state_serialize_uses_snake_case() {
+        let msg = ServerMessage::State {
+            phase: VoicePhase::Speaking,
+            turn_id: "voice_xyz".into(),
+        };
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v, json!({"type":"state","phase":"speaking","turn_id":"voice_xyz"}));
+    }
+
+    #[test]
+    fn transcript_final_serialize() {
+        let msg = ServerMessage::TranscriptFinal {
+            turn_id: "voice_xyz".into(),
+            text: "hello world".into(),
+        };
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            v,
+            json!({"type":"transcript_final","turn_id":"voice_xyz","text":"hello world"})
+        );
+    }
+
+    #[test]
+    fn tts_end_serialize() {
+        let msg = ServerMessage::TtsEnd {
+            turn_id: "voice_xyz".into(),
+        };
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v, json!({"type":"tts_end","turn_id":"voice_xyz"}));
+    }
+
+    #[test]
+    fn truncate_serialize() {
+        let msg = ServerMessage::Truncate {
+            turn_id: "voice_xyz".into(),
+            keep_ms: 1_500,
+        };
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            v,
+            json!({"type":"truncate","turn_id":"voice_xyz","keep_ms":1500})
+        );
+    }
+
+    #[test]
+    fn tts_frame_header_round_trip() {
+        let opus = vec![1_u8, 2, 3, 4, 5];
+        let chunk_id: u64 = 0x0102_0304_0506_0708;
+        let flags = FLAG_FILLER | FLAG_FIRST_OF_TURN;
+        let framed = encode_tts_frame(chunk_id, flags, &opus);
+
+        assert_eq!(framed.len(), TTS_FRAME_HEADER_LEN + opus.len());
+        // Big-endian u64 header
+        assert_eq!(
+            &framed[0..8],
+            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        );
+        assert_eq!(framed[8], flags);
+        assert_eq!(&framed[9..], &opus[..]);
+    }
+
+    #[test]
+    fn voice_phase_serializes_snake_case() {
+        for (phase, want) in [
+            (VoicePhase::Idle, "idle"),
+            (VoicePhase::Listening, "listening"),
+            (VoicePhase::Capturing, "capturing"),
+            (VoicePhase::Thinking, "thinking"),
+            (VoicePhase::Speaking, "speaking"),
+            (VoicePhase::Cancelling, "cancelling"),
+            (VoicePhase::Failed, "failed"),
+        ] {
+            let v = serde_json::to_value(phase).unwrap();
+            assert_eq!(v.as_str(), Some(want));
+        }
+    }
+
+    #[test]
+    fn invalid_type_errors() {
+        let raw = r#"{"type":"nonexistent_type"}"#;
+        let result: Result<ClientMessage, _> = serde_json::from_str(raw);
+        assert!(result.is_err());
+    }
 }
