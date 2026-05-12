@@ -19,3 +19,8 @@
 
 [env]
 COPILOT_CLI_VERSION = "1.0.44"
+# `opus` crate vendors libopus through CMake; the bundled CMakeLists requires
+# cmake_minimum_required >= 3.5, which newer cmake distributions (4.x) refuse
+# unless either the project bumps that line OR you pass this policy override.
+# Set centrally so `cargo build` / `cargo test` work out of the box.
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"

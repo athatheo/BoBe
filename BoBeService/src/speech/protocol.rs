@@ -29,8 +29,13 @@ pub(crate) enum ControlAction {
 }
 
 /// Daemon-side authoritative turn phase. Client mirrors for UI only.
+///
+/// Some variants are not yet emitted by the daemon — they're part of the
+/// protocol contract for future milestones (Capturing on partial-speech UX,
+/// Cancelling on M4.5.5 barge-in, Failed on engine-load errors).
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code, reason = "Capturing/Cancelling/Failed reserved for M4.5.5+")]
 pub(crate) enum VoicePhase {
     Idle,
     Listening,
@@ -43,6 +48,10 @@ pub(crate) enum VoicePhase {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(
+    dead_code,
+    reason = "VadHint/BargeIn/Wake/PlaybackAck fields are wire-protocol contract; consumed in M4.5.5+"
+)]
 pub(crate) enum ClientMessage {
     /// Session handshake; sent once after WS connect.
     Hello {
@@ -59,10 +68,7 @@ pub(crate) enum ClientMessage {
     },
     /// Client detected speech during BoBe TTS playback — candidate barge-in.
     /// Daemon decides whether to honour after the min-words gate.
-    BargeIn {
-        ts_ms: u64,
-        playback_ms_played: u64,
-    },
+    BargeIn { ts_ms: u64, playback_ms_played: u64 },
     /// Wake-word fired locally. Daemon may auto-open mic if not yet active.
     Wake {
         phrase: String,
@@ -70,18 +76,17 @@ pub(crate) enum ClientMessage {
         ts_ms: u64,
     },
     /// Reports how much of TTS chunk_id has actually played, for truncation math.
-    PlaybackAck {
-        chunk_id: u64,
-        played_ms: u64,
-    },
+    PlaybackAck { chunk_id: u64, played_ms: u64 },
     /// User-initiated control.
-    Control {
-        action: ControlAction,
-    },
+    Control { action: ControlAction },
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(
+    dead_code,
+    reason = "TranscriptPartial reserved for streaming-STT; Truncate reserved for M4.5.5 barge-in"
+)]
 pub(crate) enum ServerMessage {
     /// Authoritative phase transition. Sent on every state change.
     State {

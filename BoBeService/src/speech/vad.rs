@@ -8,7 +8,9 @@ use crate::error::AppError;
 /// One contiguous speech segment, in the audio timeline of pushed samples.
 #[derive(Debug, Clone)]
 pub(crate) struct SpeechSegment {
-    /// Start time within the pushed-audio timeline, in seconds.
+    /// Start time within the pushed-audio timeline, in seconds. Reserved for
+    /// M4.5.5 barge-in truncation math + future streaming-STT alignment.
+    #[allow(dead_code, reason = "consumed by barge-in path in M4.5.5")]
     pub(crate) start_seconds: f32,
     /// Mono f32 PCM samples at the engine's native sample rate (16kHz).
     pub(crate) samples: Vec<f32>,
@@ -18,6 +20,10 @@ pub(crate) struct SpeechSegment {
 ///
 /// All methods take `&self` because the underlying wrapper owns internal
 /// mutability. Implementations must be `Send + Sync`.
+#[allow(
+    dead_code,
+    reason = "flush + reset called by M4.5.5 barge-in + turn-end semantics"
+)]
 pub(crate) trait AcousticVad: Send + Sync {
     /// Push 16kHz mono f32 PCM samples. Internally buffered + analyzed.
     fn accept(&self, samples: &[f32]) -> Result<(), AppError>;

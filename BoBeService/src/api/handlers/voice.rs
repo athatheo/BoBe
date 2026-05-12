@@ -80,6 +80,11 @@ impl VoiceEngines {
     }
 }
 
+#[allow(
+    clippy::collapsible_match,
+    reason = "outer match has Binary/Close arms that prevent if-let collapse; \
+              async call also disallows match guards"
+)]
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let Some(engines) = VoiceEngines::from_state(&state) else {
         warn!("voice.engines_unavailable");
@@ -183,7 +188,7 @@ async fn process_segment(
     };
 
     let new_turn_id = format!("voice_{}", Uuid::new_v4().simple());
-    session.turn_id = new_turn_id.clone();
+    session.turn_id.clone_from(&new_turn_id);
     send_state(out_tx, VoicePhase::Thinking, &new_turn_id).await;
 
     // STT

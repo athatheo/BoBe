@@ -37,10 +37,7 @@ impl SentenceBuffer {
         if sentences.len() < 2 {
             return Vec::new();
         }
-        let last = sentences
-            .last()
-            .map(String::clone)
-            .unwrap_or_default();
+        let last = sentences.last().cloned().unwrap_or_default();
         let mut out: Vec<String> = sentences.into_iter().collect();
         out.pop();
         let out: Vec<String> = out
@@ -88,7 +85,6 @@ fn split_sentences(text: &str) -> Vec<String> {
                 None => true,
                 Some(nn) => nn.is_uppercase() || nn == '"' || nn == '\'' || nn == '\n',
             },
-            Some('\n') => true,
             _ => false,
         };
 
@@ -162,7 +158,7 @@ mod tests {
     #[test]
     fn flush_drains_remainder() {
         let mut b = SentenceBuffer::new();
-        let _ = b.feed("One sentence remaining no terminator");
+        drop(b.feed("One sentence remaining no terminator"));
         let out = b.flush();
         assert_eq!(out, vec!["One sentence remaining no terminator"]);
     }
