@@ -16,6 +16,7 @@ use crate::services::ollama_install_service::OllamaInstallService;
 use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
 use crate::voice::filler_library::FillerLibrary;
 use crate::voice::sinks::VoiceSink;
+use metrics_exporter_prometheus::PrometheusHandle;
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -58,6 +59,9 @@ pub(crate) struct AppState {
     /// Single-slot voice sink that hooks (PreToolUse, ErrorOccurred) read
     /// to push cached filler PCM directly to the active client.
     pub(crate) voice_sink: Arc<VoiceSink>,
+    /// Prometheus exposition handle. The `/metrics` route calls `.render()`
+    /// on each request to produce the text-format snapshot.
+    pub(crate) metrics_handle: PrometheusHandle,
 }
 
 impl AppState {

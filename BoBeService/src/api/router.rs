@@ -35,6 +35,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/health", get(handlers::health::health_check))
+        .route("/metrics", get(handlers::metrics::metrics))
         .route("/status", get(handlers::health::get_status))
         .route("/events", get(handlers::events::stream_events))
         .route("/message", post(handlers::conversation::send_message))

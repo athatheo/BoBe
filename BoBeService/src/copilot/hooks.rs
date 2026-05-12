@@ -131,6 +131,7 @@ impl SessionHooks for BobeHooks {
                 // surface for that question. Deny it cleanly so the agent
                 // proceeds with a different plan instead of hanging.
                 if input.tool_name == "ask_user" {
+                    metrics::counter!(crate::voice::telemetry::CTR_ASK_USER_BLOCKED).increment(1);
                     tracing::info!(
                         session = %ctx.session_id,
                         "voice.pre_tool_blocked_ask_user"

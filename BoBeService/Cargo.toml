@@ -153,3 +153,9 @@ opus = "0.3"
 # `backticks` literally otherwise. Used by speech::markdown_strip with
 # precompiled LazyLock regex set.
 regex = "1"
+# Voice telemetry. Lightweight facade + Prometheus exporter for the per-stage
+# histograms (stt_ms, tts_ttfb_ms, e2e_ms, barge_in_success_rate, etc.) the
+# voice SLO dashboard needs. Recorder is installed at bootstrap and served
+# via the daemon's existing axum router under GET /metrics.
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }

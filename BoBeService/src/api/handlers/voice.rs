@@ -36,6 +36,10 @@ use crate::speech::sentence_buffer::SentenceBuffer;
 use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
 use crate::voice::filler_library::{FillerKind, FillerLibrary};
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
+use crate::voice::telemetry::{
+    CTR_BARGE_IN_SUCCESS, CTR_FILLER_TRIGGER, CTR_SEGMENT_DROP, CTR_TURN_COMPLETE, CTR_TURN_ERROR,
+    HIST_E2E_MS, HIST_SMART_TURN_MS, HIST_STT_MS,
+};
 
 const OPUS_INPUT_SAMPLE_RATE: u32 = 16_000;
 const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
@@ -259,6 +263,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             // and merge into the in-flight or next turn.
                             s.segments_dropped =
                                 s.segments_dropped.saturating_add(1);
+                            metrics::counter!(CTR_SEGMENT_DROP).increment(1);
                             warn!(
                                 session = %s.session_id,
                                 drops = s.segments_dropped,
@@ -373,6 +378,7 @@ async fn process_turn(
     let turn_start = Instant::now();
 
     // Semantic turn gate — discard if the user isn't really done yet.
+    let smart_turn_start = Instant::now();
     match engines.smart_turn.probability_complete(&segment.samples) {
         Ok(p) if p < TURN_COMPLETE_THRESHOLD => {
             debug!(p, "voice.smart_turn_incomplete_skip");
@@ -381,6 +387,8 @@ async fn process_turn(
         Ok(p) => debug!(p, "voice.smart_turn_complete"),
         Err(e) => warn!(error = %e, "voice.smart_turn_failed_passthrough"),
     }
+    metrics::histogram!(HIST_SMART_TURN_MS)
+        .record(smart_turn_start.elapsed().as_secs_f64() * 1000.0);
 
     let guard = match runtime_session.try_begin_user_message() {
         Ok(g) => g,
@@ -424,9 +432,11 @@ async fn process_turn(
     };
 
     let stt_elapsed_ms = stt_start.elapsed().as_millis() as u64;
+    metrics::histogram!(HIST_STT_MS).record(stt_elapsed_ms as f64);
     let trimmed = transcript.trim();
     if trimmed.is_empty() {
         info!(stt_ms = stt_elapsed_ms, "voice.empty_transcript");
+        metrics::counter!(CTR_TURN_ERROR).increment(1);
         send_error(&out_tx, "empty_transcript", "I didn't catch that").await;
         send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
         drop(guard);
@@ -513,10 +523,13 @@ async fn process_turn(
     send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
     drop(guard);
 
+    let total_ms = turn_start.elapsed().as_millis() as u64;
+    metrics::histogram!(HIST_E2E_MS).record(total_ms as f64);
+    metrics::counter!(CTR_TURN_COMPLETE).increment(1);
     info!(
         stt_ms = stt_elapsed_ms,
         speaking_ms = speaking_start.elapsed().as_millis() as u64,
-        total_ms = turn_start.elapsed().as_millis() as u64,
+        total_ms,
         "voice.turn_complete"
     );
 }
@@ -632,6 +645,7 @@ fn spawn_filler_watchdog(
             debug!("voice.filler_skipped_kokoro_already_emitted");
             return;
         }
+        metrics::counter!(CTR_FILLER_TRIGGER).increment(1);
         debug!(samples = pcm.len(), "voice.filler_emit");
         // Filler is one-shot per turn, so a fresh encoder is fine here.
         let Some(mut encoder) = make_opus_encoder(sample_rate) else {
@@ -779,6 +793,7 @@ async fn handle_barge_in(
         debug!("voice.barge_in_no_turn");
         return;
     };
+    metrics::counter!(CTR_BARGE_IN_SUCCESS).increment(1);
     info!(
         turn_id = %turn.turn_id,
         played_ms,

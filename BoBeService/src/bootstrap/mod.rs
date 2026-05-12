@@ -37,6 +37,10 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
     // Single-slot voice sink — same dual-consumer pattern as the flag.
     let voice_sink = Arc::new(crate::voice::sinks::VoiceSink::new());
+    // Install the Prometheus recorder once at boot. The handle goes on
+    // AppState; the `/metrics` route renders from it on each request.
+    let metrics_handle = crate::voice::telemetry::install_recorder()
+        .map_err(|e| AppError::Internal(format!("metrics recorder: {e}")))?;
     // Voice engines + filler library must be ready BEFORE the workers
     // registry constructs BobeHooks, because the hooks hold the filler
     // library to emit per-tool fillers via the sink on PreToolUse.
@@ -140,6 +144,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         voice_filler_library,
         voice_turn_active,
         voice_sink,
+        metrics_handle,
     });
 
     Ok(state)
