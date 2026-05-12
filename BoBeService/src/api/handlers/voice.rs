@@ -36,9 +36,11 @@ use crate::speech::sentence_buffer::SentenceBuffer;
 use crate::speech::{AcousticVad, SemanticTurn, StreamingSttEngine, TtsEngine};
 use crate::voice::filler_library::{FillerKind, FillerLibrary};
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
+use crate::voice::cancel_phrases::is_cancel_phrase;
 use crate::voice::telemetry::{
-    CTR_BARGE_IN_FALSE, CTR_BARGE_IN_SUCCESS, CTR_FILLER_TRIGGER, CTR_SEGMENT_DROP,
-    CTR_TURN_COMPLETE, CTR_TURN_ERROR, HIST_E2E_MS, HIST_SMART_TURN_MS, HIST_STT_MS,
+    CTR_BARGE_IN_FALSE, CTR_BARGE_IN_SUCCESS, CTR_CANCEL_PHRASE, CTR_FILLER_TRIGGER,
+    CTR_SEGMENT_DROP, CTR_TURN_COMPLETE, CTR_TURN_ERROR, HIST_E2E_MS, HIST_SMART_TURN_MS,
+    HIST_STT_MS,
 };
 
 const OPUS_INPUT_SAMPLE_RATE: u32 = 16_000;
@@ -274,11 +276,42 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     send_json(
                         &out_tx,
                         &ServerMessage::TranscriptPartial {
-                            turn_id,
-                            text: partial,
+                            turn_id: turn_id.clone(),
+                            text: partial.clone(),
                         },
                     )
                     .await;
+                    // C7: cancel-phrase bypass. If the user says "stop" /
+                    // "nevermind" during BoBe's TTS, abort the in-flight
+                    // turn locally — no LLM round-trip. Inline rather than
+                    // calling handle_barge_in because that path enforces
+                    // MinWords (irrelevant here — the cancel command IS
+                    // the signal).
+                    if s.current_turn.is_some() && is_cancel_phrase(&partial) {
+                        if let Some(turn) = s.current_turn.take() {
+                            metrics::counter!(CTR_CANCEL_PHRASE).increment(1);
+                            info!(
+                                turn_id = %turn.turn_id,
+                                partial = %partial,
+                                "voice.cancel_phrase_abort"
+                            );
+                            let TurnInFlight { turn_id: tid, join } = turn;
+                            join.abort();
+                            drop(join.await);
+                            send_json(
+                                &out_tx,
+                                &ServerMessage::Truncate {
+                                    turn_id: tid.clone(),
+                                    keep_ms: s.last_acked_played_ms,
+                                },
+                            )
+                            .await;
+                            send_state(&out_tx, VoicePhase::Listening, &tid).await;
+                            s.last_partial_text.clear();
+                            engines.stt.reset();
+                            continue;
+                        }
+                    }
                 }
                 if let Err(e) = engines.vad.accept(&samples) {
                     warn!(error = %e, "voice.vad_accept_failed");
