@@ -27,7 +27,15 @@ enum VoicePhaseWire: String, Codable {
 }
 
 enum ClientVoiceMessage: Codable {
-    case hello(sessionId: String, captureRate: UInt32, playbackRate: UInt32, codec: String)
+    case hello(
+        sessionId: String,
+        captureRate: UInt32,
+        playbackRate: UInt32,
+        codec: String,
+        voiceId: String?,
+        speed: Float?,
+        voicePack: String?
+    )
     case vadHint(kind: VoiceVadHintKind, rmsDbfs: Float, tsMs: UInt64)
     case bargeIn(tsMs: UInt64, playbackMsPlayed: UInt64)
     case wake(phrase: String, score: Float, tsMs: UInt64)
@@ -37,12 +45,15 @@ enum ClientVoiceMessage: Codable {
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case let .hello(sessionId, captureRate, playbackRate, codec):
+        case let .hello(sessionId, captureRate, playbackRate, codec, voiceId, speed, voicePack):
             try c.encode("hello", forKey: .type)
             try c.encode(sessionId, forKey: .sessionId)
             try c.encode(captureRate, forKey: .captureRate)
             try c.encode(playbackRate, forKey: .playbackRate)
             try c.encode(codec, forKey: .codec)
+            try c.encodeIfPresent(voiceId, forKey: .voiceId)
+            try c.encodeIfPresent(speed, forKey: .speed)
+            try c.encodeIfPresent(voicePack, forKey: .voicePack)
         case let .vadHint(kind, rmsDbfs, tsMs):
             try c.encode("vad_hint", forKey: .type)
             try c.encode(kind, forKey: .kind)
@@ -80,6 +91,9 @@ enum ClientVoiceMessage: Codable {
         case captureRate = "capture_rate"
         case playbackRate = "playback_rate"
         case codec
+        case voiceId = "voice_id"
+        case speed
+        case voicePack = "voice_pack"
         case kind
         case rmsDbfs = "rms_dbfs"
         case tsMs = "ts_ms"

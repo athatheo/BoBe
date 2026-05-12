@@ -63,9 +63,31 @@ const TURN_COMPLETE_THRESHOLD: f32 = 0.7;
 /// Matches LiveKit/Pipecat/ElevenLabs production threshold.
 const FILLER_TRIGGER: Duration = Duration::from_millis(800);
 
-/// Default voice slot — replaced by per-soul `voice_id` setting in M4.5.0c.
+/// Fallback voice slot used when neither the Hello handshake (per-client)
+/// nor (future C6) AppState DaemonSettings supply one.
 const DEFAULT_KOKORO_VOICE: &str = "af_bella";
 const DEFAULT_KOKORO_SPEED: f32 = 1.0;
+
+/// Per-WS voice preferences carried in the Hello handshake. Stored on
+/// `VoiceSession` and read by the kokoro task. `voice_pack` is captured
+/// for forward-compat (M5.x soul-pack swap) but unused today.
+#[derive(Clone)]
+struct SessionVoiceConfig {
+    voice_id: String,
+    speed: f32,
+    #[allow(dead_code, reason = "consumed by M5.x soul voice_pack swap")]
+    voice_pack: Option<String>,
+}
+
+impl SessionVoiceConfig {
+    fn new(voice_id: Option<String>, speed: Option<f32>, voice_pack: Option<String>) -> Self {
+        Self {
+            voice_id: voice_id.unwrap_or_else(|| DEFAULT_KOKORO_VOICE.to_string()),
+            speed: speed.unwrap_or(DEFAULT_KOKORO_SPEED).clamp(0.5, 2.0),
+            voice_pack,
+        }
+    }
+}
 
 pub(crate) async fn voice_stream(
     ws: WebSocketUpgrade,
@@ -119,6 +141,9 @@ struct VoiceSession {
     /// truncate offsets in barge-in when WS jitter delays the client's
     /// `barge_in.playback_ms_played` value.
     last_acked_played_ms: u64,
+    /// Per-WS voice preferences from the Hello handshake. Falls through to
+    /// defaults if the client didn't specify any.
+    voice_cfg: SessionVoiceConfig,
 }
 
 struct TurnInFlight {
@@ -242,6 +267,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             Arc::clone(&runtime_session),
                             out_tx.clone(),
                             Arc::clone(&state.voice_turn_active),
+                            s.voice_cfg.clone(),
                         );
                         s.current_turn = Some(turn);
                     }
@@ -300,6 +326,7 @@ fn spawn_turn(
     runtime_session: Arc<RuntimeSession>,
     out_tx: mpsc::Sender<Message>,
     voice_turn_active: Arc<AtomicBool>,
+    voice_cfg: SessionVoiceConfig,
 ) -> TurnInFlight {
     let turn_id = format!("voice_{}", Uuid::new_v4().simple());
     let task_turn_id = turn_id.clone();
@@ -311,6 +338,7 @@ fn spawn_turn(
             out_tx,
             task_turn_id,
             voice_turn_active,
+            voice_cfg,
         )
         .await;
     });
@@ -336,6 +364,7 @@ async fn process_turn(
     out_tx: mpsc::Sender<Message>,
     turn_id: String,
     voice_turn_active: Arc<AtomicBool>,
+    voice_cfg: SessionVoiceConfig,
 ) {
     let turn_start = Instant::now();
     voice_turn_active.store(true, Ordering::Release);
@@ -424,6 +453,7 @@ async fn process_turn(
         sentence_rx,
         out_tx.clone(),
         Arc::clone(&first_audio_emitted),
+        voice_cfg.clone(),
     );
 
     let pipeline = Arc::new(std::sync::Mutex::new(SentencePipeline::new(
@@ -522,6 +552,7 @@ fn spawn_kokoro_task(
     mut sentence_rx: mpsc::Receiver<String>,
     out_tx: mpsc::Sender<Message>,
     first_audio_emitted: Arc<AtomicBool>,
+    voice_cfg: SessionVoiceConfig,
 ) -> tokio::task::JoinHandle<()> {
     let sample_rate = tts.sample_rate();
     tokio::spawn(async move {
@@ -536,8 +567,10 @@ fn spawn_kokoro_task(
         while let Some(sentence) = sentence_rx.recv().await {
             let tts_clone = Arc::clone(&tts);
             let sentence_owned = sentence.clone();
+            let voice_id = voice_cfg.voice_id.clone();
+            let speed = voice_cfg.speed;
             let synth = tokio::task::spawn_blocking(move || {
-                tts_clone.synthesize(&sentence_owned, DEFAULT_KOKORO_VOICE, DEFAULT_KOKORO_SPEED)
+                tts_clone.synthesize(&sentence_owned, &voice_id, speed)
             })
             .await;
             let pcm = match synth {
@@ -670,8 +703,20 @@ async fn handle_control_text(
             capture_rate,
             playback_rate,
             codec,
+            voice_id,
+            speed,
+            voice_pack,
         }) => {
-            info!(session = %session_id, capture_rate, playback_rate, codec, "voice.hello");
+            info!(
+                session = %session_id,
+                capture_rate,
+                playback_rate,
+                codec,
+                voice_id = ?voice_id,
+                speed = ?speed,
+                voice_pack = ?voice_pack,
+                "voice.hello"
+            );
             if capture_rate != OPUS_INPUT_SAMPLE_RATE {
                 send_error(
                     out_tx,
@@ -695,7 +740,8 @@ async fn handle_control_text(
                     .await;
                 return false;
             }
-            match VoiceSession::new(session_id) {
+            let cfg = SessionVoiceConfig::new(voice_id, speed, voice_pack);
+            match VoiceSession::new(session_id, cfg) {
                 Ok(s) => {
                     let initial_turn = format!("voice_{}", Uuid::new_v4().simple());
                     *session = Some(s);
@@ -837,7 +883,7 @@ async fn handle_control_action(
 }
 
 impl VoiceSession {
-    fn new(session_id: String) -> Result<Self, &'static str> {
+    fn new(session_id: String, voice_cfg: SessionVoiceConfig) -> Result<Self, &'static str> {
         let decoder = OpusDecoder::new(OPUS_INPUT_SAMPLE_RATE, Channels::Mono)
             .map_err(|_| "create Opus decoder failed")?;
         Ok(Self {
@@ -847,6 +893,7 @@ impl VoiceSession {
             muted: false,
             segments_dropped: 0,
             last_acked_played_ms: 0,
+            voice_cfg,
         })
     }
 

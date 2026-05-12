@@ -53,12 +53,21 @@ pub(crate) enum VoicePhase {
     reason = "VadHint/BargeIn/Wake/PlaybackAck fields are wire-protocol contract; consumed in M4.5.5+"
 )]
 pub(crate) enum ClientMessage {
-    /// Session handshake; sent once after WS connect.
+    /// Session handshake; sent once after WS connect. Optional voice fields
+    /// let the client express per-session voice preferences (Kokoro voice
+    /// slot, speed) that override the daemon's DaemonSettings defaults for
+    /// this WS only. Absence falls through to the daemon defaults.
     Hello {
         session_id: String,
         capture_rate: u32,
         playback_rate: u32,
         codec: String,
+        #[serde(default)]
+        voice_id: Option<String>,
+        #[serde(default)]
+        speed: Option<f32>,
+        #[serde(default)]
+        voice_pack: Option<String>,
     },
     /// Optional fast hint that mic energy crossed threshold.
     VadHint {
@@ -147,7 +156,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn hello_deserialize() {
+    fn hello_deserialize_minimal() {
         let raw = r#"{"type":"hello","session_id":"abc","capture_rate":16000,"playback_rate":24000,"codec":"opus"}"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
         match parsed {
@@ -156,11 +165,45 @@ mod tests {
                 capture_rate,
                 playback_rate,
                 codec,
+                voice_id,
+                speed,
+                voice_pack,
             } => {
                 assert_eq!(session_id, "abc");
                 assert_eq!(capture_rate, 16_000);
                 assert_eq!(playback_rate, 24_000);
                 assert_eq!(codec, "opus");
+                assert_eq!(voice_id, None);
+                assert_eq!(speed, None);
+                assert_eq!(voice_pack, None);
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hello_deserialize_with_voice_cfg() {
+        let raw = r#"{
+            "type":"hello",
+            "session_id":"abc",
+            "capture_rate":16000,
+            "playback_rate":24000,
+            "codec":"opus",
+            "voice_id":"am_michael",
+            "speed":1.2,
+            "voice_pack":"warm"
+        }"#;
+        let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
+        match parsed {
+            ClientMessage::Hello {
+                voice_id,
+                speed,
+                voice_pack,
+                ..
+            } => {
+                assert_eq!(voice_id, Some("am_michael".into()));
+                assert_eq!(speed, Some(1.2));
+                assert_eq!(voice_pack, Some("warm".into()));
             }
             other => panic!("expected Hello, got {other:?}"),
         }

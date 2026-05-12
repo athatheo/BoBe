@@ -128,13 +128,22 @@ public final class VoicePipeline {
 
         self.sessionId = "voice-\(Int(Date().timeIntervalSince1970))"
         let sid = self.sessionId
+        // Per-WS voice prefs from BobeStore (M4.5.0c plumbs the soul/settings
+        // wiring later — for now Hello just sends nil, and the daemon falls
+        // through to its defaults).
+        let voiceId: String? = nil
+        let speed: Float? = nil
+        let voicePack: String? = nil
         Task { [weak self] in
             guard let self else { return }
             await self.sendClient(.hello(
                 sessionId: sid,
                 captureRate: 16_000,
                 playbackRate: 24_000,
-                codec: "opus"
+                codec: "opus",
+                voiceId: voiceId,
+                speed: speed,
+                voicePack: voicePack
             ))
         }
     }
