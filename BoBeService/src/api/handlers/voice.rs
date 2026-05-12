@@ -45,7 +45,10 @@ const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
 const OPUS_MAX_FRAME_SAMPLES: usize = 2_880;
 const TTS_OPUS_BITRATE_BPS: i32 = 24_000;
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
-const SENTENCE_CHANNEL_CAPACITY: usize = 4;
+/// Sentence buffer between observer (synchronous closure) and Kokoro task.
+/// Bursts during fast LLM token rates can push 3-5 sentences within ~200ms;
+/// 16 gives comfortable headroom while still bounding memory.
+const SENTENCE_CHANNEL_CAPACITY: usize = 16;
 
 /// Smart-turn pass-through threshold. Stub returns 1.0 → trivially passes;
 /// real smart-turn v3.1 (M4.5.2) will gate here.
@@ -159,7 +162,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         info!(session = %s.session_id, "voice.disconnect");
     }
     drop(out_tx);
-    drop(writer.await);
+    match writer.await {
+        Ok(()) => {}
+        Err(e) if e.is_panic() => {
+            error!(error = %e, "voice.ws_writer_panic");
+        }
+        Err(e) if e.is_cancelled() => {}
+        Err(e) => warn!(error = %e, "voice.ws_writer_join_failed"),
+    }
 }
 
 async fn process_segment(
@@ -265,7 +275,16 @@ async fn process_segment(
     // Drop the sender so the Kokoro task drains and exits
     drop(pipeline);
     drop(sentence_tx);
-    drop(kokoro_task.await);
+    match kokoro_task.await {
+        Ok(()) => {}
+        Err(e) if e.is_panic() => {
+            error!(error = %e, "voice.kokoro_task_panic");
+        }
+        Err(e) if e.is_cancelled() => {
+            debug!("voice.kokoro_task_cancelled");
+        }
+        Err(e) => warn!(error = %e, "voice.kokoro_task_join_failed"),
+    }
 
     send_json(
         out_tx,
@@ -299,13 +318,17 @@ impl SentencePipeline {
             return;
         }
         for sentence in self.sb.feed(&clean) {
-            drop(self.tx.try_send(sentence));
+            if self.tx.try_send(sentence).is_err() {
+                warn!("voice.sentence_channel_full_drop");
+            }
         }
     }
 
     fn flush(&mut self) {
         for sentence in self.sb.flush() {
-            drop(self.tx.try_send(sentence));
+            if self.tx.try_send(sentence).is_err() {
+                warn!("voice.sentence_channel_full_flush_drop");
+            }
         }
     }
 }

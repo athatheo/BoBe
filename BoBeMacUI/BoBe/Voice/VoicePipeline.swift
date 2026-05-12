@@ -61,7 +61,6 @@ public final class VoicePipeline {
     private var sessionId: String = ""
 
     private var isWarm = false
-    private var isStreaming = false
 
     private init() {
         self.audioEngine.attach(self.playerNode)
@@ -128,7 +127,6 @@ public final class VoicePipeline {
         let oldTask = self.task
         self.task = nil
         self.state = .idle
-        self.isStreaming = false
         // Send abort then cancel — sending after task=nil would drop the
         // message, and stale receiveLoop callbacks are guarded in receiveLoop
         // by the task-identity check.
@@ -377,6 +375,12 @@ public final class VoicePipeline {
             self.truncatePlayback(keepMs: keepMs)
         case let .error(code, message):
             self.lastError = "\(code): \(message)"
+            // Errors during handshake should transition the mic UI to
+            // .failed immediately rather than waiting for the WS close
+            // to bounce us through receiveLoop's failure branch.
+            if self.state == .connecting {
+                self.state = .failed("\(code): \(message)")
+            }
         case .unknown:
             break
         }
