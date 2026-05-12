@@ -37,8 +37,8 @@ use crate::speech::{AcousticVad, SemanticTurn, StreamingSttEngine, TtsEngine};
 use crate::voice::filler_library::{FillerKind, FillerLibrary};
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
 use crate::voice::telemetry::{
-    CTR_BARGE_IN_SUCCESS, CTR_FILLER_TRIGGER, CTR_SEGMENT_DROP, CTR_TURN_COMPLETE, CTR_TURN_ERROR,
-    HIST_E2E_MS, HIST_SMART_TURN_MS, HIST_STT_MS,
+    CTR_BARGE_IN_FALSE, CTR_BARGE_IN_SUCCESS, CTR_FILLER_TRIGGER, CTR_SEGMENT_DROP,
+    CTR_TURN_COMPLETE, CTR_TURN_ERROR, HIST_E2E_MS, HIST_SMART_TURN_MS, HIST_STT_MS,
 };
 
 const OPUS_INPUT_SAMPLE_RATE: u32 = 16_000;
@@ -60,6 +60,12 @@ const SENTENCE_CHANNEL_CAPACITY: usize = 16;
 /// Smart-turn pass-through threshold. Stub returns 1.0 → trivially passes;
 /// real smart-turn v3.1 (M4.5.2) will gate here.
 const TURN_COMPLETE_THRESHOLD: f32 = 0.7;
+
+/// MinWords barge-in gate (C3). During an active turn, a barge-in is
+/// honored only if the streaming-STT has accumulated at least this many
+/// words of user speech. "uh-huh"/"yeah" backchannel tokens fall below
+/// the threshold and get dropped as false barge-ins. Pipecat's default.
+const MIN_WORDS_FOR_BARGE_IN: usize = 3;
 
 /// Time-to-first-audio budget. If the Kokoro task hasn't pushed any audio
 /// frames by this deadline (the LLM is slow or the first sentence is still
@@ -305,6 +311,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             s.voice_cfg.clone(),
                         );
                         s.current_turn = Some(turn);
+                        // Partial-text carries until the next utterance
+                        // begins. Clear here so the MinWords gate doesn't
+                        // see stale words from the previous turn.
+                        s.last_partial_text.clear();
                     }
                 }
             }
@@ -803,6 +813,19 @@ async fn handle_barge_in(
     played_ms: u64,
 ) {
     let Some(s) = session.as_mut() else { return };
+    // C3 MinWords gate — drop backchannel barge-ins. Only applies while a
+    // turn is in flight; on an idle WS we accept any barge-in (e.g.,
+    // explicit Abort control).
+    let word_count = s.last_partial_text.split_whitespace().count();
+    if s.current_turn.is_some() && word_count < MIN_WORDS_FOR_BARGE_IN {
+        metrics::counter!(CTR_BARGE_IN_FALSE).increment(1);
+        debug!(
+            words = word_count,
+            partial = %s.last_partial_text,
+            "voice.barge_in_dropped_min_words"
+        );
+        return;
+    }
     // Tighter truncate offset: prefer whichever signal reports more playback,
     // since WS jitter can make the client's barge_in.playback_ms_played
     // lag the last PlaybackAck. Monotonic by construction.
