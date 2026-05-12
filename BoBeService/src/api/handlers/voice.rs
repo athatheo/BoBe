@@ -115,6 +115,10 @@ struct VoiceSession {
     /// replace this drop policy with queueing/merge; until then we surface
     /// the count so real-world rates are visible.
     segments_dropped: u64,
+    /// Latest `played_ms` from PlaybackAck. Used as a tighter floor for
+    /// truncate offsets in barge-in when WS jitter delays the client's
+    /// `barge_in.playback_ms_played` value.
+    last_acked_played_ms: u64,
 }
 
 struct TurnInFlight {
@@ -726,6 +730,12 @@ async fn handle_control_text(
             chunk_id,
             played_ms,
         }) => {
+            if let Some(s) = session.as_mut() {
+                // Monotonic — never roll back even if a stale ack arrives.
+                if played_ms > s.last_acked_played_ms {
+                    s.last_acked_played_ms = played_ms;
+                }
+            }
             debug!(chunk_id, played_ms, "voice.playback_ack");
             true
         }
@@ -755,11 +765,21 @@ async fn handle_barge_in(
     played_ms: u64,
 ) {
     let Some(s) = session.as_mut() else { return };
+    // Tighter truncate offset: prefer whichever signal reports more playback,
+    // since WS jitter can make the client's barge_in.playback_ms_played
+    // lag the last PlaybackAck. Monotonic by construction.
+    let keep_ms = played_ms.max(s.last_acked_played_ms);
     let Some(turn) = s.current_turn.take() else {
         debug!("voice.barge_in_no_turn");
         return;
     };
-    info!(turn_id = %turn.turn_id, played_ms, "voice.barge_in_aborting");
+    info!(
+        turn_id = %turn.turn_id,
+        played_ms,
+        last_ack_ms = s.last_acked_played_ms,
+        keep_ms,
+        "voice.barge_in_aborting"
+    );
     let TurnInFlight { turn_id, join } = turn;
     join.abort();
     // Await drop so UserMessageGuard releases before the next turn can begin.
@@ -768,7 +788,7 @@ async fn handle_barge_in(
         out_tx,
         &ServerMessage::Truncate {
             turn_id: turn_id.clone(),
-            keep_ms: played_ms,
+            keep_ms,
         },
     )
     .await;
@@ -826,6 +846,7 @@ impl VoiceSession {
             current_turn: None,
             muted: false,
             segments_dropped: 0,
+            last_acked_played_ms: 0,
         })
     }
 
