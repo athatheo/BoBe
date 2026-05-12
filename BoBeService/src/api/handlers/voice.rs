@@ -110,6 +110,11 @@ struct VoiceSession {
     /// Client-requested mute — incoming audio frames are dropped before VAD
     /// while this is true. Toggled by Control{Mute|Unmute|Reset}.
     muted: bool,
+    /// Count of speech segments dropped because a turn was already in
+    /// flight when a new segment arrived. M5.2 hammering pushback will
+    /// replace this drop policy with queueing/merge; until then we surface
+    /// the count so real-world rates are visible.
+    segments_dropped: u64,
 }
 
 struct TurnInFlight {
@@ -218,7 +223,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             // A turn is already running. Drop the segment for
                             // now — M5.2 hammering pushback will queue these
                             // and merge into the in-flight or next turn.
-                            debug!("voice.segment_dropped_turn_in_flight");
+                            s.segments_dropped =
+                                s.segments_dropped.saturating_add(1);
+                            warn!(
+                                session = %s.session_id,
+                                drops = s.segments_dropped,
+                                "voice.segment_backpressure_drop"
+                            );
                             continue;
                         }
                         let turn = spawn_turn(
@@ -510,6 +521,12 @@ fn spawn_kokoro_task(
 ) -> tokio::task::JoinHandle<()> {
     let sample_rate = tts.sample_rate();
     tokio::spawn(async move {
+        // One Opus encoder for the whole turn — reuses internal entropy
+        // coder state across sentences for marginally better compression
+        // than the per-call recreation we used to do.
+        let Some(mut encoder) = make_opus_encoder(sample_rate) else {
+            return;
+        };
         let mut chunk_id: u64 = 0;
         let mut first_chunk_pending = true;
         while let Some(sentence) = sentence_rx.recv().await {
@@ -530,7 +547,7 @@ fn spawn_kokoro_task(
                     continue;
                 }
             };
-            for opus_packet in encode_opus_frames(&pcm, sample_rate) {
+            for opus_packet in encode_pcm_with(&mut encoder, &pcm, sample_rate) {
                 let mut flags = 0_u8;
                 if first_chunk_pending {
                     flags |= FLAG_FIRST_OF_TURN;
@@ -569,8 +586,12 @@ fn spawn_filler_watchdog(
             return;
         }
         debug!(samples = pcm.len(), "voice.filler_emit");
+        // Filler is one-shot per turn, so a fresh encoder is fine here.
+        let Some(mut encoder) = make_opus_encoder(sample_rate) else {
+            return;
+        };
         let mut chunk_id: u64 = 0;
-        for opus_packet in encode_opus_frames(&pcm, sample_rate) {
+        for opus_packet in encode_pcm_with(&mut encoder, &pcm, sample_rate) {
             let framed = encode_tts_frame(chunk_id, FLAG_FILLER, &opus_packet);
             chunk_id = chunk_id.saturating_add(1);
             if out_tx.send(Message::Binary(framed.into())).await.is_err() {
@@ -580,18 +601,32 @@ fn spawn_filler_watchdog(
     }))
 }
 
-fn encode_opus_frames(pcm: &[f32], sample_rate: u32) -> Vec<Vec<u8>> {
+/// Build a fresh Opus encoder for 20ms VoIP-profile frames at the given
+/// sample rate. Returns `None` and warns on failure; callers fall through
+/// silently rather than crash the turn.
+fn make_opus_encoder(sample_rate: u32) -> Option<OpusEncoder> {
     let mut encoder = match OpusEncoder::new(sample_rate, Channels::Mono, Application::Voip) {
         Ok(e) => e,
         Err(e) => {
             warn!(error = %e, "voice.opus_encoder_failed");
-            return Vec::new();
+            return None;
         }
     };
     if let Err(e) = encoder.set_bitrate(opus::Bitrate::Bits(TTS_OPUS_BITRATE_BPS)) {
         warn!(error = %e, "voice.opus_bitrate_failed");
     }
-    let frame_samples = (sample_rate as usize) / 50; // 20ms
+    Some(encoder)
+}
+
+/// Encode PCM samples into 20ms Opus frames using an existing encoder.
+/// Reusing the encoder across sentences preserves internal entropy-coder
+/// state for marginally better compression than per-call construction.
+fn encode_pcm_with(
+    encoder: &mut OpusEncoder,
+    pcm: &[f32],
+    sample_rate: u32,
+) -> Vec<Vec<u8>> {
+    let frame_samples = (sample_rate as usize) / 50;
     let mut frames = Vec::new();
     for chunk in pcm.chunks(frame_samples) {
         let mut input = chunk.to_vec();
@@ -790,6 +825,7 @@ impl VoiceSession {
             decoder,
             current_turn: None,
             muted: false,
+            segments_dropped: 0,
         })
     }
 
