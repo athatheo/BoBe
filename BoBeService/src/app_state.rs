@@ -14,6 +14,7 @@ use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
 use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
+use crate::voice::filler_library::FillerLibrary;
 use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
@@ -43,11 +44,11 @@ pub(crate) struct AppState {
     /// Semantic turn-detection. Stub for now (always returns 1.0); real
     /// smart-turn-v3.1 impl wires in with the VAD pipeline.
     pub(crate) voice_smart_turn: Option<Arc<dyn SemanticTurn>>,
-    /// Pre-rendered filler PCM ("Hmm, let me think.") — emitted by the
-    /// /voice/stream handler when LLM TTFT exceeds 800ms. `None` when TTS
-    /// engine isn't loaded or synthesis failed; voice still works, just
-    /// with silence during the LLM-think gap.
-    pub(crate) voice_filler_pcm: Option<Arc<Vec<f32>>>,
+    /// Pre-rendered filler PCM library — TTFT watchdog, post-barge-in
+    /// recovery, per-tool intents, error reconnect. `None` when TTS engine
+    /// isn't loaded; voice still works, just with silence during gaps.
+    /// Indexed by `FillerKind` for typed lookups from the handler + hooks.
+    pub(crate) voice_filler_library: Option<Arc<FillerLibrary>>,
     /// Voice-turn signal — flipped true by `voice.rs` while a voice turn is
     /// in flight so `BobeHooks` can branch on tone/filler behavior. Cleared
     /// via the guard in `voice.rs::process_turn`. Safe under single-flight

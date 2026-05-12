@@ -19,6 +19,7 @@ mod secrets;
 mod services;
 mod speech;
 mod util;
+mod voice;
 
 #[derive(Parser)]
 #[command(name = "bobe", about = "BoBe - Local-first proactive AI companion")]

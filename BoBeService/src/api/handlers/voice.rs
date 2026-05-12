@@ -34,6 +34,7 @@ use crate::speech::protocol::{
 };
 use crate::speech::sentence_buffer::SentenceBuffer;
 use crate::speech::{AcousticVad, SemanticTurn, SttEngine, TtsEngine};
+use crate::voice::filler_library::{FillerKind, FillerLibrary};
 
 const OPUS_INPUT_SAMPLE_RATE: u32 = 16_000;
 const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
@@ -81,10 +82,9 @@ struct VoiceEngines {
     tts: Arc<dyn TtsEngine>,
     vad: Arc<dyn AcousticVad>,
     smart_turn: Arc<dyn SemanticTurn>,
-    /// Pre-rendered filler PCM, populated at bootstrap. `None` when TTS
-    /// failed to render it; turn still works, just silent during the
-    /// LLM-think gap.
-    filler_pcm: Option<Arc<Vec<f32>>>,
+    /// Pre-rendered filler library, populated at bootstrap. `None` when TTS
+    /// engine isn't loaded; turn still works, just silent during gaps.
+    fillers: Option<Arc<FillerLibrary>>,
 }
 
 impl VoiceEngines {
@@ -94,7 +94,7 @@ impl VoiceEngines {
             tts: Arc::clone(state.voice_tts.as_ref()?),
             vad: Arc::clone(state.voice_vad.as_ref()?),
             smart_turn: Arc::clone(state.voice_smart_turn.as_ref()?),
-            filler_pcm: state.voice_filler_pcm.as_ref().map(Arc::clone),
+            fillers: state.voice_filler_library.as_ref().map(Arc::clone),
         })
     }
 }
@@ -413,7 +413,7 @@ async fn process_turn(
     let speaking_start = Instant::now();
     let first_audio_emitted = Arc::new(AtomicBool::new(false));
     let filler_task = spawn_filler_watchdog(
-        engines.filler_pcm.as_ref().map(Arc::clone),
+        engines.fillers.as_ref().and_then(|lib| lib.get(FillerKind::Thinking)),
         engines.tts.sample_rate(),
         Arc::clone(&first_audio_emitted),
         out_tx.clone(),

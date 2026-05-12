@@ -1,0 +1,161 @@
+//! Pre-rendered filler PCM library. Synthesized once at bootstrap so the
+//! /voice/stream handler can emit ack-style audio with zero TTS latency.
+//!
+//! Production agents pre-cache 3–5 phrases minimum — explicitly no apology
+//! phrases per Pipecat/AWS Bedrock guidance ("apologies kill authority").
+//! The catalog here covers TTFT-watchdog, post-barge-in recovery, generic
+//! tool-progress, two specific tools, and an error/reconnect filler.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use tracing::{info, warn};
+
+use crate::speech::TtsEngine;
+
+/// Discrete filler intents the voice handler can emit. Lookups go through
+/// `FillerLibrary::get`. Adding a variant requires a phrase entry below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(dead_code, reason = "ListenResume/LookupBridge/Tool*/Error wired in C1/C4/B5+")]
+pub(crate) enum FillerKind {
+    /// 800ms TTFT watchdog — "Hmm, let me think."
+    Thinking,
+    /// Post-barge-in recovery — "Sorry, go ahead."
+    ListenResume,
+    /// Generic "looking that up" pre-tool bridge.
+    LookupBridge,
+    /// Per-tool: web_search.
+    ToolWebSearch,
+    /// Per-tool: read_file / file inspection.
+    ToolReadFile,
+    /// Per-tool: generic (default) when name doesn't match a more specific kind.
+    ToolGeneric,
+    /// Backoff / connection trouble.
+    ErrorReconnecting,
+}
+
+impl FillerKind {
+    /// Source phrase synthesized at bootstrap. Kept short — TTS playback
+    /// time is fixed per phrase; long fillers feel awkward in conversation.
+    /// No apologies (production guidance).
+    const fn phrase(self) -> &'static str {
+        match self {
+            Self::Thinking => "Hmm, let me think.",
+            Self::ListenResume => "Sure, go ahead.",
+            Self::LookupBridge => "Let me check that for you.",
+            Self::ToolWebSearch => "Let me search the web.",
+            Self::ToolReadFile => "One sec, looking at that.",
+            Self::ToolGeneric => "Looking into that.",
+            Self::ErrorReconnecting => "I'm having trouble connecting.",
+        }
+    }
+
+    /// All variants in a fixed order; used by the bootstrap loop and tests.
+    fn all() -> &'static [FillerKind] {
+        &[
+            Self::Thinking,
+            Self::ListenResume,
+            Self::LookupBridge,
+            Self::ToolWebSearch,
+            Self::ToolReadFile,
+            Self::ToolGeneric,
+            Self::ErrorReconnecting,
+        ]
+    }
+}
+
+/// The synthesized PCM cache. Wrapped in an Arc on AppState; lookups
+/// return an inner Arc<Vec<f32>> so callers don't have to clone the PCM.
+pub(crate) struct FillerLibrary {
+    inner: HashMap<FillerKind, Arc<Vec<f32>>>,
+    #[allow(dead_code, reason = "consumed by future PreToolUse hook sink (C1/C4)")]
+    sample_rate: u32,
+}
+
+impl FillerLibrary {
+    #[allow(dead_code, reason = "consumed by future PreToolUse hook sink (C1/C4)")]
+    pub(crate) fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    pub(crate) fn get(&self, kind: FillerKind) -> Option<Arc<Vec<f32>>> {
+        self.inner.get(&kind).map(Arc::clone)
+    }
+
+    /// Synthesize every `FillerKind` variant using the provided TTS engine.
+    /// Failures are non-fatal — the missing kind is omitted from the map and
+    /// callers fall through to silence for that intent. Total synthesis is
+    /// blocking and sequential; bootstrap can afford a few hundred ms here.
+    pub(crate) async fn render(tts: Arc<dyn TtsEngine>) -> Self {
+        const VOICE: &str = "af_bella";
+        let sample_rate = tts.sample_rate();
+        let mut inner = HashMap::new();
+        for kind in FillerKind::all() {
+            let phrase = kind.phrase();
+            let tts_clone = Arc::clone(&tts);
+            let result = tokio::task::spawn_blocking(move || {
+                tts_clone.synthesize(phrase, VOICE, 1.0)
+            })
+            .await;
+            match result {
+                Ok(Ok(pcm)) => {
+                    info!(
+                        kind = ?kind,
+                        phrase,
+                        samples = pcm.len(),
+                        "voice.filler_rendered"
+                    );
+                    inner.insert(*kind, Arc::new(pcm));
+                }
+                Ok(Err(e)) => {
+                    warn!(kind = ?kind, error = %e, "voice.filler_synth_failed");
+                }
+                Err(e) => {
+                    warn!(kind = ?kind, error = %e, "voice.filler_synth_join_failed");
+                }
+            }
+        }
+        Self { inner, sample_rate }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_kinds_have_phrases() {
+        for kind in FillerKind::all() {
+            assert!(!kind.phrase().is_empty());
+        }
+    }
+
+    #[test]
+    fn phrases_avoid_apologies() {
+        // Production guidance: apologies kill authority. Block them here so
+        // a future "sorry I can't…" addition is caught at test time.
+        for kind in FillerKind::all() {
+            let p = kind.phrase().to_lowercase();
+            assert!(
+                !p.starts_with("sorry, i can"),
+                "Filler '{p}' violates the no-apology rule (kind {kind:?})"
+            );
+            assert!(
+                !p.starts_with("apologies"),
+                "Filler '{p}' violates the no-apology rule (kind {kind:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn no_duplicate_phrases() {
+        let mut seen = std::collections::HashSet::new();
+        for kind in FillerKind::all() {
+            assert!(
+                seen.insert(kind.phrase()),
+                "duplicate filler phrase: {:?}",
+                kind.phrase()
+            );
+        }
+    }
+}

@@ -104,8 +104,10 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     };
 
     let (voice_stt, voice_tts, voice_vad, voice_smart_turn) = load_voice_engines();
-    let voice_filler_pcm = match voice_tts.as_ref() {
-        Some(tts) => synthesize_filler(Arc::clone(tts)).await,
+    let voice_filler_library = match voice_tts.as_ref() {
+        Some(tts) => Some(Arc::new(
+            crate::voice::filler_library::FillerLibrary::render(Arc::clone(tts)).await,
+        )),
         None => None,
     };
 
@@ -129,7 +131,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         voice_tts,
         voice_vad,
         voice_smart_turn,
-        voice_filler_pcm,
+        voice_filler_library,
         voice_turn_active,
     });
 
@@ -240,40 +242,6 @@ fn load_voice_engines() -> (
     ));
 
     (stt, tts, vad, smart_turn)
-}
-
-/// One-shot filler synthesis at startup. The /voice/stream handler emits this
-/// pre-rendered PCM at the 800ms TTFT watchdog trip so users hear an
-/// acknowledgement instead of dead air while the LLM is working.
-///
-/// Single phrase for v1 — full intent-keyed filler library is M4.5.4
-/// follow-up. Synthesis blocks startup by ~300-800ms; tolerable, and the
-/// alternative (background task + ArcSwap) adds complexity for marginal win.
-async fn synthesize_filler(
-    tts: Arc<dyn crate::speech::TtsEngine>,
-) -> Option<Arc<Vec<f32>>> {
-    const PHRASE: &str = "Hmm, let me think.";
-    const VOICE: &str = "af_bella";
-    let tts_clone = Arc::clone(&tts);
-    match tokio::task::spawn_blocking(move || tts_clone.synthesize(PHRASE, VOICE, 1.0)).await {
-        Ok(Ok(pcm)) => {
-            info!(
-                phrase = PHRASE,
-                samples = pcm.len(),
-                rate = tts.sample_rate(),
-                "voice.filler_rendered"
-            );
-            Some(Arc::new(pcm))
-        }
-        Ok(Err(e)) => {
-            warn!(error = %e, "voice.filler_synth_failed");
-            None
-        }
-        Err(e) => {
-            warn!(error = %e, "voice.filler_synth_join_failed");
-            None
-        }
-    }
 }
 
 fn load_mcp_servers_for_sdk(
