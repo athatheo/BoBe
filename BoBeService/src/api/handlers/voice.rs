@@ -40,6 +40,13 @@ const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
 const OPUS_MAX_FRAME_SAMPLES: usize = 2_880;
 const TTS_OPUS_BITRATE_BPS: i32 = 24_000;
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
+/// Server-initiated Ping cadence. The WS layer auto-responds to Pings with
+/// Pongs, so this also doubles as the client's freshness signal.
+const KEEPALIVE_PING_INTERVAL: Duration = Duration::from_secs(25);
+/// Recv timeout — close the socket if nothing arrives for this long. The
+/// 25s server pings trigger auto-Pong from any live client, so a healthy
+/// connection always replenishes within this window even when muted.
+const KEEPALIVE_STALE_TIMEOUT: Duration = Duration::from_secs(60);
 /// Sentence buffer between observer (synchronous closure) and Kokoro task.
 /// Bursts during fast LLM token rates can push 3-5 sentences within ~200ms;
 /// 16 gives comfortable headroom while still bounding memory.
@@ -134,11 +141,39 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         drop(ws_tx.close().await);
     });
 
+    // Keepalive: pings on a 25s cadence. The WS layer auto-responds with
+    // Pong, so even a silent (muted) client refreshes the recv-timeout
+    // window. Recv timeout below catches the dead-connection case.
+    let out_tx_for_ping = out_tx.clone();
+    let keepalive = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(KEEPALIVE_PING_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        ticker.tick().await; // skip the immediate first tick
+        loop {
+            ticker.tick().await;
+            if out_tx_for_ping
+                .send(Message::Ping(Vec::new().into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+
     let mut session: Option<VoiceSession> = None;
     let runtime_session = Arc::clone(&state.runtime_session);
 
-    while let Some(msg) = rx.next().await {
-        let msg = match msg {
+    loop {
+        let next = match tokio::time::timeout(KEEPALIVE_STALE_TIMEOUT, rx.next()).await {
+            Ok(Some(m)) => m,
+            Ok(None) => break, // stream ended
+            Err(_) => {
+                warn!("voice.keepalive_recv_timeout_closing");
+                break;
+            }
+        };
+        let msg = match next {
             Ok(m) => m,
             Err(e) => {
                 warn!(error = %e, "voice.ws_recv_error");
@@ -193,9 +228,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 info!("voice.close_received");
                 break;
             }
-            _ => {}
+            Message::Pong(_) | Message::Ping(_) => {
+                // Pong arrives in response to our keepalive Pings (auto-echoed
+                // by the WS layer on the client). Pong receipt is implicit
+                // keepalive — rx.next() returning at all resets the timeout.
+            }
         }
     }
+
+    // Stop the keepalive task; it'll exit naturally when out_tx is dropped
+    // below, but aborting first avoids one stray Ping post-disconnect.
+    keepalive.abort();
 
     // Clean up any in-flight turn before tearing down the socket.
     if let Some(mut s) = session {
@@ -206,6 +249,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
         info!(session = %s.session_id, "voice.disconnect");
     }
+    drop(keepalive);
     drop(out_tx);
     match writer.await {
         Ok(()) => {}

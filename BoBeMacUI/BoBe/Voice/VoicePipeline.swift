@@ -59,6 +59,11 @@ public final class VoicePipeline {
     private let urlSession = URLSession(configuration: .default)
     private var task: URLSessionWebSocketTask?
     private var sessionId: String = ""
+    private var keepaliveTask: Task<Void, Never>?
+    /// Mirror of the daemon's 25s keepalive cadence. Pongs from our pings
+    /// keep the daemon's recv-timeout window fresh; symmetric client-side
+    /// pings cover the case where the daemon stalls.
+    private let keepalivePingIntervalNs: UInt64 = 25_000_000_000
 
     private var isWarm = false
 
@@ -119,6 +124,7 @@ public final class VoicePipeline {
         self.task = newTask
         newTask.resume()
         self.receiveLoop()
+        self.startKeepalive()
 
         self.sessionId = "voice-\(Int(Date().timeIntervalSince1970))"
         let sid = self.sessionId
@@ -134,6 +140,7 @@ public final class VoicePipeline {
     }
 
     public func disconnect() {
+        self.stopKeepalive()
         let oldTask = self.task
         self.task = nil
         self.state = .idle
@@ -523,6 +530,29 @@ public final class VoicePipeline {
         // Reset barge-in latch so the user can interrupt again on the next turn.
         self.bargeInCount = 0
         self.bargeInSent = false
+    }
+
+    // MARK: - Keepalive
+
+    private func startKeepalive() {
+        self.keepaliveTask?.cancel()
+        self.keepaliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: self?.keepalivePingIntervalNs ?? 25_000_000_000)
+                guard !Task.isCancelled else { return }
+                guard let self, let task = self.task else { return }
+                task.sendPing { error in
+                    if let error {
+                        logger.warning("voice keepalive ping failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopKeepalive() {
+        self.keepaliveTask?.cancel()
+        self.keepaliveTask = nil
     }
 
     private func sendClient(_ msg: ClientVoiceMessage) async {
