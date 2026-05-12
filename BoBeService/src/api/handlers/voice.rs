@@ -107,6 +107,9 @@ struct VoiceSession {
     /// `None` outside a turn; populated when audio commits, taken when a
     /// barge-in or natural completion releases it.
     current_turn: Option<TurnInFlight>,
+    /// Client-requested mute — incoming audio frames are dropped before VAD
+    /// while this is true. Toggled by Control{Mute|Unmute|Reset}.
+    muted: bool,
 }
 
 struct TurnInFlight {
@@ -183,7 +186,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
         match msg {
             Message::Text(text) => {
-                if !handle_control_text(text.as_str(), &out_tx, &mut session).await {
+                if !handle_control_text(text.as_str(), &out_tx, &mut session, &engines).await {
                     break;
                 }
             }
@@ -192,6 +195,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     warn!("voice.binary_before_hello");
                     continue;
                 };
+                if s.muted {
+                    // Mute gate — drop the frame before VAD ever sees it.
+                    continue;
+                }
                 let samples = match s.decode_opus(&bytes) {
                     Ok(samples) => samples,
                     Err(e) => {
@@ -591,6 +598,7 @@ async fn handle_control_text(
     text: &str,
     out_tx: &mpsc::Sender<Message>,
     session: &mut Option<VoiceSession>,
+    engines: &VoiceEngines,
 ) -> bool {
     let parsed: Result<ClientMessage, _> = serde_json::from_str(text);
     match parsed {
@@ -663,7 +671,7 @@ async fn handle_control_text(
             true
         }
         Ok(ClientMessage::Control { action }) => {
-            handle_control_action(action, out_tx, session).await;
+            handle_control_action(action, out_tx, session, engines).await;
             true
         }
         Err(e) => {
@@ -712,6 +720,7 @@ async fn handle_control_action(
     action: ControlAction,
     out_tx: &mpsc::Sender<Message>,
     session: &mut Option<VoiceSession>,
+    engines: &VoiceEngines,
 ) {
     match action {
         ControlAction::Abort => {
@@ -722,8 +731,28 @@ async fn handle_control_action(
                 send_state(out_tx, VoicePhase::Idle, &s.session_id).await;
             }
         }
-        ControlAction::Mute | ControlAction::Unmute | ControlAction::Reset => {
-            debug!(?action, "voice.control_ignored_shell");
+        ControlAction::Mute => {
+            if let Some(s) = session.as_mut() {
+                s.muted = true;
+                info!(session = %s.session_id, "voice.control.mute");
+            }
+        }
+        ControlAction::Unmute => {
+            if let Some(s) = session.as_mut() {
+                s.muted = false;
+                info!(session = %s.session_id, "voice.control.unmute");
+            }
+        }
+        ControlAction::Reset => {
+            info!("voice.control.reset");
+            // Abort any in-flight turn (same path as Abort with played_ms=0),
+            // clear VAD buffers, and unmute so the next utterance is captured.
+            handle_barge_in(out_tx, session, 0).await;
+            engines.vad.reset();
+            if let Some(s) = session.as_mut() {
+                s.muted = false;
+                send_state(out_tx, VoicePhase::Listening, &s.session_id).await;
+            }
         }
     }
 }
@@ -736,6 +765,7 @@ impl VoiceSession {
             session_id,
             decoder,
             current_turn: None,
+            muted: false,
         })
     }
 
