@@ -14,12 +14,12 @@ use metrics::{Unit, describe_counter, describe_histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 
 // Latency histograms — milliseconds across the voice turn lifecycle.
+// Only the histograms that have actual `.record()` callsites are described
+// here; adding describes for un-recorded histograms pollutes the
+// Prometheus exposition with empty series. New stages get their describe
+// added when their record callsite goes in.
 pub(crate) const HIST_STT_MS: &str = "voice_stt_ms";
 pub(crate) const HIST_SMART_TURN_MS: &str = "voice_smart_turn_inference_ms";
-pub(crate) const HIST_LLM_TTFT_MS: &str = "voice_llm_ttft_ms";
-pub(crate) const HIST_TTS_TTFB_MS: &str = "voice_tts_ttfb_ms";
-pub(crate) const HIST_SENTENCE_EMIT_MS: &str = "voice_sentence_emit_latency_ms";
-pub(crate) const HIST_INTER_TOKEN_GAP_MS: &str = "voice_inter_token_gap_ms";
 pub(crate) const HIST_E2E_MS: &str = "voice_e2e_ms";
 
 // Event counters — discrete signals.
@@ -47,26 +47,6 @@ pub(crate) fn install_recorder() -> Result<PrometheusHandle, String> {
         HIST_SMART_TURN_MS,
         Unit::Milliseconds,
         "Smart-turn inference time on the last speech segment"
-    );
-    describe_histogram!(
-        HIST_LLM_TTFT_MS,
-        Unit::Milliseconds,
-        "Time from set_model+send to first assistant.message_delta"
-    );
-    describe_histogram!(
-        HIST_TTS_TTFB_MS,
-        Unit::Milliseconds,
-        "Time from first LLM token to first Kokoro audio frame on the wire"
-    );
-    describe_histogram!(
-        HIST_SENTENCE_EMIT_MS,
-        Unit::Milliseconds,
-        "Per-sentence synthesis time inside the kokoro task"
-    );
-    describe_histogram!(
-        HIST_INTER_TOKEN_GAP_MS,
-        Unit::Milliseconds,
-        "Inter-token gap (max within a turn) for stall detection"
     );
     describe_histogram!(
         HIST_E2E_MS,

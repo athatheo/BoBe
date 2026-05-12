@@ -66,8 +66,6 @@ pub(crate) enum ClientMessage {
         voice_id: Option<String>,
         #[serde(default)]
         speed: Option<f32>,
-        #[serde(default)]
-        voice_pack: Option<String>,
     },
     /// Optional fast hint that mic energy crossed threshold.
     VadHint {
@@ -163,7 +161,6 @@ mod tests {
                 codec,
                 voice_id,
                 speed,
-                voice_pack,
             } => {
                 assert_eq!(session_id, "abc");
                 assert_eq!(capture_rate, 16_000);
@@ -171,7 +168,6 @@ mod tests {
                 assert_eq!(codec, "opus");
                 assert_eq!(voice_id, None);
                 assert_eq!(speed, None);
-                assert_eq!(voice_pack, None);
             }
             other => panic!("expected Hello, got {other:?}"),
         }
@@ -186,20 +182,17 @@ mod tests {
             "playback_rate":24000,
             "codec":"opus",
             "voice_id":"am_michael",
-            "speed":1.2,
-            "voice_pack":"warm"
+            "speed":1.2
         }"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
         match parsed {
             ClientMessage::Hello {
                 voice_id,
                 speed,
-                voice_pack,
                 ..
             } => {
                 assert_eq!(voice_id, Some("am_michael".into()));
                 assert_eq!(speed, Some(1.2));
-                assert_eq!(voice_pack, Some("warm".into()));
             }
             other => panic!("expected Hello, got {other:?}"),
         }

@@ -133,7 +133,6 @@ public final class VoicePipeline {
         // through to its defaults).
         let voiceId: String? = nil
         let speed: Float? = nil
-        let voicePack: String? = nil
         Task { [weak self] in
             guard let self else { return }
             await self.sendClient(.hello(
@@ -142,8 +141,7 @@ public final class VoicePipeline {
                 playbackRate: 24_000,
                 codec: "opus",
                 voiceId: voiceId,
-                speed: speed,
-                voicePack: voicePack
+                speed: speed
             ))
         }
     }

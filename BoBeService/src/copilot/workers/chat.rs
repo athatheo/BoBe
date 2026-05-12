@@ -27,6 +27,9 @@ pub(crate) struct CopilotChatWorker {
     /// voice, medium for text). `None` means the SDK picked its default —
     /// in that case we skip set_model and the default effort applies.
     model: Option<String>,
+    /// Last effort we sent via set_model; skip the redundant RPC if the
+    /// new send wants the same effort. None = never called set_model.
+    last_effort: Arc<Mutex<Option<&'static str>>>,
 }
 
 /// Without this, a dropped stream leaks an in-flight turn — wasted tokens + residual events.
@@ -57,6 +60,7 @@ impl CopilotChatWorker {
             session,
             submit_lock: Arc::new(Mutex::new(())),
             model,
+            last_effort: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -80,6 +84,7 @@ impl ChatWorker for CopilotChatWorker {
         let session = Arc::clone(&self.session);
         let lock = Arc::clone(&self.submit_lock);
         let model = self.model.clone();
+        let last_effort = Arc::clone(&self.last_effort);
         let voice_mode = prompt.voice_mode;
 
         let abort_guard = AbortGuard {
@@ -95,18 +100,31 @@ impl ChatWorker for CopilotChatWorker {
             let mut events = session.subscribe();
 
             // Tune reasoning_effort per turn — low for voice (TTFT-critical),
-            // medium for text (default). Skipped when model is None because
-            // set_model requires an explicit model name.
+            // medium for text (default). Skipped when model is None (SDK
+            // default applies) or when the effort hasn't changed since the
+            // last send (avoids a ~30ms RPC per turn for back-to-back same-
+            // mode sends).
             if let Some(model_name) = model.as_deref() {
-                let effort = if voice_mode { "low" } else { "medium" };
-                let opts = SetModelOptions::default().with_reasoning_effort(effort);
-                if let Err(e) = session.set_model(model_name, Some(opts)).await {
-                    tracing::warn!(
-                        err = %e,
-                        voice_mode,
-                        effort,
-                        "chat.set_model_failed_continuing"
-                    );
+                let want_effort: &'static str = if voice_mode { "low" } else { "medium" };
+                let needs_update = {
+                    let mut slot = last_effort.lock().await;
+                    if slot.as_deref() == Some(want_effort) {
+                        false
+                    } else {
+                        *slot = Some(want_effort);
+                        true
+                    }
+                };
+                if needs_update {
+                    let opts = SetModelOptions::default().with_reasoning_effort(want_effort);
+                    if let Err(e) = session.set_model(model_name, Some(opts)).await {
+                        tracing::warn!(
+                            err = %e,
+                            voice_mode,
+                            effort = want_effort,
+                            "chat.set_model_failed_continuing"
+                        );
+                    }
                 }
             }
 

@@ -68,12 +68,10 @@ impl FillerKind {
 /// return an inner Arc<Vec<f32>> so callers don't have to clone the PCM.
 pub(crate) struct FillerLibrary {
     inner: HashMap<FillerKind, Arc<Vec<f32>>>,
-    #[allow(dead_code, reason = "consumed by future PreToolUse hook sink (C1/C4)")]
     sample_rate: u32,
 }
 
 impl FillerLibrary {
-    #[allow(dead_code, reason = "consumed by future PreToolUse hook sink (C1/C4)")]
     pub(crate) fn sample_rate(&self) -> u32 {
         self.sample_rate
     }

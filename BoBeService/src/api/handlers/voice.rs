@@ -81,22 +81,18 @@ const DEFAULT_KOKORO_VOICE: &str = "af_bella";
 const DEFAULT_KOKORO_SPEED: f32 = 1.0;
 
 /// Per-WS voice preferences carried in the Hello handshake. Stored on
-/// `VoiceSession` and read by the kokoro task. `voice_pack` is captured
-/// for forward-compat (M5.x soul-pack swap) but unused today.
+/// `VoiceSession` and read by the kokoro task.
 #[derive(Clone)]
 struct SessionVoiceConfig {
     voice_id: String,
     speed: f32,
-    #[allow(dead_code, reason = "consumed by M5.x soul voice_pack swap")]
-    voice_pack: Option<String>,
 }
 
 impl SessionVoiceConfig {
-    fn new(voice_id: Option<String>, speed: Option<f32>, voice_pack: Option<String>) -> Self {
+    fn new(voice_id: Option<String>, speed: Option<f32>) -> Self {
         Self {
             voice_id: voice_id.unwrap_or_else(|| DEFAULT_KOKORO_VOICE.to_string()),
             speed: speed.unwrap_or(DEFAULT_KOKORO_SPEED).clamp(0.5, 2.0),
-            voice_pack,
         }
     }
 }
@@ -283,34 +279,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     .await;
                     // C7: cancel-phrase bypass. If the user says "stop" /
                     // "nevermind" during BoBe's TTS, abort the in-flight
-                    // turn locally — no LLM round-trip. Inline rather than
-                    // calling handle_barge_in because that path enforces
-                    // MinWords (irrelevant here — the cancel command IS
-                    // the signal).
+                    // turn locally — no LLM round-trip. Bypasses MinWords
+                    // because the cancel command IS the signal.
                     if s.current_turn.is_some() && is_cancel_phrase(&partial) {
-                        if let Some(turn) = s.current_turn.take() {
-                            metrics::counter!(CTR_CANCEL_PHRASE).increment(1);
-                            info!(
-                                turn_id = %turn.turn_id,
-                                partial = %partial,
-                                "voice.cancel_phrase_abort"
-                            );
-                            let TurnInFlight { turn_id: tid, join } = turn;
-                            join.abort();
-                            drop(join.await);
-                            send_json(
-                                &out_tx,
-                                &ServerMessage::Truncate {
-                                    turn_id: tid.clone(),
-                                    keep_ms: s.last_acked_played_ms,
-                                },
-                            )
-                            .await;
-                            send_state(&out_tx, VoicePhase::Listening, &tid).await;
-                            s.last_partial_text.clear();
-                            engines.stt.reset();
-                            continue;
-                        }
+                        metrics::counter!(CTR_CANCEL_PHRASE).increment(1);
+                        info!(partial = %partial, "voice.cancel_phrase_abort");
+                        let keep_ms = s.last_acked_played_ms;
+                        abort_active_turn(s, &engines, &out_tx, keep_ms, "cancel_phrase").await;
+                        continue;
                     }
                 }
                 if let Err(e) = engines.vad.accept(&samples) {
@@ -740,7 +716,6 @@ async fn handle_control_text(
             codec,
             voice_id,
             speed,
-            voice_pack,
         }) => {
             info!(
                 session = %session_id,
@@ -749,7 +724,6 @@ async fn handle_control_text(
                 codec,
                 voice_id = ?voice_id,
                 speed = ?speed,
-                voice_pack = ?voice_pack,
                 "voice.hello"
             );
             if capture_rate != OPUS_INPUT_SAMPLE_RATE {
@@ -775,7 +749,7 @@ async fn handle_control_text(
                     .await;
                 return false;
             }
-            let cfg = SessionVoiceConfig::new(voice_id, speed, voice_pack);
+            let cfg = SessionVoiceConfig::new(voice_id, speed);
             match VoiceSession::new(session_id, cfg) {
                 Ok(s) => {
                     let initial_turn = format!("voice_{}", Uuid::new_v4().simple());
@@ -796,7 +770,7 @@ async fn handle_control_text(
             playback_ms_played,
         }) => {
             info!(ts_ms, playback_ms_played, "voice.barge_in_received");
-            handle_barge_in(out_tx, session, playback_ms_played).await;
+            handle_barge_in(out_tx, session, engines, playback_ms_played).await;
             true
         }
         Ok(ClientMessage::Wake {
@@ -832,52 +806,36 @@ async fn handle_control_text(
     }
 }
 
-/// 3-event barge-in: (1) abort the in-flight turn task — its drop fires the
-/// SDK AbortGuard which calls `session.abort()` and cascades to the Kokoro
-/// task via the dropped sentence channel; (2) send `truncate` so the client
-/// drops queued audio past `played_ms`; (3) send `state(Listening)` so the
-/// mic UI clears immediately. Daemon awaits the task's natural unwind (which
-/// can take up to one spawn_blocking call, since spawn_blocking isn't
-/// cooperatively cancellable) to ensure the UserMessageGuard releases before
-/// the next turn can begin.
-async fn handle_barge_in(
+/// Shared abort body for all "stop this turn" paths (RMS barge-in,
+/// cancel phrase, explicit Abort/Reset control). Assumes the caller has
+/// already authorized the abort — does NOT enforce MinWords. Steps:
+///   1. Take + abort the JoinHandle so its Drop fires AbortGuard which
+///      calls `session.abort()` and cascades to the Kokoro task via the
+///      dropped sentence channel.
+///   2. Await the task's natural unwind so UserMessageGuard releases
+///      before the next turn can begin.
+///   3. Send `truncate` so the client drops queued audio past `keep_ms`.
+///   4. Send `state(Listening)` so the mic UI clears immediately.
+///   5. Reset per-turn STT state so the next utterance starts clean.
+async fn abort_active_turn(
+    s: &mut VoiceSession,
+    engines: &VoiceEngines,
     out_tx: &mpsc::Sender<Message>,
-    session: &mut Option<VoiceSession>,
-    played_ms: u64,
+    keep_ms: u64,
+    reason: &'static str,
 ) {
-    let Some(s) = session.as_mut() else { return };
-    // C3 MinWords gate — drop backchannel barge-ins. Only applies while a
-    // turn is in flight; on an idle WS we accept any barge-in (e.g.,
-    // explicit Abort control).
-    let word_count = s.last_partial_text.split_whitespace().count();
-    if s.current_turn.is_some() && word_count < MIN_WORDS_FOR_BARGE_IN {
-        metrics::counter!(CTR_BARGE_IN_FALSE).increment(1);
-        debug!(
-            words = word_count,
-            partial = %s.last_partial_text,
-            "voice.barge_in_dropped_min_words"
-        );
-        return;
-    }
-    // Tighter truncate offset: prefer whichever signal reports more playback,
-    // since WS jitter can make the client's barge_in.playback_ms_played
-    // lag the last PlaybackAck. Monotonic by construction.
-    let keep_ms = played_ms.max(s.last_acked_played_ms);
     let Some(turn) = s.current_turn.take() else {
-        debug!("voice.barge_in_no_turn");
+        debug!(reason, "voice.abort_no_active_turn");
         return;
     };
-    metrics::counter!(CTR_BARGE_IN_SUCCESS).increment(1);
     info!(
         turn_id = %turn.turn_id,
-        played_ms,
-        last_ack_ms = s.last_acked_played_ms,
         keep_ms,
-        "voice.barge_in_aborting"
+        reason,
+        "voice.abort_active_turn"
     );
     let TurnInFlight { turn_id, join } = turn;
     join.abort();
-    // Await drop so UserMessageGuard releases before the next turn can begin.
     drop(join.await);
     send_json(
         out_tx,
@@ -888,6 +846,37 @@ async fn handle_barge_in(
     )
     .await;
     send_state(out_tx, VoicePhase::Listening, &turn_id).await;
+    s.last_partial_text.clear();
+    engines.stt.reset();
+}
+
+/// Client-detected RMS barge-in arriving over the WS. Gates on MinWords
+/// to drop "uh-huh"/"yeah" backchannel, then delegates to
+/// `abort_active_turn` for the actual cancellation.
+async fn handle_barge_in(
+    out_tx: &mpsc::Sender<Message>,
+    session: &mut Option<VoiceSession>,
+    engines: &VoiceEngines,
+    played_ms: u64,
+) {
+    let Some(s) = session.as_mut() else { return };
+    let word_count = s.last_partial_text.split_whitespace().count();
+    if s.current_turn.is_some() && word_count < MIN_WORDS_FOR_BARGE_IN {
+        metrics::counter!(CTR_BARGE_IN_FALSE).increment(1);
+        debug!(
+            words = word_count,
+            partial = %s.last_partial_text,
+            "voice.barge_in_dropped_min_words"
+        );
+        return;
+    }
+    if s.current_turn.is_none() {
+        debug!("voice.barge_in_no_turn");
+        return;
+    }
+    metrics::counter!(CTR_BARGE_IN_SUCCESS).increment(1);
+    let keep_ms = played_ms.max(s.last_acked_played_ms);
+    abort_active_turn(s, engines, out_tx, keep_ms, "barge_in").await;
 }
 
 async fn handle_control_action(
@@ -900,7 +889,7 @@ async fn handle_control_action(
         ControlAction::Abort => {
             info!("voice.control.abort");
             // Treat explicit abort like a barge-in with played_ms=0.
-            handle_barge_in(out_tx, session, 0).await;
+            handle_barge_in(out_tx, session, engines, 0).await;
             if let Some(s) = session.as_ref() {
                 send_state(out_tx, VoicePhase::Idle, &s.session_id).await;
             }
@@ -921,7 +910,7 @@ async fn handle_control_action(
             info!("voice.control.reset");
             // Abort any in-flight turn (same path as Abort with played_ms=0),
             // clear VAD buffers, and unmute so the next utterance is captured.
-            handle_barge_in(out_tx, session, 0).await;
+            handle_barge_in(out_tx, session, engines, 0).await;
             engines.vad.reset();
             if let Some(s) = session.as_mut() {
                 s.muted = false;

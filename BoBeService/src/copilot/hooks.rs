@@ -1,6 +1,7 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
@@ -34,7 +35,7 @@ const VOICE_TOOL_RESULT_TRUNCATE_CHARS: usize = 800;
 /// If a second PreToolUse fires within this window of the first, switch
 /// the second tool's filler from per-tool to compound ("Looking into a
 /// few things") so two parallel tools don't read like a recipe.
-const COMPOUND_FILLER_WINDOW_MS: u64 = 100;
+const COMPOUND_FILLER_WINDOW: Duration = Duration::from_millis(100);
 
 pub(crate) struct BobeHooks {
     class: WorkerClass,
@@ -46,11 +47,12 @@ pub(crate) struct BobeHooks {
     voice_sink: Arc<VoiceSink>,
     /// Pre-rendered filler PCM catalog. `None` when TTS isn't loaded.
     voice_filler_library: Option<Arc<FillerLibrary>>,
-    /// Wall-clock ms of the most recent PreToolUse fire; 0 means none yet.
+    /// Monotonic Instant of the most recent PreToolUse fire (None = never).
     /// Used to debounce parallel tool calls into a compound filler so two
-    /// tools firing within 100ms get one "Looking into a few things" instead
-    /// of stacked per-tool phrases.
-    last_pretool_at_ms: AtomicU64,
+    /// tools firing within COMPOUND_FILLER_WINDOW get one "Looking into a
+    /// few things" instead of stacked per-tool phrases. Mutex avoids the
+    /// AtomicU64-wall-clock pitfall (NTP jump = false burst).
+    last_pretool_at: Mutex<Option<Instant>>,
 }
 
 impl BobeHooks {
@@ -67,7 +69,7 @@ impl BobeHooks {
             voice_turn_active,
             voice_sink,
             voice_filler_library,
-            last_pretool_at_ms: AtomicU64::new(0),
+            last_pretool_at: Mutex::new(None),
         })
     }
 
@@ -152,13 +154,18 @@ impl SessionHooks for BobeHooks {
                 // second emission becomes ToolGeneric ("Looking into a few
                 // things") instead of stacking another per-tool phrase.
                 if let Some(library) = self.voice_filler_library.as_ref() {
-                    let now_ms = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .map(|d| d.as_millis() as u64)
-                        .unwrap_or(0);
-                    let prev_ms = self.last_pretool_at_ms.swap(now_ms, Ordering::AcqRel);
-                    let in_burst =
-                        prev_ms != 0 && now_ms.saturating_sub(prev_ms) < COMPOUND_FILLER_WINDOW_MS;
+                    let now = Instant::now();
+                    let in_burst = {
+                        let mut slot = self
+                            .last_pretool_at
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let burst = slot.is_some_and(|prev| {
+                            now.saturating_duration_since(prev) < COMPOUND_FILLER_WINDOW
+                        });
+                        *slot = Some(now);
+                        burst
+                    };
                     let kind = if in_burst {
                         FillerKind::ToolGeneric
                     } else {
