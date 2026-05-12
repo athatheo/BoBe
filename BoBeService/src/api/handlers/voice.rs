@@ -226,6 +226,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             engines.clone(),
                             Arc::clone(&runtime_session),
                             out_tx.clone(),
+                            Arc::clone(&state.voice_turn_active),
                         );
                         s.current_turn = Some(turn);
                     }
@@ -283,13 +284,33 @@ fn spawn_turn(
     engines: VoiceEngines,
     runtime_session: Arc<RuntimeSession>,
     out_tx: mpsc::Sender<Message>,
+    voice_turn_active: Arc<AtomicBool>,
 ) -> TurnInFlight {
     let turn_id = format!("voice_{}", Uuid::new_v4().simple());
     let task_turn_id = turn_id.clone();
     let join = tokio::spawn(async move {
-        process_turn(segment, engines, runtime_session, out_tx, task_turn_id).await;
+        process_turn(
+            segment,
+            engines,
+            runtime_session,
+            out_tx,
+            task_turn_id,
+            voice_turn_active,
+        )
+        .await;
     });
     TurnInFlight { turn_id, join }
+}
+
+/// RAII flag: voice_turn_active is set to true on construction and cleared on
+/// drop. Ensures the BobeHooks signal goes back to false even if process_turn
+/// errors out mid-flight.
+struct VoiceTurnFlag(Arc<AtomicBool>);
+
+impl Drop for VoiceTurnFlag {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 #[tracing::instrument(name = "voice.turn", skip_all, fields(turn_id = %turn_id, samples = segment.samples.len()))]
@@ -299,8 +320,11 @@ async fn process_turn(
     runtime_session: Arc<RuntimeSession>,
     out_tx: mpsc::Sender<Message>,
     turn_id: String,
+    voice_turn_active: Arc<AtomicBool>,
 ) {
     let turn_start = Instant::now();
+    voice_turn_active.store(true, Ordering::Release);
+    let _voice_flag = VoiceTurnFlag(Arc::clone(&voice_turn_active));
 
     // Semantic turn gate — discard if the user isn't really done yet.
     match engines.smart_turn.probability_complete(&segment.samples) {

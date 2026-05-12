@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use arc_swap::ArcSwap;
 use chrono::{Local, NaiveDate};
@@ -36,6 +37,11 @@ pub(crate) struct WorkerRegistry {
     data_dir: PathBuf,
     /// SDK captures this map at session creation; restart required to apply changes.
     mcp_servers: HashMap<String, McpServerConfig>,
+    /// Voice-turn signal: set true by the voice handler before `session.send`,
+    /// cleared at turn-end. Hooks read it to branch tone/filler behavior.
+    /// Safe because turns are serialized via `UserMessageGuard` + chat-worker
+    /// `submit_lock`; only one turn is in flight at a time.
+    voice_turn_active: Arc<AtomicBool>,
 
     goals: Mutex<Option<Arc<BatchWorker>>>,
     consolidate: Mutex<Option<Arc<BatchWorker>>>,
@@ -58,6 +64,7 @@ impl WorkerRegistry {
         memory_file: Arc<MemoryFile>,
         data_dir: PathBuf,
         mcp_servers: HashMap<String, McpServerConfig>,
+        voice_turn_active: Arc<AtomicBool>,
     ) -> Arc<Self> {
         Arc::new(Self {
             client: ClientHandle::new(Arc::clone(&config)),
@@ -66,6 +73,7 @@ impl WorkerRegistry {
             memory_file,
             data_dir,
             mcp_servers,
+            voice_turn_active,
             goals: Mutex::new(None),
             consolidate: Mutex::new(None),
             decide: Mutex::new(None),
@@ -74,6 +82,7 @@ impl WorkerRegistry {
             reload_lock: Mutex::new(()),
         })
     }
+
 
     pub(crate) async fn prune_old_chat_sessions(&self) {
         let now = Local::now();
@@ -287,7 +296,11 @@ impl WorkerRegistry {
         let client = self.client.ensure_started().await?;
         let now = Local::now();
         let handler = BobeHandler::new(class);
-        let hooks = BobeHooks::new(class, Arc::clone(&self.memory_file));
+        let hooks = BobeHooks::new(
+            class,
+            Arc::clone(&self.memory_file),
+            Arc::clone(&self.voice_turn_active),
+        );
 
         let engine_snapshot = self.config.load().engine.clone();
         let (class_model, class_provider) = session_extras_for_class(&engine_snapshot, class);

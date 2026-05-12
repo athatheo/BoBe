@@ -1,6 +1,7 @@
 use arc_swap::ArcSwap;
 use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::sync::Mutex;
 
 use crate::config::Config;
@@ -47,6 +48,11 @@ pub(crate) struct AppState {
     /// engine isn't loaded or synthesis failed; voice still works, just
     /// with silence during the LLM-think gap.
     pub(crate) voice_filler_pcm: Option<Arc<Vec<f32>>>,
+    /// Voice-turn signal — flipped true by `voice.rs` while a voice turn is
+    /// in flight so `BobeHooks` can branch on tone/filler behavior. Cleared
+    /// via the guard in `voice.rs::process_turn`. Safe under single-flight
+    /// serialization (UserMessageGuard + chat submit_lock).
+    pub(crate) voice_turn_active: Arc<AtomicBool>,
 }
 
 impl AppState {

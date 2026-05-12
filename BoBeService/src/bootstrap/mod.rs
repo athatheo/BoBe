@@ -32,6 +32,9 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     crate::copilot::skills::ensure_skills(&crate::util::paths::bobe_data_dir()).await;
     // SDK owns MCP process spawn + tool dispatch via `SessionConfig::mcp_servers`.
     let mcp_servers = load_mcp_servers_for_sdk(&config);
+    // Voice-turn signal lives here so AppState (consumed by voice.rs) and
+    // WorkerRegistry (consumed by BobeHooks) both reference the same Arc.
+    let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let workers = {
         let data_dir = crate::util::paths::bobe_data_dir();
         crate::copilot::registry::WorkerRegistry::new(
@@ -39,6 +42,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             Arc::clone(&memory_file),
             data_dir,
             mcp_servers,
+            Arc::clone(&voice_turn_active),
         )
     };
 
@@ -126,6 +130,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         voice_vad,
         voice_smart_turn,
         voice_filler_pcm,
+        voice_turn_active,
     });
 
     Ok(state)
