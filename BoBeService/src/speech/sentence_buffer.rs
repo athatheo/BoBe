@@ -1,15 +1,15 @@
 //! Streaming sentence buffer for TTS. Port of LiveKit's `_basic_sent.split_sentences`.
 //!
-//! Pushes text deltas in, emits complete-sentence strings out (in order). A
-//! sentence is "complete" once a subsequent sentence has been seen — i.e., we
-//! only emit when there are ≥2 sentences in the buffer; the last one stays as
-//! potentially-still-growing. `flush()` releases the tail at end of stream.
+//! Pushes text deltas in, emits complete-sentence strings out (in order).
+//! Semantics: a sentence is "complete" the moment we see a `.`, `!`, or `?`
+//! followed by whitespace + an uppercase character (or end of buffer). Text
+//! still being typed after the most recent terminator stays in the buffer
+//! until either a subsequent terminator promotes it OR `flush()` is called
+//! at end-of-stream.
 //!
-//! Handles common English abbreviations (Dr., Mr., U.S.A., e.g., etc.) so a
-//! decimal or initialism doesn't trigger a false split.
+//! Handles common English abbreviations (`Dr.`, `Mr.`, `U.S.A.`, `e.g.`, `etc.`)
+//! and bare decimals like `3.14` so they don't trigger false splits.
 
-const MIN_CTX_LEN: usize = 10;
-const MIN_SENT_LEN: usize = 20;
 const ABBREVIATIONS: &[&str] = &[
     "mr.", "mrs.", "ms.", "dr.", "st.", "jr.", "sr.", "inc.", "ltd.", "co.", "ph.d.", "m.d.",
     "u.s.", "u.k.", "u.s.a.", "etc.", "vs.", "i.e.", "e.g.", "a.m.", "p.m.", "no.", "fig.",
@@ -26,29 +26,19 @@ impl SentenceBuffer {
         }
     }
 
-    /// Add text and try to extract sentences that have been confirmed-ended.
-    /// Returns empty until at least 2 sentences are buffered.
+    /// Append `text` and return any sentences whose terminators are now
+    /// confirmed. Text past the last terminator stays buffered until a
+    /// subsequent feed promotes it (or `flush` drains everything).
     pub(crate) fn feed(&mut self, text: &str) -> Vec<String> {
         self.buffer.push_str(text);
-        if self.buffer.len() < MIN_CTX_LEN {
-            return Vec::new();
-        }
-        let sentences = split_sentences(&self.buffer);
-        if sentences.len() < 2 {
-            return Vec::new();
-        }
-        let last = sentences.last().cloned().unwrap_or_default();
-        let mut out: Vec<String> = sentences.into_iter().collect();
-        out.pop();
-        let out: Vec<String> = out
-            .into_iter()
-            .filter(|s| !s.is_empty() && (s.len() >= MIN_SENT_LEN || ends_with_terminator(s)))
-            .collect();
-        self.buffer = last;
-        out
+        let (sentences, leftover) = split_at_terminators(&self.buffer);
+        self.buffer = leftover;
+        sentences
     }
 
-    /// Force-emit any remaining buffer content (end of LLM stream).
+    /// Drain whatever's buffered — call at end-of-stream so trailing text
+    /// without a terminator (e.g. "Sure" with no trailing period) still
+    /// gets synthesized.
     pub(crate) fn flush(&mut self) -> Vec<String> {
         let remaining = std::mem::take(&mut self.buffer);
         let trimmed = remaining.trim();
@@ -60,11 +50,16 @@ impl SentenceBuffer {
     }
 }
 
-fn ends_with_terminator(s: &str) -> bool {
-    matches!(s.trim_end().chars().last(), Some('!' | '?' | '.'))
-}
-
-fn split_sentences(text: &str) -> Vec<String> {
+/// Returns `(confirmed_sentences_in_order, leftover_after_last_terminator)`.
+///
+/// A `.`, `!`, or `?` confirms a sentence iff:
+/// - it's the last character of `text`, OR
+/// - it's followed by whitespace and the next non-whitespace character is
+///   uppercase, `"`, `'`, or newline (matches LiveKit's default heuristic).
+///
+/// Abbreviations are rejected by case-folding the segment-so-far and looking
+/// up its trailing token against `ABBREVIATIONS`.
+fn split_at_terminators(text: &str) -> (Vec<String>, String) {
     let chars: Vec<char> = text.chars().collect();
     let mut sentences = Vec::new();
     let mut start = 0_usize;
@@ -93,8 +88,8 @@ fn split_sentences(text: &str) -> Vec<String> {
             continue;
         }
 
-        // Abbreviation false-positive check: case-fold the segment-so-far + this
-        // punctuation, see if it ends in a known token like "dr." or "u.s."
+        // Abbreviation false-positive check: case-fold "<start..=i>", see
+        // if it ends in a known token like "dr." or "u.s.a.".
         let seg: String = chars[start..=i].iter().collect();
         let lower = seg.to_lowercase();
         if ABBREVIATIONS.iter().any(|a| lower.ends_with(a)) {
@@ -110,15 +105,12 @@ fn split_sentences(text: &str) -> Vec<String> {
         start = i;
     }
 
-    if start < chars.len() {
-        let remainder: String = chars[start..].iter().collect();
-        let trimmed = remainder.trim();
-        if !trimmed.is_empty() {
-            sentences.push(trimmed.to_string());
-        }
-    }
-
-    sentences
+    let leftover = if start < chars.len() {
+        chars[start..].iter().collect::<String>().trim().to_string()
+    } else {
+        String::new()
+    };
+    (sentences, leftover)
 }
 
 #[cfg(test)]
@@ -126,40 +118,72 @@ mod tests {
     use super::*;
 
     #[test]
-    fn splits_simple_sentences() {
-        let s = split_sentences("Hello world. How are you? I am fine!");
-        assert_eq!(s, vec!["Hello world.", "How are you?", "I am fine!"]);
-    }
-
-    #[test]
-    fn preserves_abbreviations() {
-        let s = split_sentences("Dr. Smith was here. He said hello.");
-        assert_eq!(s, vec!["Dr. Smith was here.", "He said hello."]);
-    }
-
-    #[test]
-    fn preserves_decimals() {
-        // "3.14" — the '.' is followed by a digit, not whitespace + uppercase, so no split
-        let s = split_sentences("Pi is 3.14 approximately. Cool.");
-        assert_eq!(s, vec!["Pi is 3.14 approximately.", "Cool."]);
-    }
-
-    #[test]
-    fn buffer_emits_only_after_second_sentence() {
+    fn emits_on_terminator_immediately() {
         let mut b = SentenceBuffer::new();
-        assert!(b.feed("Hello world.").is_empty());
-        // Single sentence isn't emitted until a second appears
-        assert!(b.feed(" Goodbye").is_empty());
-        // Now a second sentence boundary materialises
-        let out = b.feed(" world. And more.");
-        assert_eq!(out, vec!["Hello world.", "Goodbye world."]);
+        let out = b.feed("Hello world.");
+        assert_eq!(out, vec!["Hello world."]);
     }
 
     #[test]
-    fn flush_drains_remainder() {
+    fn buffers_text_without_terminator() {
+        let mut b = SentenceBuffer::new();
+        assert!(b.feed("Hello world").is_empty());
+        let out = b.feed(", and more.");
+        assert_eq!(out, vec!["Hello world, and more."]);
+    }
+
+    #[test]
+    fn splits_multiple_sentences_in_one_feed() {
+        let mut b = SentenceBuffer::new();
+        let out = b.feed("How are you? I am fine! Goodbye.");
+        assert_eq!(out, vec!["How are you?", "I am fine!", "Goodbye."]);
+    }
+
+    #[test]
+    fn preserves_abbreviation_dr() {
+        let mut b = SentenceBuffer::new();
+        // "Dr." followed by " S" looks like a sentence end, but the
+        // abbreviation check stops the split.
+        assert!(b.feed("Dr. Smith was here").is_empty());
+        let out = b.feed(" today. He left.");
+        assert_eq!(out, vec!["Dr. Smith was here today.", "He left."]);
+    }
+
+    #[test]
+    fn preserves_decimal_numbers() {
+        let mut b = SentenceBuffer::new();
+        // "3.14" — period followed by digit, not whitespace+uppercase, so no split
+        let out = b.feed("Pi is 3.14 approximately. Cool.");
+        assert_eq!(out, vec!["Pi is 3.14 approximately.", "Cool."]);
+    }
+
+    #[test]
+    fn preserves_initialism_us() {
+        let mut b = SentenceBuffer::new();
+        let out = b.feed("Travel to U.S. cities is fun. Try it.");
+        assert_eq!(out, vec!["Travel to U.S. cities is fun.", "Try it."]);
+    }
+
+    #[test]
+    fn flush_drains_unterminated_remainder() {
         let mut b = SentenceBuffer::new();
         drop(b.feed("One sentence remaining no terminator"));
         let out = b.flush();
         assert_eq!(out, vec!["One sentence remaining no terminator"]);
+    }
+
+    #[test]
+    fn flush_is_empty_when_buffer_is_empty() {
+        let mut b = SentenceBuffer::new();
+        let out = b.feed("Hi there.");
+        assert_eq!(out, vec!["Hi there."]);
+        assert!(b.flush().is_empty());
+    }
+
+    #[test]
+    fn handles_emdash_and_questions_together() {
+        let mut b = SentenceBuffer::new();
+        let out = b.feed("Wait — really? Yes!");
+        assert_eq!(out, vec!["Wait — really?", "Yes!"]);
     }
 }
