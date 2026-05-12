@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::extract::State;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
@@ -241,6 +241,7 @@ fn spawn_turn(
     TurnInFlight { turn_id, join }
 }
 
+#[tracing::instrument(name = "voice.turn", skip_all, fields(turn_id = %turn_id, samples = segment.samples.len()))]
 async fn process_turn(
     segment: crate::speech::vad::SpeechSegment,
     engines: VoiceEngines,
@@ -248,6 +249,8 @@ async fn process_turn(
     out_tx: mpsc::Sender<Message>,
     turn_id: String,
 ) {
+    let turn_start = Instant::now();
+
     // Semantic turn gate — discard if the user isn't really done yet.
     match engines.smart_turn.probability_complete(&segment.samples) {
         Ok(p) if p < TURN_COMPLETE_THRESHOLD => {
@@ -271,6 +274,7 @@ async fn process_turn(
     // STT
     let stt = Arc::clone(&engines.stt);
     let samples = segment.samples;
+    let stt_start = Instant::now();
     let stt_result = tokio::task::spawn_blocking(move || stt.transcribe(&samples)).await;
     let transcript = match stt_result {
         Ok(Ok(text)) => text,
@@ -290,14 +294,21 @@ async fn process_turn(
         }
     };
 
+    let stt_elapsed_ms = stt_start.elapsed().as_millis() as u64;
     let trimmed = transcript.trim();
     if trimmed.is_empty() {
+        info!(stt_ms = stt_elapsed_ms, "voice.empty_transcript");
         send_error(&out_tx, "empty_transcript", "I didn't catch that").await;
         send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
         drop(guard);
         return;
     }
-    info!(turn = %turn_id, transcript = %trimmed, "voice.transcript_final");
+    info!(
+        stt_ms = stt_elapsed_ms,
+        chars = trimmed.len(),
+        transcript = %trimmed,
+        "voice.transcript_final"
+    );
     send_json(
         &out_tx,
         &ServerMessage::TranscriptFinal {
@@ -309,6 +320,7 @@ async fn process_turn(
 
     // Spin up the per-turn TTS pipeline
     send_state(&out_tx, VoicePhase::Speaking, &turn_id).await;
+    let speaking_start = Instant::now();
     let first_audio_emitted = Arc::new(AtomicBool::new(false));
     let filler_task = spawn_filler_watchdog(
         engines.filler_pcm.as_ref().map(Arc::clone),
@@ -370,6 +382,13 @@ async fn process_turn(
     .await;
     send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
     drop(guard);
+
+    info!(
+        stt_ms = stt_elapsed_ms,
+        speaking_ms = speaking_start.elapsed().as_millis() as u64,
+        total_ms = turn_start.elapsed().as_millis() as u64,
+        "voice.turn_complete"
+    );
 }
 
 struct SentencePipeline {
