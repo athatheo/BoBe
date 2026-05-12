@@ -228,3 +228,68 @@ struct LocalRuntimePull: Codable, Sendable {
         case percent
     }
 }
+
+// MARK: - Voice install DTOs
+
+struct VoiceInstallStatus: Codable, Sendable {
+    let status: String
+    let models: [VoiceModelProgress]
+    let installed: VoiceInstallPresence
+
+    /// True when the daemon reports an active install. Matches the Rust
+    /// `InstallStatus::Running` variant's wire form.
+    var isRunning: Bool { self.status == "running" }
+    /// Convenience for the wizard step's continue button.
+    var isComplete: Bool { self.status == "complete" }
+    var isTerminal: Bool { ["complete", "canceled", "failed", "idle"].contains(self.status) }
+}
+
+struct VoiceModelProgress: Codable, Sendable, Identifiable {
+    let kind: String
+    let label: String
+    let status: String
+    let bytesDownloaded: UInt64
+    let bytesTotal: UInt64?
+    let percent: Int?
+
+    var id: String { self.kind }
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case label
+        case status
+        case bytesDownloaded = "bytes_downloaded"
+        case bytesTotal = "bytes_total"
+        case percent
+    }
+}
+
+struct VoiceInstallPresence: Codable, Sendable {
+    let streamingStt: Bool
+    let tts: Bool
+    let vad: Bool
+    let smartTurn: Bool
+    let allPresent: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case streamingStt = "streaming_stt"
+        case tts
+        case vad
+        case smartTurn = "smart_turn"
+        case allPresent = "all_present"
+    }
+}
+
+extension DaemonClient {
+    func voiceInstallStatus() async throws -> VoiceInstallStatus {
+        try await self.fetch("/voice/install/status")
+    }
+
+    func startVoiceInstall() async throws {
+        try await self.fetchVoid("/voice/install/start", method: "POST")
+    }
+
+    func cancelVoiceInstall() async throws {
+        try await self.fetchVoid("/voice/install/cancel", method: "POST")
+    }
+}

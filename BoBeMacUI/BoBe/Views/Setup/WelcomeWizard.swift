@@ -7,16 +7,18 @@ enum WelcomeStep: Hashable {
     case cloudAuth
     case localSetup
     case permissions
+    case voiceSetup
     case done
 
-    /// 0..4 axis for progress dots; cloud/local share position 2.
+    /// 0..5 axis for progress dots; cloud/local share position 2.
     var progressOrdinal: Int {
         switch self {
         case .welcome: 0
         case .engineChoice: 1
         case .cloudAuth, .localSetup: 2
         case .permissions: 3
-        case .done: 4
+        case .voiceSetup: 4
+        case .done: 5
         }
     }
 }
@@ -33,7 +35,7 @@ struct WelcomeWizard: View {
     @State private var engineChoice: EngineChoice?
     @Environment(\.theme) private var theme
     private let themeStore = ThemeStore.shared
-    private let totalSteps = 5
+    private let totalSteps = 6
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,6 +57,8 @@ struct WelcomeWizard: View {
                     LocalSetupStepView(onContinue: { self.advance() })
                 case .permissions:
                     PermissionsStepView(onContinue: { self.advance() })
+                case .voiceSetup:
+                    VoiceSetupStepView(onContinue: { self.advance() })
                 case .done:
                     DoneStepView(engineChoice: self.engineChoice, onLaunch: self.onComplete)
                 }
@@ -91,6 +95,8 @@ struct WelcomeWizard: View {
         case .cloudAuth, .localSetup:
             next = .permissions
         case .permissions:
+            next = .voiceSetup
+        case .voiceSetup:
             next = .done
         case .done:
             return

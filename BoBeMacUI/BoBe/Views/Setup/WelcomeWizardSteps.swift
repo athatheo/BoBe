@@ -814,6 +814,231 @@ struct DoneStepView: View {
     }
 }
 
+// MARK: - Voice setup step
+
+struct VoiceSetupStepView: View {
+    let onContinue: () -> Void
+
+    @Environment(\.theme) private var theme
+    @State private var status: VoiceInstallStatus?
+    @State private var phase: Phase = .checking
+    @State private var errorMessage: String?
+
+    enum Phase {
+        case checking, idle, installing, complete, failed, skipped
+    }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Text("Voice models")
+                    .bobeTextStyle(.setupTitle)
+                    .foregroundStyle(self.theme.colors.text)
+                Text("BoBe runs voice locally. We'll download the speech-to-text, text-to-speech, and turn-detection models now — about 490MB total.")
+                    .bobeTextStyle(.setupBody)
+                    .foregroundStyle(self.theme.colors.textMuted)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+
+            self.bodyContent
+
+            Spacer()
+
+            self.actionRow
+        }
+        .task { await self.refreshStatus() }
+    }
+
+    @ViewBuilder
+    private var bodyContent: some View {
+        switch self.phase {
+        case .checking:
+            ProgressView()
+                .progressViewStyle(.circular)
+                .padding(.top, 20)
+        case .idle:
+            self.installPrompt
+        case .installing:
+            self.progressList
+        case .complete:
+            self.completeSummary
+        case .failed:
+            self.failureSummary
+        case .skipped:
+            Text("You can install voice models later from Settings → Voice.")
+                .bobeTextStyle(.setupBody)
+                .foregroundStyle(self.theme.colors.textMuted)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var installPrompt: some View {
+        VStack(spacing: 12) {
+            ForEach(self.status?.models ?? [], id: \.id) { model in
+                self.modelRow(model)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var progressList: some View {
+        VStack(spacing: 12) {
+            ForEach(self.status?.models ?? [], id: \.id) { model in
+                self.modelRow(model)
+            }
+        }
+        .task { await self.poll() }
+    }
+
+    private var completeSummary: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(self.theme.colors.secondary)
+            Text("All voice models installed.")
+                .bobeTextStyle(.setupBody)
+                .foregroundStyle(self.theme.colors.text)
+        }
+        .padding(.vertical, 16)
+    }
+
+    private var failureSummary: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(self.theme.colors.primary)
+                Text("Install failed.")
+                    .bobeTextStyle(.setupBody)
+                    .foregroundStyle(self.theme.colors.text)
+            }
+            if let errorMessage = self.errorMessage {
+                Text(errorMessage)
+                    .bobeTextStyle(.setupBody)
+                    .foregroundStyle(self.theme.colors.textMuted)
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+
+    private func modelRow(_ model: VoiceModelProgress) -> some View {
+        HStack(spacing: 12) {
+            self.statusIcon(for: model)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.label.capitalized)
+                    .bobeTextStyle(.setupBody)
+                    .foregroundStyle(self.theme.colors.text)
+                Text(model.status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(self.theme.colors.textMuted)
+            }
+            Spacer()
+            if let percent = model.percent {
+                Text("\(percent)%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(self.theme.colors.textMuted)
+            }
+        }
+    }
+
+    private func statusIcon(for model: VoiceModelProgress) -> some View {
+        Group {
+            switch model.status {
+            case "installed", "already installed":
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(self.theme.colors.secondary)
+            case "downloading":
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .controlSize(.small)
+            default:
+                Image(systemName: "circle.dotted")
+                    .foregroundStyle(self.theme.colors.textMuted.opacity(0.6))
+            }
+        }
+        .frame(width: 18, height: 18)
+    }
+
+    @ViewBuilder
+    private var actionRow: some View {
+        switch self.phase {
+        case .checking:
+            EmptyView()
+        case .idle:
+            HStack(spacing: 12) {
+                Button("Skip for now") { self.phase = .skipped }
+                    .bobeButton(.secondary, size: .regular)
+                Button("Install voice models") { Task { await self.kickoff() } }
+                    .bobeButton(.primary, size: .regular)
+                    .keyboardShortcut(.defaultAction)
+            }
+        case .installing:
+            Button("Cancel") { Task { try? await DaemonClient.shared.cancelVoiceInstall() } }
+                .bobeButton(.secondary, size: .regular)
+        case .complete, .failed, .skipped:
+            Button("Continue", action: self.onContinue)
+                .bobeButton(.primary, size: .regular)
+                .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    private func refreshStatus() async {
+        do {
+            let s = try await DaemonClient.shared.voiceInstallStatus()
+            self.status = s
+            if s.installed.allPresent {
+                self.phase = .complete
+            } else if s.isRunning {
+                self.phase = .installing
+            } else {
+                self.phase = .idle
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            self.phase = .failed
+        }
+    }
+
+    private func kickoff() async {
+        do {
+            try await DaemonClient.shared.startVoiceInstall()
+            self.phase = .installing
+            await self.poll()
+        } catch {
+            self.errorMessage = error.localizedDescription
+            self.phase = .failed
+        }
+    }
+
+    private func poll() async {
+        while !Task.isCancelled, self.phase == .installing {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            do {
+                let s = try await DaemonClient.shared.voiceInstallStatus()
+                self.status = s
+                if s.installed.allPresent {
+                    self.phase = .complete
+                    return
+                }
+                switch s.status {
+                case "complete":
+                    self.phase = .complete; return
+                case "failed":
+                    self.errorMessage = "The daemon reported an install failure. Check the logs and retry from Settings → Voice."
+                    self.phase = .failed; return
+                case "canceled":
+                    self.phase = .idle; return
+                default:
+                    continue
+                }
+            } catch {
+                self.errorMessage = error.localizedDescription
+                self.phase = .failed
+                return
+            }
+        }
+    }
+}
+
 // MARK: - SettingsUpdateRequest convenience init
 
 private extension SettingsUpdateRequest {
