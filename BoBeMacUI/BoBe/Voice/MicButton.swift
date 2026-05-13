@@ -24,6 +24,23 @@ struct MicButton: View {
     var body: some View {
         Button(action: self.handleTap) {
             ZStack {
+                // Pulsing input-level ring — only visible while the WS is
+                // active. Width grows with the user's voice so they get
+                // immediate feedback that the mic is being heard, BEFORE
+                // the daemon's VAD/STT decides anything.
+                if self.showInputRing {
+                    Circle()
+                        .stroke(
+                            self.theme.colors.primary.opacity(0.6),
+                            lineWidth: 2
+                        )
+                        .frame(
+                            width: 36 + CGFloat(self.pipeline.inputLevel) * 24,
+                            height: 36 + CGFloat(self.pipeline.inputLevel) * 24
+                        )
+                        .opacity(0.3 + Double(self.pipeline.inputLevel) * 0.7)
+                        .animation(.easeOut(duration: 0.08), value: self.pipeline.inputLevel)
+                }
                 Circle()
                     .fill(self.background)
                     .frame(width: 36, height: 36)
@@ -35,7 +52,7 @@ struct MicButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(self.accessibilityLabel)
         .help(self.tooltip)
-        .frame(width: 36, height: 36)
+        .frame(width: 60, height: 60)
         .contentShape(Circle())
         .disabled(self.isDisabled)
         .task {
@@ -59,6 +76,16 @@ struct MicButton: View {
         ) { _ in
             // Voice settings or install state changed in Settings → Voice.
             Task { await self.refreshGate() }
+        }
+    }
+
+    /// Show the pulsing ring only when the daemon could plausibly be
+    /// hearing audio — listening (mic open, awaiting speech) or capturing
+    /// (mid-utterance). Hidden while idle / connecting / thinking / speaking.
+    private var showInputRing: Bool {
+        switch self.pipeline.state {
+        case .listening, .capturing: true
+        default: false
         }
     }
 

@@ -43,6 +43,16 @@ public final class VoicePipeline {
     /// engineers can see it in Console.app. The Voice settings pane (#85)
     /// will surface it as a UI affordance.
     public private(set) var lastError: String?
+    /// Normalized input level, 0...1, derived from the most recent 20ms
+    /// frame's RMS dBFS (-60 dBFS → 0, 0 dBFS → 1). Drives the MicButton's
+    /// pulsing ring so the user sees their voice is getting through before
+    /// the daemon's VAD has decided whether it's a speech segment.
+    public private(set) var inputLevel: Float = 0
+    /// Streaming partial transcript from the daemon. Updated on every
+    /// TranscriptPartial frame; cleared at turn-end. Surfaces in the
+    /// MicButton tooltip + overlay so the user gets immediate feedback that
+    /// "I heard you say X" rather than a silent void during STT.
+    public private(set) var partialTranscript: String = ""
 
     /// 16kHz mono — Moonshine + Silero native. Opus 20ms frames = 320 samples.
     private let captureSampleRate: Double = 16_000
@@ -179,6 +189,8 @@ public final class VoicePipeline {
         let oldTask = self.task
         self.task = nil
         self.state = .idle
+        self.inputLevel = 0
+        self.partialTranscript = ""
         // Send abort then cancel — sending after task=nil would drop the
         // message, and stale receiveLoop callbacks are guarded in receiveLoop
         // by the task-identity check.
@@ -332,14 +344,26 @@ public final class VoicePipeline {
         self.pcmAccumulator.append(contentsOf: samples)
 
         // Encode + send full 20ms frames; daemon expects continuous stream.
-        // Per-frame RMS is also fed to the barge-in detector.
+        // Per-frame RMS is also fed to the barge-in detector and the public
+        // inputLevel observable for UI feedback (pulsing mic ring).
         while self.pcmAccumulator.count >= self.captureFrameSamples {
             let slice = Array(self.pcmAccumulator.prefix(self.captureFrameSamples))
             self.pcmAccumulator.removeFirst(self.captureFrameSamples)
             let frameRms = self.rmsDbfs(of: slice)
+            self.publishInputLevel(frameRms: frameRms)
             self.checkBargeIn(frameRms: frameRms)
             self.sendEncodedFrame(samples: slice, encoder: encoder, task: task)
         }
+    }
+
+    /// Map dBFS (-60..0) → 0...1 with a soft floor so quiet background hum
+    /// reads as ~0 and only deliberate speech moves the ring.
+    private func publishInputLevel(frameRms: Float) {
+        let floor: Float = -50
+        let normalized = max(0, min(1, (frameRms - floor) / -floor))
+        // Light EMA smoothing — 60Hz updates of raw RMS look jittery.
+        let smoothed = (self.inputLevel * 0.6) + (normalized * 0.4)
+        self.inputLevel = smoothed
     }
 
     private func rmsDbfs(of samples: [Int16]) -> Float {
@@ -484,12 +508,14 @@ public final class VoicePipeline {
             if !transcript.isEmpty {
                 BobeStore.shared.appendUserVoiceMessage(transcript)
             }
-        case .transcriptPartial:
-            // Streaming Zipformer (Wave B2) emits these during capture. The
-            // overlay doesn't render partials today; future surface point.
-            break
+        case .transcriptPartial(_, let transcript):
+            // Surface the running partial so the user sees what BoBe is
+            // hearing in near-real-time rather than waiting for transcript
+            // final at end-of-utterance.
+            self.partialTranscript = transcript
         case .ttsEnd:
             // Authoritative end-of-turn — daemon will follow with state(Listening).
+            self.partialTranscript = ""
             break
         case let .truncate(_, keepMs):
             // M4.5.5 barge-in path — drop queued audio beyond keepMs.

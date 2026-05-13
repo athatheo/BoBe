@@ -33,11 +33,25 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
 
     let allowed_hosts = AllowedHosts::new(&cfg.server.host, cfg.server.port);
 
-    Router::new()
+    // Long-lived endpoints (SSE, WebSocket) — MUST NOT be wrapped in
+    // TimeoutLayer. A 30s request timeout kills them mid-stream every
+    // 30s, which presents in the UI as "Reconnecting..." (overlay) +
+    // mic-button-stuck (voice WS dies during a turn) + ollama install
+    // status stream cut off mid-download.
+    let long_lived = Router::new()
+        .route("/events", get(handlers::events::stream_events))
+        .route("/voice/stream", get(handlers::voice::voice_stream))
+        .route(
+            "/local-runtime/status",
+            get(handlers::local_runtime::install_status_stream),
+        );
+
+    // Short-lived JSON/REST endpoints — bounded by a 30s timeout so a
+    // misbehaving handler can't lock a worker thread forever.
+    let short_lived = Router::new()
         .route("/health", get(handlers::health::health_check))
         .route("/metrics", get(handlers::metrics::metrics))
         .route("/status", get(handlers::health::get_status))
-        .route("/events", get(handlers::events::stream_events))
         .route("/message", post(handlers::conversation::send_message))
         .route("/capture/start", post(handlers::capture::start_capture))
         .route("/capture/stop", post(handlers::capture::stop_capture))
@@ -113,10 +127,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::local_runtime::cancel_install),
         )
         .route(
-            "/local-runtime/status",
-            get(handlers::local_runtime::install_status_stream),
-        )
-        .route(
             "/tools/mcp/config",
             get(handlers::tools_mcp::get_mcp_config)
                 .put(handlers::tools_mcp::save_mcp_config)
@@ -126,7 +136,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/tools/mcp/config/validate",
             post(handlers::tools_mcp::validate_mcp_config),
         )
-        .route("/voice/stream", get(handlers::voice::voice_stream))
         .route(
             "/voice/install/status",
             get(handlers::voice_install::status),
@@ -139,14 +148,20 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/voice/install/cancel",
             post(handlers::voice_install::cancel),
         )
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::GATEWAY_TIMEOUT,
+            std::time::Duration::from_secs(30),
+        ));
+
+    // Apply common layers (host validation, CORS, request logging,
+    // concurrency limit) to BOTH halves so the long-lived endpoints
+    // get the same security treatment as the REST API.
+    short_lived
+        .merge(long_lived)
         .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)
-        .layer(TimeoutLayer::with_status_code(
-            axum::http::StatusCode::GATEWAY_TIMEOUT,
-            std::time::Duration::from_secs(30),
-        ))
         .layer(tower::limit::ConcurrencyLimitLayer::new(64))
         .with_state(state)
 }
