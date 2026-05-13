@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use crate::error::AppError;
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
-const PULL_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
+const PULL_TIMEOUT: Duration = Duration::from_hours(2);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const STARTUP_MAX_ATTEMPTS: u32 = 30;
 
@@ -135,8 +135,7 @@ impl OllamaManager {
         }
 
         Err(AppError::ServiceUnavailable(format!(
-            "Ollama failed to become healthy within {}s",
-            STARTUP_MAX_ATTEMPTS
+            "Ollama failed to become healthy within {STARTUP_MAX_ATTEMPTS}s"
         )))
     }
 

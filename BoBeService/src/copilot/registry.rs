@@ -99,6 +99,10 @@ impl WorkerRegistry {
     }
 
 
+    /// Prune chat sessions older than `CHAT_RETENTION_DAYS`. Currently
+    /// unused — wired in for the upcoming pruning trigger; keeping the
+    /// implementation in tree avoids re-derivation churn when it lands.
+    #[allow(dead_code)]
     pub(crate) async fn prune_old_chat_sessions(&self) {
         let now = Local::now();
         let victims = match self

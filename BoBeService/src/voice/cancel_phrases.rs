@@ -18,6 +18,11 @@ static CANCEL_PHRASE_RE: LazyLock<Regex> = LazyLock::new(|| {
     // Anchored to a word boundary on the left; matches anywhere in the
     // partial transcript. Phrases all start with command verbs to keep
     // false-positive surface low.
+    //
+    // SAFETY: Pattern is a compile-time constant exercised by every test
+    // run; if it ever fails to compile that's a build-blocking unit test
+    // failure, not a runtime crash in the wild.
+    #[allow(clippy::expect_used)]
     Regex::new(
         r"(?ix)
         \b(

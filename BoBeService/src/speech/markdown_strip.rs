@@ -161,7 +161,7 @@ mod tests {
         // spec is "don't crash and don't keep markdown syntax". We assert
         // that the digits remain intact and there's no markdown-specific
         // byte left behind beyond the asterisks themselves.
-        assert!(out.contains("5"), "{out}");
+        assert!(out.contains('5'), "{out}");
         assert!(out.contains("20"), "{out}");
     }
 

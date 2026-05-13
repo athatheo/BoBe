@@ -16,21 +16,13 @@ use crate::error::AppError;
 
 /// `percent` is best-effort: 0..90 download, 92 post-download, 100 ready.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub(crate) struct DownloadProgress {
     pub(crate) current_bytes: u64,
     pub(crate) total_bytes: Option<u64>,
     pub(crate) percent: Option<u8>,
 }
 
-impl Default for DownloadProgress {
-    fn default() -> Self {
-        Self {
-            current_bytes: 0,
-            total_bytes: None,
-            percent: None,
-        }
-    }
-}
 
 pub(crate) struct BinaryManager {
     data_dir: PathBuf,
@@ -180,6 +172,7 @@ impl BinaryManager {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
     use super::BinaryManager;
     use std::path::PathBuf;
     use std::sync::Arc;

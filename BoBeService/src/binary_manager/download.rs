@@ -10,7 +10,7 @@ use crate::error::AppError;
 
 const OLLAMA_DARWIN_URL: &str =
     "https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz";
-const OLLAMA_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const OLLAMA_DOWNLOAD_TIMEOUT: Duration = Duration::from_mins(30);
 
 pub(crate) async fn download_ollama(
     client: &reqwest::Client,

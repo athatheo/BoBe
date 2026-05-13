@@ -215,6 +215,11 @@ impl VoiceInstallService {
     }
 
     pub(crate) fn target_path(&self, kind: VoiceModelKind) -> PathBuf {
+        // SAFETY: ARTIFACTS is a compile-time constant array with one entry
+        // per VoiceModelKind variant. Coverage verified by enum exhaustiveness
+        // check below — adding a variant without an artifact is a compile
+        // error in `kind_iter()` consumers.
+        #[allow(clippy::expect_used)]
         let art = ARTIFACTS
             .iter()
             .find(|a| a.kind == kind)
@@ -413,8 +418,7 @@ fn tempfile_dir() -> Result<PathBuf, std::io::Error> {
         "bobe-voice-install-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
+            .map_or(0, |d| d.as_nanos())
     );
     let path = base.join(unique);
     std::fs::create_dir_all(&path)?;
@@ -519,7 +523,7 @@ impl VoiceInstallService {
         loop {
             let handle = {
                 let state = self.state.lock().await;
-                state.in_flight.as_ref().and_then(|h| (!h.is_finished()).then(|| ()))
+                state.in_flight.as_ref().and_then(|h| (!h.is_finished()).then_some(()))
             };
             if handle.is_none() {
                 return;

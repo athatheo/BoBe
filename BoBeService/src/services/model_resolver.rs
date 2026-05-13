@@ -1,6 +1,13 @@
 //! Cost-aware picker for Copilot models. Walks the user's live `list_models()` and
 //! returns the cheapest one matching a task's capability requirements. Cached for
 //! `CACHE_TTL`; falls back to `"auto"` (which every account has) on any failure.
+//!
+//! NOTE: scaffold from the pivot WIP merge — wired into bootstrap but no
+//! consumer migrated yet (workers still resolve via `engine.provider_*_model`).
+//! Migration is post-merge work; allow dead-code so the file isn't deleted
+//! and re-derived.
+
+#![allow(dead_code)]
 
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -14,7 +21,7 @@ use crate::copilot::client::ClientHandle;
 use crate::copilot::types::WorkerClass;
 use crate::error::AppError;
 
-const CACHE_TTL: Duration = Duration::from_secs(300);
+const CACHE_TTL: Duration = Duration::from_mins(5);
 const FALLBACK_MODEL: &str = "auto";
 
 /// What a task needs from a model; the resolver filters candidates by this.
@@ -127,13 +134,13 @@ fn supports_vision(m: &Model) -> bool {
 fn is_disabled(m: &Model) -> bool {
     matches!(
         m.policy.as_ref().map(|p| p.state.as_str()),
-        Some("disabled") | Some("unconfigured")
+        Some("disabled" | "unconfigured")
     )
 }
 
 /// Multiplier ascending; missing billing sorts to the end (treat as "unknown cost = avoid").
 fn compare_cost(a: &Model, b: &Model) -> Ordering {
-    let am = a.billing.as_ref().map(|b| b.multiplier).unwrap_or(f64::INFINITY);
-    let bm = b.billing.as_ref().map(|b| b.multiplier).unwrap_or(f64::INFINITY);
+    let am = a.billing.as_ref().map_or(f64::INFINITY, |b| b.multiplier);
+    let bm = b.billing.as_ref().map_or(f64::INFINITY, |b| b.multiplier);
     am.partial_cmp(&bm).unwrap_or(Ordering::Equal)
 }

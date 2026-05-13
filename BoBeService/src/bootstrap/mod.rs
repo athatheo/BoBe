@@ -121,9 +121,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         let base_url = config
             .engine
             .provider_base_url
-            .as_deref()
-            .map(crate::ollama_manager::OllamaManager::root_from_provider_url)
-            .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
+            .as_deref().map_or_else(|| "http://127.0.0.1:11434".to_string(), crate::ollama_manager::OllamaManager::root_from_provider_url);
         let manager = Arc::new(crate::ollama_manager::OllamaManager::new(
             Arc::clone(&http),
             &base_url,

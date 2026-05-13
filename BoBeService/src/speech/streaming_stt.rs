@@ -78,20 +78,22 @@ impl LocalZipformerStt {
                 )));
             }
         }
-        let mut config = OnlineRecognizerConfig::default();
-        config.model_config = OnlineModelConfig {
-            transducer: OnlineTransducerModelConfig {
-                encoder: Some(encoder.to_string_lossy().into_owned()),
-                decoder: Some(decoder.to_string_lossy().into_owned()),
-                joiner: Some(joiner.to_string_lossy().into_owned()),
+        let config = OnlineRecognizerConfig {
+            model_config: OnlineModelConfig {
+                transducer: OnlineTransducerModelConfig {
+                    encoder: Some(encoder.to_string_lossy().into_owned()),
+                    decoder: Some(decoder.to_string_lossy().into_owned()),
+                    joiner: Some(joiner.to_string_lossy().into_owned()),
+                },
+                tokens: Some(tokens.to_string_lossy().into_owned()),
+                num_threads,
+                provider: Some(provider.to_string()),
+                ..Default::default()
             },
-            tokens: Some(tokens.to_string_lossy().into_owned()),
-            num_threads,
-            provider: Some(provider.to_string()),
+            enable_endpoint: false, // Silero owns endpoint detection.
+            decoding_method: Some("greedy_search".into()),
             ..Default::default()
         };
-        config.enable_endpoint = false; // Silero owns endpoint detection.
-        config.decoding_method = Some("greedy_search".into());
         let recognizer = OnlineRecognizer::create(&config)
             .ok_or_else(|| AppError::Internal("streaming-stt OnlineRecognizer::create returned None".into()))?;
         let stream = recognizer.create_stream();

@@ -51,7 +51,7 @@ impl ConsolidationTrigger {
             }
 
             match self.consolidate_once().await {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(AppError::Conflict(reason)) => {
                     tracing::info!(reason = %reason, "consolidation_trigger.skipped");
                 }

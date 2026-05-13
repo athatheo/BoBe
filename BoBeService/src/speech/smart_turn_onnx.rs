@@ -147,6 +147,7 @@ fn compute_mel_features(window: &[f32]) -> Result<Vec<f32>, AppError> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
     use super::*;
 
     #[test]

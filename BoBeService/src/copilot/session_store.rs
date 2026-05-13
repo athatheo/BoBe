@@ -1,5 +1,6 @@
 //! Chat rotates daily; cross-day continuity comes from `memory.md`, not chat history.
 
+#[allow(dead_code)] // Used by `prune_old_chat_sessions` once the pruning trigger lands.
 pub(crate) const CHAT_RETENTION_DAYS: i64 = 7;
 
 use std::path::PathBuf;
@@ -88,6 +89,9 @@ impl SessionStore {
         }
     }
 
+    /// Load a session ID from a specific path. Used by `old_chat_sessions`
+    /// (which is itself awaiting wire-up by the pruning trigger).
+    #[allow(dead_code)]
     pub(crate) async fn load_path(
         &self,
         path: &std::path::Path,
@@ -106,6 +110,10 @@ impl SessionStore {
         }
     }
 
+    /// Scan for chat session files older than the cutoff. Consumed by
+    /// `WorkerRegistry::prune_old_chat_sessions` (currently scaffolded —
+    /// the pruning trigger is post-merge work).
+    #[allow(dead_code)]
     pub(crate) async fn old_chat_sessions(
         &self,
         now_local: DateTime<Local>,

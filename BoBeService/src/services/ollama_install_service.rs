@@ -13,17 +13,17 @@ use crate::ollama_manager::{OllamaManager, PullProgress};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallStage {
-    TextModel,
-    BatchModel,
-    VisionModel,
+    Text,
+    Batch,
+    Vision,
 }
 
 impl InstallStage {
     const fn name(self) -> &'static str {
         match self {
-            InstallStage::TextModel => "chat-model",
-            InstallStage::BatchModel => "batch-model",
-            InstallStage::VisionModel => "vision-model",
+            InstallStage::Text => "chat-model",
+            InstallStage::Batch => "batch-model",
+            InstallStage::Vision => "vision-model",
         }
     }
 }
@@ -208,29 +208,13 @@ impl OllamaInstallService {
         self.maybe_pull_model(
             &req.chat_model,
             &installed,
-            InstallStage::TextModel,
+            InstallStage::Text,
             &snapshot_for_chat,
             cancel_rx_for_chat,
         )
         .await?;
 
-        if req.batch_model != req.chat_model {
-            let installed_now = self
-                .ollama_manager
-                .list_installed_models()
-                .await
-                .unwrap_or_default();
-            let snapshot_for_batch = snapshot_tx.clone();
-            let cancel_rx_for_batch = cancel_rx.clone();
-            self.maybe_pull_model(
-                &req.batch_model,
-                &installed_now,
-                InstallStage::BatchModel,
-                &snapshot_for_batch,
-                cancel_rx_for_batch,
-            )
-            .await?;
-        } else {
+        if req.batch_model == req.chat_model {
             let snap = snapshot_tx.borrow().clone();
             snapshot_tx
                 .send(InstallSnapshot {
@@ -243,6 +227,22 @@ impl OllamaInstallService {
                     ..snap
                 })
                 .ok();
+        } else {
+            let installed_now = self
+                .ollama_manager
+                .list_installed_models()
+                .await
+                .unwrap_or_default();
+            let snapshot_for_batch = snapshot_tx.clone();
+            let cancel_rx_for_batch = cancel_rx.clone();
+            self.maybe_pull_model(
+                &req.batch_model,
+                &installed_now,
+                InstallStage::Batch,
+                &snapshot_for_batch,
+                cancel_rx_for_batch,
+            )
+            .await?;
         }
 
         let installed_final = self
@@ -255,7 +255,7 @@ impl OllamaInstallService {
         self.maybe_pull_model(
             &req.vision_model,
             &installed_final,
-            InstallStage::VisionModel,
+            InstallStage::Vision,
             &snapshot_for_vision,
             cancel_rx_for_vision,
         )
@@ -292,15 +292,15 @@ impl OllamaInstallService {
                 let progress = pull_rx.borrow().clone();
                 let snap = pump_snapshot_tx.borrow().clone();
                 let updated = match pump_stage {
-                    InstallStage::TextModel => InstallSnapshot {
+                    InstallStage::Text => InstallSnapshot {
                         chat_model: progress,
                         ..snap
                     },
-                    InstallStage::BatchModel => InstallSnapshot {
+                    InstallStage::Batch => InstallSnapshot {
                         batch_model: progress,
                         ..snap
                     },
-                    InstallStage::VisionModel => InstallSnapshot {
+                    InstallStage::Vision => InstallSnapshot {
                         vision_model: progress,
                         ..snap
                     },
@@ -327,15 +327,15 @@ impl OllamaInstallService {
     ) {
         let snap = snapshot_tx.borrow().clone();
         let updated = match stage {
-            InstallStage::TextModel => InstallSnapshot {
+            InstallStage::Text => InstallSnapshot {
                 chat_model: progress,
                 ..snap
             },
-            InstallStage::BatchModel => InstallSnapshot {
+            InstallStage::Batch => InstallSnapshot {
                 batch_model: progress,
                 ..snap
             },
-            InstallStage::VisionModel => InstallSnapshot {
+            InstallStage::Vision => InstallSnapshot {
                 vision_model: progress,
                 ..snap
             },

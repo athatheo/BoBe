@@ -6,7 +6,7 @@ use tracing::{debug, error, info, warn};
 
 const VISION_FAILURE_BREAKER_THRESHOLD: u32 = 3;
 
-const VISION_FAILURE_COOLDOWN: Duration = Duration::from_secs(180);
+const VISION_FAILURE_COOLDOWN: Duration = Duration::from_mins(3);
 
 use crate::config::Config;
 use crate::db::CooldownRepository;

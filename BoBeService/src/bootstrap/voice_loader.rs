@@ -8,6 +8,14 @@ use tracing::{info, warn};
 
 use crate::voice::engines::VoiceEnginesSnapshot;
 
+/// Tuple of optional Arc'd engine traits — one entry per voice subsystem.
+type LoadedEngines = (
+    Option<Arc<dyn crate::speech::StreamingSttEngine>>,
+    Option<Arc<dyn crate::speech::TtsEngine>>,
+    Option<Arc<dyn crate::speech::AcousticVad>>,
+    Option<Arc<dyn crate::speech::SemanticTurn>>,
+);
+
 /// Build a `VoiceEnginesSnapshot` from the models currently on disk.
 /// Includes async TTS filler-library synthesis when TTS loads.
 pub(super) async fn build_voice_engines_snapshot() -> VoiceEnginesSnapshot {
@@ -33,12 +41,7 @@ pub(super) async fn build_voice_engines_snapshot() -> VoiceEnginesSnapshot {
 /// Provider selection per platform: macOS → CoreML EP, others → CPU.
 /// Env overrides: `BOBE_VOICE_PROVIDER` (cpu|coreml|cuda|directml),
 /// `BOBE_VOICE_NUM_THREADS` (default 4).
-fn load_engine_files() -> (
-    Option<Arc<dyn crate::speech::StreamingSttEngine>>,
-    Option<Arc<dyn crate::speech::TtsEngine>>,
-    Option<Arc<dyn crate::speech::AcousticVad>>,
-    Option<Arc<dyn crate::speech::SemanticTurn>>,
-) {
+fn load_engine_files() -> LoadedEngines {
     let Some(home) = dirs::home_dir() else {
         warn!("voice.load: no home dir, skipping engine load");
         return (None, None, None, None);

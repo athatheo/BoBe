@@ -16,7 +16,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const HAMMERING_WINDOW: Duration = Duration::from_secs(60);
+const HAMMERING_WINDOW: Duration = Duration::from_mins(1);
 /// Levenshtein ratio (`distance / max(len_a, len_b)`) below which two
 /// strings are considered the same request rephrased. Empirically chosen;
 /// sits between Pipecat's 0.2 (strict) and OpenAI Realtime's 0.4 (loose).
@@ -154,6 +154,7 @@ fn levenshtein(a: &[char], b: &[char]) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
     use super::*;
 
     #[test]

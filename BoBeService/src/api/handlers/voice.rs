@@ -39,7 +39,7 @@ const KEEPALIVE_PING_INTERVAL: Duration = Duration::from_secs(25);
 /// Recv timeout — close the socket if nothing arrives for this long. The
 /// 25s server pings trigger auto-Pong from any live client, so a healthy
 /// connection always replenishes within this window even when muted.
-const KEEPALIVE_STALE_TIMEOUT: Duration = Duration::from_secs(60);
+const KEEPALIVE_STALE_TIMEOUT: Duration = Duration::from_mins(1);
 
 
 pub(crate) async fn voice_stream(

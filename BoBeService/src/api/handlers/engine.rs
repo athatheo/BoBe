@@ -160,9 +160,7 @@ struct OllamaTagDetails {
 
 async fn list_local_models(base_url: Option<&str>) -> Result<Vec<ModelInfo>, AppError> {
     // Ollama's `/api/tags` lives on the root, not the `/v1` OpenAI-compat prefix.
-    let root = base_url
-        .map(|u| u.trim_end_matches('/').trim_end_matches("/v1").to_string())
-        .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
+    let root = base_url.map_or_else(|| "http://127.0.0.1:11434".to_string(), |u| u.trim_end_matches('/').trim_end_matches("/v1").to_string());
 
     let url = format!("{root}/api/tags");
     let client = reqwest::Client::builder()

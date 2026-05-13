@@ -95,7 +95,7 @@ mod tests {
         let json = serde_json::to_string(&id).unwrap();
         let back: SoulId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, back);
-        assert_eq!(json, format!("\"{}\"", id));
+        assert_eq!(json, format!("\"{id}\""));
     }
 
     #[test]

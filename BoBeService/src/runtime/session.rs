@@ -163,7 +163,7 @@ impl RuntimeSession {
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
             if time_since_goal >= cfg.goals.check_interval_seconds {
                 match tokio::time::timeout(
-                    std::time::Duration::from_secs(300),
+                    std::time::Duration::from_mins(5),
                     self.goal_trigger.fire(),
                 )
                 .await
@@ -185,7 +185,7 @@ impl RuntimeSession {
             {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
                 if time_since_capture >= cfg.capture.interval_seconds {
-                    match tokio::time::timeout(std::time::Duration::from_secs(300), async {
+                    match tokio::time::timeout(std::time::Duration::from_mins(5), async {
                         let mut ct = self.capture_trigger.lock().await;
                         ct.fire().await
                     })
