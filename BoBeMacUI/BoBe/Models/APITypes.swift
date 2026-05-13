@@ -83,7 +83,6 @@ struct ErrorPayload: Codable, Sendable {
     let trigger: String?
     let message: String
     let recoverable: Bool
-    let details: [String: AnyCodableValue]?
 
     var sourceLabel: String {
         self.trigger ?? self.code ?? "error"
