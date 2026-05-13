@@ -32,8 +32,11 @@ impl VoiceModelKind {
         }
     }
 
-    pub(super) fn all() -> &'static [VoiceModelKind] {
-        &[Self::StreamingStt, Self::Tts, Self::Vad, Self::SmartTurn]
+    /// Iterate every kind exactly once, derived from `ARTIFACTS` so the
+    /// enum and the catalog can never drift — adding a kind without an
+    /// artifact entry yields fewer iterations, not a runtime panic.
+    pub(super) fn all() -> impl Iterator<Item = VoiceModelKind> {
+        ARTIFACTS.iter().map(|a| a.kind)
     }
 }
 

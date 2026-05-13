@@ -59,10 +59,7 @@ impl VoiceInstallService {
         on_complete: OnCompleteCallback,
     ) -> Arc<Self> {
         let initial = VoiceInstallSnapshot {
-            models: VoiceModelKind::all()
-                .iter()
-                .map(|k| ModelProgress::pending(*k))
-                .collect(),
+            models: VoiceModelKind::all().map(ModelProgress::pending).collect(),
             status: InstallStatus::Idle,
         };
         let (snapshot_tx, snapshot_rx) = watch::channel(initial);
@@ -126,10 +123,7 @@ impl VoiceInstallService {
         let snapshot_tx = state.snapshot_tx.clone();
         snapshot_tx
             .send(VoiceInstallSnapshot {
-                models: VoiceModelKind::all()
-                    .iter()
-                    .map(|k| ModelProgress::pending(*k))
-                    .collect(),
+                models: VoiceModelKind::all().map(ModelProgress::pending).collect(),
                 status: InstallStatus::Running,
             })
             .ok();
