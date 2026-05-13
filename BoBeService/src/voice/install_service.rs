@@ -7,145 +7,30 @@
 //! a Mutex, progress streamed via `watch::Sender<VoiceInstallSnapshot>`,
 //! cancel via a side `watch<bool>`. Models are downloaded sequentially
 //! into `~/.bobe/models/`; on completion the daemon's voice engines need
-//! a reload (next /voice/stream connect picks them up via
-//! `bootstrap::load_voice_engines` re-running on `ConfigManager::reload`).
+//! a reload (the `on_complete` callback hot-swaps the AppState ArcSwap).
+//!
+//! The artifact catalog lives in `install_artifacts.rs`; tarball
+//! extraction helpers live in `install_extract.rs`. This module is the
+//! orchestrator only.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::error::AppError;
+use crate::voice::install_artifacts::{ARTIFACTS, ModelArtifact};
+use crate::voice::install_extract::{extract_and_install, tempfile_dir};
 
-/// One of the four voice-model artifacts the daemon expects on disk.
-/// Wire-serialized as snake_case for the install snapshot surfaced by the
-/// `/voice/install/status` endpoint + the wizard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum VoiceModelKind {
-    /// Streaming Zipformer English ASR (~80MB, sherpa-onnx).
-    StreamingStt,
-    /// Kokoro v1.0 multilingual TTS (~340MB, sherpa-onnx).
-    Tts,
-    /// Silero v6.2.1 acoustic VAD (~2MB, ONNX).
-    Vad,
-    /// Pipecat smart-turn v3.2 semantic VAD (~8MB CPU ONNX).
-    SmartTurn,
-}
-
-impl VoiceModelKind {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::StreamingStt => "streaming-stt",
-            Self::Tts => "tts",
-            Self::Vad => "vad",
-            Self::SmartTurn => "smart-turn",
-        }
-    }
-
-    fn all() -> &'static [VoiceModelKind] {
-        &[Self::StreamingStt, Self::Tts, Self::Vad, Self::SmartTurn]
-    }
-}
-
-/// Source artifact + on-disk target for one model. The catalog is
-/// hard-coded — upstream URL drift requires an explicit code update
-/// rather than a config file because mismatched binaries hard-fail the
-/// daemon at boot and we want that surfaced in the commit log.
-struct ModelArtifact {
-    kind: VoiceModelKind,
-    url: &'static str,
-    /// True when the URL points at a `.tar.bz2` archive whose contents
-    /// extract into a sibling dir of the same basename. False when the
-    /// URL is a single ONNX file.
-    is_tarball: bool,
-    /// Final on-disk path the daemon's loader inspects.
-    target_subpath: &'static str,
-}
-
-const ARTIFACTS: &[ModelArtifact] = &[
-    ModelArtifact {
-        kind: VoiceModelKind::StreamingStt,
-        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2",
-        is_tarball: true,
-        target_subpath: "sherpa-onnx-streaming-zipformer-en",
-    },
-    ModelArtifact {
-        kind: VoiceModelKind::Tts,
-        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
-        is_tarball: true,
-        target_subpath: "kokoro-multi-lang-v1_0",
-    },
-    ModelArtifact {
-        kind: VoiceModelKind::Vad,
-        url: "https://github.com/snakers4/silero-vad/raw/v6.2.1/src/silero_vad/data/silero_vad.onnx",
-        is_tarball: false,
-        target_subpath: "silero-vad/silero_vad.onnx",
-    },
-    ModelArtifact {
-        kind: VoiceModelKind::SmartTurn,
-        url: "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.2-cpu.onnx",
-        is_tarball: false,
-        target_subpath: "smart-turn-v3.2-cpu.onnx",
-    },
-];
-
-#[derive(Debug, Clone, Default, Serialize)]
-pub(crate) struct VoiceInstallSnapshot {
-    pub(crate) models: Vec<ModelProgress>,
-    pub(crate) status: InstallStatus,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) struct ModelProgress {
-    pub(crate) kind: VoiceModelKind,
-    pub(crate) label: &'static str,
-    pub(crate) status: String,
-    pub(crate) bytes_downloaded: u64,
-    pub(crate) bytes_total: Option<u64>,
-    pub(crate) percent: Option<u8>,
-}
-
-impl ModelProgress {
-    fn pending(kind: VoiceModelKind) -> Self {
-        Self {
-            kind,
-            label: kind.label(),
-            status: "pending".into(),
-            bytes_downloaded: 0,
-            bytes_total: None,
-            percent: None,
-        }
-    }
-
-    fn complete(kind: VoiceModelKind, note: &str) -> Self {
-        Self {
-            kind,
-            label: kind.label(),
-            status: note.into(),
-            bytes_downloaded: 0,
-            bytes_total: None,
-            percent: Some(100),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum InstallStatus {
-    #[default]
-    Idle,
-    Running,
-    Complete,
-    Canceled,
-    Failed(String),
-}
+// Re-export public types so external `crate::voice::install_service::Foo`
+// paths keep working without forcing every caller to chase the file split.
+pub(crate) use crate::voice::install_artifacts::{
+    InstallStatus, ModelProgress, VoiceInstallSnapshot, VoiceModelKind,
+};
 
 /// Fired by `run()` on Ok-completion so bootstrap can re-run the engine
 /// loader and ArcSwap the AppState snapshot — wizard hits "Continue" and
@@ -216,9 +101,11 @@ impl VoiceInstallService {
 
     pub(crate) fn target_path(&self, kind: VoiceModelKind) -> PathBuf {
         // SAFETY: ARTIFACTS is a compile-time constant array with one entry
-        // per VoiceModelKind variant. Coverage verified by enum exhaustiveness
-        // check below — adding a variant without an artifact is a compile
-        // error in `kind_iter()` consumers.
+        // per VoiceModelKind variant. Adding a variant without an entry
+        // would only fail at this expect, not at compile time — we accept
+        // that because the catalog and the enum live next to each other in
+        // install_artifacts.rs and divergence is caught by the very next
+        // `is_installed` call in tests.
         #[allow(clippy::expect_used)]
         let art = ARTIFACTS
             .iter()
@@ -301,7 +188,11 @@ impl VoiceInstallService {
                     kind = %art.kind.label(),
                     "voice_install.already_installed"
                 );
-                self.update_model(&snapshot_tx, art.kind, ModelProgress::complete(art.kind, "already installed"));
+                self.update_model(
+                    &snapshot_tx,
+                    art.kind,
+                    ModelProgress::complete(art.kind, "already installed"),
+                );
                 continue;
             }
             self.install_one(art, &snapshot_tx, &cancel_rx).await?;
@@ -342,7 +233,11 @@ impl VoiceInstallService {
         }
         drop(tokio::fs::remove_dir_all(&tmp_dir).await);
 
-        self.update_model(snapshot_tx, art.kind, ModelProgress::complete(art.kind, "installed"));
+        self.update_model(
+            snapshot_tx,
+            art.kind,
+            ModelProgress::complete(art.kind, "installed"),
+        );
         info!(kind = %art.kind.label(), "voice_install.installed");
         Ok(())
     }
@@ -410,120 +305,17 @@ impl VoiceInstallService {
         }
         snapshot_tx.send(snap).ok();
     }
-}
 
-fn tempfile_dir() -> Result<PathBuf, std::io::Error> {
-    let base = std::env::temp_dir();
-    let unique = format!(
-        "bobe-voice-install-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    );
-    let path = base.join(unique);
-    std::fs::create_dir_all(&path)?;
-    Ok(path)
-}
-
-/// Extract a .tar.bz2 archive whose contents are a single directory.
-/// Find that directory inside `tmp_dir`, move it to `final_target`.
-/// Also handles encoder/decoder/joiner rename for streaming Zipformer:
-/// upstream files carry epoch-NN-avg-N suffixes; the daemon's loader
-/// inspects bare `encoder.onnx` / `decoder.onnx` / `joiner.onnx`.
-async fn extract_and_install(
-    archive: &Path,
-    tmp_dir: &Path,
-    final_target: &Path,
-) -> Result<(), AppError> {
-    let archive_owned = archive.to_path_buf();
-    let tmp_owned = tmp_dir.to_path_buf();
-    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        let file = std::fs::File::open(&archive_owned)
-            .map_err(|e| AppError::Internal(format!("open archive: {e}")))?;
-        let bz = bzip2::read::BzDecoder::new(file);
-        let mut tar = tar::Archive::new(bz);
-        tar.unpack(&tmp_owned)
-            .map_err(|e| AppError::Internal(format!("untar: {e}")))?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| AppError::Internal(format!("untar join: {e}")))??;
-
-    let mut extracted: Option<PathBuf> = None;
-    let mut entries = tokio::fs::read_dir(tmp_dir)
-        .await
-        .map_err(|e| AppError::Internal(format!("readdir tmp: {e}")))?;
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| AppError::Internal(format!("readdir entry: {e}")))?
-    {
-        let ft = entry
-            .file_type()
-            .await
-            .map_err(|e| AppError::Internal(format!("file_type: {e}")))?;
-        if ft.is_dir() {
-            extracted = Some(entry.path());
-            break;
-        }
-    }
-    let extracted = extracted
-        .ok_or_else(|| AppError::Internal("tarball had no directory inside".into()))?;
-
-    // Streaming Zipformer rename: drop epoch suffixes so the daemon's
-    // loader finds canonical encoder.onnx / decoder.onnx / joiner.onnx.
-    for prefix in ["encoder", "decoder", "joiner"] {
-        rename_first_glob(&extracted, prefix, "onnx").await?;
-    }
-
-    if let Some(parent) = final_target.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| AppError::Internal(format!("mkdir parent: {e}")))?;
-    }
-    tokio::fs::rename(&extracted, final_target)
-        .await
-        .map_err(|e| AppError::Internal(format!("move into models_root: {e}")))?;
-    drop(tokio::fs::remove_file(archive).await);
-    Ok(())
-}
-
-/// Find the first file under `dir` whose name matches `{prefix}*.{ext}`
-/// and rename it to `{prefix}.{ext}`. No-op when nothing matches (so
-/// non-Zipformer tarballs are unaffected).
-async fn rename_first_glob(dir: &Path, prefix: &str, ext: &str) -> Result<(), AppError> {
-    let mut entries = tokio::fs::read_dir(dir)
-        .await
-        .map_err(|e| AppError::Internal(format!("readdir for rename: {e}")))?;
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| AppError::Internal(format!("readdir entry rename: {e}")))?
-    {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name == format!("{prefix}.{ext}") {
-            return Ok(());
-        }
-        if name.starts_with(prefix) && name.ends_with(&format!(".{ext}")) {
-            let from = entry.path();
-            let to = dir.join(format!("{prefix}.{ext}"));
-            tokio::fs::rename(&from, &to)
-                .await
-                .map_err(|e| AppError::Internal(format!("rename {prefix}: {e}")))?;
-            return Ok(());
-        }
-    }
-    Ok(())
-}
-
-/// Wait for any in-flight install to finish — used by shutdown paths.
-impl VoiceInstallService {
+    /// Wait for any in-flight install to finish — used by shutdown paths.
     #[allow(dead_code, reason = "drain-on-shutdown helper, wired in M5.x")]
     pub(crate) async fn await_idle(&self) {
         loop {
             let handle = {
                 let state = self.state.lock().await;
-                state.in_flight.as_ref().and_then(|h| (!h.is_finished()).then_some(()))
+                state
+                    .in_flight
+                    .as_ref()
+                    .and_then(|h| (!h.is_finished()).then_some(()))
             };
             if handle.is_none() {
                 return;

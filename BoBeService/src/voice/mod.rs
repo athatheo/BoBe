@@ -8,6 +8,8 @@ pub(crate) mod context;
 pub(crate) mod control;
 pub(crate) mod engines;
 pub(crate) mod filler_library;
+pub(crate) mod install_artifacts;
+pub(crate) mod install_extract;
 pub(crate) mod install_service;
 pub(crate) mod opus;
 pub(crate) mod protocol_helpers;
