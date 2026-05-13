@@ -45,10 +45,10 @@ pub(crate) struct WorkerRegistry {
     /// Single-slot voice sink, shared with AppState so the WS handler can
     /// install on connect and hooks can read on PreToolUse.
     voice_sink: Arc<crate::voice::sinks::VoiceSink>,
-    /// Pre-rendered filler PCM library — passed to BobeHooks so PreToolUse
-    /// can look up per-tool intent phrases. `None` when TTS isn't loaded
-    /// (voice still works, just silent fillers).
-    voice_filler_library: Option<Arc<crate::voice::filler_library::FillerLibrary>>,
+    /// ArcSwap'd voice engines snapshot — hooks read at fire time so
+    /// post-install reloads pick up the new filler library without a
+    /// daemon restart.
+    voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>>,
 
     goals: Mutex<Option<Arc<BatchWorker>>>,
     consolidate: Mutex<Option<Arc<BatchWorker>>>,
@@ -73,7 +73,7 @@ impl WorkerRegistry {
         mcp_servers: HashMap<String, McpServerConfig>,
         voice_turn_active: Arc<AtomicBool>,
         voice_sink: Arc<crate::voice::sinks::VoiceSink>,
-        voice_filler_library: Option<Arc<crate::voice::filler_library::FillerLibrary>>,
+        voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             client: ClientHandle::new(Arc::clone(&config)),
@@ -84,7 +84,7 @@ impl WorkerRegistry {
             mcp_servers,
             voice_turn_active,
             voice_sink,
-            voice_filler_library,
+            voice_engines,
             goals: Mutex::new(None),
             consolidate: Mutex::new(None),
             decide: Mutex::new(None),
@@ -314,7 +314,7 @@ impl WorkerRegistry {
             Arc::clone(&self.memory_file),
             Arc::clone(&self.voice_turn_active),
             Arc::clone(&self.voice_sink),
-            self.voice_filler_library.as_ref().map(Arc::clone),
+            Arc::clone(&self.voice_engines),
         );
 
         let engine_snapshot = self.config.load().engine.clone();

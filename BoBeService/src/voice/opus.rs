@@ -59,3 +59,70 @@ pub(crate) fn encode_pcm_with(
     }
     frames
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opus::{Channels, Decoder as OpusDecoder};
+
+    #[test]
+    fn encoder_produces_frames_for_24khz_voice() {
+        let mut encoder = make_opus_encoder(24_000).expect("encoder");
+        // 100ms of silence — five 20ms frames at 24kHz.
+        let pcm = vec![0.0_f32; 24_000 / 10];
+        let frames = encode_pcm_with(&mut encoder, &pcm, 24_000);
+        assert_eq!(frames.len(), 5, "expected 5 × 20ms frames");
+        for f in &frames {
+            assert!(!f.is_empty(), "frame should be non-empty");
+            assert!(f.len() < 200, "VoIP @ 24kbps fits in <200B per frame: {}", f.len());
+        }
+    }
+
+    #[test]
+    fn round_trip_preserves_signal_within_tolerance() {
+        // Encode a 1kHz tone, decode, assert RMS within ~30% of input.
+        // VoIP-profile Opus is lossy but should preserve the envelope.
+        let sr: usize = 24_000;
+        let mut pcm = vec![0.0_f32; sr / 5]; // 200ms
+        for (i, s) in pcm.iter_mut().enumerate() {
+            let t = i as f32 / sr as f32;
+            *s = (t * 1_000.0 * std::f32::consts::TAU).sin() * 0.5;
+        }
+
+        let mut encoder = make_opus_encoder(24_000).expect("encoder");
+        let frames = encode_pcm_with(&mut encoder, &pcm, 24_000);
+
+        let mut decoder = OpusDecoder::new(24_000, Channels::Mono).expect("decoder");
+        let mut decoded_pcm: Vec<i16> = Vec::with_capacity(pcm.len());
+        let mut scratch = vec![0_i16; sr / 50];
+        for frame in &frames {
+            let n = decoder
+                .decode(frame, &mut scratch, false)
+                .expect("decode succeeds");
+            decoded_pcm.extend_from_slice(&scratch[..n]);
+        }
+        assert!(!decoded_pcm.is_empty(), "got decoded samples");
+
+        let in_rms = (pcm.iter().map(|&s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
+        let out_rms_i = decoded_pcm.iter().map(|&s| {
+            let f = f32::from(s) / 32_767.0;
+            f * f
+        }).sum::<f32>() / decoded_pcm.len() as f32;
+        let out_rms = out_rms_i.sqrt();
+        let ratio = out_rms / in_rms;
+        assert!(
+            ratio > 0.5 && ratio < 1.5,
+            "round-trip RMS ratio out of range: {ratio} (in={in_rms}, out={out_rms})"
+        );
+    }
+
+    #[test]
+    fn pad_short_frame_to_full_20ms() {
+        // Feeding fewer samples than one 20ms frame should still produce
+        // exactly one frame (zero-padded), not be silently dropped.
+        let mut encoder = make_opus_encoder(24_000).expect("encoder");
+        let short = vec![0.0_f32; 100]; // ~4ms
+        let frames = encode_pcm_with(&mut encoder, &short, 24_000);
+        assert_eq!(frames.len(), 1);
+    }
+}

@@ -9,16 +9,23 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
 
     private override init() {}
 
-    func show() {
+    func show(initialCategory: SettingsCategory? = nil) {
         if let window {
             window.title = L10n.tr("settings.window.title")
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // Re-host the view so the initial category takes effect even when
+            // the window already exists.
+            if let initialCategory {
+                window.contentViewController = NSHostingController(
+                    rootView: SettingsWindow(initialCategory: initialCategory)
+                )
+            }
             return
         }
 
         let theme = ThemeStore.shared.currentTheme
-        let settingsView = SettingsWindow()
+        let settingsView = SettingsWindow(initialCategory: initialCategory)
 
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let width = min(max(screen.width * 0.72, 900), 1400)

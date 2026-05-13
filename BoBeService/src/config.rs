@@ -224,6 +224,30 @@ impl Default for EngineConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub(crate) struct VoiceConfig {
+    /// Master toggle. When `false` the overlay hides the mic button and the
+    /// daemon's `/voice/stream` returns an Error and closes.
+    pub(crate) enabled: bool,
+    /// Default Kokoro voice slot. Hello handshake's `voice_id` overrides
+    /// this per WS connection. See `voice.rs::DEFAULT_KOKORO_VOICE`.
+    pub(crate) persona: String,
+    /// Default playback speed (0.5–2.0). Hello handshake's `speed` overrides
+    /// this per WS connection. Outside the range gets clamped at synth time.
+    pub(crate) speed: f32,
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            persona: "af_bella".into(),
+            speed: 1.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct Config {
@@ -241,6 +265,7 @@ pub(crate) struct Config {
     pub(crate) mcp: McpConfig,
     pub(crate) goals: GoalsConfig,
     pub(crate) engine: EngineConfig,
+    pub(crate) voice: VoiceConfig,
 
     pub(crate) seed_default_documents: bool,
 }

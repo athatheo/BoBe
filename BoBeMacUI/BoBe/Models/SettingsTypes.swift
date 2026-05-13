@@ -19,6 +19,9 @@ struct DaemonSettings: Codable, Sendable {
     var providerBatchModel: String?
     var providerVisionModel: String?
     var providerOffline: Bool
+    var voiceEnabled: Bool
+    var voicePersona: String
+    var voiceSpeed: Float
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -36,6 +39,9 @@ struct DaemonSettings: Codable, Sendable {
         case providerBatchModel = "provider_batch_model"
         case providerVisionModel = "provider_vision_model"
         case providerOffline = "provider_offline"
+        case voiceEnabled = "voice_enabled"
+        case voicePersona = "voice_persona"
+        case voiceSpeed = "voice_speed"
     }
 }
 
@@ -55,6 +61,9 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var providerBatchModel: String?
     var providerVisionModel: String?
     var providerOffline: Bool?
+    var voiceEnabled: Bool?
+    var voicePersona: String?
+    var voiceSpeed: Float?
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -72,6 +81,9 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case providerBatchModel = "provider_batch_model"
         case providerVisionModel = "provider_vision_model"
         case providerOffline = "provider_offline"
+        case voiceEnabled = "voice_enabled"
+        case voicePersona = "voice_persona"
+        case voiceSpeed = "voice_speed"
     }
 }
 

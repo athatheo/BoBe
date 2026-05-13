@@ -5,11 +5,13 @@ mod wiring;
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
 use crate::app_state::AppState;
 use crate::config::Config;
 use crate::error::AppError;
+use crate::voice::engines::VoiceEnginesSnapshot;
 
 pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let pool = database::connect_and_apply_schema(&config.database.url).await?;
@@ -41,16 +43,12 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // AppState; the `/metrics` route renders from it on each request.
     let metrics_handle = crate::voice::telemetry::install_recorder()
         .map_err(|e| AppError::Internal(format!("metrics recorder: {e}")))?;
-    // Voice engines + filler library must be ready BEFORE the workers
-    // registry constructs BobeHooks, because the hooks hold the filler
-    // library to emit per-tool fillers via the sink on PreToolUse.
-    let (voice_streaming_stt, voice_tts, voice_vad, voice_smart_turn) = load_voice_engines();
-    let voice_filler_library = match voice_tts.as_ref() {
-        Some(tts) => Some(Arc::new(
-            crate::voice::filler_library::FillerLibrary::render(Arc::clone(tts)).await,
-        )),
-        None => None,
-    };
+    // Voice engines under one ArcSwap so the install service can hot-swap
+    // post-download. Workers + hooks reference the snapshot Arc; reads at
+    // hook-fire time pick up the latest filler library without restart.
+    let initial_voice_engines = build_voice_engines_snapshot().await;
+    let voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>> =
+        Arc::new(ArcSwap::from_pointee(initial_voice_engines));
     let workers = {
         let data_dir = crate::util::paths::bobe_data_dir();
         crate::copilot::registry::WorkerRegistry::new(
@@ -60,7 +58,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             mcp_servers,
             Arc::clone(&voice_turn_active),
             Arc::clone(&voice_sink),
-            voice_filler_library.as_ref().map(Arc::clone),
+            Arc::clone(&voice_engines),
         )
     };
 
@@ -128,7 +126,24 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         let models_root = dirs::home_dir()
             .map(|h| h.join(".bobe").join("models"))
             .ok_or_else(|| AppError::Internal("no home_dir for voice models root".into()))?;
-        crate::services::voice_install_service::VoiceInstallService::new(http, models_root)
+        let engines_for_reload = Arc::clone(&voice_engines);
+        let on_complete: Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync> =
+            Arc::new(move || {
+                let engines = Arc::clone(&engines_for_reload);
+                Box::pin(async move {
+                    let snap = build_voice_engines_snapshot().await;
+                    info!(
+                        complete = snap.is_complete(),
+                        "voice_install.engines_reloaded"
+                    );
+                    engines.store(Arc::new(snap));
+                })
+            });
+        crate::voice::install_service::VoiceInstallService::new(
+            http,
+            models_root,
+            on_complete,
+        )
     };
 
     let state = Arc::new(AppState {
@@ -148,11 +163,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         memory_file,
         ollama_install,
         voice_install,
-        voice_streaming_stt,
-        voice_tts,
-        voice_vad,
-        voice_smart_turn,
-        voice_filler_library,
+        voice_engines,
         voice_turn_active,
         voice_sink,
         metrics_handle,
@@ -161,14 +172,35 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     Ok(state)
 }
 
-/// Best-effort load of local STT + TTS engines from `~/.bobe/models/`.
-/// Returns `(None, None)` if model files are missing — the daemon still
-/// starts; `/voice/stream` returns 503 until models are installed.
+/// Build a `VoiceEnginesSnapshot` from the models currently on disk.
+/// Called at bootstrap AND by VoiceInstallService's on_complete callback
+/// — same logic, called twice over the daemon's lifetime: once for
+/// initial state, once per successful install. Includes async TTS
+/// filler-library synthesis when TTS loads.
+async fn build_voice_engines_snapshot() -> VoiceEnginesSnapshot {
+    let (stt, tts, vad, smart_turn) = load_engine_files();
+    let filler_library = match tts.as_ref() {
+        Some(tts_engine) => Some(Arc::new(
+            crate::voice::filler_library::FillerLibrary::render(Arc::clone(tts_engine)).await,
+        )),
+        None => None,
+    };
+    VoiceEnginesSnapshot {
+        stt,
+        tts,
+        vad,
+        smart_turn,
+        filler_library,
+    }
+}
+
+/// Best-effort load of the four runtime engines from `~/.bobe/models/`.
+/// Sync because every loader is sync (sherpa-onnx + tract inits).
 ///
 /// Provider selection per platform: macOS → CoreML EP, others → CPU.
 /// Env overrides: `BOBE_VOICE_PROVIDER` (cpu|coreml|cuda|directml),
 /// `BOBE_VOICE_NUM_THREADS` (default 4).
-fn load_voice_engines() -> (
+fn load_engine_files() -> (
     Option<Arc<dyn crate::speech::StreamingSttEngine>>,
     Option<Arc<dyn crate::speech::TtsEngine>>,
     Option<Arc<dyn crate::speech::AcousticVad>>,
@@ -263,7 +295,7 @@ fn load_voice_engines() -> (
     // user must run `scripts/install-voice-models.sh`; the daemon refuses
     // to start silently-degraded.
     let smart_turn = {
-        let path = models_root.join("smart-turn-v3.2.int8.onnx");
+        let path = models_root.join("smart-turn-v3.2-cpu.onnx");
         if path.exists() {
             match crate::speech::smart_turn_onnx::OnnxSmartTurn::load(&path) {
                 Ok(e) => {

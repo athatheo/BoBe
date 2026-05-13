@@ -75,13 +75,14 @@ const MIN_WORDS_FOR_BARGE_IN: usize = 3;
 /// Matches LiveKit/Pipecat/ElevenLabs production threshold.
 const FILLER_TRIGGER: Duration = Duration::from_millis(800);
 
-/// Fallback voice slot used when neither the Hello handshake (per-client)
-/// nor (future C6) AppState DaemonSettings supply one.
-const DEFAULT_KOKORO_VOICE: &str = "af_bella";
-const DEFAULT_KOKORO_SPEED: f32 = 1.0;
+// `VoiceConfig::default` in `config.rs` owns the canonical defaults
+// ("af_bella", 1.0). Keep them there to avoid split-brain with Swift
+// `VoicePanel.swift` fallbacks.
 
 /// Per-WS voice preferences carried in the Hello handshake. Stored on
-/// `VoiceSession` and read by the kokoro task.
+/// `VoiceSession` and read by the kokoro task. Falls back to the daemon's
+/// `voice.persona` / `voice.speed` defaults from `Config`, then to the
+/// hard-coded constants if neither layer supplies a value.
 #[derive(Clone)]
 struct SessionVoiceConfig {
     voice_id: String,
@@ -89,10 +90,35 @@ struct SessionVoiceConfig {
 }
 
 impl SessionVoiceConfig {
-    fn new(voice_id: Option<String>, speed: Option<f32>) -> Self {
+    fn new(
+        voice_id: Option<String>,
+        speed: Option<f32>,
+        defaults: &VoiceDefaults,
+    ) -> Self {
         Self {
-            voice_id: voice_id.unwrap_or_else(|| DEFAULT_KOKORO_VOICE.to_string()),
-            speed: speed.unwrap_or(DEFAULT_KOKORO_SPEED).clamp(0.5, 2.0),
+            voice_id: voice_id.unwrap_or_else(|| defaults.persona.clone()),
+            speed: speed.unwrap_or(defaults.speed).clamp(0.5, 2.0),
+        }
+    }
+}
+
+/// Snapshot of the daemon's voice defaults captured at WS-accept time.
+/// Decoupled from `Config` so the WS scope doesn't hold an `ArcSwap` guard
+/// across an `await`.
+#[derive(Clone)]
+struct VoiceDefaults {
+    enabled: bool,
+    persona: String,
+    speed: f32,
+}
+
+impl VoiceDefaults {
+    fn from_state(state: &AppState) -> Self {
+        let cfg = state.config();
+        Self {
+            enabled: cfg.voice.enabled,
+            persona: cfg.voice.persona.clone(),
+            speed: cfg.voice.speed,
         }
     }
 }
@@ -119,12 +145,13 @@ struct VoiceEngines {
 
 impl VoiceEngines {
     fn from_state(state: &AppState) -> Option<Self> {
+        let snap = state.voice_engines.load();
         Some(Self {
-            stt: Arc::clone(state.voice_streaming_stt.as_ref()?),
-            tts: Arc::clone(state.voice_tts.as_ref()?),
-            vad: Arc::clone(state.voice_vad.as_ref()?),
-            smart_turn: Arc::clone(state.voice_smart_turn.as_ref()?),
-            fillers: state.voice_filler_library.as_ref().map(Arc::clone),
+            stt: Arc::clone(snap.stt.as_ref()?),
+            tts: Arc::clone(snap.tts.as_ref()?),
+            vad: Arc::clone(snap.vad.as_ref()?),
+            smart_turn: Arc::clone(snap.smart_turn.as_ref()?),
+            fillers: snap.filler_library.as_ref().map(Arc::clone),
         })
     }
 }
@@ -174,6 +201,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         close_with_error(socket, "engines_unavailable", "voice models not installed").await;
         return;
     };
+
+    // Snapshot voice defaults at WS-accept. Settings hot-swap during the
+    // connection won't retroactively change in-flight Hello defaults — a
+    // new connection picks up the latest config.
+    let voice_defaults = VoiceDefaults::from_state(&state);
+    if !voice_defaults.enabled {
+        warn!("voice.disabled_by_settings");
+        close_with_error(socket, "voice_disabled", "voice mode disabled in settings").await;
+        return;
+    }
 
     let (ws_tx, mut rx) = socket.split();
     let (out_tx, mut out_rx) = mpsc::channel::<Message>(OUTBOUND_CHANNEL_CAPACITY);
@@ -237,7 +274,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
         match msg {
             Message::Text(text) => {
-                if !handle_control_text(text.as_str(), &out_tx, &mut session, &engines).await {
+                if !handle_control_text(
+                    text.as_str(),
+                    &out_tx,
+                    &mut session,
+                    &engines,
+                    &voice_defaults,
+                ).await {
                     break;
                 }
             }
@@ -706,6 +749,7 @@ async fn handle_control_text(
     out_tx: &mpsc::Sender<Message>,
     session: &mut Option<VoiceSession>,
     engines: &VoiceEngines,
+    voice_defaults: &VoiceDefaults,
 ) -> bool {
     let parsed: Result<ClientMessage, _> = serde_json::from_str(text);
     match parsed {
@@ -749,7 +793,7 @@ async fn handle_control_text(
                     .await;
                 return false;
             }
-            let cfg = SessionVoiceConfig::new(voice_id, speed);
+            let cfg = SessionVoiceConfig::new(voice_id, speed, voice_defaults);
             match VoiceSession::new(session_id, cfg) {
                 Ok(s) => {
                     let initial_turn = format!("voice_{}", Uuid::new_v4().simple());
@@ -779,6 +823,19 @@ async fn handle_control_text(
             ts_ms,
         }) => {
             info!(phrase = %phrase, score, ts_ms, "voice.wake_received");
+            // Wake hookup (E5): if no turn is in flight and the user hasn't
+            // muted, send state(Listening) so the client opens the mic and
+            // the daemon's Silero starts processing inbound audio.
+            // Rate limit: do nothing if we're not in a steady listening
+            // state — a mid-turn wake is the user changing their mind, and
+            // the existing barge-in path handles that.
+            if let Some(s) = session.as_mut()
+                && s.current_turn.is_none()
+                && !s.muted
+            {
+                let turn_id = format!("voice_wake_{}", Uuid::new_v4().simple());
+                send_state(out_tx, VoicePhase::Listening, &turn_id).await;
+            }
             true
         }
         Ok(ClientMessage::PlaybackAck {

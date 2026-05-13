@@ -5,6 +5,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case userProfiles = "user-profiles"
     case mcpServers = "mcp-servers"
     case engine
+    case voice
     case appearance, behavior, privacy
     case advanced
 
@@ -20,6 +21,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .userProfiles: L10n.tr("settings.category.user_profiles")
         case .mcpServers: L10n.tr("settings.category.mcp_servers")
         case .engine: L10n.tr("settings.category.engine")
+        case .voice: L10n.tr("settings.category.voice")
         case .appearance: L10n.tr("settings.category.appearance")
         case .behavior: L10n.tr("settings.category.behavior")
         case .privacy: L10n.tr("settings.category.privacy")
@@ -35,6 +37,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .userProfiles: "person.fill"
         case .mcpServers: "server.rack"
         case .engine: "cpu"
+        case .voice: "waveform"
         case .appearance: "paintpalette.fill"
         case .behavior: "slider.horizontal.3"
         case .privacy: "shield.fill"
@@ -56,7 +59,7 @@ enum SettingsCategoryGroup: String, CaseIterable {
         case .integrations:
             [.mcpServers, .engine]
         case .preferences:
-            [.appearance, .behavior, .privacy]
+            [.voice, .appearance, .behavior, .privacy]
         case .advanced:
             [.advanced]
         }
@@ -73,10 +76,22 @@ enum SettingsCategoryGroup: String, CaseIterable {
 }
 
 struct SettingsWindow: View {
+    /// Optional initial category to navigate to on first appearance. Used by
+    /// the overlay's MicButton "needs setup" deep-link to land directly on
+    /// the Voice pane.
+    let initialCategory: SettingsCategory?
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedCategory: SettingsCategory?
     private let themeStore = ThemeStore.shared
     private let store = BobeStore.shared
+
+    init(initialCategory: SettingsCategory? = nil) {
+        self.initialCategory = initialCategory
+        // SwiftUI ignores the initial value of @State after the first render,
+        // so we set it explicitly via _selectedCategory's wrapped value.
+        self._selectedCategory = State(initialValue: initialCategory)
+    }
 
     private var theme: ThemeConfig {
         self.themeStore.currentTheme
@@ -230,6 +245,8 @@ struct SettingsWindow: View {
             MCPServersPanel()
         case .engine:
             EnginePanel()
+        case .voice:
+            VoicePanel()
         case .appearance:
             AppearancePanel()
         case .behavior:

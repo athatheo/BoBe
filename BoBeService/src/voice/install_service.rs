@@ -34,7 +34,7 @@ pub(crate) enum VoiceModelKind {
     Tts,
     /// Silero v6.2.1 acoustic VAD (~2MB, ONNX).
     Vad,
-    /// Pipecat smart-turn v3 semantic VAD (~8MB int8 ONNX).
+    /// Pipecat smart-turn v3.2 semantic VAD (~8MB CPU ONNX).
     SmartTurn,
 }
 
@@ -89,9 +89,9 @@ const ARTIFACTS: &[ModelArtifact] = &[
     },
     ModelArtifact {
         kind: VoiceModelKind::SmartTurn,
-        url: "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart_turn_v3.0.int8.onnx",
+        url: "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.2-cpu.onnx",
         is_tarball: false,
-        target_subpath: "smart-turn-v3.2.int8.onnx",
+        target_subpath: "smart-turn-v3.2-cpu.onnx",
     },
 ];
 
@@ -147,10 +147,17 @@ pub(crate) enum InstallStatus {
     Failed(String),
 }
 
+/// Fired by `run()` on Ok-completion so bootstrap can re-run the engine
+/// loader and ArcSwap the AppState snapshot — wizard hits "Continue" and
+/// voice works without a daemon restart.
+type OnCompleteCallback =
+    Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>;
+
 pub(crate) struct VoiceInstallService {
     http: reqwest::Client,
     models_root: PathBuf,
     state: Arc<Mutex<ServiceState>>,
+    on_complete: OnCompleteCallback,
 }
 
 struct ServiceState {
@@ -161,7 +168,11 @@ struct ServiceState {
 }
 
 impl VoiceInstallService {
-    pub(crate) fn new(http: reqwest::Client, models_root: PathBuf) -> Arc<Self> {
+    pub(crate) fn new(
+        http: reqwest::Client,
+        models_root: PathBuf,
+        on_complete: OnCompleteCallback,
+    ) -> Arc<Self> {
         let initial = VoiceInstallSnapshot {
             models: VoiceModelKind::all()
                 .iter()
@@ -179,6 +190,7 @@ impl VoiceInstallService {
                 in_flight: None,
                 cancel_tx: None,
             })),
+            on_complete,
         })
     }
 
@@ -230,6 +242,7 @@ impl VoiceInstallService {
             })
             .ok();
         let svc = Arc::clone(self);
+        let on_complete = Arc::clone(&self.on_complete);
         state.in_flight = Some(tokio::spawn(async move {
             let result = svc.run(snapshot_tx.clone(), cancel_rx).await;
             let final_status = match result {
@@ -240,6 +253,13 @@ impl VoiceInstallService {
                     InstallStatus::Failed(e.to_string())
                 }
             };
+            // Hot-swap engines BEFORE flipping the snapshot status to
+            // Complete — wizards polling /voice/install/status see
+            // Complete only after the AppState ArcSwap has the new
+            // engines, so the next /voice/stream connect actually works.
+            if matches!(final_status, InstallStatus::Complete) {
+                (on_complete)().await;
+            }
             let snap = snapshot_tx.borrow().clone();
             snapshot_tx
                 .send(VoiceInstallSnapshot {

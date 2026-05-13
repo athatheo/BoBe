@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use github_copilot_sdk::hooks::{
@@ -12,7 +13,8 @@ use github_copilot_sdk::hooks::{
 
 use super::memory_file::MemoryFile;
 use super::types::WorkerClass;
-use crate::voice::filler_library::{FillerKind, FillerLibrary};
+use crate::voice::engines::VoiceEnginesSnapshot;
+use crate::voice::filler_library::FillerKind;
 use crate::voice::sinks::{VoiceSink, emit_filler, filler_for_tool};
 
 /// Voice tone hint appended to UserPromptSubmitted context when the current
@@ -45,8 +47,10 @@ pub(crate) struct BobeHooks {
     voice_turn_active: Arc<AtomicBool>,
     /// Active voice WS sink for PreToolUse / ErrorOccurred filler emission.
     voice_sink: Arc<VoiceSink>,
-    /// Pre-rendered filler PCM catalog. `None` when TTS isn't loaded.
-    voice_filler_library: Option<Arc<FillerLibrary>>,
+    /// Voice engines snapshot — `ArcSwap` so the install service can hot-swap
+    /// after a successful download. Hooks read on every fire so a post-install
+    /// reload picks up the new filler library without a daemon restart.
+    voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
     /// Monotonic Instant of the most recent PreToolUse fire (None = never).
     /// Used to debounce parallel tool calls into a compound filler so two
     /// tools firing within COMPOUND_FILLER_WINDOW get one "Looking into a
@@ -61,14 +65,14 @@ impl BobeHooks {
         memory_file: Arc<MemoryFile>,
         voice_turn_active: Arc<AtomicBool>,
         voice_sink: Arc<VoiceSink>,
-        voice_filler_library: Option<Arc<FillerLibrary>>,
+        voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             class,
             memory_file,
             voice_turn_active,
             voice_sink,
-            voice_filler_library,
+            voice_engines,
             last_pretool_at: Mutex::new(None),
         })
     }
@@ -153,7 +157,7 @@ impl SessionHooks for BobeHooks {
                 // PreToolUse fires within COMPOUND_FILLER_WINDOW_MS the
                 // second emission becomes ToolGeneric ("Looking into a few
                 // things") instead of stacking another per-tool phrase.
-                if let Some(library) = self.voice_filler_library.as_ref() {
+                if let Some(library) = self.voice_engines.load().filler_library.as_ref() {
                     let now = Instant::now();
                     let in_burst = {
                         let mut slot = self
@@ -266,12 +270,13 @@ mod tests {
         let memory_file = MemoryFile::new(PathBuf::from("/tmp/bobe-test-memory.md"));
         let flag = Arc::new(AtomicBool::new(voice_active));
         let sink = Arc::new(VoiceSink::new());
+        let engines = Arc::new(ArcSwap::from_pointee(VoiceEnginesSnapshot::default()));
         let hooks = BobeHooks::new(
             WorkerClass::Chat,
             memory_file,
             Arc::clone(&flag),
             sink,
-            None,
+            engines,
         );
         (hooks, flag)
     }

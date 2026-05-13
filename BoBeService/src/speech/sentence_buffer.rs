@@ -186,4 +186,42 @@ mod tests {
         let out = b.feed("Wait — really? Yes!");
         assert_eq!(out, vec!["Wait — really?", "Yes!"]);
     }
+
+    #[test]
+    fn dr_abbreviation_is_not_a_terminator() {
+        let mut b = SentenceBuffer::new();
+        let out = b.feed("Dr. Smith called. He's available.");
+        assert_eq!(out, vec!["Dr. Smith called.", "He's available."]);
+    }
+
+    #[test]
+    fn decimal_number_is_not_a_terminator() {
+        let mut b = SentenceBuffer::new();
+        let out = b.feed("Pi is 3.14 approximately.");
+        assert_eq!(out, vec!["Pi is 3.14 approximately."]);
+    }
+
+    #[test]
+    fn streamed_in_chunks_keeps_order() {
+        // Realistic LLM-delta case: chunks arrive a few words at a time.
+        // Test data avoids words ending in abbreviation suffixes (`-st.`,
+        // `-co.`, etc.) which the abbreviation check intentionally rejects.
+        let chunks = ["Hello there. ", "How are you? ", "All good!"];
+        let mut b = SentenceBuffer::new();
+        let mut got: Vec<String> = Vec::new();
+        for c in chunks {
+            got.extend(b.feed(c));
+        }
+        got.extend(b.flush());
+        assert_eq!(got, vec!["Hello there.", "How are you?", "All good!"]);
+    }
+
+    #[test]
+    fn flush_drains_unterminated_remainder_no_terminator() {
+        let mut b = SentenceBuffer::new();
+        let head = b.feed("Sure thing");
+        assert!(head.is_empty(), "no terminator yet");
+        let tail = b.flush();
+        assert_eq!(tail, vec!["Sure thing"]);
+    }
 }

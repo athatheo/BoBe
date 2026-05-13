@@ -231,7 +231,7 @@ struct LocalRuntimePull: Codable, Sendable {
 
 // MARK: - Voice install DTOs
 
-struct VoiceInstallStatus: Codable, Sendable {
+struct VoiceInstallSnapshot: Codable, Sendable {
     let status: String
     let models: [VoiceModelProgress]
     let installed: VoiceInstallPresence
@@ -281,7 +281,7 @@ struct VoiceInstallPresence: Codable, Sendable {
 }
 
 extension DaemonClient {
-    func voiceInstallStatus() async throws -> VoiceInstallStatus {
+    func voiceInstallStatus() async throws -> VoiceInstallSnapshot {
         try await self.fetch("/voice/install/status")
     }
 

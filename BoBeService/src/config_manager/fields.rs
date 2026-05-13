@@ -101,6 +101,10 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
                 set_parsed!(config.engine.provider_offline, value, k);
             }
 
+            "voice.enabled" => set_parsed!(config.voice.enabled, value, k),
+            "voice.persona" => set_parsed!(config.voice.persona, value, k),
+            "voice.speed" => set_parsed!(config.voice.speed, value, k),
+
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
 
             _ => {}
@@ -148,6 +152,9 @@ fn normalize_key(key: &str) -> String {
         "provider_batch_model" => "engine.provider_batch_model",
         "provider_vision_model" => "engine.provider_vision_model",
         "provider_offline" => "engine.provider_offline",
+        "voice_enabled" => "voice.enabled",
+        "voice_persona" => "voice.persona",
+        "voice_speed" => "voice.speed",
         other => other,
     }
     .to_string()

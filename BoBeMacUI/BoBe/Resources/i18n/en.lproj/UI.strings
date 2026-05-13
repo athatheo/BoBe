@@ -347,3 +347,33 @@
 "settings.mcp.runtime.failed" = "failed";
 "settings.mcp.runtime.needs_auth" = "needs auth";
 "settings.mcp.runtime.pending" = "pending";
+
+/* Voice (Welcome wizard step + Settings → Voice pane + overlay MicButton) */
+"setup.voice.title" = "Voice models";
+"setup.voice.body" = "BoBe runs voice locally. We'll download the speech-to-text, text-to-speech, and turn-detection models now — about 490MB total.";
+"setup.voice.skipped_note" = "You can install voice models later from Settings → Voice.";
+"setup.voice.complete" = "All voice models installed.";
+"setup.voice.failed" = "Install failed.";
+"setup.voice.poll_failure" = "The daemon reported an install failure. Check the logs and retry from Settings → Voice.";
+"setup.voice.skip" = "Skip for now";
+"setup.voice.install_button" = "Install voice models";
+"setup.voice.cancel" = "Cancel";
+"setup.voice.continue" = "Continue";
+"settings.category.voice" = "Voice";
+"settings.voice.title" = "Voice";
+"settings.voice.description" = "Speech-to-text, text-to-speech, and turn-detection settings.";
+"settings.voice.section.engine" = "Engine";
+"settings.voice.section.models" = "Models";
+"settings.voice.enabled" = "Enable voice";
+"settings.voice.enabled.description" = "When off, the mic button is hidden and /voice/stream rejects connections.";
+"settings.voice.persona" = "Voice";
+"settings.voice.persona.description" = "Which Kokoro voice slot to use by default.";
+"settings.voice.speed" = "Speed";
+"settings.voice.speed.description" = "TTS playback speed (0.5×–2.0×). 1.0× is natural pace.";
+"settings.voice.reinstall" = "Reinstall models";
+"settings.voice.reinstalling" = "Reinstalling…";
+"settings.voice.installed_label" = "Installed";
+"settings.voice.missing_label" = "Not installed";
+"settings.voice.partial_label" = "Partial — some models missing";
+"overlay.input.mic.accessibility" = "Toggle voice";
+"overlay.input.mic.needs_setup" = "Voice models need to be installed";

@@ -45,6 +45,9 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "engine.provider_batch_model",
     "engine.provider_vision_model",
     "engine.provider_offline",
+    "voice.enabled",
+    "voice.persona",
+    "voice.speed",
     "seed_default_documents",
 ];
 

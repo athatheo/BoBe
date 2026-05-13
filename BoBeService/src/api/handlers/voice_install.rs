@@ -17,7 +17,7 @@ use axum::Json;
 use serde::Serialize;
 
 use crate::app_state::AppState;
-use crate::services::voice_install_service::{
+use crate::voice::install_service::{
     InstallStatus, ModelProgress, VoiceInstallSnapshot, VoiceModelKind,
 };
 

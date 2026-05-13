@@ -26,6 +26,9 @@ pub(crate) struct SettingsResponse {
     pub(crate) provider_batch_model: Option<String>,
     pub(crate) provider_vision_model: Option<String>,
     pub(crate) provider_offline: bool,
+    pub(crate) voice_enabled: bool,
+    pub(crate) voice_persona: String,
+    pub(crate) voice_speed: f32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +48,9 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) provider_batch_model: Option<String>,
     pub(crate) provider_vision_model: Option<String>,
     pub(crate) provider_offline: Option<bool>,
+    pub(crate) voice_enabled: Option<bool>,
+    pub(crate) voice_persona: Option<String>,
+    pub(crate) voice_speed: Option<f32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,6 +82,9 @@ pub(crate) async fn get_settings(
         provider_batch_model: cfg.engine.provider_batch_model.clone(),
         provider_vision_model: cfg.engine.provider_vision_model.clone(),
         provider_offline: cfg.engine.provider_offline,
+        voice_enabled: cfg.voice.enabled,
+        voice_persona: cfg.voice.persona.clone(),
+        voice_speed: cfg.voice.speed,
     }))
 }
 
@@ -109,6 +118,9 @@ pub(crate) async fn update_settings(
     collect_opt!(provider_batch_model);
     collect_opt!(provider_vision_model);
     collect_opt!(provider_offline);
+    collect_opt!(voice_enabled);
+    collect_opt!(voice_persona);
+    collect_opt!(voice_speed);
 
     if let Some(ref v) = body.checkin_times {
         changes.insert(

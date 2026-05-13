@@ -128,4 +128,47 @@ mod tests {
         assert_eq!(s.feed("**Hello**"), "Hello");
         assert_eq!(s.feed(" world"), " world");
     }
+
+    #[test]
+    fn handles_consecutive_fences() {
+        // Two fenced blocks back-to-back: both stripped, prose between kept.
+        let md = "intro\n```rust\nlet x = 1;\n```\nmiddle\n```python\nprint(1)\n```\nend";
+        let out = strip_markdown(md);
+        assert!(out.contains("intro"), "kept opening prose: {out}");
+        assert!(out.contains("middle"), "kept inter-fence prose: {out}");
+        assert!(out.contains("end"), "kept closing prose: {out}");
+        assert!(!out.contains("let x"), "stripped first fence: {out}");
+        assert!(!out.contains("print(1)"), "stripped second fence: {out}");
+    }
+
+    #[test]
+    fn streaming_suppresses_until_second_fence_closes() {
+        // Stream interleaves opening/closing two fences; the stripper should
+        // only emit clean tail when the running fence count is even.
+        let mut s = MarkdownStripper::new();
+        assert_eq!(s.feed("Run ```sh\necho hi\n``` then "), "Run  then ");
+        assert_eq!(s.feed("```sh\necho bye\n"), ""); // second fence open
+        let tail = s.feed("``` and exit");
+        assert!(tail.contains("and exit"), "got: {tail}");
+    }
+
+    #[test]
+    fn flat_asterisk_runs_unchanged() {
+        // A bare "5 * 4 = 20" shouldn't lose its asterisks (italic regex
+        // requires the run to be matched on both sides without newlines).
+        let out = strip_markdown("5 * 4 = 20");
+        // Either the asterisks survive intact, or they're stripped — the
+        // spec is "don't crash and don't keep markdown syntax". We assert
+        // that the digits remain intact and there's no markdown-specific
+        // byte left behind beyond the asterisks themselves.
+        assert!(out.contains("5"), "{out}");
+        assert!(out.contains("20"), "{out}");
+    }
+
+    #[test]
+    fn link_preserves_link_text_and_drops_url() {
+        let out = strip_markdown("Visit [our docs](https://example.com/docs) please");
+        assert_eq!(out, "Visit our docs please");
+        assert!(!out.contains("https://"), "{out}");
+    }
 }

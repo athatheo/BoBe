@@ -13,9 +13,8 @@ use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
-use crate::services::voice_install_service::VoiceInstallService;
-use crate::speech::{AcousticVad, SemanticTurn, StreamingSttEngine, TtsEngine};
-use crate::voice::filler_library::FillerLibrary;
+use crate::voice::install_service::VoiceInstallService;
+use crate::voice::engines::VoiceEnginesSnapshot;
 use crate::voice::sinks::VoiceSink;
 use metrics_exporter_prometheus::PrometheusHandle;
 use crate::util::capture::ScreenCapture;
@@ -42,21 +41,12 @@ pub(crate) struct AppState {
     /// Daemon-owned voice-model installer. Wizard + Settings call its
     /// HTTP endpoints; legacy `scripts/install-voice-models.sh` is gone.
     pub(crate) voice_install: Arc<VoiceInstallService>,
-    /// Voice — `None` when sherpa-onnx models aren't installed; `/voice/stream` 503s.
-    /// Streaming Zipformer fed live: every mic frame → `accept_audio` →
-    /// partials over WS → `commit_final` on speech-end.
-    pub(crate) voice_streaming_stt: Option<Arc<dyn StreamingSttEngine>>,
-    pub(crate) voice_tts: Option<Arc<dyn TtsEngine>>,
-    /// Acoustic VAD (Silero v6.2.1 via sherpa-onnx). `None` when model is missing.
-    pub(crate) voice_vad: Option<Arc<dyn AcousticVad>>,
-    /// Semantic turn-detection. Stub for now (always returns 1.0); real
-    /// smart-turn-v3.1 impl wires in with the VAD pipeline.
-    pub(crate) voice_smart_turn: Option<Arc<dyn SemanticTurn>>,
-    /// Pre-rendered filler PCM library — TTFT watchdog, post-barge-in
-    /// recovery, per-tool intents, error reconnect. `None` when TTS engine
-    /// isn't loaded; voice still works, just with silence during gaps.
-    /// Indexed by `FillerKind` for typed lookups from the handler + hooks.
-    pub(crate) voice_filler_library: Option<Arc<FillerLibrary>>,
+    /// All voice engines under one ArcSwap so the installer can hot-swap
+    /// on completion — no daemon restart. WS handler captures the snapshot
+    /// at connect time so a mid-session install doesn't yank engines
+    /// from an in-flight turn. Hooks (PreToolUse, PostToolUse) read at
+    /// fire time so post-install reloads pick up the new filler library.
+    pub(crate) voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
     /// Voice-turn signal — flipped true by `voice.rs` while a voice turn is
     /// in flight so `BobeHooks` can branch on tone/filler behavior. Cleared
     /// via the guard in `voice.rs::process_turn`. Safe under single-flight

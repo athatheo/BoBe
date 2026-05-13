@@ -38,9 +38,11 @@ public final class VoicePipeline {
     public static let shared = VoicePipeline()
 
     public private(set) var state: State = .idle
-    public private(set) var transcript: String = ""
+    /// Last surfaced error message. Today nothing in the overlay binds this;
+    /// the value is also logged via `logger.error` at every write site so
+    /// engineers can see it in Console.app. The Voice settings pane (#85)
+    /// will surface it as a UI affordance.
     public private(set) var lastError: String?
-    public private(set) var liveRmsDbfs: Float = -100
 
     /// 16kHz mono — Moonshine + Silero native. Opus 20ms frames = 320 samples.
     private let captureSampleRate: Double = 16_000
@@ -55,6 +57,32 @@ public final class VoicePipeline {
     private var decoder: Opus.Decoder?
     private var converter: AVAudioConverter?
     private var pcmAccumulator: [Int16] = []
+    /// Reused per-frame buffer for Opus encoding to avoid a 1500B alloc on
+    /// every 20ms frame. Opus VOIP @ 24kbps/20ms encodes to ~60B; the 1500B
+    /// upper bound is RTP MTU-safe. The same Data is reset and reused.
+    private var encodeScratch = Data(count: 1500)
+
+    /// One scheduled TTS chunk. We retain the decoded `AVAudioPCMBuffer` so
+    /// `truncatePlayback` can reschedule the head of a straddling buffer
+    /// after `playerNode.stop()` wipes the queue.
+    private struct ScheduledTtsChunk {
+        let chunkId: UInt64
+        let buffer: AVAudioPCMBuffer
+        /// Cumulative frame index across the current turn at which this
+        /// chunk's first sample lives. `playerTime.sampleTime` is also
+        /// monotonic across the engine's life — we map between the two via
+        /// `sampleTimeBase` / `turnFrameBase`.
+        let startFrame: AVAudioFramePosition
+    }
+    private var scheduledChunks: [ScheduledTtsChunk] = []
+    private var nextScheduleFrame: AVAudioFramePosition = 0
+    /// Captured at the start of every `.speaking` transition. Subtracted
+    /// from the player's `sampleTime` to get "frames played in this turn".
+    private var sampleTimeBase: AVAudioFramePosition = 0
+    /// Jumps forward by `played` on every truncate so subsequent
+    /// `playedFramesThisTurn` calls stay in turn-relative space across
+    /// `stop()` + `play()` (which resets the player's clock).
+    private var turnFrameBase: AVAudioFramePosition = 0
 
     private let urlSession = URLSession(configuration: .default)
     private var task: URLSessionWebSocketTask?
@@ -112,10 +140,10 @@ public final class VoicePipeline {
 
     public func connect(daemonBaseURL: URL) {
         self.lastError = nil
-        self.transcript = ""
 
         guard let wsURL = Self.wsEndpoint(from: daemonBaseURL) else {
             self.lastError = "invalid daemon URL for WS"
+            logger.error("invalid daemon URL for WS")
             return
         }
 
@@ -164,6 +192,24 @@ public final class VoicePipeline {
                 oldTask.cancel(with: .normalClosure, reason: nil)
             }
         }
+        // Tear down the audio engines so the macOS mic indicator clears.
+        // Without this, prewarm + first connect leaves VPIO running for the
+        // app lifetime even when voice is "off".
+        self.tearDownAudio()
+    }
+
+    /// Reverses `configureEngine`. Idempotent — safe to call when not warm.
+    private func tearDownAudio() {
+        guard self.isWarm else { return }
+        self.audioEngine.inputNode.removeTap(onBus: 0)
+        self.playerNode.stop()
+        self.audioEngine.stop()
+        self.encoder = nil
+        self.converter = nil
+        self.pcmAccumulator.removeAll(keepingCapacity: false)
+        self.bargeInCount = 0
+        self.bargeInSent = false
+        self.isWarm = false
     }
 
     /// Single-tap toggle: idle → connect; otherwise → disconnect.
@@ -178,6 +224,7 @@ public final class VoicePipeline {
             }
             if self.state == .connecting, self.lastError == nil {
                 self.lastError = "voice connection timed out"
+                logger.error("voice connection timed out")
             }
         case .connecting, .listening, .capturing, .thinking, .speaking, .cancelling:
             self.disconnect()
@@ -267,13 +314,13 @@ public final class VoicePipeline {
         }
         if status == .error || err != nil {
             self.lastError = "convert: \(err?.localizedDescription ?? "?")"
+            logger.error("convert: \(err?.localizedDescription ?? "?")")
             return
         }
         guard let int16Ptr = outBuf.int16ChannelData?[0] else { return }
         let count = Int(outBuf.frameLength)
         let samples = UnsafeBufferPointer(start: int16Ptr, count: count)
         self.pcmAccumulator.append(contentsOf: samples)
-        self.updateRms(samples: samples)
 
         // Encode + send full 20ms frames; daemon expects continuous stream.
         // Per-frame RMS is also fed to the barge-in detector.
@@ -326,11 +373,8 @@ public final class VoicePipeline {
     /// Best-effort current playback position in ms, derived from the player
     /// node's render clock. ~100ms staleness is fine for truncation math.
     private func currentPlaybackMs() -> UInt64 {
-        guard let lastRenderTime = self.playerNode.lastRenderTime,
-              let playerTime = self.playerNode.playerTime(forNodeTime: lastRenderTime) else {
-            return 0
-        }
-        let ms = Double(playerTime.sampleTime) * 1_000.0 / self.playbackSampleRate
+        let frames = self.playedFramesThisTurn()
+        let ms = Double(frames) * 1_000.0 / self.playbackSampleRate
         return UInt64(max(0, ms))
     }
 
@@ -340,23 +384,26 @@ public final class VoicePipeline {
         task: URLSessionWebSocketTask
     ) {
         guard let buf = self.makeInt16Buffer(samples: samples) else { return }
-        var encoded = Data(count: 1500)
         do {
-            let n = try encoded.withUnsafeMutableBytes { raw -> Int in
+            let n = try self.encodeScratch.withUnsafeMutableBytes { raw -> Int in
                 guard let base = raw.baseAddress else { return 0 }
                 let mut = UnsafeMutableRawBufferPointer(start: base, count: raw.count)
                 return try encoder.encode(buf, to: mut)
             }
-            let payload = encoded.prefix(n)
-            task.send(.data(Data(payload))) { error in
+            // Copy out only the encoded bytes — we own the scratch and want
+            // to keep reusing it on the next frame.
+            let payload = Data(self.encodeScratch.prefix(n))
+            task.send(.data(payload)) { error in
                 if let error {
                     Task { @MainActor [weak self] in
                         self?.lastError = "ws send: \(error.localizedDescription)"
+                        logger.error("ws send: \(error.localizedDescription)")
                     }
                 }
             }
         } catch {
             self.lastError = "encode: \(error.localizedDescription)"
+            logger.error("encode: \(error.localizedDescription)")
         }
     }
 
@@ -379,17 +426,6 @@ public final class VoicePipeline {
         return buf
     }
 
-    private func updateRms(samples: UnsafeBufferPointer<Int16>) {
-        guard !samples.isEmpty else { return }
-        var sumSquares: Double = 0
-        for s in samples {
-            let f = Double(s) / 32_768.0
-            sumSquares += f * f
-        }
-        let rms = sqrt(sumSquares / Double(samples.count))
-        self.liveRmsDbfs = rms > 1e-9 ? Float(20 * log10(rms)) : -100
-    }
-
     // MARK: - WS receive
 
     private func receiveLoop() {
@@ -405,6 +441,7 @@ public final class VoicePipeline {
                     self.receiveLoop()
                 case let .failure(err):
                     self.lastError = "recv: \(err.localizedDescription)"
+                    logger.error("recv: \(err.localizedDescription)")
                     self.state = .failed(err.localizedDescription)
                 }
             }
@@ -435,12 +472,12 @@ public final class VoicePipeline {
         case let .state(phase, _):
             self.applyPhase(phase)
         case let .transcriptFinal(_, transcript):
-            self.transcript = transcript
             if !transcript.isEmpty {
                 BobeStore.shared.appendUserVoiceMessage(transcript)
             }
         case .transcriptPartial:
-            // Partial transcripts only emitted when streaming-STT lands later.
+            // Streaming Zipformer (Wave B2) emits these during capture. The
+            // overlay doesn't render partials today; future surface point.
             break
         case .ttsEnd:
             // Authoritative end-of-turn — daemon will follow with state(Listening).
@@ -450,6 +487,7 @@ public final class VoicePipeline {
             self.truncatePlayback(keepMs: keepMs)
         case let .error(code, message):
             self.lastError = "\(code): \(message)"
+            logger.error("server: \(code): \(message)")
             // Errors during handshake should transition the mic UI to
             // .failed immediately rather than waiting for the WS close
             // to bounce us through receiveLoop's failure branch.
@@ -468,11 +506,40 @@ public final class VoicePipeline {
         case .capturing: self.state = .capturing
         case .thinking: self.state = .thinking
         case .speaking:
+            // New turn — reset the per-turn schedule bookkeeping. Capture the
+            // current player sampleTime as the baseline so playedFramesThisTurn
+            // returns 0 right at turn start.
+            if self.state != .speaking {
+                self.scheduledChunks.removeAll(keepingCapacity: true)
+                self.nextScheduleFrame = 0
+                self.turnFrameBase = 0
+                self.sampleTimeBase = self.currentPlayerSampleTime()
+            }
             self.state = .speaking
             self.ensureDecoder()
         case .cancelling: self.state = .cancelling
         case .failed: self.state = .failed("daemon reported failure")
         }
+    }
+
+    /// Frames played by `playerNode` since this turn began, accounting for
+    /// `stop()` / `play()` resets via `turnFrameBase`. Returns
+    /// `turnFrameBase` if the render clock hasn't tickled yet.
+    private func playedFramesThisTurn() -> AVAudioFramePosition {
+        guard let lrt = self.playerNode.lastRenderTime,
+              let pt = self.playerNode.playerTime(forNodeTime: lrt) else {
+            return self.turnFrameBase
+        }
+        let st = max(self.sampleTimeBase, pt.sampleTime)
+        return self.turnFrameBase + (st - self.sampleTimeBase)
+    }
+
+    private func currentPlayerSampleTime() -> AVAudioFramePosition {
+        guard let lrt = self.playerNode.lastRenderTime,
+              let pt = self.playerNode.playerTime(forNodeTime: lrt) else {
+            return 0
+        }
+        return max(0, pt.sampleTime)
     }
 
     private func ensureDecoder() {
@@ -486,6 +553,7 @@ public final class VoicePipeline {
             self.decoder = try Opus.Decoder(format: format)
         } catch {
             self.lastError = "decoder init: \(error.localizedDescription)"
+            logger.error("decoder init: \(error.localizedDescription)")
         }
     }
 
@@ -513,30 +581,90 @@ public final class VoicePipeline {
                 )
                 try decoder.decode(typed, to: outBuffer)
             }
+            let chunk = ScheduledTtsChunk(
+                chunkId: parsed.header.chunkId,
+                buffer: outBuffer,
+                startFrame: self.nextScheduleFrame
+            )
+            self.scheduledChunks.append(chunk)
+            self.nextScheduleFrame += AVAudioFramePosition(outBuffer.frameLength)
             // Fire-and-forget queue insertion — the async overload returns
             // when the buffer FINISHES playing and deadlocks streaming inserts.
             self.playerNode.scheduleBuffer(outBuffer, completionHandler: nil)
         } catch {
             self.lastError = "decode: \(error.localizedDescription)"
+            logger.error("decode: \(error.localizedDescription)")
         }
     }
 
-    /// Drop any queued audio past `keepMs` of playback. AVAudioPlayerNode's
-    /// `stop()` unschedules all pending buffers; we then `reset()` to clear
-    /// the timeline and `play()` to keep the node ready for the next turn.
-    ///
-    /// Sample-accurate truncation (keeping the first `keepMs` of in-flight
-    /// audio and dropping only the tail) would require splitting the current
-    /// PCM buffer at the right sample offset. For barge-in v1 we just stop
-    /// everything immediately — the user's speech intent overrides whatever
-    /// fragment is in flight.
-    private func truncatePlayback(keepMs _: UInt64) {
+    /// Sample-accurate playback truncation. Keeps the head of in-flight audio
+    /// up to `keepMs` and drops the tail. The daemon emits `truncate{keep_ms}`
+    /// after a barge-in, where `keep_ms` is what the user actually heard
+    /// (max of client RMS-detect playback position and last `PlaybackAck`).
+    /// Implementation:
+    ///   1. Capture frames-played-this-turn BEFORE `stop()` (which resets
+    ///      the player's clock).
+    ///   2. `stop()` to wipe the pending queue.
+    ///   3. Re-schedule slices of retained `AVAudioPCMBuffer`s covering the
+    ///      half-open range [played, target). Earlier audio has already
+    ///      reached the speakers; nothing to do for it. Track the slices in
+    ///      `scheduledChunks` so a second truncate within the same turn
+    ///      remains sample-accurate.
+    ///   4. `play()` and bump `turnFrameBase` so future render-clock reads
+    ///      stay in turn-relative space.
+    private func truncatePlayback(keepMs: UInt64) {
+        let target = AVAudioFramePosition(Double(keepMs) * self.playbackSampleRate / 1_000.0)
+        let played = self.playedFramesThisTurn()
+
         self.playerNode.stop()
-        self.playerNode.reset()
-        self.playerNode.play()
-        // Reset barge-in latch so the user can interrupt again on the next turn.
         self.bargeInCount = 0
         self.bargeInSent = false
+
+        guard target > played else {
+            // We're already past the keep point — nothing to re-schedule.
+            self.scheduledChunks.removeAll(keepingCapacity: true)
+            self.nextScheduleFrame = played
+            self.turnFrameBase = played
+            self.sampleTimeBase = self.currentPlayerSampleTime()
+            self.playerNode.play()
+            return
+        }
+
+        var newChunks: [ScheduledTtsChunk] = []
+        for chunk in self.scheduledChunks {
+            let chunkStart = chunk.startFrame
+            let chunkEnd = chunkStart + AVAudioFramePosition(chunk.buffer.frameLength)
+            let sliceStart = max(chunkStart, played)
+            let sliceEnd = min(chunkEnd, target)
+            guard sliceEnd > sliceStart else { continue }
+            let offset = AVAudioFrameCount(sliceStart - chunkStart)
+            let frames = AVAudioFrameCount(sliceEnd - sliceStart)
+            let buffer: AVAudioPCMBuffer
+            if offset == 0, frames == chunk.buffer.frameLength {
+                buffer = chunk.buffer
+            } else if let sliced = sliceInt16Buffer(chunk.buffer, offset: offset, frames: frames) {
+                buffer = sliced
+            } else {
+                continue
+            }
+            newChunks.append(ScheduledTtsChunk(
+                chunkId: chunk.chunkId,
+                buffer: buffer,
+                startFrame: sliceStart
+            ))
+        }
+
+        // Replace (not clear) so a second truncate within the same turn
+        // can slice further from the still-tracked tail.
+        self.scheduledChunks = newChunks
+        self.nextScheduleFrame = target
+        self.turnFrameBase = played
+        self.sampleTimeBase = self.currentPlayerSampleTime()
+
+        for chunk in newChunks {
+            self.playerNode.scheduleBuffer(chunk.buffer, completionHandler: nil)
+        }
+        self.playerNode.play()
     }
 
     // MARK: - Keepalive
@@ -570,6 +698,7 @@ public final class VoicePipeline {
             try await task.send(.string(text))
         } catch {
             self.lastError = "ws send text: \(error.localizedDescription)"
+            logger.error("ws send text: \(error.localizedDescription)")
         }
     }
 

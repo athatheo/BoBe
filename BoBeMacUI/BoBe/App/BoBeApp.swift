@@ -77,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.trayManager.setup()
         UpdaterManager.shared.setup()
+        SystemPowerObserver.shared.start()
 
         NotificationCenter.default.addObserver(
             self,
