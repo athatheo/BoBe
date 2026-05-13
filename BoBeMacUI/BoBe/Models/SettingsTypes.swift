@@ -18,6 +18,9 @@ struct DaemonSettings: Codable, Sendable {
     var providerChatModel: String?
     var providerBatchModel: String?
     var providerVisionModel: String?
+    var providerChatReasoning: String?
+    var providerBatchReasoning: String?
+    var providerVisionReasoning: String?
     var providerOffline: Bool
     var voiceEnabled: Bool
     var voicePersona: String
@@ -38,6 +41,9 @@ struct DaemonSettings: Codable, Sendable {
         case providerChatModel = "provider_chat_model"
         case providerBatchModel = "provider_batch_model"
         case providerVisionModel = "provider_vision_model"
+        case providerChatReasoning = "provider_chat_reasoning"
+        case providerBatchReasoning = "provider_batch_reasoning"
+        case providerVisionReasoning = "provider_vision_reasoning"
         case providerOffline = "provider_offline"
         case voiceEnabled = "voice_enabled"
         case voicePersona = "voice_persona"
@@ -60,6 +66,9 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var providerChatModel: String?
     var providerBatchModel: String?
     var providerVisionModel: String?
+    var providerChatReasoning: String?
+    var providerBatchReasoning: String?
+    var providerVisionReasoning: String?
     var providerOffline: Bool?
     var voiceEnabled: Bool?
     var voicePersona: String?
@@ -80,6 +89,9 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case providerChatModel = "provider_chat_model"
         case providerBatchModel = "provider_batch_model"
         case providerVisionModel = "provider_vision_model"
+        case providerChatReasoning = "provider_chat_reasoning"
+        case providerBatchReasoning = "provider_batch_reasoning"
+        case providerVisionReasoning = "provider_vision_reasoning"
         case providerOffline = "provider_offline"
         case voiceEnabled = "voice_enabled"
         case voicePersona = "voice_persona"

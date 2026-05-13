@@ -1,4 +1,5 @@
 pub(crate) mod conversation_service;
 pub(crate) mod goals;
 pub(crate) mod mcp_config_service;
+pub(crate) mod model_resolver;
 pub(crate) mod ollama_install_service;

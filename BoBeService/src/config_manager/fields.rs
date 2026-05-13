@@ -97,6 +97,15 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             "engine.provider_vision_model" => {
                 set_opt_string!(config.engine.provider_vision_model, value, k);
             }
+            "engine.provider_chat_reasoning" => {
+                set_opt_string!(config.engine.provider_chat_reasoning, value, k);
+            }
+            "engine.provider_batch_reasoning" => {
+                set_opt_string!(config.engine.provider_batch_reasoning, value, k);
+            }
+            "engine.provider_vision_reasoning" => {
+                set_opt_string!(config.engine.provider_vision_reasoning, value, k);
+            }
             "engine.provider_offline" => {
                 set_parsed!(config.engine.provider_offline, value, k);
             }
@@ -151,6 +160,9 @@ fn normalize_key(key: &str) -> String {
         "provider_chat_model" => "engine.provider_chat_model",
         "provider_batch_model" => "engine.provider_batch_model",
         "provider_vision_model" => "engine.provider_vision_model",
+        "provider_chat_reasoning" => "engine.provider_chat_reasoning",
+        "provider_batch_reasoning" => "engine.provider_batch_reasoning",
+        "provider_vision_reasoning" => "engine.provider_vision_reasoning",
         "provider_offline" => "engine.provider_offline",
         "voice_enabled" => "voice.enabled",
         "voice_persona" => "voice.persona",

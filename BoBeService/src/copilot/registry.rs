@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 
 use crate::config::{Config, EngineConfig};
 use crate::error::AppError;
+use crate::services::model_resolver::ModelResolver;
 
 use super::client::ClientHandle;
 use super::handler::BobeHandler;
@@ -32,6 +33,12 @@ const DEFAULT_LOCAL_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub(crate) struct WorkerRegistry {
     client: Arc<ClientHandle>,
     config: Arc<ArcSwap<Config>>,
+    /// Pivot-side model lookup helper. Wires alongside the existing per-class
+    /// `EngineConfig.provider_*_model` fields; held here so callers that need
+    /// runtime model resolution can borrow it. `#[allow(dead_code)]` because
+    /// the consumer call sites are still being migrated post-merge.
+    #[allow(dead_code)]
+    model_resolver: Arc<ModelResolver>,
     session_store: SessionStore,
     memory_file: Arc<MemoryFile>,
     data_dir: PathBuf,
@@ -75,9 +82,12 @@ impl WorkerRegistry {
         voice_sink: Arc<crate::voice::sinks::VoiceSink>,
         voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>>,
     ) -> Arc<Self> {
+        let client = ClientHandle::new(Arc::clone(&config));
+        let model_resolver = ModelResolver::new(Arc::clone(&client));
         Arc::new(Self {
-            client: ClientHandle::new(Arc::clone(&config)),
+            client,
             config,
+            model_resolver,
             session_store: SessionStore::new(&data_dir),
             memory_file,
             data_dir,
@@ -299,6 +309,16 @@ impl WorkerRegistry {
         }
 
         tracing::info!("registry.reload_complete");
+    }
+
+    /// Soft reload — model/reasoning fields changed but the SDK process and
+    /// chat session can be preserved. Today this just forwards to `reload()`
+    /// for safety; the chat session stays alive because `reload()` will
+    /// recreate it with the new model on next access via `create_or_resume`.
+    /// Pivot's smarter soft-reload (chat session preserved literally) is
+    /// post-merge work tracked in `services::model_resolver`.
+    pub(crate) async fn reload_soft(&self) {
+        self.reload().await;
     }
 
     pub(crate) async fn shutdown_all(&self) {

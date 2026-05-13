@@ -35,8 +35,22 @@ actor DaemonClient {
     private var isReconnecting = false
 
     func endpointURL(_ path: String) -> URL {
-        let normalized = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        return self.baseURL.appendingPathComponent(normalized)
+        // appendingPathComponent percent-encodes `?` and `&`, which would corrupt query strings.
+        // Split on `?` so the path is appended cleanly and the query is preserved.
+        let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        let (pathPart, queryPart): (String, String?)
+        if let qIdx = trimmed.firstIndex(of: "?") {
+            pathPart = String(trimmed[..<qIdx])
+            queryPart = String(trimmed[trimmed.index(after: qIdx)...])
+        } else {
+            pathPart = trimmed
+            queryPart = nil
+        }
+        var url = self.baseURL.appendingPathComponent(pathPart)
+        if let queryPart, !queryPart.isEmpty {
+            url = URL(string: "\(url.absoluteString)?\(queryPart)") ?? url
+        }
+        return url
     }
 
     init() {

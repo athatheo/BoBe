@@ -111,12 +111,36 @@ struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
     let vision: Bool
     /// `nil` for Ollama — `/api/tags` doesn't expose context window.
     let contextWindow: Int?
+    /// Billing cost relative to base rate. `nil` for Ollama; `0.0` = free tier.
+    let multiplier: Double?
+    let defaultReasoningEffort: String?
+    let supportedReasoningEfforts: [String]
+    /// `"enabled"` / `"disabled"` / `"unconfigured"` — UI dims non-enabled entries.
+    let policyState: String?
+
+    var supportsReasoningEffort: Bool { !self.supportedReasoningEfforts.isEmpty }
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case vision
         case contextWindow = "context_window"
+        case multiplier
+        case defaultReasoningEffort = "default_reasoning_effort"
+        case supportedReasoningEfforts = "supported_reasoning_efforts"
+        case policyState = "policy_state"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.vision = try c.decode(Bool.self, forKey: .vision)
+        self.contextWindow = try c.decodeIfPresent(Int.self, forKey: .contextWindow)
+        self.multiplier = try c.decodeIfPresent(Double.self, forKey: .multiplier)
+        self.defaultReasoningEffort = try c.decodeIfPresent(String.self, forKey: .defaultReasoningEffort)
+        self.supportedReasoningEfforts = try c.decodeIfPresent([String].self, forKey: .supportedReasoningEfforts) ?? []
+        self.policyState = try c.decodeIfPresent(String.self, forKey: .policyState)
     }
 }
 

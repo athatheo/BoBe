@@ -25,6 +25,9 @@ pub(crate) struct SettingsResponse {
     pub(crate) provider_chat_model: Option<String>,
     pub(crate) provider_batch_model: Option<String>,
     pub(crate) provider_vision_model: Option<String>,
+    pub(crate) provider_chat_reasoning: Option<String>,
+    pub(crate) provider_batch_reasoning: Option<String>,
+    pub(crate) provider_vision_reasoning: Option<String>,
     pub(crate) provider_offline: bool,
     pub(crate) voice_enabled: bool,
     pub(crate) voice_persona: String,
@@ -47,6 +50,9 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) provider_chat_model: Option<String>,
     pub(crate) provider_batch_model: Option<String>,
     pub(crate) provider_vision_model: Option<String>,
+    pub(crate) provider_chat_reasoning: Option<String>,
+    pub(crate) provider_batch_reasoning: Option<String>,
+    pub(crate) provider_vision_reasoning: Option<String>,
     pub(crate) provider_offline: Option<bool>,
     pub(crate) voice_enabled: Option<bool>,
     pub(crate) voice_persona: Option<String>,
@@ -81,6 +87,9 @@ pub(crate) async fn get_settings(
         provider_chat_model: cfg.engine.provider_chat_model.clone(),
         provider_batch_model: cfg.engine.provider_batch_model.clone(),
         provider_vision_model: cfg.engine.provider_vision_model.clone(),
+        provider_chat_reasoning: cfg.engine.provider_chat_reasoning.clone(),
+        provider_batch_reasoning: cfg.engine.provider_batch_reasoning.clone(),
+        provider_vision_reasoning: cfg.engine.provider_vision_reasoning.clone(),
         provider_offline: cfg.engine.provider_offline,
         voice_enabled: cfg.voice.enabled,
         voice_persona: cfg.voice.persona.clone(),
@@ -117,6 +126,9 @@ pub(crate) async fn update_settings(
     collect_opt!(provider_chat_model);
     collect_opt!(provider_batch_model);
     collect_opt!(provider_vision_model);
+    collect_opt!(provider_chat_reasoning);
+    collect_opt!(provider_batch_reasoning);
+    collect_opt!(provider_vision_reasoning);
     collect_opt!(provider_offline);
     collect_opt!(voice_enabled);
     collect_opt!(voice_persona);

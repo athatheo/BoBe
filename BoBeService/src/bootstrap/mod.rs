@@ -62,17 +62,20 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         )
     };
 
-    workers.prune_old_chat_sessions().await;
-
     let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
-    // Engine-config changes trigger registry reload; no daemon restart needed.
+    // Engine config changes: hard reload only when the SDK process itself needs new env
+    // (engine type, provider URL, offline). Model/reasoning changes use a soft reload that
+    // preserves the chat session so the user doesn't lose context.
     {
         let registry_for_listener = Arc::clone(&workers);
-        wired.config_manager.set_engine_change_listener(move || {
+        wired.config_manager.set_engine_change_listener(move |kind| {
             let registry = Arc::clone(&registry_for_listener);
             tokio::spawn(async move {
-                registry.reload().await;
+                match kind {
+                    crate::config_manager::EngineChangeKind::Hard => registry.reload().await,
+                    crate::config_manager::EngineChangeKind::Soft => registry.reload_soft().await,
+                }
             });
         });
     }
@@ -85,6 +88,11 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             crate::db::seeding::seed_default_user_profiles(repos.user_profile_repo.as_ref()).await
         {
             tracing::warn!(error = %e, "bootstrap.profile_seeding_failed");
+        }
+        if let Err(e) =
+            crate::services::goals::seeding::seed_sample_goal(wired.goals_service.as_ref()).await
+        {
+            tracing::warn!(error = %e, "bootstrap.goal_seeding_failed");
         }
     }
 

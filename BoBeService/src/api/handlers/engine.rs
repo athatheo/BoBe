@@ -66,6 +66,12 @@ pub(crate) struct ModelInfo {
     pub(crate) name: String,
     pub(crate) vision: bool,
     pub(crate) context_window: Option<i64>,
+    /// `Some(1.0)` = base rate; `None` only for non-Copilot (Ollama) responses.
+    pub(crate) multiplier: Option<f64>,
+    pub(crate) default_reasoning_effort: Option<String>,
+    pub(crate) supported_reasoning_efforts: Vec<String>,
+    /// `"enabled"` / `"disabled"` / `"unconfigured"` — UI dims non-enabled entries.
+    pub(crate) policy_state: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -120,6 +126,10 @@ async fn list_cloud_models(state: &Arc<AppState>) -> Result<Vec<ModelInfo>, AppE
             ModelInfo {
                 vision: supports.and_then(|s| s.vision).unwrap_or(false),
                 context_window: limits.and_then(|l| l.max_context_window_tokens),
+                multiplier: m.billing.as_ref().map(|b| b.multiplier),
+                default_reasoning_effort: m.default_reasoning_effort,
+                supported_reasoning_efforts: m.supported_reasoning_efforts,
+                policy_state: m.policy.as_ref().map(|p| p.state.clone()),
                 id: m.id,
                 name: m.name,
             }
@@ -187,6 +197,10 @@ async fn list_local_models(base_url: Option<&str>) -> Result<Vec<ModelInfo>, App
                 name: m.name,
                 vision,
                 context_window: None,
+                multiplier: None,
+                default_reasoning_effort: None,
+                supported_reasoning_efforts: Vec::new(),
+                policy_state: None,
             }
         })
         .collect())

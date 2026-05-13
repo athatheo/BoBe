@@ -2,7 +2,7 @@ name: BoBe
 options:
   bundleIdPrefix: com.bobe
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: false
   groupSortPosition: none
@@ -10,7 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
     ARCHS: arm64
     ENABLE_PREVIEWS: YES
     # Concurrency

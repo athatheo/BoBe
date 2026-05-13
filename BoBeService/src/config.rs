@@ -198,6 +198,14 @@ pub(crate) struct EngineConfig {
     pub(crate) provider_batch_model: Option<String>,
     #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_vision_model: Option<String>,
+    /// Per-class reasoning effort overrides (`"low"|"medium"|"high"|...`). Only meaningful for
+    /// models with non-empty `supported_reasoning_efforts`; daemon silently ignores otherwise.
+    #[serde(deserialize_with = "empty_string_as_none", default)]
+    pub(crate) provider_chat_reasoning: Option<String>,
+    #[serde(deserialize_with = "empty_string_as_none", default)]
+    pub(crate) provider_batch_reasoning: Option<String>,
+    #[serde(deserialize_with = "empty_string_as_none", default)]
+    pub(crate) provider_vision_reasoning: Option<String>,
     /// Only effective in local mode; cloud mode refuses `COPILOT_OFFLINE=true`.
     pub(crate) provider_offline: bool,
 }
@@ -219,6 +227,9 @@ impl Default for EngineConfig {
             provider_chat_model: None,
             provider_batch_model: None,
             provider_vision_model: None,
+            provider_chat_reasoning: None,
+            provider_batch_reasoning: None,
+            provider_vision_reasoning: None,
             provider_offline: true,
         }
     }

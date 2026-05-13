@@ -333,7 +333,9 @@
 "settings.engine.models.batch.description" = "Used for goal extraction, decision making, memory consolidation. Faster/cheaper is fine.";
 "settings.engine.models.vision" = "Vision";
 "settings.engine.models.vision.description" = "Used to look at your screen. Must be a vision-capable model.";
-"settings.engine.models.use_default" = "Use default";
+"settings.engine.models.use_default" = "Use default (cheapest available)";
+"settings.engine.reasoning.label" = "Reasoning";
+"settings.engine.reasoning.use_default" = "Default";
 "settings.engine.offline.title" = "Offline mode";
 "settings.engine.offline.description" = "Skip all telemetry and metadata calls to GitHub.";
 "settings.engine.offline.toggle" = "Strict offline";
