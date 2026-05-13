@@ -18,10 +18,10 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::runtime::session::RuntimeSession;
 use crate::speech::TtsEngine;
 use crate::speech::protocol::{FLAG_FILLER, FLAG_FIRST_OF_TURN, ServerMessage, VoicePhase, encode_tts_frame};
 use crate::speech::vad::SpeechSegment;
+use crate::voice::context::VoiceContext;
 use crate::voice::engines::VoiceEngines;
 use crate::voice::filler_library::FillerKind;
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
@@ -64,27 +64,20 @@ pub(crate) fn reap_finished_turn(session: &mut VoiceSession) {
     }
 }
 
+/// Spawn a per-turn task that owns the entire STT → LLM → TTS pipeline.
+/// The returned `TurnInFlight` is stored on the session so a barge-in
+/// can `.join.abort()` it. `ctx` is cloned into the task — cheap because
+/// every field is `Arc` or value-snapshot.
 pub(crate) fn spawn_turn(
     segment: SpeechSegment,
-    engines: VoiceEngines,
-    runtime_session: Arc<RuntimeSession>,
-    out_tx: mpsc::Sender<Message>,
-    voice_turn_active: Arc<AtomicBool>,
+    ctx: &VoiceContext,
     voice_cfg: SessionVoiceConfig,
 ) -> TurnInFlight {
     let turn_id = format!("voice_{}", Uuid::new_v4().simple());
     let task_turn_id = turn_id.clone();
+    let task_ctx = ctx.clone();
     let join = tokio::spawn(async move {
-        process_turn(
-            segment,
-            engines,
-            runtime_session,
-            out_tx,
-            task_turn_id,
-            voice_turn_active,
-            voice_cfg,
-        )
-        .await;
+        process_turn(segment, &task_ctx, task_turn_id, voice_cfg).await;
     });
     TurnInFlight { turn_id, join }
 }
@@ -103,13 +96,13 @@ impl Drop for VoiceTurnFlag {
 #[tracing::instrument(name = "voice.turn", skip_all, fields(turn_id = %turn_id, samples = segment.samples.len()))]
 async fn process_turn(
     segment: SpeechSegment,
-    engines: VoiceEngines,
-    runtime_session: Arc<RuntimeSession>,
-    out_tx: mpsc::Sender<Message>,
+    ctx: &VoiceContext,
     turn_id: String,
-    voice_turn_active: Arc<AtomicBool>,
     voice_cfg: SessionVoiceConfig,
 ) {
+    let engines = &ctx.engines;
+    let out_tx = &ctx.out_tx;
+    let runtime_session = &ctx.runtime_session;
     let turn_start = Instant::now();
 
     // Semantic turn gate — discard if the user isn't really done yet.
@@ -128,7 +121,7 @@ async fn process_turn(
     let guard = match runtime_session.try_begin_user_message() {
         Ok(g) => g,
         Err(reason) => {
-            send_error(&out_tx, "conflict", reason).await;
+            send_error(out_tx, "conflict", reason).await;
             return;
         }
     };
@@ -138,10 +131,10 @@ async fn process_turn(
     // another worker class's UserPromptSubmitted hook see voice_mode=true
     // and inject the voice-tone hint into a non-voice turn. RAII guard
     // clears on drop including panic-unwind.
-    voice_turn_active.store(true, Ordering::Release);
-    let _voice_flag = VoiceTurnFlag(Arc::clone(&voice_turn_active));
+    ctx.voice_turn_active.store(true, Ordering::Release);
+    let _voice_flag = VoiceTurnFlag(Arc::clone(&ctx.voice_turn_active));
 
-    send_state(&out_tx, VoicePhase::Thinking, &turn_id).await;
+    send_state(out_tx, VoicePhase::Thinking, &turn_id).await;
 
     // STT — pull the final transcript out of the streaming Zipformer state
     // (which has been accumulating partials as frames arrived) and reset it
@@ -152,8 +145,8 @@ async fn process_turn(
         Ok(text) => text,
         Err(e) => {
             error!(error = %e, "voice.stt_failed");
-            send_error(&out_tx, "stt_failed", &e.to_string()).await;
-            send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
+            send_error(out_tx, "stt_failed", &e.to_string()).await;
+            send_state(out_tx, VoicePhase::Listening, &turn_id).await;
             drop(guard);
             return;
         }
@@ -165,8 +158,8 @@ async fn process_turn(
     if trimmed.is_empty() {
         info!(stt_ms = stt_elapsed_ms, "voice.empty_transcript");
         metrics::counter!(CTR_TURN_ERROR).increment(1);
-        send_error(&out_tx, "empty_transcript", "I didn't catch that").await;
-        send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
+        send_error(out_tx, "empty_transcript", "I didn't catch that").await;
+        send_state(out_tx, VoicePhase::Listening, &turn_id).await;
         drop(guard);
         return;
     }
@@ -177,7 +170,7 @@ async fn process_turn(
         "voice.transcript_final"
     );
     send_json(
-        &out_tx,
+        out_tx,
         &ServerMessage::TranscriptFinal {
             turn_id: turn_id.clone(),
             text: trimmed.to_string(),
@@ -186,7 +179,7 @@ async fn process_turn(
     .await;
 
     // Spin up the per-turn TTS pipeline
-    send_state(&out_tx, VoicePhase::Speaking, &turn_id).await;
+    send_state(out_tx, VoicePhase::Speaking, &turn_id).await;
     let speaking_start = Instant::now();
     let first_audio_emitted = Arc::new(AtomicBool::new(false));
     let filler_task = spawn_filler_watchdog(
@@ -242,13 +235,13 @@ async fn process_turn(
     }
 
     send_json(
-        &out_tx,
+        out_tx,
         &ServerMessage::TtsEnd {
             turn_id: turn_id.clone(),
         },
     )
     .await;
-    send_state(&out_tx, VoicePhase::Listening, &turn_id).await;
+    send_state(out_tx, VoicePhase::Listening, &turn_id).await;
     drop(guard);
 
     let total_ms = turn_start.elapsed().as_millis() as u64;

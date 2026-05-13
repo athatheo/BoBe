@@ -12,21 +12,23 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::speech::protocol::{ClientMessage, ControlAction, VoicePhase};
+use crate::voice::context::VoiceContext;
 use crate::voice::engines::VoiceEngines;
 use crate::voice::protocol_helpers::{send_error, send_state};
 use crate::voice::session::{
-    OPUS_INPUT_SAMPLE_RATE, SessionVoiceConfig, TTS_OUTPUT_SAMPLE_RATE, VoiceDefaults, VoiceSession,
+    OPUS_INPUT_SAMPLE_RATE, SessionVoiceConfig, TTS_OUTPUT_SAMPLE_RATE, VoiceSession,
 };
 use crate::voice::turn_flow::handle_barge_in;
 
 /// Returns `false` to terminate the connection (after handshake errors).
 pub(crate) async fn handle_control_text(
     text: &str,
-    out_tx: &mpsc::Sender<Message>,
+    ctx: &VoiceContext,
     session: &mut Option<VoiceSession>,
-    engines: &VoiceEngines,
-    voice_defaults: &VoiceDefaults,
 ) -> bool {
+    let out_tx = &ctx.out_tx;
+    let engines = &ctx.engines;
+    let voice_defaults = &ctx.voice_defaults;
     let parsed: Result<ClientMessage, _> = serde_json::from_str(text);
     match parsed {
         Ok(ClientMessage::Hello {

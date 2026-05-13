@@ -24,6 +24,7 @@ use tracing::{error, info, warn};
 use crate::app_state::AppState;
 use crate::speech::protocol::ServerMessage;
 use crate::voice::cancel_phrases::is_cancel_phrase;
+use crate::voice::context::VoiceContext;
 use crate::voice::control::handle_control_text;
 use crate::voice::engines::VoiceEngines;
 use crate::voice::protocol_helpers::{close_with_error, send_json};
@@ -113,6 +114,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // mid-turn disconnect lets subsequent hook fires safely no-op.
     let _sink_guard = state.voice_sink.install(out_tx.clone()).await;
 
+    // Bundle per-WS deps so subsystem fns don't drill 5 args each.
+    let ctx = VoiceContext {
+        out_tx: out_tx.clone(),
+        runtime_session: Arc::clone(&runtime_session),
+        engines: engines.clone(),
+        voice_defaults: voice_defaults.clone(),
+        voice_turn_active: Arc::clone(&state.voice_turn_active),
+    };
+
     loop {
         let next = match tokio::time::timeout(KEEPALIVE_STALE_TIMEOUT, rx.next()).await {
             Ok(Some(m)) => m,
@@ -132,13 +142,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
         match msg {
             Message::Text(text) => {
-                if !handle_control_text(
-                    text.as_str(),
-                    &out_tx,
-                    &mut session,
-                    &engines,
-                    &voice_defaults,
-                ).await {
+                if !handle_control_text(text.as_str(), &ctx, &mut session).await {
                     break;
                 }
             }
@@ -167,9 +171,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     let turn_id = s
                         .current_turn
                         .as_ref()
-                        .map(|t| t.turn_id.clone())
-                        .unwrap_or_else(|| s.session_id.clone());
-                    s.last_partial_text = partial.clone();
+                        .map_or_else(|| s.session_id.clone(), |t| t.turn_id.clone());
+                    s.last_partial_text.clone_from(&partial);
                     send_json(
                         &out_tx,
                         &ServerMessage::TranscriptPartial {
@@ -212,14 +215,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             );
                             continue;
                         }
-                        let turn = spawn_turn(
-                            segment,
-                            engines.clone(),
-                            Arc::clone(&runtime_session),
-                            out_tx.clone(),
-                            Arc::clone(&state.voice_turn_active),
-                            s.voice_cfg.clone(),
-                        );
+                        let turn = spawn_turn(segment, &ctx, s.voice_cfg.clone());
                         s.current_turn = Some(turn);
                         // Partial-text carries until the next utterance
                         // begins. Clear here so the MinWords gate doesn't

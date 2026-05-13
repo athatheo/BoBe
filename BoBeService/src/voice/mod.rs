@@ -4,6 +4,7 @@
 //! (M4.5.0c+), telemetry (D1), proactive-routing scaffold (M5.2).
 
 pub(crate) mod cancel_phrases;
+pub(crate) mod context;
 pub(crate) mod control;
 pub(crate) mod engines;
 pub(crate) mod filler_library;
