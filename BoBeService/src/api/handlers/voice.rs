@@ -189,7 +189,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         metrics::counter!(CTR_CANCEL_PHRASE).increment(1);
                         info!(partial = %partial, "voice.cancel_phrase_abort");
                         let keep_ms = s.last_acked_played_ms;
-                        abort_active_turn(s, &engines, &out_tx, keep_ms, "cancel_phrase").await;
+                        abort_active_turn(s, &ctx, keep_ms, "cancel_phrase").await;
                         continue;
                     }
                 }

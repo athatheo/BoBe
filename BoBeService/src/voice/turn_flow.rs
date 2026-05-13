@@ -22,7 +22,6 @@ use crate::speech::TtsEngine;
 use crate::speech::protocol::{FLAG_FILLER, FLAG_FIRST_OF_TURN, ServerMessage, VoicePhase, encode_tts_frame};
 use crate::speech::vad::SpeechSegment;
 use crate::voice::context::VoiceContext;
-use crate::voice::engines::VoiceEngines;
 use crate::voice::filler_library::FillerKind;
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
 use crate::voice::protocol_helpers::{send_error, send_json, send_state};
@@ -352,8 +351,7 @@ fn spawn_filler_watchdog(
 /// already authorized the abort — does NOT enforce MinWords.
 pub(crate) async fn abort_active_turn(
     s: &mut VoiceSession,
-    engines: &VoiceEngines,
-    out_tx: &mpsc::Sender<Message>,
+    ctx: &VoiceContext,
     keep_ms: u64,
     reason: &'static str,
 ) {
@@ -371,25 +369,24 @@ pub(crate) async fn abort_active_turn(
     join.abort();
     drop(join.await);
     send_json(
-        out_tx,
+        &ctx.out_tx,
         &ServerMessage::Truncate {
             turn_id: turn_id.clone(),
             keep_ms,
         },
     )
     .await;
-    send_state(out_tx, VoicePhase::Listening, &turn_id).await;
+    send_state(&ctx.out_tx, VoicePhase::Listening, &turn_id).await;
     s.last_partial_text.clear();
-    engines.stt.reset();
+    ctx.engines.stt.reset();
 }
 
 /// Client-detected RMS barge-in arriving over the WS. Gates on MinWords
 /// to drop "uh-huh"/"yeah" backchannel, then delegates to
 /// `abort_active_turn` for the actual cancellation.
 pub(crate) async fn handle_barge_in(
-    out_tx: &mpsc::Sender<Message>,
+    ctx: &VoiceContext,
     session: &mut Option<VoiceSession>,
-    engines: &VoiceEngines,
     played_ms: u64,
 ) {
     let Some(s) = session.as_mut() else { return };
@@ -409,5 +406,5 @@ pub(crate) async fn handle_barge_in(
     }
     metrics::counter!(CTR_BARGE_IN_SUCCESS).increment(1);
     let keep_ms = played_ms.max(s.last_acked_played_ms);
-    abort_active_turn(s, engines, out_tx, keep_ms, "barge_in").await;
+    abort_active_turn(s, ctx, keep_ms, "barge_in").await;
 }

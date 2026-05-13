@@ -6,14 +6,11 @@
 //! deep-decomp split plan; the WS handler now just routes Text frames here
 //! and Binary frames into the VAD/STT pipeline.
 
-use axum::extract::ws::Message;
-use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::speech::protocol::{ClientMessage, ControlAction, VoicePhase};
 use crate::voice::context::VoiceContext;
-use crate::voice::engines::VoiceEngines;
 use crate::voice::protocol_helpers::{send_error, send_state};
 use crate::voice::session::{
     OPUS_INPUT_SAMPLE_RATE, SessionVoiceConfig, TTS_OUTPUT_SAMPLE_RATE, VoiceSession,
@@ -27,7 +24,6 @@ pub(crate) async fn handle_control_text(
     session: &mut Option<VoiceSession>,
 ) -> bool {
     let out_tx = &ctx.out_tx;
-    let engines = &ctx.engines;
     let voice_defaults = &ctx.voice_defaults;
     let parsed: Result<ClientMessage, _> = serde_json::from_str(text);
     match parsed {
@@ -92,7 +88,7 @@ pub(crate) async fn handle_control_text(
             playback_ms_played,
         }) => {
             info!(ts_ms, playback_ms_played, "voice.barge_in_received");
-            handle_barge_in(out_tx, session, engines, playback_ms_played).await;
+            handle_barge_in(ctx, session, playback_ms_played).await;
             true
         }
         Ok(ClientMessage::Wake {
@@ -130,7 +126,7 @@ pub(crate) async fn handle_control_text(
             true
         }
         Ok(ClientMessage::Control { action }) => {
-            handle_control_action(action, out_tx, session, engines).await;
+            handle_control_action(action, ctx, session).await;
             true
         }
         Err(e) => {
@@ -143,15 +139,16 @@ pub(crate) async fn handle_control_text(
 
 pub(crate) async fn handle_control_action(
     action: ControlAction,
-    out_tx: &mpsc::Sender<Message>,
+    ctx: &VoiceContext,
     session: &mut Option<VoiceSession>,
-    engines: &VoiceEngines,
 ) {
+    let out_tx = &ctx.out_tx;
+    let engines = &ctx.engines;
     match action {
         ControlAction::Abort => {
             info!("voice.control.abort");
             // Treat explicit abort like a barge-in with played_ms=0.
-            handle_barge_in(out_tx, session, engines, 0).await;
+            handle_barge_in(ctx, session, 0).await;
             if let Some(s) = session.as_ref() {
                 send_state(out_tx, VoicePhase::Idle, &s.session_id).await;
             }
@@ -172,7 +169,7 @@ pub(crate) async fn handle_control_action(
             info!("voice.control.reset");
             // Abort any in-flight turn (same path as Abort with played_ms=0),
             // clear VAD buffers, and unmute so the next utterance is captured.
-            handle_barge_in(out_tx, session, engines, 0).await;
+            handle_barge_in(ctx, session, 0).await;
             engines.vad.reset();
             if let Some(s) = session.as_mut() {
                 s.muted = false;
