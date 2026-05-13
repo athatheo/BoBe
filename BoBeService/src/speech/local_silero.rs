@@ -60,10 +60,6 @@ impl AcousticVad for LocalSileroVad {
         Ok(())
     }
 
-    fn has_segment(&self) -> bool {
-        self.inner.detected()
-    }
-
     fn pop_segment(&self) -> Option<SpeechSegment> {
         let segment = self.inner.front()?;
         let result = SpeechSegment {

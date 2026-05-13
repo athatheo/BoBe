@@ -199,29 +199,34 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 }
                 // Reap a finished turn before processing the next segment.
                 reap_finished_turn(s);
-                while engines.vad.has_segment() {
-                    if let Some(segment) = engines.vad.pop_segment() {
-                        if s.current_turn.is_some() {
-                            // A turn is already running. Drop the segment for
-                            // now — M5.2 hammering pushback will queue these
-                            // and merge into the in-flight or next turn.
-                            s.segments_dropped =
-                                s.segments_dropped.saturating_add(1);
-                            metrics::counter!(CTR_SEGMENT_DROP).increment(1);
-                            warn!(
-                                session = %s.session_id,
-                                drops = s.segments_dropped,
-                                "voice.segment_backpressure_drop"
-                            );
-                            continue;
-                        }
-                        let turn = spawn_turn(segment, &ctx, s.voice_cfg.clone());
-                        s.current_turn = Some(turn);
-                        // Partial-text carries until the next utterance
-                        // begins. Clear here so the MinWords gate doesn't
-                        // see stale words from the previous turn.
-                        s.last_partial_text.clear();
+                // Drain every COMPLETED segment from the VAD queue. Using
+                // `while let Some(...) = pop_segment()` is critical — the
+                // earlier `while has_segment() { if let Some(...) = pop... }`
+                // pattern spun the worker thread at 100% CPU because
+                // `has_segment()` reflects the live "speech detected"
+                // signal, not "completed segment in queue", so it stayed
+                // true while pop_segment() returned None mid-utterance.
+                while let Some(segment) = engines.vad.pop_segment() {
+                    if s.current_turn.is_some() {
+                        // A turn is already running. Drop the segment for
+                        // now — M5.2 hammering pushback will queue these
+                        // and merge into the in-flight or next turn.
+                        s.segments_dropped =
+                            s.segments_dropped.saturating_add(1);
+                        metrics::counter!(CTR_SEGMENT_DROP).increment(1);
+                        warn!(
+                            session = %s.session_id,
+                            drops = s.segments_dropped,
+                            "voice.segment_backpressure_drop"
+                        );
+                        continue;
                     }
+                    let turn = spawn_turn(segment, &ctx, s.voice_cfg.clone());
+                    s.current_turn = Some(turn);
+                    // Partial-text carries until the next utterance
+                    // begins. Clear here so the MinWords gate doesn't
+                    // see stale words from the previous turn.
+                    s.last_partial_text.clear();
                 }
             }
             Message::Close(_) => {

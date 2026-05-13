@@ -28,10 +28,8 @@ pub(crate) trait AcousticVad: Send + Sync {
     /// Push 16kHz mono f32 PCM samples. Internally buffered + analyzed.
     fn accept(&self, samples: &[f32]) -> Result<(), AppError>;
 
-    /// True once a complete speech segment is queued for retrieval.
-    fn has_segment(&self) -> bool;
-
     /// Take the oldest queued speech segment, or `None` if none ready.
+    /// Drain by looping `while let Some(seg) = vad.pop_segment()`.
     fn pop_segment(&self) -> Option<SpeechSegment>;
 
     /// Force-flush any pending speech (e.g., on turn-end signal from above).
