@@ -34,7 +34,7 @@ use crate::voice::telemetry::{
 
 /// Smart-turn pass-through threshold. < 0.7 → discard segment as a
 /// mid-thought pause; ≥ 0.7 → user is done, proceed with the turn.
-pub(crate) const TURN_COMPLETE_THRESHOLD: f32 = 0.7;
+pub(crate) const TURN_COMPLETE_THRESHOLD: f32 = 0.5;
 
 /// MinWords barge-in gate (C3). During an active turn, a barge-in is
 /// honored only if the streaming-STT has accumulated at least this many
@@ -108,7 +108,7 @@ async fn process_turn(
     let smart_turn_start = Instant::now();
     match engines.smart_turn.probability_complete(&segment.samples) {
         Ok(p) if p < TURN_COMPLETE_THRESHOLD => {
-            debug!(p, "voice.smart_turn_incomplete_skip");
+            debug!(p, threshold = TURN_COMPLETE_THRESHOLD, "voice.smart_turn_incomplete_skip");
             return;
         }
         Ok(p) => debug!(p, "voice.smart_turn_complete"),
