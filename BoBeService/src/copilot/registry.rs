@@ -20,7 +20,7 @@ use crate::services::model_resolver::ModelResolver;
 
 use super::client::ClientHandle;
 use super::handler::BobeHandler;
-use super::hooks::BobeHooks;
+use super::hooks::{BobeHooks, HooksVoiceContext};
 use super::memory_file::MemoryFile;
 use super::session_store::{CHAT_RETENTION_DAYS, SessionStore};
 use super::types::WorkerClass;
@@ -44,18 +44,9 @@ pub(crate) struct WorkerRegistry {
     data_dir: PathBuf,
     /// SDK captures this map at session creation; restart required to apply changes.
     mcp_servers: HashMap<String, McpServerConfig>,
-    /// Voice-turn signal: set true by the voice handler before `session.send`,
-    /// cleared at turn-end. Hooks read it to branch tone/filler behavior.
-    /// Safe because turns are serialized via `UserMessageGuard` + chat-worker
-    /// `submit_lock`; only one turn is in flight at a time.
-    voice_turn_active: Arc<AtomicBool>,
-    /// Single-slot voice sink, shared with AppState so the WS handler can
-    /// install on connect and hooks can read on PreToolUse.
-    voice_sink: Arc<crate::voice::sinks::VoiceSink>,
-    /// ArcSwap'd voice engines snapshot — hooks read at fire time so
-    /// post-install reloads pick up the new filler library without a
-    /// daemon restart.
-    voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>>,
+    /// Voice deps used by BobeHooks at fire time. Bundled to keep
+    /// BobeHooks::new from drilling 3 Arcs on every session create.
+    voice: HooksVoiceContext,
 
     goals: Mutex<Option<Arc<BatchWorker>>>,
     consolidate: Mutex<Option<Arc<BatchWorker>>>,
@@ -84,6 +75,11 @@ impl WorkerRegistry {
     ) -> Arc<Self> {
         let client = ClientHandle::new(Arc::clone(&config));
         let model_resolver = ModelResolver::new(Arc::clone(&client));
+        let voice = HooksVoiceContext {
+            voice_turn_active,
+            voice_sink,
+            voice_engines,
+        };
         Arc::new(Self {
             client,
             config,
@@ -92,9 +88,7 @@ impl WorkerRegistry {
             memory_file,
             data_dir,
             mcp_servers,
-            voice_turn_active,
-            voice_sink,
-            voice_engines,
+            voice,
             goals: Mutex::new(None),
             consolidate: Mutex::new(None),
             decide: Mutex::new(None),
@@ -329,13 +323,7 @@ impl WorkerRegistry {
         let client = self.client.ensure_started().await?;
         let now = Local::now();
         let handler = BobeHandler::new(class);
-        let hooks = BobeHooks::new(
-            class,
-            Arc::clone(&self.memory_file),
-            Arc::clone(&self.voice_turn_active),
-            Arc::clone(&self.voice_sink),
-            Arc::clone(&self.voice_engines),
-        );
+        let hooks = BobeHooks::new(class, Arc::clone(&self.memory_file), self.voice.clone());
 
         let engine_snapshot = self.config.load().engine.clone();
         let (class_model, class_provider) = session_extras_for_class(&engine_snapshot, class);

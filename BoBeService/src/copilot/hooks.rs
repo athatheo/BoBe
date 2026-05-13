@@ -39,18 +39,26 @@ const VOICE_TOOL_RESULT_TRUNCATE_CHARS: usize = 800;
 /// few things") so two parallel tools don't read like a recipe.
 const COMPOUND_FILLER_WINDOW: Duration = Duration::from_millis(100);
 
-pub(crate) struct BobeHooks {
-    class: WorkerClass,
-    memory_file: Arc<MemoryFile>,
+/// Per-WorkerRegistry voice deps that BobeHooks reads on every fire.
+/// Bundled so callers don't drill 3 Arc clones on every BobeHooks::new.
+/// Cheap to clone (3 Arcs).
+#[derive(Clone)]
+pub(crate) struct HooksVoiceContext {
     /// Flipped by the voice handler around `session.send`. Hooks branch off it
     /// without per-message metadata support (Copilot SDK 0.1 has none).
-    voice_turn_active: Arc<AtomicBool>,
+    pub(crate) voice_turn_active: Arc<AtomicBool>,
     /// Active voice WS sink for PreToolUse / ErrorOccurred filler emission.
-    voice_sink: Arc<VoiceSink>,
+    pub(crate) voice_sink: Arc<VoiceSink>,
     /// Voice engines snapshot — `ArcSwap` so the install service can hot-swap
     /// after a successful download. Hooks read on every fire so a post-install
     /// reload picks up the new filler library without a daemon restart.
-    voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
+    pub(crate) voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
+}
+
+pub(crate) struct BobeHooks {
+    class: WorkerClass,
+    memory_file: Arc<MemoryFile>,
+    voice: HooksVoiceContext,
     /// Monotonic Instant of the most recent PreToolUse fire (None = never).
     /// Used to debounce parallel tool calls into a compound filler so two
     /// tools firing within COMPOUND_FILLER_WINDOW get one "Looking into a
@@ -63,22 +71,18 @@ impl BobeHooks {
     pub(crate) fn new(
         class: WorkerClass,
         memory_file: Arc<MemoryFile>,
-        voice_turn_active: Arc<AtomicBool>,
-        voice_sink: Arc<VoiceSink>,
-        voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
+        voice: HooksVoiceContext,
     ) -> Arc<Self> {
         Arc::new(Self {
             class,
             memory_file,
-            voice_turn_active,
-            voice_sink,
-            voice_engines,
+            voice,
             last_pretool_at: Mutex::new(None),
         })
     }
 
     fn is_voice_turn(&self) -> bool {
-        self.voice_turn_active.load(Ordering::Acquire)
+        self.voice.voice_turn_active.load(Ordering::Acquire)
     }
 }
 
@@ -119,7 +123,7 @@ impl SessionHooks for BobeHooks {
                 // Voice-tone hint goes AFTER the time/class context so it
                 // sits closer to the user message (LLMs weight recent
                 // instructions more strongly).
-                if self.voice_turn_active.load(Ordering::Acquire) {
+                if self.voice.voice_turn_active.load(Ordering::Acquire) {
                     context.push_str("\n\n");
                     context.push_str(VOICE_TONE_HINT);
                 }
@@ -157,7 +161,7 @@ impl SessionHooks for BobeHooks {
                 // PreToolUse fires within COMPOUND_FILLER_WINDOW_MS the
                 // second emission becomes ToolGeneric ("Looking into a few
                 // things") instead of stacking another per-tool phrase.
-                if let Some(library) = self.voice_engines.load().filler_library.as_ref() {
+                if let Some(library) = self.voice.voice_engines.load().filler_library.as_ref() {
                     let now = Instant::now();
                     let in_burst = {
                         let mut slot = self
@@ -182,7 +186,7 @@ impl SessionHooks for BobeHooks {
                         in_burst,
                         "voice.pre_tool_filler"
                     );
-                    emit_filler(&self.voice_sink, library, kind).await;
+                    emit_filler(&self.voice.voice_sink, library, kind).await;
                 }
                 HookOutput::None
             }
@@ -191,7 +195,7 @@ impl SessionHooks for BobeHooks {
                 // For voice turns: replace long tool results with a short
                 // marker so Kokoro doesn't read file dumps / search-result
                 // walls aloud. Text turns get the original result.
-                if !self.voice_turn_active.load(Ordering::Acquire) {
+                if !self.voice.voice_turn_active.load(Ordering::Acquire) {
                     return HookOutput::None;
                 }
                 let result_str = input.tool_result.to_string();
@@ -269,15 +273,12 @@ mod tests {
     fn build_hooks(voice_active: bool) -> (Arc<BobeHooks>, Arc<AtomicBool>) {
         let memory_file = MemoryFile::new(PathBuf::from("/tmp/bobe-test-memory.md"));
         let flag = Arc::new(AtomicBool::new(voice_active));
-        let sink = Arc::new(VoiceSink::new());
-        let engines = Arc::new(ArcSwap::from_pointee(VoiceEnginesSnapshot::default()));
-        let hooks = BobeHooks::new(
-            WorkerClass::Chat,
-            memory_file,
-            Arc::clone(&flag),
-            sink,
-            engines,
-        );
+        let voice = HooksVoiceContext {
+            voice_turn_active: Arc::clone(&flag),
+            voice_sink: Arc::new(VoiceSink::new()),
+            voice_engines: Arc::new(ArcSwap::from_pointee(VoiceEnginesSnapshot::default())),
+        };
+        let hooks = BobeHooks::new(WorkerClass::Chat, memory_file, voice);
         (hooks, flag)
     }
 
