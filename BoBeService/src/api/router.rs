@@ -41,7 +41,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         .route("/message", post(handlers::conversation::send_message))
         .route("/capture/start", post(handlers::capture::start_capture))
         .route("/capture/stop", post(handlers::capture::stop_capture))
-        .route("/capture/once", post(handlers::capture::capture_once))
         .route("/goals", get(handlers::goals::list_goals).post(handlers::goals::create_goal))
         .route(
             "/goals/{goal_id}",

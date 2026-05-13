@@ -23,7 +23,6 @@ use super::repos::Repositories;
 pub(crate) struct Wired {
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
-    pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
 }
 
@@ -136,7 +135,6 @@ pub(crate) async fn wire(
     Wired {
         goals_service,
         runtime_session,
-        screen_capture,
         config_manager,
     }
 }

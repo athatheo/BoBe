@@ -165,7 +165,6 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         user_profile_repo: repos.user_profile_repo,
         goals_service: wired.goals_service,
         runtime_session: wired.runtime_session,
-        screen_capture: wired.screen_capture,
         config_manager: wired.config_manager,
         mcp_config_lock: Arc::new(tokio::sync::Mutex::new(())),
         mdns_announcer: infra.mdns_announcer,

@@ -257,10 +257,7 @@
 "setup.engine.local.title" = "Run AI on this Mac";
 "setup.engine.title" = "How should BoBe think?";
 "setup.permissions.body" = "BoBe glances at your screen periodically so it can offer relevant help. Screenshots stay on this Mac.";
-"setup.permissions.denied" = "Screen Recording was denied";
-"setup.permissions.denied_hint" = "Open System Settings → Privacy & Security → Screen Recording to grant access.";
 "setup.permissions.grant" = "Grant access";
-"setup.permissions.granted" = "Screen Recording granted.";
 "setup.permissions.open_settings" = "Open System Settings";
 "setup.permissions.skip" = "Skip — set up later";
 "setup.permissions.title" = "Screen Recording";
@@ -388,7 +385,6 @@
 "voice.model.status.failed" = "Failed";
 "voice.model.status.canceled" = "Canceled";
 "settings.voice.empty.unreachable" = "Couldn't reach the daemon. Voice settings will appear once it's connected.";
-"settings.voice.partial.detail" = "Some voice models are missing. Use Reinstall below to recover.";
 "overlay.input.mic.disabled.thinking" = "BoBe is thinking…";
 "overlay.input.mic.disabled.speaking" = "BoBe is speaking — barge-in lands in M4.5.5";
 "overlay.input.mic.disabled.connecting" = "Connecting to voice…";

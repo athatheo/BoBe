@@ -17,7 +17,6 @@ use crate::voice::install_service::VoiceInstallService;
 use crate::voice::engines::VoiceEnginesSnapshot;
 use crate::voice::sinks::VoiceSink;
 use metrics_exporter_prometheus::PrometheusHandle;
-use crate::util::capture::ScreenCapture;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
@@ -31,7 +30,6 @@ pub(crate) struct AppState {
     pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
-    pub(crate) screen_capture: Arc<ScreenCapture>,
     pub(crate) config_manager: Arc<ConfigManager>,
     pub(crate) mcp_config_lock: Arc<Mutex<()>>,
     pub(crate) mdns_announcer: Arc<MdnsAnnouncer>,
