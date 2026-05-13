@@ -16,10 +16,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::extract::State;
-use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures::{SinkExt, StreamExt};
-use opus::{Channels, Decoder as OpusDecoder};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -27,15 +26,19 @@ use uuid::Uuid;
 
 use crate::app_state::AppState;
 use crate::runtime::session::RuntimeSession;
-use crate::speech::markdown_strip::MarkdownStripper;
 use crate::speech::protocol::{
     encode_tts_frame, ClientMessage, ControlAction, ServerMessage, VoicePhase, FLAG_FILLER,
     FLAG_FIRST_OF_TURN,
 };
-use crate::speech::sentence_buffer::SentenceBuffer;
 use crate::speech::{AcousticVad, SemanticTurn, StreamingSttEngine, TtsEngine};
 use crate::voice::filler_library::{FillerKind, FillerLibrary};
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
+use crate::voice::protocol_helpers::{close_with_error, send_error, send_json, send_state};
+use crate::voice::sentence_pipeline::SentencePipeline;
+use crate::voice::session::{
+    OPUS_INPUT_SAMPLE_RATE, SessionVoiceConfig, TTS_OUTPUT_SAMPLE_RATE,
+    TurnInFlight, VoiceDefaults, VoiceSession,
+};
 use crate::voice::cancel_phrases::is_cancel_phrase;
 use crate::voice::telemetry::{
     CTR_BARGE_IN_FALSE, CTR_BARGE_IN_SUCCESS, CTR_CANCEL_PHRASE, CTR_FILLER_TRIGGER,
@@ -43,9 +46,6 @@ use crate::voice::telemetry::{
     HIST_STT_MS,
 };
 
-const OPUS_INPUT_SAMPLE_RATE: u32 = 16_000;
-const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
-const OPUS_MAX_FRAME_SAMPLES: usize = 2_880;
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
 /// Server-initiated Ping cadence. The WS layer auto-responds to Pings with
 /// Pongs, so this also doubles as the client's freshness signal.
@@ -75,53 +75,6 @@ const MIN_WORDS_FOR_BARGE_IN: usize = 3;
 /// Matches LiveKit/Pipecat/ElevenLabs production threshold.
 const FILLER_TRIGGER: Duration = Duration::from_millis(800);
 
-// `VoiceConfig::default` in `config.rs` owns the canonical defaults
-// ("af_bella", 1.0). Keep them there to avoid split-brain with Swift
-// `VoicePanel.swift` fallbacks.
-
-/// Per-WS voice preferences carried in the Hello handshake. Stored on
-/// `VoiceSession` and read by the kokoro task. Falls back to the daemon's
-/// `voice.persona` / `voice.speed` defaults from `Config`, then to the
-/// hard-coded constants if neither layer supplies a value.
-#[derive(Clone)]
-struct SessionVoiceConfig {
-    voice_id: String,
-    speed: f32,
-}
-
-impl SessionVoiceConfig {
-    fn new(
-        voice_id: Option<String>,
-        speed: Option<f32>,
-        defaults: &VoiceDefaults,
-    ) -> Self {
-        Self {
-            voice_id: voice_id.unwrap_or_else(|| defaults.persona.clone()),
-            speed: speed.unwrap_or(defaults.speed).clamp(0.5, 2.0),
-        }
-    }
-}
-
-/// Snapshot of the daemon's voice defaults captured at WS-accept time.
-/// Decoupled from `Config` so the WS scope doesn't hold an `ArcSwap` guard
-/// across an `await`.
-#[derive(Clone)]
-struct VoiceDefaults {
-    enabled: bool,
-    persona: String,
-    speed: f32,
-}
-
-impl VoiceDefaults {
-    fn from_state(state: &AppState) -> Self {
-        let cfg = state.config();
-        Self {
-            enabled: cfg.voice.enabled,
-            persona: cfg.voice.persona.clone(),
-            speed: cfg.voice.speed,
-        }
-    }
-}
 
 pub(crate) async fn voice_stream(
     ws: WebSocketUpgrade,
@@ -156,39 +109,6 @@ impl VoiceEngines {
     }
 }
 
-/// Per-WS state — one struct, lives in the handle_socket future scope.
-struct VoiceSession {
-    session_id: String,
-    decoder: OpusDecoder,
-    /// JoinHandle on the spawned `process_turn` task plus the turn_id it owns.
-    /// `None` outside a turn; populated when audio commits, taken when a
-    /// barge-in or natural completion releases it.
-    current_turn: Option<TurnInFlight>,
-    /// Client-requested mute — incoming audio frames are dropped before VAD
-    /// while this is true. Toggled by Control{Mute|Unmute|Reset}.
-    muted: bool,
-    /// Count of speech segments dropped because a turn was already in
-    /// flight when a new segment arrived. M5.2 hammering pushback will
-    /// replace this drop policy with queueing/merge; until then we surface
-    /// the count so real-world rates are visible.
-    segments_dropped: u64,
-    /// Latest `played_ms` from PlaybackAck. Used as a tighter floor for
-    /// truncate offsets in barge-in when WS jitter delays the client's
-    /// `barge_in.playback_ms_played` value.
-    last_acked_played_ms: u64,
-    /// Per-WS voice preferences from the Hello handshake. Falls through to
-    /// defaults if the client didn't specify any.
-    voice_cfg: SessionVoiceConfig,
-    /// Most recent streaming-STT partial text, kept on the session so
-    /// MinWords barge-in gating (C3) + cancel-phrase detection (C7) can
-    /// inspect what the user has actually said so far this turn.
-    last_partial_text: String,
-}
-
-struct TurnInFlight {
-    turn_id: String,
-    join: JoinHandle<()>,
-}
 
 #[allow(
     clippy::collapsible_match,
@@ -614,42 +534,6 @@ async fn process_turn(
     );
 }
 
-struct SentencePipeline {
-    md: MarkdownStripper,
-    sb: SentenceBuffer,
-    tx: mpsc::Sender<String>,
-}
-
-impl SentencePipeline {
-    fn new(tx: mpsc::Sender<String>) -> Self {
-        Self {
-            md: MarkdownStripper::new(),
-            sb: SentenceBuffer::new(),
-            tx,
-        }
-    }
-
-    fn feed(&mut self, delta: &str) {
-        let clean = self.md.feed(delta);
-        if clean.is_empty() {
-            return;
-        }
-        for sentence in self.sb.feed(&clean) {
-            if self.tx.try_send(sentence).is_err() {
-                warn!("voice.sentence_channel_full_drop");
-            }
-        }
-    }
-
-    fn flush(&mut self) {
-        for sentence in self.sb.flush() {
-            if self.tx.try_send(sentence).is_err() {
-                warn!("voice.sentence_channel_full_flush_drop");
-            }
-        }
-    }
-}
-
 fn spawn_kokoro_task(
     tts: Arc<dyn TtsEngine>,
     mut sentence_rx: mpsc::Receiver<String>,
@@ -977,72 +861,4 @@ async fn handle_control_action(
     }
 }
 
-impl VoiceSession {
-    fn new(session_id: String, voice_cfg: SessionVoiceConfig) -> Result<Self, &'static str> {
-        let decoder = OpusDecoder::new(OPUS_INPUT_SAMPLE_RATE, Channels::Mono)
-            .map_err(|_| "create Opus decoder failed")?;
-        Ok(Self {
-            session_id,
-            decoder,
-            current_turn: None,
-            muted: false,
-            segments_dropped: 0,
-            last_acked_played_ms: 0,
-            voice_cfg,
-            last_partial_text: String::new(),
-        })
-    }
 
-    fn decode_opus(&mut self, packet: &[u8]) -> Result<Vec<f32>, String> {
-        let mut samples_i16 = vec![0_i16; OPUS_MAX_FRAME_SAMPLES];
-        let n = self
-            .decoder
-            .decode(packet, &mut samples_i16, false)
-            .map_err(|e| format!("opus decode: {e}"))?;
-        samples_i16.truncate(n);
-        Ok(samples_i16
-            .iter()
-            .map(|&s| f32::from(s) / 32_768.0)
-            .collect())
-    }
-}
-
-async fn close_with_error(socket: WebSocket, code: &str, message: &str) {
-    let (mut tx, _rx) = socket.split();
-    let payload = ServerMessage::Error {
-        code: code.to_string(),
-        message: message.to_string(),
-    };
-    if let Ok(text) = serde_json::to_string(&payload) {
-        drop(tx.send(Message::Text(Utf8Bytes::from(text))).await);
-    }
-}
-
-async fn send_state(out_tx: &mpsc::Sender<Message>, phase: VoicePhase, turn_id: &str) {
-    send_json(
-        out_tx,
-        &ServerMessage::State {
-            phase,
-            turn_id: turn_id.to_string(),
-        },
-    )
-    .await;
-}
-
-async fn send_error(out_tx: &mpsc::Sender<Message>, code: &str, message: &str) {
-    send_json(
-        out_tx,
-        &ServerMessage::Error {
-            code: code.to_string(),
-            message: message.to_string(),
-        },
-    )
-    .await;
-}
-
-async fn send_json<T: serde::Serialize>(out_tx: &mpsc::Sender<Message>, msg: &T) {
-    let Ok(text) = serde_json::to_string(msg) else {
-        return;
-    };
-    drop(out_tx.send(Message::Text(Utf8Bytes::from(text))).await);
-}
