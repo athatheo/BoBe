@@ -26,6 +26,8 @@ actor BackendService {
     private let dataDir: URL
     private let pidFilePath: URL
     private(set) var lastError: String?
+    /// Non-fatal — daemon /health OK but a subsystem reported degraded.
+    private(set) var startupWarning: String?
     private var stateContinuation: AsyncStream<ServiceState>.Continuation?
     nonisolated let stateStream: AsyncStream<ServiceState>
 
@@ -99,6 +101,7 @@ actor BackendService {
 
         logger.info("Starting bobe backend: \(binaryPath)")
         self.lastError = nil
+        self.startupWarning = nil
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: binaryPath)
@@ -172,7 +175,7 @@ actor BackendService {
         logger.info("bobe backend healthy (PID: \(proc.processIdentifier))")
     }
 
-    /// Exponential backoff health polling.
+    /// Daemon returns 200 even on degraded DB — inspect body, not status.
     private func waitForHealth() async throws {
         var delay: TimeInterval = 0.2
         let maxAttempts = 30
@@ -182,7 +185,11 @@ actor BackendService {
             if self.process?.isRunning != true { throw BackendServiceError.processExitedDuringHealthCheck }
 
             do {
-                _ = try await DaemonClient.shared.health()
+                let response = try await DaemonClient.shared.health()
+                if let services = response.services, services.database != "ok" {
+                    logger.warning("Backend database degraded: \(services.database)")
+                    self.startupWarning = L10n.tr("app.service_warning.database_degraded")
+                }
                 return
             } catch {
                 logger.debug("Health check attempt \(attempt)/\(maxAttempts) failed, retrying in \(delay)s")

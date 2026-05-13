@@ -1,150 +1,101 @@
 import Foundation
 
+// MARK: - Settings
+
+/// Engine fields hot-swap: PATCH triggers daemon worker registry reload.
 struct DaemonSettings: Codable, Sendable {
-    var llmBackend: String
-    var ollamaModel: String
-    var openaiModel: String
-    var openaiApiKeySet: Bool
-    var azureOpenaiEndpoint: String
-    var azureOpenaiDeployment: String
-    var azureOpenaiApiKeySet: Bool
     var captureEnabled: Bool
     var captureIntervalSeconds: Int
     var checkinEnabled: Bool
     var checkinTimes: [String]
     var checkinJitterMinutes: Int
-    var learningEnabled: Bool
-    var learningIntervalMinutes: Int
     var conversationInactivityTimeoutSeconds: Int
     var conversationAutoCloseMinutes: Int
-    var conversationSummaryEnabled: Bool
     var goalCheckIntervalSeconds: Double
-    var projectsDirectory: String
-    var toolsEnabled: Bool
-    var toolsMaxIterations: Int
     var mcpEnabled: Bool
-    var similarityDeduplicationThreshold: Double
-    var similaritySearchRecallThreshold: Double
-    var similarityClusteringThreshold: Double
-    var memoryShortTermRetentionDays: Int
-    var memoryLongTermRetentionDays: Int
-    var goalWorkerEnabled: Bool
-    var goalWorkerAutonomous: Bool
-    var goalWorkerMaxConcurrent: Int
-    var visionBackend: String
-    var visionOllamaModel: String
-    var localeOverride: String?
-    var effectiveLocale: String
-    var supportedLocales: [String]
+    var engine: String
+    var providerBaseUrl: String?
+    var providerChatModel: String?
+    var providerBatchModel: String?
+    var providerVisionModel: String?
+    var providerChatReasoning: String?
+    var providerBatchReasoning: String?
+    var providerVisionReasoning: String?
+    var providerOffline: Bool
+    var voiceEnabled: Bool
+    var voicePersona: String
+    var voiceSpeed: Float
 
     enum CodingKeys: String, CodingKey {
-        case llmBackend = "llm_backend"
-        case ollamaModel = "ollama_model"
-        case openaiModel = "openai_model"
-        case openaiApiKeySet = "openai_api_key_set"
-        case azureOpenaiEndpoint = "azure_openai_endpoint"
-        case azureOpenaiDeployment = "azure_openai_deployment"
-        case azureOpenaiApiKeySet = "azure_openai_api_key_set"
         case captureEnabled = "capture_enabled"
         case captureIntervalSeconds = "capture_interval_seconds"
         case checkinEnabled = "checkin_enabled"
         case checkinTimes = "checkin_times"
         case checkinJitterMinutes = "checkin_jitter_minutes"
-        case learningEnabled = "learning_enabled"
-        case learningIntervalMinutes = "learning_interval_minutes"
         case conversationInactivityTimeoutSeconds = "conversation_inactivity_timeout_seconds"
         case conversationAutoCloseMinutes = "conversation_auto_close_minutes"
-        case conversationSummaryEnabled = "conversation_summary_enabled"
         case goalCheckIntervalSeconds = "goal_check_interval_seconds"
-        case projectsDirectory = "projects_directory"
-        case toolsEnabled = "tools_enabled"
-        case toolsMaxIterations = "tools_max_iterations"
         case mcpEnabled = "mcp_enabled"
-        case similarityDeduplicationThreshold = "similarity_deduplication_threshold"
-        case similaritySearchRecallThreshold = "similarity_search_recall_threshold"
-        case similarityClusteringThreshold = "similarity_clustering_threshold"
-        case memoryShortTermRetentionDays = "memory_short_term_retention_days"
-        case memoryLongTermRetentionDays = "memory_long_term_retention_days"
-        case goalWorkerEnabled = "goal_worker_enabled"
-        case goalWorkerAutonomous = "goal_worker_autonomous"
-        case goalWorkerMaxConcurrent = "goal_worker_max_concurrent"
-        case visionBackend = "vision_backend"
-        case visionOllamaModel = "vision_ollama_model"
-        case localeOverride = "locale_override"
-        case effectiveLocale = "effective_locale"
-        case supportedLocales = "supported_locales"
+        case engine
+        case providerBaseUrl = "provider_base_url"
+        case providerChatModel = "provider_chat_model"
+        case providerBatchModel = "provider_batch_model"
+        case providerVisionModel = "provider_vision_model"
+        case providerChatReasoning = "provider_chat_reasoning"
+        case providerBatchReasoning = "provider_batch_reasoning"
+        case providerVisionReasoning = "provider_vision_reasoning"
+        case providerOffline = "provider_offline"
+        case voiceEnabled = "voice_enabled"
+        case voicePersona = "voice_persona"
+        case voiceSpeed = "voice_speed"
     }
 }
 
 struct SettingsUpdateRequest: Codable, Sendable {
-    var llmBackend: String?
-    var ollamaModel: String?
-    var openaiModel: String?
-    var openaiApiKey: String?
-    var azureOpenaiEndpoint: String?
-    var azureOpenaiDeployment: String?
-    var azureOpenaiApiKey: String?
     var captureEnabled: Bool?
     var captureIntervalSeconds: Int?
     var checkinEnabled: Bool?
     var checkinTimes: [String]?
     var checkinJitterMinutes: Int?
-    var learningEnabled: Bool?
-    var learningIntervalMinutes: Int?
     var conversationInactivityTimeoutSeconds: Int?
     var conversationAutoCloseMinutes: Int?
-    var conversationSummaryEnabled: Bool?
     var goalCheckIntervalSeconds: Double?
-    var projectsDirectory: String?
-    var toolsEnabled: Bool?
-    var toolsMaxIterations: Int?
     var mcpEnabled: Bool?
-    var similarityDeduplicationThreshold: Double?
-    var similaritySearchRecallThreshold: Double?
-    var similarityClusteringThreshold: Double?
-    var memoryShortTermRetentionDays: Int?
-    var memoryLongTermRetentionDays: Int?
-    var goalWorkerEnabled: Bool?
-    var goalWorkerAutonomous: Bool?
-    var goalWorkerMaxConcurrent: Int?
-    var visionBackend: String?
-    var visionOllamaModel: String?
-    var localeOverride: String?
+    var engine: String?
+    var providerBaseUrl: String?
+    var providerChatModel: String?
+    var providerBatchModel: String?
+    var providerVisionModel: String?
+    var providerChatReasoning: String?
+    var providerBatchReasoning: String?
+    var providerVisionReasoning: String?
+    var providerOffline: Bool?
+    var voiceEnabled: Bool?
+    var voicePersona: String?
+    var voiceSpeed: Float?
 
     enum CodingKeys: String, CodingKey {
-        case llmBackend = "llm_backend"
-        case ollamaModel = "ollama_model"
-        case openaiModel = "openai_model"
-        case openaiApiKey = "openai_api_key"
-        case azureOpenaiEndpoint = "azure_openai_endpoint"
-        case azureOpenaiDeployment = "azure_openai_deployment"
-        case azureOpenaiApiKey = "azure_openai_api_key"
         case captureEnabled = "capture_enabled"
         case captureIntervalSeconds = "capture_interval_seconds"
         case checkinEnabled = "checkin_enabled"
         case checkinTimes = "checkin_times"
         case checkinJitterMinutes = "checkin_jitter_minutes"
-        case learningEnabled = "learning_enabled"
-        case learningIntervalMinutes = "learning_interval_minutes"
         case conversationInactivityTimeoutSeconds = "conversation_inactivity_timeout_seconds"
         case conversationAutoCloseMinutes = "conversation_auto_close_minutes"
-        case conversationSummaryEnabled = "conversation_summary_enabled"
         case goalCheckIntervalSeconds = "goal_check_interval_seconds"
-        case projectsDirectory = "projects_directory"
-        case toolsEnabled = "tools_enabled"
-        case toolsMaxIterations = "tools_max_iterations"
         case mcpEnabled = "mcp_enabled"
-        case similarityDeduplicationThreshold = "similarity_deduplication_threshold"
-        case similaritySearchRecallThreshold = "similarity_search_recall_threshold"
-        case similarityClusteringThreshold = "similarity_clustering_threshold"
-        case memoryShortTermRetentionDays = "memory_short_term_retention_days"
-        case memoryLongTermRetentionDays = "memory_long_term_retention_days"
-        case goalWorkerEnabled = "goal_worker_enabled"
-        case goalWorkerAutonomous = "goal_worker_autonomous"
-        case goalWorkerMaxConcurrent = "goal_worker_max_concurrent"
-        case visionBackend = "vision_backend"
-        case visionOllamaModel = "vision_ollama_model"
-        case localeOverride = "locale_override"
+        case engine
+        case providerBaseUrl = "provider_base_url"
+        case providerChatModel = "provider_chat_model"
+        case providerBatchModel = "provider_batch_model"
+        case providerVisionModel = "provider_vision_model"
+        case providerChatReasoning = "provider_chat_reasoning"
+        case providerBatchReasoning = "provider_batch_reasoning"
+        case providerVisionReasoning = "provider_vision_reasoning"
+        case providerOffline = "provider_offline"
+        case voiceEnabled = "voice_enabled"
+        case voicePersona = "voice_persona"
+        case voiceSpeed = "voice_speed"
     }
 }
 
@@ -152,59 +103,14 @@ struct SettingsUpdateResponse: Codable, Sendable {
     let message: String
     let appliedFields: [String]
     let restartRequiredFields: [String]
+    /// `true` = in-memory swap OK but writing config.toml failed; won't survive restart.
+    var persistFailed: Bool?
 
     enum CodingKeys: String, CodingKey {
         case message
         case appliedFields = "applied_fields"
         case restartRequiredFields = "restart_required_fields"
-    }
-}
-
-// MARK: - Goal Worker
-
-struct GoalWorkerStatusResponse: Codable, Sendable {
-    let enabled: Bool
-    let maxConcurrent: Int
-    let activeGoalsCount: Int
-    let pendingApprovalCount: Int
-
-    enum CodingKeys: String, CodingKey {
-        case enabled
-        case maxConcurrent = "max_concurrent"
-        case activeGoalsCount = "active_goals_count"
-        case pendingApprovalCount = "pending_approval_count"
-    }
-}
-
-// MARK: - Models (LLM Model Management)
-
-struct ModelInfo: Identifiable, Codable, Sendable {
-    var id: String {
-        self.name
-    }
-
-    let name: String
-    let sizeBytes: Int
-    let modifiedAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case sizeBytes = "size_bytes"
-        case modifiedAt = "modified_at"
-    }
-}
-
-struct ModelsListResponse: Codable, Sendable {
-    let backend: String
-    let models: [ModelInfo]
-    let supportsPull: Bool
-    /// Set when Ollama is unavailable; models will be empty in that case.
-    let ollamaError: String?
-
-    enum CodingKeys: String, CodingKey {
-        case backend, models
-        case supportsPull = "supports_pull"
-        case ollamaError = "ollama_error"
+        case persistFailed = "persist_failed"
     }
 }
 
@@ -214,24 +120,37 @@ struct SendMessageRequest: Codable, Sendable {
     let content: String
 }
 
-struct HealthResponse: Codable, Sendable {
-    let status: String
-    let setupCompleted: Bool?
+struct SendMessageResponse: Codable, Sendable {
+    let messageId: String
 
     enum CodingKeys: String, CodingKey {
-        case status
-        case setupCompleted = "setup_completed"
+        case messageId = "message_id"
     }
 }
 
-// MARK: - Onboarding
+/// Always returns 200 even on DB error — inspect `services.database`, not status.
+struct HealthResponse: Codable, Sendable {
+    let status: String
+    let version: String?
+    let services: HealthServices?
+}
 
-struct OnboardingStatusResponse: Codable, Sendable {
-    let needsOnboarding: Bool
-    let complete: Bool
+struct HealthServices: Codable, Sendable {
+    let database: String
+}
+
+struct StatusResponse: Codable, Sendable {
+    let indicator: String
+    let capturing: Bool
+    let acceptingUserMessages: Bool
+    let version: String?
 
     enum CodingKeys: String, CodingKey {
-        case needsOnboarding = "needs_onboarding"
-        case complete
+        case indicator, capturing, version
+        case acceptingUserMessages = "accepting_user_messages"
+    }
+
+    var indicatorType: IndicatorType {
+        IndicatorType(rawValue: self.indicator) ?? .unknown
     }
 }

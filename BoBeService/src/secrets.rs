@@ -1,6 +1,4 @@
-//! macOS Data Protection Keychain integration for API key storage.
-//!
-//! Uses code-signing identity auth (macOS 10.15+, signed binaries, same team ID).
+//! Data Protection Keychain (macOS 10.15+); auth via code-signing identity.
 
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
@@ -13,23 +11,14 @@ use security_framework_sys::item::{
 };
 use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
 
-// Not always in security_framework_sys — declare it ourselves.
-// SAFETY: kSecUseDataProtectionKeychain is a well-known Security framework symbol
-// available on macOS 10.15+. We declare it as an extern static because some versions
-// of security_framework_sys do not export it.
+// SAFETY: well-known Security framework symbol (macOS 10.15+);
+// some `security_framework_sys` versions don't export it, so we declare here.
 unsafe extern "C" {
     static kSecUseDataProtectionKeychain: core_foundation_sys::string::CFStringRef;
 }
 use tracing::{info, warn};
 
 const SERVICE_NAME: &str = "com.bobe.app";
-
-/// Dotted config keys that map to keychain accounts.
-pub(crate) static SECRET_FIELDS: &[&str] = &[
-    "llm.openai_api_key",
-    "llm.azure_openai_api_key",
-    "llm.anthropic_api_key",
-];
 
 fn base_query(account: &str) -> CFMutableDictionary {
     let mut query = CFMutableDictionary::new();
@@ -67,7 +56,7 @@ fn base_query(account: &str) -> CFMutableDictionary {
     query
 }
 
-/// Store a secret, replacing any existing entry.
+/// Replaces any existing entry; empty value = delete.
 pub(crate) fn store_secret(account: &str, value: &str) -> Result<(), String> {
     if value.is_empty() {
         let _ignored = delete_secret(account);
@@ -130,9 +119,8 @@ pub(crate) fn read_secret(account: &str) -> Option<String> {
         return None;
     }
 
-    // SAFETY: SecItemCopyMatching returned errSecSuccess and a non-null result,
-    // which follows the Create Rule — we own the reference and must release it.
-    // Casting to CFDataRef is valid because we requested kSecReturnData.
+    // SAFETY: success + non-null result → Create Rule → we own and must release.
+    // Cast to CFDataRef valid because we requested kSecReturnData above.
     let data = unsafe { CFData::wrap_under_create_rule(result.cast()) };
     String::from_utf8(data.bytes().to_vec()).ok()
 }
@@ -150,36 +138,4 @@ pub(crate) fn delete_secret(account: &str) -> Result<(), String> {
             "Failed to delete secret '{account}': OSStatus {status}"
         ))
     }
-}
-
-/// Returns dotted-key → value map of all secrets from Keychain.
-pub(crate) fn load_secrets() -> std::collections::HashMap<String, String> {
-    let mut secrets = std::collections::HashMap::new();
-
-    for &field in SECRET_FIELDS {
-        let account = keychain_account(field);
-        if let Some(value) = read_secret(&account)
-            && !value.is_empty()
-        {
-            secrets.insert(field.to_string(), value);
-        }
-    }
-
-    if !secrets.is_empty() {
-        info!(count = secrets.len(), "secrets.loaded_from_keychain");
-    }
-
-    secrets
-}
-
-pub(crate) fn is_secret_field(dotted_key: &str) -> bool {
-    SECRET_FIELDS.contains(&dotted_key)
-}
-
-fn keychain_account(dotted_key: &str) -> String {
-    dotted_key
-        .split('.')
-        .next_back()
-        .unwrap_or(dotted_key)
-        .to_string()
 }

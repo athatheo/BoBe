@@ -1,71 +1,61 @@
 use arc_swap::ArcSwap;
-use reqwest::Client;
 use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::sync::Mutex;
 
-use crate::binary_manager::BinaryManager;
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
-use crate::db::AgentJobRepository;
-use crate::db::ConversationRepository;
-use crate::db::CooldownRepository;
-use crate::db::GoalPlanRepository;
-use crate::db::GoalRepository;
-use crate::db::LearningStateRepository;
-use crate::db::MemoryRepository;
-use crate::db::ObservationRepository;
+use crate::copilot::memory_file::MemoryFile;
+use crate::copilot::registry::WorkerRegistry;
 use crate::db::SoulRepository;
 use crate::db::UserProfileRepository;
-use crate::llm::EmbeddingProvider;
-use crate::llm::LlmProvider;
-use crate::llm::ollama_manager::OllamaManager;
-use crate::runtime::learning::LearningLoop;
 use crate::runtime::session::RuntimeSession;
-use crate::services::context_assembler::ContextAssembler;
-use crate::services::conversation_service::ConversationService;
 use crate::services::goals::goals_service::GoalsService;
-use crate::tools::mcp::adapter::McpToolAdapter;
-use crate::tools::registry::ToolRegistry;
-use crate::util::capture::ScreenCapture;
+use crate::services::ollama_install_service::OllamaInstallService;
+use crate::voice::install_service::VoiceInstallService;
+use crate::voice::engines::VoiceEnginesSnapshot;
+use crate::voice::sinks::VoiceSink;
+use metrics_exporter_prometheus::PrometheusHandle;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
 
-/// Shared application state (Axum `State` extractor).
-#[allow(dead_code)]
 pub(crate) struct AppState {
     pub(crate) db: SqlitePool,
     pub(crate) config: Arc<ArcSwap<Config>>,
-    pub(crate) http_client: Client,
     pub(crate) event_queue: Arc<EventQueue>,
     pub(crate) connection_manager: Arc<SseConnectionManager>,
-    pub(crate) llm_provider: Arc<dyn LlmProvider>,
-    pub(crate) vision_llm_provider: Option<Arc<dyn LlmProvider>>,
-    pub(crate) embedding_provider: Arc<dyn EmbeddingProvider>,
-    pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
-    pub(crate) memory_repo: Arc<dyn MemoryRepository>,
-    pub(crate) goal_repo: Arc<dyn GoalRepository>,
-    pub(crate) observation_repo: Arc<dyn ObservationRepository>,
-    pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
-    pub(crate) learning_state_repo: Arc<dyn LearningStateRepository>,
-    pub(crate) agent_job_repo: Arc<dyn AgentJobRepository>,
     pub(crate) soul_repo: Arc<dyn SoulRepository>,
     pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
-    pub(crate) goal_plan_repo: Arc<dyn GoalPlanRepository>,
-    pub(crate) conversation_service: Arc<ConversationService>,
-    pub(crate) context_assembler: Arc<ContextAssembler>,
     pub(crate) goals_service: Arc<GoalsService>,
-    pub(crate) tool_registry: Arc<ToolRegistry>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
-    pub(crate) learning_loop: Option<Arc<LearningLoop>>,
-    pub(crate) screen_capture: Arc<ScreenCapture>,
-    pub(crate) ollama_manager: Arc<OllamaManager>,
-    pub(crate) binary_manager: Arc<BinaryManager>,
     pub(crate) config_manager: Arc<ConfigManager>,
-    pub(crate) mcp_tool_adapter: Option<Arc<McpToolAdapter>>,
     pub(crate) mcp_config_lock: Arc<Mutex<()>>,
     pub(crate) mdns_announcer: Arc<MdnsAnnouncer>,
+    pub(crate) workers: Arc<WorkerRegistry>,
+    pub(crate) memory_file: Arc<MemoryFile>,
+    pub(crate) ollama_install: Arc<OllamaInstallService>,
+    /// Daemon-owned voice-model installer. Wizard + Settings call its
+    /// HTTP endpoints; legacy `scripts/install-voice-models.sh` is gone.
+    pub(crate) voice_install: Arc<VoiceInstallService>,
+    /// All voice engines under one ArcSwap so the installer can hot-swap
+    /// on completion — no daemon restart. WS handler captures the snapshot
+    /// at connect time so a mid-session install doesn't yank engines
+    /// from an in-flight turn. Hooks (PreToolUse, PostToolUse) read at
+    /// fire time so post-install reloads pick up the new filler library.
+    pub(crate) voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
+    /// Voice-turn signal — flipped true by `voice.rs` while a voice turn is
+    /// in flight so `BobeHooks` can branch on tone/filler behavior. Cleared
+    /// via the guard in `voice.rs::process_turn`. Safe under single-flight
+    /// serialization (UserMessageGuard + chat submit_lock).
+    pub(crate) voice_turn_active: Arc<AtomicBool>,
+    /// Single-slot voice sink that hooks (PreToolUse, ErrorOccurred) read
+    /// to push cached filler PCM directly to the active client.
+    pub(crate) voice_sink: Arc<VoiceSink>,
+    /// Prometheus exposition handle. The `/metrics` route calls `.render()`
+    /// on each request to produce the text-format snapshot.
+    pub(crate) metrics_handle: PrometheusHandle,
 }
 
 impl AppState {

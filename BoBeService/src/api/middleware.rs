@@ -15,7 +15,6 @@ pub(crate) struct AllowedHosts {
 }
 
 impl AllowedHosts {
-    /// Build allowed-hosts set. `0.0.0.0` allows all interfaces; otherwise localhost-only.
     pub(crate) fn new(host: &str, port: u16) -> Self {
         let mut set = HashSet::new();
         set.insert(format!("127.0.0.1:{port}"));
@@ -34,7 +33,7 @@ impl AllowedHosts {
     }
 }
 
-/// Host header validation middleware to block DNS rebinding attacks.
+/// Host header validation to block DNS rebinding attacks.
 pub(crate) async fn host_validation(
     axum::extract::Extension(allowed): axum::extract::Extension<AllowedHosts>,
     req: Request<Body>,
@@ -59,7 +58,6 @@ pub(crate) async fn host_validation(
     next.run(req).await
 }
 
-/// Request logging middleware with unique request ID.
 pub(crate) async fn request_logging(req: Request<Body>, next: Next) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string()[..12].to_string();
     let method = req.method().clone();

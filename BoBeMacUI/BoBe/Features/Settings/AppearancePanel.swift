@@ -130,7 +130,6 @@ struct ThemeCard: View {
     }
 }
 
-/// Mini closed eye arc for theme card preview
 private struct ClosedEyeArc: View {
     let color: Color
 

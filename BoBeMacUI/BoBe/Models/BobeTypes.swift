@@ -14,12 +14,11 @@ enum BobeStateType: String, Sendable, Equatable {
     case shuttingDown = "shutting_down"
 }
 
-/// Matches Rust SCREAMING_SNAKE_CASE indicator variants.
+/// Tool dispatch surfaces only as `tool_call_*` SSE events, not as an indicator.
 enum IndicatorType: String, Codable, Sendable, Equatable {
     case idle = "IDLE"
     case screenCapture = "SCREEN_CAPTURE"
     case thinking = "THINKING"
-    case toolCalling = "TOOL_CALLING"
     case streaming = "STREAMING"
     case unknown
 
@@ -103,6 +102,13 @@ struct BobeContext: Sendable {
     var shuttingDown = false
     var lastMessage: String?
     var errorMessage: String?
+    /// Recoverable trigger errors (vision breaker, capture timeout) — tertiary tint.
+    var softWarning: String?
+    var indicatorMessage: String?
+    /// Defaults to `true` so the composer is enabled until daemon says otherwise.
+    var acceptingUserMessages = true
+    /// `true` during the 3s pre-clear window after `conversation_closed`.
+    var conversationEnding = false
     var currentMessage = ""
     var messages: [ChatMessage] = []
     var failedSendRecoveries: [FailedSendRecovery] = []

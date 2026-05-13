@@ -3,18 +3,13 @@ use chrono::{DateTime, Duration, Utc};
 use super::ids::CooldownId;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) struct CooldownInfo {
     pub(crate) remaining: Duration,
-    pub(crate) cooldown_minutes: i64,
     /// Either `"user_response"` or `"ai_engagement"`.
     pub(crate) cooldown_type: String,
 }
 
-/// Tracks cooldown state for proactive engagement.
-///
-/// Single-row table — enforced by application logic.
-/// Survives server restarts (ADR-0003).
+/// Single-row table (enforced by application). Survives restarts (ADR-0003).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Cooldown {
     pub(crate) id: CooldownId,
@@ -36,7 +31,6 @@ impl Cooldown {
         }
     }
 
-    /// Returns `Some(CooldownInfo)` if in cooldown, `None` if ready to engage.
     pub(crate) fn check_cooldown(
         &self,
         base_minutes: i64,
@@ -50,7 +44,6 @@ impl Cooldown {
             if elapsed < extended {
                 return Some(CooldownInfo {
                     remaining: extended - elapsed,
-                    cooldown_minutes: extended_minutes,
                     cooldown_type: "user_response".to_owned(),
                 });
             }
@@ -62,7 +55,6 @@ impl Cooldown {
             if elapsed < base {
                 return Some(CooldownInfo {
                     remaining: base - elapsed,
-                    cooldown_minutes: base_minutes,
                     cooldown_type: "ai_engagement".to_owned(),
                 });
             }
@@ -72,8 +64,3 @@ impl Cooldown {
     }
 }
 
-impl Default for Cooldown {
-    fn default() -> Self {
-        Self::new()
-    }
-}

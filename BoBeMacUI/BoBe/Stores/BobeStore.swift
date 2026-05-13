@@ -17,13 +17,15 @@ final class BobeStore {
     private(set) var isBackendFatal = false
     private var hasConnectedOnce = false
 
-    // MARK: - Locale
+    // MARK: - Locale (client-side only)
 
-    var localeOverride: String = ""
-    var effectiveLocale: String = "en"
-    var supportedLocales: [String] = []
-    /// Increments on locale change to force SwiftUI views to re-evaluate L10n.tr() calls.
-    private(set) var localeVersion: Int = 0
+    /// Empty string means "follow system locale".
+    private static let localeOverrideKey = "bobe.locale_override"
+    static let supportedLocales = [
+        "en-US", "el-GR", "zh-CN", "de-DE", "es-ES", "pt-BR", "ko-KR", "ja-JP", "fr-FR",
+    ]
+    private(set) var localeOverride: String =
+        UserDefaults.standard.string(forKey: BobeStore.localeOverrideKey) ?? ""
 
     var stateType: BobeStateType {
         self.context.stateType
@@ -69,6 +71,22 @@ final class BobeStore {
         self.context.capturePermissionMissing
     }
 
+    var softWarning: String? {
+        self.context.softWarning
+    }
+
+    var indicatorMessage: String? {
+        self.context.indicatorMessage
+    }
+
+    var conversationEnding: Bool {
+        self.context.conversationEnding
+    }
+
+    var canSendMessage: Bool {
+        self.context.daemonConnected && self.context.acceptingUserMessages
+    }
+
     var isInitialConnectionPending: Bool {
         !self.hasConnectedOnce && !self.context.daemonConnected && !self.isBackendFatal
     }
@@ -88,6 +106,10 @@ final class BobeStore {
         }
         if self.context.captureInProgress {
             return .capturing
+        }
+        // Daemon flag covers SSE-vs-daemon race; without this, rapid double-sends 409.
+        if !self.context.acceptingUserMessages {
+            return .thinking
         }
         return nil
     }
@@ -213,12 +235,18 @@ final class BobeStore {
         self.updateState { $0.shuttingDown = true }
     }
 
-    // MARK: - Locale
-
     func updateLocale(_ newOverride: String) {
         self.localeOverride = newOverride
-        self.localeVersion += 1
+        if newOverride.isEmpty {
+            UserDefaults.standard.removeObject(forKey: BobeStore.localeOverrideKey)
+        } else {
+            UserDefaults.standard.set(newOverride, forKey: BobeStore.localeOverrideKey)
+        }
         L10n.setLocaleOverride(newOverride.isEmpty ? nil : newOverride)
+    }
+
+    func applyPersistedLocale() {
+        L10n.setLocaleOverride(self.localeOverride.isEmpty ? nil : self.localeOverride)
     }
 
     // MARK: - Actions
@@ -227,6 +255,16 @@ final class BobeStore {
         self.updateState { ctx in
             ctx.errorMessage = nil
             ctx.daemonError = false
+        }
+    }
+
+    func dismissSoftWarning() {
+        self.updateState { $0.softWarning = nil }
+    }
+
+    func surfaceWarning(_ message: String) {
+        self.updateState { ctx in
+            ctx.errorMessage = message
         }
     }
 
@@ -255,6 +293,24 @@ final class BobeStore {
         }
     }
 
+    /// Voice variant — the daemon has already persisted the user turn server-side
+    /// (via `handle_user_message_with_observer`), so we just mirror it into the
+    /// overlay chat history without firing another HTTP send.
+    func appendUserVoiceMessage(_ content: String) {
+        self.cancelConversationClear()
+        let userMessage = ChatMessage(
+            id: "voice-\(Int(Date().timeIntervalSince1970 * 1000))",
+            sender: .user,
+            content: content,
+            isPending: false
+        )
+        self.updateState { ctx in
+            ctx.errorMessage = nil
+            ctx.conversationEnding = false
+            ctx.messages.append(userMessage)
+        }
+    }
+
     func sendMessage(_ content: String) async {
         self.cancelConversationClear()
         let userMessage = ChatMessage(
@@ -265,6 +321,7 @@ final class BobeStore {
         )
         self.updateState { ctx in
             ctx.errorMessage = nil
+            ctx.conversationEnding = false
             ctx.messages.append(userMessage)
         }
 
@@ -272,18 +329,32 @@ final class BobeStore {
             try await client.sendMessage(content)
             self.updateState { ctx in
                 Self.markMessageSent(userMessage.id, messages: &ctx.messages)
+                // Optimistic lock — closes SSE-vs-daemon indicator race.
+                ctx.acceptingUserMessages = false
             }
         } catch {
+            // 409 = daemon busy; retry banner suffices, skip red banner.
+            let isBusy409 = Self.isBusy409(error)
             logger.error("sendMessage failed: \(error.localizedDescription)")
             self.updateState { ctx in
                 Self.removeMessage(userMessage.id, messages: &ctx.messages)
                 ctx.failedSendRecoveries.append(
                     FailedSendRecovery(id: userMessage.id, content: content)
                 )
-                ctx.errorMessage = error.localizedDescription
-                ctx.daemonError = false
+                if !isBusy409 {
+                    ctx.errorMessage = error.localizedDescription
+                    ctx.daemonError = false
+                }
+                ctx.acceptingUserMessages = !isBusy409
             }
         }
+    }
+
+    private static func isBusy409(_ error: any Error) -> Bool {
+        if case let DaemonError.httpError(statusCode, _) = error {
+            return statusCode == 409
+        }
+        return false
     }
 
     func dismissFailedSendRecovery(_ recoveryId: String) {
@@ -324,12 +395,11 @@ final class BobeStore {
                 self.handleIndicator(payload)
             }
         case .textDelta:
+            // `done: true` is the end-of-turn marker.
             if let payload = try? bundle.payload.decode(as: TextDeltaPayload.self) {
                 self.handleTextDelta(payload, messageId: bundle.messageId)
             }
-        case .toolCall, .toolCallStart:
-            self.handleToolCall(bundle.payload)
-        case .toolCallComplete:
+        case .toolCallStart, .toolCallComplete:
             self.handleToolCall(bundle.payload)
         case .conversationClosed:
             if let payload = try? bundle.payload.decode(as: ConversationClosedPayload.self) {
@@ -337,16 +407,8 @@ final class BobeStore {
             }
         case .error:
             if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
-                logger.error("Daemon error: \(payload.message)")
-                if !payload.recoverable {
-                    self.updateState { ctx in
-                        ctx.errorMessage = payload.message
-                        ctx.daemonError = true
-                    }
-                }
+                self.handleErrorPayload(payload)
             }
-        case .endOfTurn:
-            self.finalizeStreamingMessage()
         case .heartbeat, .unknown:
             break
         }
@@ -360,8 +422,7 @@ final class BobeStore {
             return
         }
 
-        let bubbleIndicators: Set<IndicatorType> = [.thinking, .toolCalling]
-        let activeIndicator: IndicatorType? = bubbleIndicators.contains(indicator) ? indicator : nil
+        let activeIndicator: IndicatorType? = (indicator == .thinking) ? .thinking : nil
 
         self.updateState { ctx in
             switch indicator {
@@ -369,27 +430,50 @@ final class BobeStore {
                 ctx.captureInProgress = false
                 ctx.thinking = false
                 ctx.speaking = false
+                ctx.acceptingUserMessages = true
             case .screenCapture:
                 ctx.captureInProgress = true
                 ctx.thinking = false
                 ctx.speaking = false
-            case .toolCalling, .thinking:
+                ctx.acceptingUserMessages = false
+            case .thinking:
                 ctx.captureInProgress = false
                 ctx.thinking = true
                 ctx.speaking = false
+                ctx.acceptingUserMessages = false
             case .streaming:
                 ctx.captureInProgress = false
                 let hasVisibleText = self.hasVisibleGlyphs(self.streamingMessage) || self.hasVisibleGlyphs(ctx.currentMessage)
                 ctx.thinking = !hasVisibleText
                 ctx.speaking = hasVisibleText
+                ctx.acceptingUserMessages = false
             case .unknown:
                 break
             }
             ctx.activeIndicator = activeIndicator
+            ctx.indicatorMessage = payload.message
             if indicator != .unknown {
                 ctx.errorMessage = nil
                 ctx.daemonError = false
             }
+        }
+    }
+
+    /// Recoverable trigger errors → soft warning; chat → no-op; fatal → red banner.
+    private func handleErrorPayload(_ payload: ErrorPayload) {
+        if payload.recoverable {
+            if payload.isTriggerError {
+                logger.warning("Trigger soft warning [\(payload.sourceLabel)]: \(payload.message)")
+                self.updateState { $0.softWarning = payload.message }
+            } else {
+                logger.warning("Recoverable chat error [\(payload.sourceLabel)]: \(payload.message)")
+            }
+            return
+        }
+        logger.error("Daemon error [\(payload.sourceLabel)]: \(payload.message)")
+        self.updateState { ctx in
+            ctx.errorMessage = payload.message
+            ctx.daemonError = true
         }
     }
 
@@ -410,9 +494,7 @@ final class BobeStore {
             return
         }
 
-        // Throttle UI updates: flush at ~150ms intervals for a typing appearance.
-        // Task existence is the dirty flag — if a task is already scheduled, new
-        // deltas just accumulate in streamingMessage until the timer fires.
+        // Task existence is the dirty flag — accumulated deltas flush on timer.
         if self.textDeltaFlushTask == nil {
             self.textDeltaFlushTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(StoreTiming.textDeltaFlushMilliseconds))
@@ -490,6 +572,7 @@ final class BobeStore {
             $0.speaking = false
             $0.activeIndicator = nil
             $0.toolExecutions = []
+            $0.conversationEnding = true
         }
         self.scheduleConversationClear()
     }
@@ -500,25 +583,6 @@ final class BobeStore {
             guard let self else { return }
             do {
                 let settings = try await client.getSettings()
-
-                // Apply locale from daemon settings
-                self.effectiveLocale = settings.effectiveLocale
-                self.supportedLocales = settings.supportedLocales
-                var override = settings.localeOverride ?? ""
-
-                // Auto-detect system locale and persist when no override is set
-                if override.isEmpty {
-                    let systemLocale = Locale.current.identifier.replacingOccurrences(of: "_", with: "-")
-                    var req = SettingsUpdateRequest()
-                    req.localeOverride = systemLocale
-                    _ = try? await self.client.updateSettings(req)
-                    let refreshed = try await self.client.getSettings()
-                    self.effectiveLocale = refreshed.effectiveLocale
-                    override = refreshed.localeOverride ?? ""
-                }
-
-                self.localeOverride = override
-                L10n.setLocaleOverride(override.isEmpty ? nil : override)
 
                 guard settings.captureEnabled else {
                     self.updateState { ctx in
@@ -574,11 +638,31 @@ final class BobeStore {
             self.isReconnecting = false
             self.hasConnectedOnce = true
             self.synchronizeCaptureStartup()
+            self.synchronizeStatus()
             return
         }
 
         guard self.hasConnectedOnce else { return }
         self.scheduleReconnectStatusTransition()
+    }
+
+    /// Without this, mid-turn SSE reconnects let the composer re-enable too early and 409.
+    private func synchronizeStatus() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let status = try await self.client.getStatus()
+                self.updateState { ctx in
+                    ctx.acceptingUserMessages = status.acceptingUserMessages
+                    let indicator = status.indicatorType
+                    ctx.thinking = indicator == .thinking
+                    ctx.speaking = indicator == .streaming
+                    ctx.captureInProgress = indicator == .screenCapture
+                }
+            } catch {
+                logger.warning("Status sync skipped: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func scheduleReconnectStatusTransition() {
@@ -607,6 +691,7 @@ final class BobeStore {
             try? await Task.sleep(for: .seconds(StoreTiming.conversationClearSeconds))
             guard let self, !Task.isCancelled else { return }
             self.clearMessages()
+            self.updateState { $0.conversationEnding = false }
         }
     }
 

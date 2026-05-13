@@ -1,6 +1,6 @@
 use axum::{
     Router, middleware as axum_middleware,
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -35,12 +35,12 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/health", get(handlers::health::health_check))
+        .route("/metrics", get(handlers::metrics::metrics))
         .route("/status", get(handlers::health::get_status))
         .route("/events", get(handlers::events::stream_events))
         .route("/message", post(handlers::conversation::send_message))
         .route("/capture/start", post(handlers::capture::start_capture))
         .route("/capture/stop", post(handlers::capture::stop_capture))
-        .route("/capture/once", post(handlers::capture::capture_once))
         .route("/goals", get(handlers::goals::list_goals).post(handlers::goals::create_goal))
         .route(
             "/goals/{goal_id}",
@@ -57,34 +57,12 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::goals::archive_goal),
         )
         .route(
-            "/memories",
-            get(handlers::memories::list_memories).post(handlers::memories::create_memory),
-        )
-        .route(
-            "/memories/search",
-            post(handlers::memories::search_memories),
-        )
-        .route(
-            "/memories/{memory_id}",
-            get(handlers::memories::get_memory)
-                .patch(handlers::memories::update_memory)
-                .delete(handlers::memories::delete_memory),
-        )
-        .route(
-            "/memories/{memory_id}/enable",
-            post(handlers::memories::enable_memory),
-        )
-        .route(
-            "/memories/{memory_id}/disable",
-            post(handlers::memories::disable_memory),
+            "/memory",
+            get(handlers::memories::get_memory).put(handlers::memories::update_memory),
         )
         .route(
             "/souls",
             get(handlers::souls::list_souls).post(handlers::souls::create_soul),
-        )
-        .route(
-            "/souls/by-name/{name}",
-            get(handlers::souls::get_soul_by_name),
         )
         .route(
             "/souls/{soul_id}",
@@ -106,10 +84,6 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
                 .post(handlers::user_profile::create_profile),
         )
         .route(
-            "/user-profiles/by-name/{name}",
-            get(handlers::user_profile::get_profile_by_name),
-        )
-        .route(
             "/user-profiles/{profile_id}",
             get(handlers::user_profile::get_profile)
                 .patch(handlers::user_profile::update_profile)
@@ -128,30 +102,19 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::settings::get_settings)
                 .patch(handlers::settings::update_settings),
         )
-        .route("/models", get(handlers::models::list_models))
-        .route("/models/pull", post(handlers::models::pull_model))
-        .route("/models/registry", get(handlers::models::list_registry_models))
-        .route("/models/{model_name}", delete(handlers::models::delete_model))
+        .route("/auth/status", get(handlers::engine::get_auth_status))
+        .route("/models", get(handlers::engine::list_models))
         .route(
-            "/onboarding/status",
-            get(handlers::onboarding::onboarding_status),
+            "/local-runtime/install",
+            post(handlers::local_runtime::start_install),
         )
         .route(
-            "/onboarding/mark-complete",
-            post(handlers::onboarding::mark_complete),
+            "/local-runtime/cancel",
+            post(handlers::local_runtime::cancel_install),
         )
         .route(
-            "/onboarding/options",
-            get(handlers::setup::get_options),
-        )
-        .route(
-            "/onboarding/setup",
-            post(handlers::setup::create_setup_job),
-        )
-        .route(
-            "/onboarding/setup/{job_id}",
-            get(handlers::setup::get_setup_status)
-                .delete(handlers::setup::cancel_setup_job),
+            "/local-runtime/status",
+            get(handlers::local_runtime::install_status_stream),
         )
         .route(
             "/tools/mcp/config",
@@ -163,52 +126,23 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/tools/mcp/config/validate",
             post(handlers::tools_mcp::validate_mcp_config),
         )
-        .route("/tools", get(handlers::tools::list_tools))
+        .route("/voice/stream", get(handlers::voice::voice_stream))
         .route(
-            "/tools/{tool_name}",
-            axum::routing::patch(handlers::tools::update_tool),
+            "/voice/install/status",
+            get(handlers::voice_install::status),
         )
         .route(
-            "/tools/{tool_name}/enable",
-            post(handlers::tools::enable_tool),
+            "/voice/install/start",
+            post(handlers::voice_install::start),
         )
         .route(
-            "/tools/{tool_name}/disable",
-            post(handlers::tools::disable_tool),
-        )
-        .route(
-            "/goal-plans",
-            get(handlers::goal_worker::list_goal_plans),
-        )
-        .route(
-            "/goal-plans/pause",
-            post(handlers::goal_worker::pause_goal),
-        )
-        .route(
-            "/goal-plans/resume",
-            post(handlers::goal_worker::resume_goal),
-        )
-        .route(
-            "/goal-plans/status",
-            get(handlers::goal_worker::goal_worker_status),
-        )
-        .route(
-            "/goal-plans/{plan_id}",
-            get(handlers::goal_worker::get_goal_plan),
-        )
-        .route(
-            "/goal-plans/{plan_id}/approve",
-            post(handlers::goal_worker::approve_goal_plan),
-        )
-        .route(
-            "/goal-plans/{plan_id}/reject",
-            post(handlers::goal_worker::reject_goal_plan),
+            "/voice/install/cancel",
+            post(handlers::voice_install::cancel),
         )
         .layer(axum_middleware::from_fn(request_logging))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)
-        // SSE unaffected — its handler returns the Sse response immediately.
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::GATEWAY_TIMEOUT,
             std::time::Duration::from_secs(30),

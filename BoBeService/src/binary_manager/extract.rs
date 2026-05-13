@@ -1,6 +1,4 @@
-//! Archive extraction for Ollama binary (tar.gz).
-//!
-//! Includes path traversal protection.
+//! Path-traversal: any entry containing `..` is skipped.
 
 use std::path::Path;
 
@@ -8,7 +6,6 @@ use tracing::info;
 
 use crate::error::AppError;
 
-/// Includes path traversal protection.
 pub(crate) fn extract_ollama_archive(
     archive_path: &Path,
     output_path: &Path,

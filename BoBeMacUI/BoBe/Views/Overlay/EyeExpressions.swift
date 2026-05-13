@@ -2,7 +2,6 @@ import SwiftUI
 
 // MARK: - Eye Unit
 
-/// Single eye: outline, sclera, iris, pupil, optional highlight.
 struct EyeUnit: View {
     let theme: ThemeColors
     var irisOffset: CGPoint = .zero
@@ -127,7 +126,6 @@ struct SpeakingEyes: View {
         }
         .task {
             guard OverlayMotionRuntime.shouldAnimate else { return }
-            // Match Electron: scaleY [1, 1.75, 0.75, 1.5, 1] over 0.5s
             let frames: [CGFloat] = [1, 1.75, 0.75, 1.5, 1]
             var i = 0
             while !Task.isCancelled {

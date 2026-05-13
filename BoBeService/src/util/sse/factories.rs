@@ -65,6 +65,21 @@ pub(crate) fn error_event(
     }
 }
 
+/// Distinct payload from chat-stream errors: consumer keys off `trigger`, not `code`.
+pub(crate) fn trigger_error_event(trigger: &str, message: &str, recoverable: bool) -> StreamBundle {
+    StreamBundle {
+        event_type: EventType::Error,
+        message_id: uuid::Uuid::new_v4().to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        description: format!("{trigger} error"),
+        payload: json!({
+            "trigger": trigger,
+            "message": message,
+            "recoverable": recoverable,
+        }),
+    }
+}
+
 pub(crate) fn tool_call_start_event(
     message_id: &str,
     tool_name: &str,

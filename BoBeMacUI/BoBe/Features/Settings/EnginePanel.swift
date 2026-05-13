@@ -1,0 +1,565 @@
+import SwiftUI
+
+/// Engine fields hot-swap via daemon `WorkerRegistry::reload()`; no restart banner.
+struct EnginePanel: View {
+    @State private var settings: DaemonSettings?
+    @State private var auth: AuthStatusResponse?
+    @State private var availableModels: [ModelInfo] = []
+    @State private var modelsHint: String?
+    @State private var isLoading = false
+    @State private var error: String?
+    @State private var savedMessage: String?
+    @State private var saveTask: Task<Void, Never>?
+    @State private var savedToastTask: Task<Void, Never>?
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(L10n.tr("settings.engine.title"))
+                    .font(.title2.bold())
+                    .foregroundStyle(self.theme.colors.text)
+
+                Text(L10n.tr("settings.engine.description"))
+                    .font(.system(size: 13))
+                    .foregroundStyle(self.theme.colors.textMuted)
+
+                if let error {
+                    self.errorBanner(error)
+                }
+
+                if let savedMessage {
+                    self.savedToast(savedMessage)
+                }
+
+                if self.settings != nil {
+                    self.engineToggleSection
+                    if self.currentEngine == "copilot_cloud" {
+                        self.cloudAuthSection
+                    } else {
+                        self.localProviderSection
+                    }
+                    self.modelsSection
+                    self.offlineSection
+                } else if self.isLoading {
+                    HStack(spacing: 8) {
+                        BobeSpinner(size: 14)
+                        Text(L10n.tr("settings.engine.loading"))
+                            .font(.system(size: 13))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 40)
+                }
+            }
+            .padding(24)
+        }
+        .task { await self.loadAll() }
+    }
+
+    // MARK: - Sections
+
+    private var engineToggleSection: some View {
+        CollapsibleSection(
+            title: L10n.tr("settings.engine.mode.title"),
+            icon: "arrow.triangle.2.circlepath",
+            description: L10n.tr("settings.engine.mode.description")
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                self.modeRow(value: "copilot_cloud", title: L10n.tr("settings.engine.mode.cloud"))
+                self.modeRow(value: "local", title: L10n.tr("settings.engine.mode.local"))
+            }
+        }
+    }
+
+    private func modeRow(value: String, title: String) -> some View {
+        Button {
+            self.applyEngineMode(value)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: self.currentEngine == value ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(self.currentEngine == value
+                        ? self.theme.colors.primary
+                        : self.theme.colors.border)
+                Text(title)
+                    .foregroundStyle(self.theme.colors.text)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var cloudAuthSection: some View {
+        CollapsibleSection(
+            title: L10n.tr("settings.engine.auth.title"),
+            icon: "person.crop.circle.fill",
+            description: L10n.tr("settings.engine.auth.description")
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                if let auth = self.auth {
+                    if auth.isAuthenticated {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(self.theme.colors.secondary)
+                            Text(L10n.tr("settings.engine.auth.signed_in"))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(self.theme.colors.text)
+                            if let login = auth.login {
+                                Text("@\(login)")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(self.theme.colors.textMuted)
+                            }
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "key.horizontal")
+                                    .foregroundStyle(self.theme.colors.tertiary)
+                                Text(L10n.tr("settings.engine.auth.signed_out"))
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(self.theme.colors.text)
+                            }
+                            Button(L10n.tr("settings.engine.auth.sign_in")) {
+                                self.openSignInTerminal()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        BobeSpinner(size: 12)
+                        Text(L10n.tr("settings.engine.auth.checking"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                    }
+                }
+                Button(L10n.tr("settings.engine.auth.refresh")) {
+                    Task { await self.loadAuth() }
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 11))
+            }
+        }
+    }
+
+    private var localProviderSection: some View {
+        CollapsibleSection(
+            title: L10n.tr("settings.engine.local.title"),
+            icon: "macbook",
+            description: L10n.tr("settings.engine.local.description")
+        ) {
+            SettingsRow(
+                label: L10n.tr("settings.engine.local.base_url"),
+                description: L10n.tr("settings.engine.local.base_url.description")
+            ) {
+                BobeTextField(
+                    placeholder: "http://127.0.0.1:11434/v1",
+                    text: self.optionalBinding(\.providerBaseUrl, fallback: "http://127.0.0.1:11434/v1")
+                )
+            }
+        }
+    }
+
+    private var modelsSection: some View {
+        CollapsibleSection(
+            title: L10n.tr("settings.engine.models.title"),
+            icon: "cube.box.fill",
+            description: L10n.tr("settings.engine.models.description")
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                if let hint = self.modelsHint {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(self.theme.colors.tertiary)
+                        Text(hint)
+                            .font(.system(size: 11))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(self.theme.colors.tertiary.opacity(0.08))
+                    )
+                }
+                self.modelDropdown(
+                    label: L10n.tr("settings.engine.models.chat"),
+                    description: L10n.tr("settings.engine.models.chat.description"),
+                    keyPath: \.providerChatModel,
+                    reasoningKeyPath: \.providerChatReasoning,
+                    visionOnly: false
+                )
+                self.modelDropdown(
+                    label: L10n.tr("settings.engine.models.batch"),
+                    description: L10n.tr("settings.engine.models.batch.description"),
+                    keyPath: \.providerBatchModel,
+                    reasoningKeyPath: \.providerBatchReasoning,
+                    visionOnly: false
+                )
+                self.modelDropdown(
+                    label: L10n.tr("settings.engine.models.vision"),
+                    description: L10n.tr("settings.engine.models.vision.description"),
+                    keyPath: \.providerVisionModel,
+                    reasoningKeyPath: \.providerVisionReasoning,
+                    visionOnly: true
+                )
+            }
+        }
+    }
+
+    private func modelDropdown(
+        label: String,
+        description: String,
+        keyPath: WritableKeyPath<DaemonSettings, String?>,
+        reasoningKeyPath: WritableKeyPath<DaemonSettings, String?>,
+        visionOnly: Bool
+    ) -> some View {
+        let pool = visionOnly ? self.availableModels.filter(\.vision) : self.availableModels
+        // "—" sentinel means "use the CLI's default model" — daemon's resolver picks cheapest available.
+        let options: [String] = ["—"] + pool.map(\.id)
+        let displayName = { (id: String) -> String in
+            if id == "—" {
+                return L10n.tr("settings.engine.models.use_default")
+            }
+            guard let model = self.availableModels.first(where: { $0.id == id }) else { return id }
+            if let mult = model.multiplier {
+                return "\(model.name)  ·  \(Self.formatMultiplier(mult))"
+            }
+            return model.name
+        }
+
+        let modelBinding = Binding<String>(
+            get: {
+                let raw = self.settings?[keyPath: keyPath]
+                if let raw, !raw.isEmpty { return raw }
+                return "—"
+            },
+            set: { newValue in
+                guard var current = self.settings else { return }
+                // Empty string is the clear sentinel; daemon normalizes "" back to None.
+                current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
+                // Clear stale reasoning if the new model doesn't support it.
+                if let m = self.availableModels.first(where: { $0.id == newValue }), !m.supportsReasoningEffort {
+                    current[keyPath: reasoningKeyPath] = ""
+                }
+                self.settings = current
+                self.debounceSave()
+            }
+        )
+
+        let selectedModel = self.availableModels.first { $0.id == self.settings?[keyPath: keyPath] }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            SettingsRow(label: label, description: description) {
+                BobeMenuPicker(
+                    selection: modelBinding,
+                    options: options,
+                    label: displayName,
+                    width: 280
+                )
+            }
+            if let model = selectedModel, model.supportsReasoningEffort {
+                self.reasoningRow(model: model, keyPath: reasoningKeyPath)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func reasoningRow(model: ModelInfo, keyPath: WritableKeyPath<DaemonSettings, String?>) -> some View {
+        let efforts = model.supportedReasoningEfforts
+        let defaultLabel = L10n.tr("settings.engine.reasoning.use_default")
+        let options: [String] = ["—"] + efforts
+
+        let binding = Binding<String>(
+            get: {
+                let raw = self.settings?[keyPath: keyPath]
+                if let raw, !raw.isEmpty, efforts.contains(raw) { return raw }
+                return "—"
+            },
+            set: { newValue in
+                guard var current = self.settings else { return }
+                current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
+                self.settings = current
+                self.debounceSave()
+            }
+        )
+
+        let displayName = { (id: String) -> String in
+            if id == "—" {
+                if let def = model.defaultReasoningEffort {
+                    return "\(defaultLabel) (\(def))"
+                }
+                return defaultLabel
+            }
+            return id.capitalized
+        }
+
+        HStack(spacing: 8) {
+            Image(systemName: "brain")
+                .font(.system(size: 11))
+                .foregroundStyle(self.theme.colors.tertiary)
+            Text(L10n.tr("settings.engine.reasoning.label"))
+                .font(.system(size: 12))
+                .foregroundStyle(self.theme.colors.textMuted)
+            BobeMenuPicker(
+                selection: binding,
+                options: options,
+                label: displayName,
+                width: 220
+            )
+        }
+        .padding(.leading, 8)
+    }
+
+    /// "0×" → free, "1×" → base, "0.33×" → cheap, "15×" → 15x base rate.
+    private static func formatMultiplier(_ value: Double) -> String {
+        if value == 0 { return "0×" }
+        if value == value.rounded() {
+            return "\(Int(value))×"
+        }
+        // Two decimals when fractional (e.g., 0.33×, 7.5× becomes "7.50×" — trim trailing zero).
+        let s = String(format: "%.2f", value)
+        let trimmed = s.hasSuffix("0") ? String(s.dropLast()) : s
+        return "\(trimmed)×"
+    }
+
+    private var offlineSection: some View {
+        CollapsibleSection(
+            title: L10n.tr("settings.engine.offline.title"),
+            icon: "wifi.slash",
+            description: L10n.tr("settings.engine.offline.description")
+        ) {
+            SettingsRow(
+                label: L10n.tr("settings.engine.offline.toggle"),
+                description: L10n.tr("settings.engine.offline.toggle.description")
+            ) {
+                BobeToggle(isOn: self.binding(\.providerOffline, fallback: true))
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var currentEngine: String {
+        self.settings?.engine ?? "copilot_cloud"
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(self.theme.colors.primary)
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(self.theme.colors.primary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.primary.opacity(0.08)))
+    }
+
+    private func savedToast(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(self.theme.colors.secondary)
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundStyle(self.theme.colors.secondary)
+            Spacer()
+        }
+        .transition(.opacity)
+    }
+
+    private func binding<V>(
+        _ keyPath: WritableKeyPath<DaemonSettings, V>,
+        fallback: @autoclosure @escaping () -> V
+    ) -> Binding<V> {
+        Binding(
+            get: { self.settings?[keyPath: keyPath] ?? fallback() },
+            set: { newValue in
+                guard var current = self.settings else { return }
+                current[keyPath: keyPath] = newValue
+                self.settings = current
+                self.debounceSave()
+            }
+        )
+    }
+
+    private func optionalBinding(
+        _ keyPath: WritableKeyPath<DaemonSettings, String?>,
+        fallback: @autoclosure @escaping () -> String
+    ) -> Binding<String> {
+        Binding(
+            get: { self.settings?[keyPath: keyPath] ?? fallback() },
+            set: { newValue in
+                guard var current = self.settings else { return }
+                current[keyPath: keyPath] = newValue.isEmpty ? nil : newValue
+                self.settings = current
+                self.debounceSave()
+            }
+        )
+    }
+
+    private func applyEngineMode(_ mode: String) {
+        guard var current = self.settings else { return }
+        guard current.engine != mode else { return }
+        current.engine = mode
+        self.settings = current
+        Task {
+            // Skip debounce: user-initiated flip, registry should rebuild now.
+            self.saveTask?.cancel()
+            await self.persist()
+        }
+        Task { await self.loadModels() }
+    }
+
+    private func debounceSave() {
+        self.saveTask?.cancel()
+        self.saveTask = Task {
+            try? await Task.sleep(for: .seconds(0.6))
+            guard !Task.isCancelled else { return }
+            await self.persist()
+        }
+    }
+
+    private func persist() async {
+        guard let settings = self.settings else { return }
+        var req = SettingsUpdateRequest()
+        req.engine = settings.engine
+        req.providerBaseUrl = settings.providerBaseUrl
+        req.providerChatModel = settings.providerChatModel
+        req.providerBatchModel = settings.providerBatchModel
+        req.providerVisionModel = settings.providerVisionModel
+        req.providerChatReasoning = settings.providerChatReasoning
+        req.providerBatchReasoning = settings.providerBatchReasoning
+        req.providerVisionReasoning = settings.providerVisionReasoning
+        req.providerOffline = settings.providerOffline
+        do {
+            let resp = try await DaemonClient.shared.updateSettings(req)
+            if resp.persistFailed == true {
+                self.error = L10n.tr("settings.shared.action.persist_failed")
+                self.savedMessage = nil
+            } else {
+                self.error = nil
+                self.savedMessage = resp.message
+                self.scheduleSavedToastDismiss()
+            }
+        } catch {
+            self.error = error.localizedDescription
+            self.savedMessage = nil
+        }
+    }
+
+    private func scheduleSavedToastDismiss() {
+        self.savedToastTask?.cancel()
+        self.savedToastTask = Task {
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !Task.isCancelled else { return }
+            self.savedMessage = nil
+        }
+    }
+
+    private func loadAll() async {
+        self.isLoading = true
+        defer { isLoading = false }
+        do {
+            self.settings = try await DaemonClient.shared.getSettings()
+            await self.loadAuth()
+            await self.loadModels()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func loadAuth() async {
+        self.auth = nil
+        do {
+            self.auth = try await DaemonClient.shared.getAuthStatus()
+        } catch {
+            // Auth probe is best-effort; pane still works without it.
+        }
+    }
+
+    private func loadModels() async {
+        self.availableModels = []
+        self.modelsHint = nil
+        // Daemon may still be booting when the panel first appears; retry transient failures.
+        let backoffsMs: [UInt64] = [250, 500, 1000, 2000]
+        var lastError: Error?
+        for (attempt, delay) in backoffsMs.enumerated() {
+            do {
+                let resp = try await DaemonClient.shared.listModels(engine: self.currentEngine)
+                self.availableModels = resp.models
+                if resp.models.isEmpty {
+                    self.modelsHint = self.currentEngine == "local"
+                        ? L10n.tr("settings.engine.models.local_empty")
+                        : L10n.tr("settings.engine.models.cloud_empty")
+                }
+                return
+            } catch let DaemonError.httpError(statusCode, _) where statusCode == 503 {
+                // 503: backend reachable but reports unavailable — don't keep retrying.
+                self.modelsHint = self.currentEngine == "local"
+                    ? L10n.tr("settings.engine.models.local_unavailable")
+                    : L10n.tr("settings.engine.models.cloud_unavailable")
+                return
+            } catch {
+                lastError = error
+                if attempt < backoffsMs.count - 1 {
+                    try? await Task.sleep(for: .milliseconds(Int(delay)))
+                }
+            }
+        }
+        if let lastError {
+            self.modelsHint = String(
+                format: L10n.tr("settings.engine.models.error_format"),
+                lastError.localizedDescription
+            )
+        }
+    }
+
+    private func openSignInTerminal() {
+        CopilotSignIn.openLogin(cliPath: self.auth?.cliPath)
+        // Poll /auth/status after Terminal hand-off so the pane auto-refreshes.
+        self.startAuthPolling()
+    }
+
+    private func startAuthPolling() {
+        Task { @MainActor in
+            let interval = Duration.seconds(2)
+            let deadline = ContinuousClock.now + .seconds(300)
+            while !Task.isCancelled, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: interval)
+                if Task.isCancelled { break }
+                do {
+                    let resp = try await DaemonClient.shared.getAuthStatus()
+                    self.auth = resp
+                    if resp.isAuthenticated { return }
+                } catch {
+                }
+            }
+        }
+    }
+}
+
+/// Terminal.app handoff for the bundled CLI's device-flow prompt (can't replicate in Swift).
+enum CopilotSignIn {
+    static func openLogin(cliPath: String?) {
+        let command: String
+        if let cliPath {
+            let escaped = cliPath.replacingOccurrences(of: "'", with: "'\\''")
+            command = "'\(escaped)'"
+        } else {
+            command = "copilot"
+        }
+        let script = """
+        tell application "Terminal"
+            activate
+            do script "\(command)"
+        end tell
+        """
+        let process = Process()
+        process.launchPath = "/usr/bin/osascript"
+        process.arguments = ["-e", script]
+        try? process.run()
+    }
+}

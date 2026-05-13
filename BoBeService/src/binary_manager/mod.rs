@@ -1,6 +1,4 @@
-//! Binary manager for Ollama — discovery, download, and extraction.
-//!
-//! Moves Ollama lifecycle from the Swift frontend to the Rust backend.
+//! No SHA pin — Ollama's `latest` release lacks stable SHA256SUMS; trust = GitHub HTTPS.
 
 mod download;
 mod extract;
@@ -16,12 +14,15 @@ use tracing::info;
 
 use crate::error::AppError;
 
+/// `percent` is best-effort: 0..90 download, 92 post-download, 100 ready.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub(crate) struct DownloadProgress {
     pub(crate) current_bytes: u64,
     pub(crate) total_bytes: Option<u64>,
     pub(crate) percent: Option<u8>,
 }
+
 
 pub(crate) struct BinaryManager {
     data_dir: PathBuf,
@@ -42,10 +43,10 @@ impl BinaryManager {
             info!(path = %managed.display(), "binary_manager.found_managed");
             return Some(managed);
         }
-
         None
     }
 
+    /// Idempotent: downloads + extracts only if absent.
     pub(crate) async fn ensure_managed_ollama(
         &self,
         progress_tx: &watch::Sender<DownloadProgress>,
@@ -123,6 +124,7 @@ impl BinaryManager {
         Ok(target_path)
     }
 
+    /// `--version` catches half-extracted / corrupt downloads.
     pub(crate) async fn validate_ollama_binary(&self, path: &Path) -> Result<(), AppError> {
         let metadata = tokio::fs::metadata(path)
             .await
@@ -170,6 +172,7 @@ impl BinaryManager {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
     use super::BinaryManager;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -228,35 +231,25 @@ mod tests {
         assert!(error.to_string().contains("not executable"));
     }
 
-    // ── find_managed_ollama ───────────────────────────────────────────────────
-
     #[test]
     fn find_managed_ollama_returns_none_for_fresh_data_dir() {
         let dir = temp_dir("find-absent");
         let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
-        assert_eq!(
-            manager.find_managed_ollama(),
-            None,
-            "should return None when the managed binary does not exist"
-        );
+        assert_eq!(manager.find_managed_ollama(), None);
     }
 
     #[test]
     fn find_managed_ollama_returns_path_when_binary_exists() {
         let dir = temp_dir("find-present");
-        // Place a file at the expected managed path
         let bin_dir = dir.join("ollama").join("bin");
         std::fs::create_dir_all(&bin_dir).expect("bin dir should be created");
         std::fs::write(bin_dir.join("ollama"), "fake").expect("fake binary should be written");
 
         let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
         let result = manager.find_managed_ollama();
-        assert!(
-            result.is_some(),
-            "should return the managed path when the binary exists"
-        );
+        assert!(result.is_some());
         assert_eq!(
-            result.unwrap(),
+            result.expect("file should exist after write"),
             dir.join("ollama").join("bin").join("ollama")
         );
     }

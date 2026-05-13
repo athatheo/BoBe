@@ -1,28 +1,23 @@
-//! Application bootstrap — wires all dependencies and starts background services.
-//!
-//! Split into focused submodules by lifecycle phase:
-//! - `database`  — pool creation and migrations
-//! - `infra`     — LLM/embedding providers, HTTP client, SSE, Ollama, mDNS
-//! - `repos`     — repository trait object construction
-//! - `wiring`    — services, tools, learners, triggers, runtime session assembly
-//! - `integrity` — startup data-integrity checks (orphan cleanup, embedding repair)
-
 mod database;
 mod infra;
-mod integrity;
+mod mcp_loader;
 mod repos;
+mod voice_loader;
 mod wiring;
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
 use crate::app_state::AppState;
 use crate::config::Config;
 use crate::error::AppError;
-use crate::services::goal_worker::manager::GoalWorkerManager;
 
-pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerManager), AppError> {
+use mcp_loader::load_mcp_servers_for_sdk;
+use voice_loader::build_voice_engines_snapshot;
+
+pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let pool = database::connect_and_apply_schema(&config.database.url).await?;
 
     let infra = infra::Infrastructure::build(&config)?;
@@ -30,17 +25,64 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
 
     if config.mcp.enabled
         && let Err(e) =
-            crate::tools::mcp::config::ensure_mcp_config_exists(config.mcp.config_file.as_deref())
+            crate::mcp::config::ensure_mcp_config_exists(config.mcp.config_file.as_deref())
     {
         warn!(error = %e, "bootstrap.ensure_mcp_config_failed");
     }
 
-    let wired = wiring::wire(&config, &infra, &repos).await;
+    let memory_file = {
+        let path = crate::util::paths::bobe_data_dir().join("memory.md");
+        crate::copilot::memory_file::MemoryFile::new(path)
+    };
+    // Idempotent: existing skills are never overwritten.
+    crate::copilot::skills::ensure_skills(&crate::util::paths::bobe_data_dir()).await;
+    // SDK owns MCP process spawn + tool dispatch via `SessionConfig::mcp_servers`.
+    let mcp_servers = load_mcp_servers_for_sdk(&config);
+    // Voice-turn signal lives here so AppState (consumed by voice.rs) and
+    // WorkerRegistry (consumed by BobeHooks) both reference the same Arc.
+    let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Single-slot voice sink — same dual-consumer pattern as the flag.
+    let voice_sink = Arc::new(crate::voice::sinks::VoiceSink::new());
+    // Install the Prometheus recorder once at boot. The handle goes on
+    // AppState; the `/metrics` route renders from it on each request.
+    let metrics_handle = crate::voice::telemetry::install_recorder()
+        .map_err(|e| AppError::Internal(format!("metrics recorder: {e}")))?;
+    // Voice engines under one ArcSwap so the install service can hot-swap
+    // post-download. Workers + hooks reference the snapshot Arc; reads at
+    // hook-fire time pick up the latest filler library without restart.
+    let initial_voice_engines = build_voice_engines_snapshot().await;
+    let voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>> =
+        Arc::new(ArcSwap::from_pointee(initial_voice_engines));
+    let workers = {
+        let data_dir = crate::util::paths::bobe_data_dir();
+        crate::copilot::registry::WorkerRegistry::new(
+            Arc::clone(&infra.config_arc),
+            Arc::clone(&memory_file),
+            data_dir,
+            mcp_servers,
+            Arc::clone(&voice_turn_active),
+            Arc::clone(&voice_sink),
+            Arc::clone(&voice_engines),
+        )
+    };
 
-    integrity::run(&pool, repos.agent_job_repo.as_ref()).await;
+    let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
-    infra::ensure_ollama_ready(&config, &infra.ollama_manager).await;
-    infra::detect_context_window(&config, &infra.config_arc, &infra.ollama_manager).await;
+    // Engine config changes: hard reload only when the SDK process itself needs new env
+    // (engine type, provider URL, offline). Model/reasoning changes use a soft reload that
+    // preserves the chat session so the user doesn't lose context.
+    {
+        let registry_for_listener = Arc::clone(&workers);
+        wired.config_manager.set_engine_change_listener(move |kind| {
+            let registry = Arc::clone(&registry_for_listener);
+            tokio::spawn(async move {
+                match kind {
+                    crate::config_manager::EngineChangeKind::Hard => registry.reload().await,
+                    crate::config_manager::EngineChangeKind::Soft => registry.reload_soft().await,
+                }
+            });
+        });
+    }
 
     if config.seed_default_documents {
         if let Err(e) = crate::db::seeding::seed_default_souls(repos.soul_repo.as_ref()).await {
@@ -51,15 +93,12 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
         {
             tracing::warn!(error = %e, "bootstrap.profile_seeding_failed");
         }
+        if let Err(e) =
+            crate::services::goals::seeding::seed_sample_goal(wired.goals_service.as_ref()).await
+        {
+            tracing::warn!(error = %e, "bootstrap.goal_seeding_failed");
+        }
     }
-
-    if config.goals.sync_on_startup
-        && let Err(e) = wired.goals_service.sync_from_file().await
-    {
-        tracing::warn!(error = %e, "bootstrap.goals_sync_failed");
-    }
-
-    wired.register_tools(&config, &infra.event_queue).await;
 
     wired.wire_sse_callbacks(&infra.connection_manager).await;
 
@@ -67,51 +106,87 @@ pub(crate) async fn run(config: Config) -> Result<(Arc<AppState>, GoalWorkerMana
 
     print_banner(&infra.config_arc.load());
 
+    let ollama_install = {
+        let data_dir = crate::util::paths::bobe_data_dir();
+        let http = Arc::new(
+            reqwest::Client::builder()
+                .build()
+                .map_err(|e| AppError::Internal(format!("reqwest client build: {e}")))?,
+        );
+        let binary = Arc::new(crate::binary_manager::BinaryManager::new(
+            &data_dir,
+            Arc::clone(&http),
+        ));
+        // Strip `/v1` OpenAI-compat suffix to get the native Ollama API root.
+        let base_url = config
+            .engine
+            .provider_base_url
+            .as_deref().map_or_else(|| "http://127.0.0.1:11434".to_string(), crate::ollama_manager::OllamaManager::root_from_provider_url);
+        let manager = Arc::new(crate::ollama_manager::OllamaManager::new(
+            Arc::clone(&http),
+            &base_url,
+        ));
+        crate::services::ollama_install_service::OllamaInstallService::new(binary, manager)
+    };
+
+    let voice_install = {
+        let http = reqwest::Client::builder()
+            .build()
+            .map_err(|e| AppError::Internal(format!("voice install http client: {e}")))?;
+        let models_root = dirs::home_dir()
+            .map(|h| h.join(".bobe").join("models"))
+            .ok_or_else(|| AppError::Internal("no home_dir for voice models root".into()))?;
+        let engines_for_reload = Arc::clone(&voice_engines);
+        let on_complete: Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync> =
+            Arc::new(move || {
+                let engines = Arc::clone(&engines_for_reload);
+                Box::pin(async move {
+                    let snap = build_voice_engines_snapshot().await;
+                    info!(
+                        complete = snap.is_complete(),
+                        "voice_install.engines_reloaded"
+                    );
+                    engines.store(Arc::new(snap));
+                })
+            });
+        crate::voice::install_service::VoiceInstallService::new(
+            http,
+            models_root,
+            on_complete,
+        )
+    };
+
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
-        http_client: infra.http_client,
         event_queue: infra.event_queue,
         connection_manager: infra.connection_manager,
-        llm_provider: infra.llm_provider,
-        vision_llm_provider: infra.vision_llm_provider,
-        embedding_provider: infra.embedding_provider,
-        conversation_repo: repos.conversation_repo,
-        memory_repo: repos.memory_repo,
-        goal_repo: repos.goal_repo,
-        observation_repo: repos.observation_repo,
-        cooldown_repo: repos.cooldown_repo,
-        learning_state_repo: repos.learning_state_repo,
-        agent_job_repo: repos.agent_job_repo,
         soul_repo: repos.soul_repo,
         user_profile_repo: repos.user_profile_repo,
-        goal_plan_repo: repos.goal_plan_repo,
-        conversation_service: wired.conversation_service,
-        context_assembler: wired.context_assembler,
         goals_service: wired.goals_service,
-        tool_registry: wired.tool_registry,
         runtime_session: wired.runtime_session,
-        learning_loop: wired.learning_loop,
-        screen_capture: wired.screen_capture,
-        ollama_manager: infra.ollama_manager,
-        binary_manager: infra.binary_manager,
         config_manager: wired.config_manager,
-        mcp_tool_adapter: Some(wired.mcp_adapter),
         mcp_config_lock: Arc::new(tokio::sync::Mutex::new(())),
         mdns_announcer: infra.mdns_announcer,
+        workers,
+        memory_file,
+        ollama_install,
+        voice_install,
+        voice_engines,
+        voice_turn_active,
+        voice_sink,
+        metrics_handle,
     });
 
-    Ok((state, wired.goal_worker_manager))
+    Ok(state)
 }
 
+/// Top-of-boot info banner.
 fn print_banner(config: &Config) {
     info!("═══════════════════════════════════════════════════════");
     info!("  BoBe Server Started");
-    info!("  LLM backend: {}", config.llm.backend);
-    info!("  Model: {}", config.ollama.model);
-    info!("  Context window: {} tokens", config.llm.context_window);
+    info!("  Engine: Copilot CLI (via github-copilot-sdk)");
     info!("  Capture enabled: {}", config.capture.enabled);
-    info!("  Learning enabled: {}", config.learning.enabled);
-    info!("  Tools enabled: {}", config.tools.enabled);
+    info!("  Tools (MCP) enabled: {}", config.mcp.enabled);
     info!("═══════════════════════════════════════════════════════");
 }

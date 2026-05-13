@@ -11,7 +11,6 @@ const DEFAULT_USER_PROFILES: &[(&str, &str)] = &[("USER_PROFILE.md", "default")]
 
 const DEFAULT_SOUL_MD: &str = include_str!("../assets/defaults/SOUL.md");
 const DEFAULT_USER_PROFILE_MD: &str = include_str!("../assets/defaults/USER_PROFILE.md");
-const DEFAULT_GOALS_MD: &str = include_str!("../assets/defaults/GOALS.md");
 
 #[derive(Debug)]
 pub(crate) struct SeedResult {
@@ -25,7 +24,6 @@ fn load_default_asset(filename: &str) -> Option<&'static str> {
     match filename {
         "SOUL.md" => Some(DEFAULT_SOUL_MD),
         "USER_PROFILE.md" => Some(DEFAULT_USER_PROFILE_MD),
-        "GOALS.md" => Some(DEFAULT_GOALS_MD),
         _ => {
             warn!(filename = filename, "db_seeding.unknown_asset");
             None

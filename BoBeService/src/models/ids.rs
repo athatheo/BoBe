@@ -20,22 +20,9 @@ macro_rules! define_id {
         #[sqlx(transparent)]
         pub(crate) struct $name(Uuid);
 
-        #[allow(dead_code)]
         impl $name {
             pub(crate) fn new() -> Self {
                 Self(Uuid::new_v4())
-            }
-
-            pub(crate) fn from_uuid(uuid: Uuid) -> Self {
-                Self(uuid)
-            }
-
-            pub(crate) fn as_uuid(&self) -> &Uuid {
-                &self.0
-            }
-
-            pub(crate) fn into_uuid(self) -> Uuid {
-                self.0
             }
         }
 
@@ -69,15 +56,9 @@ macro_rules! define_id {
 
 define_id!(ConversationId);
 define_id!(ConversationTurnId);
-define_id!(MemoryId);
 define_id!(GoalId);
-define_id!(ObservationId);
 define_id!(SoulId);
 define_id!(UserProfileId);
-define_id!(AgentJobId);
-define_id!(GoalPlanId);
-define_id!(GoalPlanStepId);
-define_id!(LearningStateId);
 define_id!(CooldownId);
 
 #[cfg(test)]
@@ -88,15 +69,15 @@ mod tests {
     #[test]
     fn newtype_round_trips_through_uuid() {
         let id = ConversationId::new();
-        let uuid = id.into_uuid();
-        let back = ConversationId::from_uuid(uuid);
+        let uuid: Uuid = id.into();
+        let back = ConversationId::from(uuid);
         assert_eq!(id, back);
     }
 
     #[test]
     fn newtype_display_matches_uuid() {
         let uuid = Uuid::new_v4();
-        let id = MemoryId::from_uuid(uuid);
+        let id = GoalId::from(uuid);
         assert_eq!(id.to_string(), uuid.to_string());
     }
 
@@ -105,7 +86,7 @@ mod tests {
         let uuid = Uuid::new_v4();
         let s = uuid.to_string();
         let id: GoalId = s.parse().unwrap();
-        assert_eq!(id.into_uuid(), uuid);
+        assert_eq!(Uuid::from(id), uuid);
     }
 
     #[test]
@@ -114,16 +95,12 @@ mod tests {
         let json = serde_json::to_string(&id).unwrap();
         let back: SoulId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, back);
-        // Should serialize as bare UUID string, not wrapped object
-        assert_eq!(json, format!("\"{}\"", id));
+        assert_eq!(json, format!("\"{id}\""));
     }
 
     #[test]
     fn different_id_types_are_incompatible() {
-        // This test verifies the types exist and are distinct.
-        // Compile-time safety: you can't pass a GoalId where a MemoryId is expected.
         let _goal = GoalId::new();
-        let _memory = MemoryId::new();
-        // If these were both Uuid, they'd be interchangeable.
+        let _soul = SoulId::new();
     }
 }

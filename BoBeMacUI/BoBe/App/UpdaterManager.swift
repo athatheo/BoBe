@@ -70,7 +70,6 @@ final class UpdaterManager: NSObject, SPUUpdaterDelegate {
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         let nsError = error as NSError
-        // Silently log network errors — no internet or unreachable feed is not worth an alert
         if nsError.domain == NSURLErrorDomain {
             updaterLogger.info("Update check skipped (network): \(error.localizedDescription)")
             return

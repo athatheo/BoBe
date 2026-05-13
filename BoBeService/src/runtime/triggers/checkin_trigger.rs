@@ -1,5 +1,3 @@
-//! Entry point for scheduled check-ins: schedule -> conversation check -> cooldown -> send.
-
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -17,7 +15,7 @@ pub(crate) struct CheckinTrigger {
     scheduler: CheckinScheduler,
     generator: Arc<ProactiveGenerator>,
     conversation: Arc<ConversationService>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
     config: Arc<ArcSwap<Config>>,
 }
 
@@ -26,7 +24,7 @@ impl CheckinTrigger {
         scheduler: CheckinScheduler,
         generator: Arc<ProactiveGenerator>,
         conversation: Arc<ConversationService>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
@@ -57,11 +55,10 @@ impl CheckinTrigger {
             return Decision::Idle;
         }
 
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Some(cooldown) = cooldown_repo.check_cooldown(
-                cfg.decision.cooldown_minutes,
-                cfg.decision.extended_cooldown_minutes,
-            )
+        if let Some(cooldown) = self.cooldown_repo.check_cooldown(
+            cfg.decision.cooldown_minutes,
+            cfg.decision.extended_cooldown_minutes,
+        )
         {
             debug!(
                 remaining_s = cooldown.remaining.num_seconds(),

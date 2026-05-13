@@ -10,11 +10,6 @@ final class TrayManager: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let store: BobeStore
 
-    /// Backend locale IDs used when daemon settings haven't loaded yet.
-    private static let fallbackLocales = [
-        "en-US", "el-GR", "zh-CN", "de-DE", "es-ES", "pt-BR", "ko-KR", "ja-JP", "fr-FR",
-    ]
-
     private var captureObserver: NSObjectProtocol?
 
     init(store: BobeStore) {
@@ -60,9 +55,7 @@ final class TrayManager: NSObject, NSMenuDelegate {
         self.rebuildMenu()
     }
 
-    /// Clears and rebuilds all items in the existing menu.
-    /// Because we mutate the same NSMenu instance (rather than replacing it),
-    /// changes are visible immediately — even inside `menuWillOpen`.
+    /// Mutates the same NSMenu instance so changes apply during `menuWillOpen`.
     private func rebuildMenu() {
         guard let menu = self.statusItem?.menu else { return }
         menu.removeAllItems()
@@ -200,11 +193,7 @@ final class TrayManager: NSObject, NSMenuDelegate {
 
         submenu.addItem(.separator())
 
-        let locales = self.store.supportedLocales.isEmpty
-            ? Self.fallbackLocales
-            : self.store.supportedLocales
-
-        for localeId in locales {
+        for localeId in BobeStore.supportedLocales {
             let locale = Locale(identifier: localeId)
             let nativeName = locale.localizedString(forLanguageCode: localeId)?
                 .prefix(1).uppercased()
@@ -223,19 +212,8 @@ final class TrayManager: NSObject, NSMenuDelegate {
     @objc
     private func changeLanguage(_ sender: NSMenuItem) {
         let localeId = sender.representedObject as? String ?? ""
-        let previousLocale = store.localeOverride
-        Task { @MainActor in
-            self.store.updateLocale(localeId)
-            do {
-                var req = SettingsUpdateRequest()
-                req.localeOverride = localeId
-                _ = try await DaemonClient.shared.updateSettings(req)
-            } catch {
-                logger.error("Failed to persist language change: \(error.localizedDescription)")
-                self.store.updateLocale(previousLocale)
-            }
-            self.updateMenu()
-        }
+        self.store.updateLocale(localeId)
+        self.updateMenu()
     }
 
     private func loadTrayIcon() -> NSImage? {

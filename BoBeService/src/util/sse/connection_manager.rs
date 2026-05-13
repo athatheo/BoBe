@@ -65,7 +65,6 @@ impl SseConnectionManager {
                     IndicatorType::ScreenCapture
                 }
                 "THINKING" | "thinking" | "Thinking" => IndicatorType::Thinking,
-                "TOOL_CALLING" | "tool_calling" | "ToolCalling" => IndicatorType::ToolCalling,
                 "STREAMING" | "streaming" | "Streaming" => IndicatorType::Streaming,
                 _ => IndicatorType::Idle,
             };
@@ -198,14 +197,11 @@ mod tests {
             message_id: String::new(),
             timestamp: Utc::now().to_rfc3339(),
             description: String::new(),
-            payload: json!({ "indicator": "TOOL_CALLING" }),
+            payload: json!({ "indicator": "THINKING" }),
         };
 
         manager.track_indicator(&bundle).await;
 
-        assert_eq!(
-            manager.current_indicator().await,
-            IndicatorType::ToolCalling
-        );
+        assert_eq!(manager.current_indicator().await, IndicatorType::Thinking);
     }
 }

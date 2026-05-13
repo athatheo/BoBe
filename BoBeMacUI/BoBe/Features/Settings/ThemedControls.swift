@@ -48,7 +48,6 @@ enum BobeTextStyle {
     case body
     case badge
 
-    // Overlay
     case overlayStatus
     case chatSender
     case chatPending
@@ -56,13 +55,11 @@ enum BobeTextStyle {
     case chatMeta
     case brandLabel
 
-    // Setup
     case setupTitle
     case setupSubtitle
     case setupBody
     case setupHeading
 
-    // Settings (panels that still hardcode)
     case inputField
     case heading
 

@@ -2,15 +2,14 @@ import Foundation
 
 // MARK: - SSE Event Stream Types
 
+/// End-of-turn signalled by `text_delta` with `done: true`; no separate event.
 enum EventType: String, Codable, Sendable {
     case indicator
     case textDelta = "text_delta"
-    case toolCall = "tool_call"
     case toolCallStart = "tool_call_start"
     case toolCallComplete = "tool_call_complete"
     case error
     case heartbeat
-    case endOfTurn = "end_of_turn"
     case conversationClosed = "conversation_closed"
     case unknown
 
@@ -78,11 +77,20 @@ struct ToolCallCompletePayload: Codable, Sendable {
     }
 }
 
+/// Daemon emits two shapes: chat carries `code`; trigger carries `trigger`.
 struct ErrorPayload: Codable, Sendable {
-    let code: String
+    let code: String?
+    let trigger: String?
     let message: String
     let recoverable: Bool
-    let details: [String: AnyCodableValue]?
+
+    var sourceLabel: String {
+        self.trigger ?? self.code ?? "error"
+    }
+
+    var isTriggerError: Bool {
+        self.trigger != nil
+    }
 }
 
 struct ConversationClosedPayload: Codable, Sendable {
@@ -99,7 +107,6 @@ struct ConversationClosedPayload: Codable, Sendable {
 
 // MARK: - Flexible JSON Payload Handling
 
-/// Type-erased Codable wrapper for SSE payloads, decoded lazily by type.
 struct AnyCodablePayload: Codable, Sendable {
     let data: Data
 

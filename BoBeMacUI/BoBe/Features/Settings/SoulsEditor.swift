@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Split-pane editor for Souls (personality documents).
 struct SoulsEditor: View {
     @State private var souls: [Soul] = []
     @State private var editorState = SettingsEditorState<String>()

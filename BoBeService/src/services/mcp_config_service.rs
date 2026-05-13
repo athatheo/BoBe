@@ -1,12 +1,3 @@
-//! MCP configuration service — schema validation, secret normalization,
-//! file persistence, and runtime adapter reload.
-//!
-//! Design follows Claude Code / VS Code Copilot patterns:
-//! - **Validate** is schema-only (pure, no subprocesses, no side effects).
-//! - **Save** persists config + reloads adapter; server connections happen
-//!   lazily during adapter reload (per-server failures are non-blocking).
-//! - **GET** returns persisted config + live runtime state from the adapter.
-
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -15,10 +6,8 @@ use tracing::warn;
 
 use crate::app_state::AppState;
 use crate::error::AppError;
-use crate::tools::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
-use crate::tools::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
-
-// ── Response / request DTOs ────────────────────────────────────────────────
+use crate::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
+use crate::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct McpToolMetadata {
@@ -34,6 +23,9 @@ pub(crate) struct McpServerSummary {
     pub(crate) args: Vec<String>,
     pub(crate) enabled: bool,
     pub(crate) connected: bool,
+    /// `None` means "indeterminate"; chat session not yet spawned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) status: Option<String>,
     pub(crate) tool_count: usize,
     pub(crate) tools: Vec<McpToolMetadata>,
     pub(crate) excluded_tools: Vec<String>,
@@ -81,8 +73,6 @@ pub(crate) struct McpConfigResetResponse {
     pub(crate) raw_json: String,
     pub(crate) count: usize,
 }
-
-// ── Public API ─────────────────────────────────────────────────────────────
 
 pub(crate) async fn get_document(state: &AppState) -> Result<McpConfigDocumentResponse, AppError> {
     let (_path, file) = load_mcp_file(state)?;
@@ -140,16 +130,6 @@ pub(crate) async fn save_document(
 
     mcp_config::save_mcp_config_file(&path, &file)?;
 
-    if let Some(adapter) = state.mcp_tool_adapter.as_ref()
-        && let Err(e) = adapter.reload_from_config().await
-    {
-        warn!(error = %e, "mcp_config.adapter_reload_partial_failure");
-    }
-
-    if let Err(e) = state.tool_registry.refresh_index().await {
-        warn!(error = %e, "mcp_config.tool_index_refresh_failed");
-    }
-
     if let Some(ref prev) = previous {
         cleanup_removed_secret_refs(prev, &file);
     }
@@ -179,16 +159,6 @@ pub(crate) async fn reset_document(state: &AppState) -> Result<McpConfigResetRes
     };
     mcp_config::save_mcp_config_file(&path, &empty)?;
 
-    if let Some(adapter) = state.mcp_tool_adapter.as_ref()
-        && let Err(e) = adapter.reload_from_config().await
-    {
-        warn!(error = %e, "mcp_config.adapter_reload_failed_on_reset");
-    }
-
-    if let Err(e) = state.tool_registry.refresh_index().await {
-        warn!(error = %e, "mcp_config.tool_index_refresh_failed_on_reset");
-    }
-
     if let Some(ref prev) = previous {
         cleanup_removed_secret_refs(prev, &empty);
     }
@@ -199,8 +169,6 @@ pub(crate) async fn reset_document(state: &AppState) -> Result<McpConfigResetRes
         count: 0,
     })
 }
-
-// ── Internals ──────────────────────────────────────────────────────────────
 
 fn parse_and_validate(
     raw_json: &str,
@@ -280,51 +248,37 @@ async fn build_runtime_summaries(state: &AppState, file: &McpConfigFile) -> Vec<
     let mut entries: Vec<(&String, &McpServerEntry)> = file.mcp_servers.iter().collect();
     entries.sort_by_key(|(name, _)| *name);
 
+    let live = state.workers.live_mcp_servers().await;
+    let live_map: HashMap<String, mcp_live::ServerEntry> = live
+        .map(|servers| {
+            servers
+                .into_iter()
+                .map(|s| (s.name.clone(), mcp_live::ServerEntry::from_sdk(s)))
+                .collect()
+        })
+        .unwrap_or_default();
+
     let mut summaries = Vec::with_capacity(entries.len());
     for (name, entry) in entries {
-        summaries.push(build_server_summary(state, name, entry).await);
+        summaries.push(build_server_summary(name, entry, live_map.get(name)).await);
     }
     summaries
 }
 
 async fn build_server_summary(
-    state: &AppState,
     name: &str,
     entry: &McpServerEntry,
+    live: Option<&mcp_live::ServerEntry>,
 ) -> McpServerSummary {
     let (mut env_keys, mut secret_env_keys) = env_metadata(entry);
     env_keys.sort();
     secret_env_keys.sort();
 
-    let excluded: HashSet<&str> = entry.excluded_tools.iter().map(String::as_str).collect();
-
-    let (connected, tools, runtime_error) = match state.mcp_tool_adapter.as_ref() {
-        Some(adapter) => match adapter.get_raw_tools_for_server(name).await {
-            Ok(raw) => {
-                let mut t: Vec<McpToolMetadata> = raw
-                    .iter()
-                    .map(|tool| McpToolMetadata {
-                        name: tool.name.clone(),
-                        description: tool.description.clone(),
-                        excluded: excluded.contains(tool.name.as_str()),
-                    })
-                    .collect();
-                t.sort_by(|a, b| a.name.cmp(&b.name));
-                (true, t, adapter.get_server_error(name).await)
-            }
-            Err(e) => (
-                false,
-                Vec::new(),
-                adapter
-                    .get_server_error(name)
-                    .await
-                    .or_else(|| Some(e.to_string())),
-            ),
-        },
-        None => (false, Vec::new(), None),
+    // Per-server tools/tool_count not exposed by SDK v0.1.0; leave defaulted.
+    let (connected, status, error) = match live {
+        Some(s) => (s.connected, Some(s.status.clone()), s.error.clone()),
+        None => (false, None, None),
     };
-
-    let tool_count = tools.iter().filter(|t| !t.excluded).count();
 
     McpServerSummary {
         name: name.to_owned(),
@@ -332,16 +286,46 @@ async fn build_server_summary(
         args: entry.args.clone(),
         enabled: entry.enabled,
         connected,
-        tool_count,
-        tools,
+        status,
+        tool_count: 0,
+        tools: Vec::new(),
         excluded_tools: entry.excluded_tools.clone(),
         env_keys,
         secret_env_keys,
-        error: runtime_error,
+        error,
     }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+mod mcp_live {
+    use github_copilot_sdk::generated::api_types::{McpServer, McpServerStatus};
+
+    pub(super) struct ServerEntry {
+        pub(super) connected: bool,
+        pub(super) status: String,
+        pub(super) error: Option<String>,
+    }
+
+    impl ServerEntry {
+        pub(super) fn from_sdk(server: McpServer) -> Self {
+            let connected = matches!(server.status, McpServerStatus::Connected);
+            let status = match server.status {
+                McpServerStatus::Connected => "connected",
+                McpServerStatus::Failed => "failed",
+                McpServerStatus::NeedsAuth => "needs-auth",
+                McpServerStatus::Pending => "pending",
+                McpServerStatus::Disabled => "disabled",
+                McpServerStatus::NotConfigured => "not-configured",
+                McpServerStatus::Unknown => "unknown",
+            }
+            .to_string();
+            Self {
+                connected,
+                status,
+                error: server.error,
+            }
+        }
+    }
+}
 
 fn load_mcp_file(state: &AppState) -> Result<(PathBuf, McpConfigFile), AppError> {
     let path = resolve_config_path(state)?;

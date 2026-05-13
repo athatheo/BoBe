@@ -88,10 +88,64 @@ struct OverlayView: View {
     private var overlayContent: some View {
         VStack(spacing: 0) {
             self.chatHistorySection
+            self.conversationEndingSection
             self.recoverySection
             self.composerSection
+            self.softWarningSection
             self.errorBannerSection
             self.avatarSection
+        }
+    }
+
+    @ViewBuilder
+    private var conversationEndingSection: some View {
+        if self.isChatVisible, self.store.conversationEnding {
+            HStack(spacing: 6) {
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 9))
+                Text(L10n.tr("overlay.conversation.ending"))
+                    .bobeTextStyle(.overlayStatus)
+                Spacer()
+            }
+            .foregroundStyle(self.themeStore.currentTheme.colors.textMuted)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+            .transition(self.overlaySectionTransition)
+        }
+    }
+
+    @ViewBuilder
+    private var softWarningSection: some View {
+        if let warning = self.store.softWarning {
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 10))
+                Text(warning)
+                    .bobeTextStyle(.overlayStatus)
+                    .lineLimit(2)
+                Spacer()
+                Button {
+                    self.store.dismissSoftWarning()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
+            }
+            .foregroundStyle(self.themeStore.currentTheme.colors.tertiary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(self.themeStore.currentTheme.colors.tertiary.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(self.themeStore.currentTheme.colors.tertiary.opacity(0.4), lineWidth: 1)
+            )
+            .padding(.horizontal, 12)
+            .transition(self.overlaySectionTransition)
         }
     }
 
@@ -132,13 +186,17 @@ struct OverlayView: View {
     @ViewBuilder
     private var composerSection: some View {
         if self.isChatVisible {
-            MessageInput(
-                text: self.$draftMessage,
-                onSend: self.handleSendMessage,
-                onClose: { self.closeChat(userInitiated: true) },
-                feedbackMessage: self.composerFeedback,
-                isBusy: self.store.composerBlockReason != nil
-            )
+            HStack(alignment: .center, spacing: 8) {
+                MessageInput(
+                    text: self.$draftMessage,
+                    onSend: self.handleSendMessage,
+                    onClose: { self.closeChat(userInitiated: true) },
+                    feedbackMessage: self.composerFeedback,
+                    isBusy: self.store.composerBlockReason != nil
+                )
+                .layoutPriority(1)
+                MicButton()
+            }
             .padding(.horizontal, 12)
             .zIndex(1)
             .transition(self.overlaySectionTransition)
@@ -197,6 +255,13 @@ struct OverlayView: View {
                 )
                 .padding(.top, 18)
                 .padding(.leading, 16)
+
+                if !self.store.runningTools.isEmpty {
+                    self.toolExecutionBadge
+                        .padding(.top, 14)
+                        .padding(.leading, 90)
+                        .zIndex(5)
+                }
             }
             .frame(width: 148, height: 164, alignment: .topLeading)
         }
@@ -204,6 +269,25 @@ struct OverlayView: View {
         .padding(.bottom, 8)
         .padding(.top, 0)
         .zIndex(3)
+    }
+
+    private var toolExecutionBadge: some View {
+        let theme = self.themeStore.currentTheme
+        let count = self.store.runningTools.count
+        return HStack(spacing: 3) {
+            Image(systemName: "wrench.fill")
+                .font(.system(size: 9, weight: .bold))
+            if count > 1 {
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+            }
+        }
+        .foregroundStyle(theme.colors.background)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(theme.colors.primary))
+        .overlay(Capsule().stroke(theme.colors.background, lineWidth: 1.5))
+        .accessibilityLabel(L10n.tr("overlay.tool_badge.accessibility_format", count))
     }
 
     private var hasUnreadMessages: Bool {
@@ -251,6 +335,12 @@ struct OverlayView: View {
         }
         if let tool = self.store.runningTools.first {
             return L10n.tr("overlay.status.using_tool_format", tool.toolName)
+        }
+        // Daemon-supplied progress label wins over generic "Thinking..." when present.
+        if let label = self.store.indicatorMessage,
+           !label.isEmpty,
+           self.store.stateType == .thinking || self.store.stateType == .speaking {
+            return label
         }
         return nil
     }

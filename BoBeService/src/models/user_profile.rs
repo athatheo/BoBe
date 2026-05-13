@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 
 use super::ids::UserProfileId;
 
-/// Markdown document describing the user, injected into LLM prompts.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct UserProfile {
     pub(crate) id: UserProfileId,

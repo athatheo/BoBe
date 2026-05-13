@@ -1,8 +1,5 @@
-//! ConversationService — manages conversation lifecycle and turn management.
-
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
@@ -32,35 +29,6 @@ impl ConversationService {
             lifecycle_lock: Mutex::new(()),
             streaming_assistant_turns: DashMap::new(),
         }
-    }
-
-    // ── Conversation Lifecycle ──────────────────────────────────────────
-
-    pub(crate) async fn create_pending(&self, ai_message: &str) -> Result<Conversation, AppError> {
-        self.append_assistant_turn_or_create_pending(ai_message)
-            .await
-    }
-
-    pub(crate) async fn append_assistant_turn_or_create_pending(
-        &self,
-        ai_message: &str,
-    ) -> Result<Conversation, AppError> {
-        let _guard = self.lifecycle_lock.lock().await;
-        if let Some(conversation) = self.repo.get_pending_or_active().await? {
-            self.sync_streaming_assistant_turn_locked(conversation.id)
-                .await?;
-            let turn =
-                ConversationTurn::new(conversation.id, TurnRole::Assistant, ai_message.to_owned());
-            self.repo.add_turn(&turn).await?;
-            info!(
-                conversation_id = %conversation.id,
-                state = %conversation.state,
-                "conversation.assistant_turn_appended"
-            );
-            return Ok(conversation);
-        }
-
-        self.create_pending_unlocked(ai_message).await
     }
 
     pub(crate) async fn append_user_turn_or_create_active(
@@ -173,21 +141,6 @@ impl ConversationService {
 
     pub(crate) fn discard_proactive_stream(&self, conversation_id: ConversationId) {
         self.streaming_assistant_turns.remove(&conversation_id);
-    }
-
-    async fn create_pending_unlocked(&self, ai_message: &str) -> Result<Conversation, AppError> {
-        let conversation = Conversation::new_pending();
-        let saved = self.repo.save(&conversation).await?;
-
-        let turn = ConversationTurn::new(saved.id, TurnRole::Assistant, ai_message.to_owned());
-        self.repo.add_turn(&turn).await?;
-
-        info!(
-            conversation_id = %saved.id,
-            state = %saved.state,
-            "conversation.created_pending"
-        );
-        Ok(saved)
     }
 
     async fn open_or_create_pending_locked(&self) -> Result<Conversation, AppError> {
@@ -306,8 +259,6 @@ impl ConversationService {
         self.repo.get_last_closed().await
     }
 
-    // ── Turn Management ─────────────────────────────────────────────────
-
     pub(crate) async fn add_turn(
         &self,
         conversation_id: ConversationId,
@@ -332,8 +283,6 @@ impl ConversationService {
         Ok(Some(saved))
     }
 
-    // ── Queries ─────────────────────────────────────────────────────────
-
     pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
         self.repo.get_pending_or_active().await
     }
@@ -357,40 +306,6 @@ impl ConversationService {
         limit: i64,
     ) -> Result<Vec<ConversationTurn>, AppError> {
         self.repo.get_turns(conversation_id, limit).await
-    }
-
-    pub(crate) async fn get_closed_since(
-        &self,
-        since: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Conversation>, AppError> {
-        self.repo.find_closed_since(since).await
-    }
-
-    pub(crate) async fn get_previous_conversation_context(&self) -> Vec<(String, String)> {
-        let Ok(Some(last_closed)) = self.get_last_closed_conversation().await else {
-            return Vec::new();
-        };
-
-        let turns = match self.repo.get_turns(last_closed.id, 50).await {
-            Ok(t) => t,
-            Err(e) => {
-                warn!(error = %e, "conversation_service.previous_context_load_failed");
-                return Vec::new();
-            }
-        };
-
-        turns
-            .into_iter()
-            .rev()
-            .take(2)
-            .map(|t| {
-                let prefixed = format!("[From previous conversation] {}", t.content);
-                (t.role.as_str().to_owned(), prefixed)
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect()
     }
 }
 

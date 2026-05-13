@@ -1,5 +1,3 @@
-//! Top-level lifecycle manager for triggers, capture, and message handling.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -12,12 +10,11 @@ use crate::config::Config;
 use crate::db::CooldownRepository;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::state::Decision;
-use crate::runtime::triggers::agent_job_trigger::AgentJobTrigger;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinTrigger, GoalTrigger};
 use crate::services::conversation_service::ConversationService;
 use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::types::{EventType, IndicatorType, StreamBundle};
+use crate::util::sse::types::IndicatorType;
 
 pub(crate) struct RuntimeSession {
     checkin_trigger: Mutex<CheckinTrigger>,
@@ -25,10 +22,9 @@ pub(crate) struct RuntimeSession {
     capture_trigger: Mutex<CaptureTrigger>,
     message_handler: Arc<MessageHandler>,
     conversation: Arc<ConversationService>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
-    agent_job_trigger: Option<Arc<AgentJobTrigger>>,
     running: std::sync::atomic::AtomicBool,
     capture_enabled: std::sync::atomic::AtomicBool,
     user_message_in_flight: Arc<AtomicBool>,
@@ -51,10 +47,9 @@ impl RuntimeSession {
         capture_trigger: CaptureTrigger,
         message_handler: Arc<MessageHandler>,
         conversation: Arc<ConversationService>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
-        agent_job_trigger: Option<Arc<AgentJobTrigger>>,
     ) -> Self {
         Self {
             checkin_trigger: Mutex::new(checkin_trigger),
@@ -65,7 +60,6 @@ impl RuntimeSession {
             cooldown_repo,
             event_queue,
             config,
-            agent_job_trigger,
             running: std::sync::atomic::AtomicBool::new(false),
             capture_enabled: std::sync::atomic::AtomicBool::new(false),
             user_message_in_flight: Arc::new(AtomicBool::new(false)),
@@ -108,9 +102,7 @@ impl RuntimeSession {
         self.running
             .store(true, std::sync::atomic::Ordering::Release);
 
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.load_or_create().await
-        {
+        if let Err(e) = self.cooldown_repo.load_or_create().await {
             warn!(error = %e, "runtime_session.cooldown_load_failed");
         }
 
@@ -171,7 +163,7 @@ impl RuntimeSession {
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
             if time_since_goal >= cfg.goals.check_interval_seconds {
                 match tokio::time::timeout(
-                    std::time::Duration::from_secs(300),
+                    std::time::Duration::from_mins(5),
                     self.goal_trigger.fire(),
                 )
                 .await
@@ -193,7 +185,7 @@ impl RuntimeSession {
             {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
                 if time_since_capture >= cfg.capture.interval_seconds {
-                    match tokio::time::timeout(std::time::Duration::from_secs(300), async {
+                    match tokio::time::timeout(std::time::Duration::from_mins(5), async {
                         let mut ct = self.capture_trigger.lock().await;
                         ct.fire().await
                     })
@@ -209,20 +201,6 @@ impl RuntimeSession {
                         }
                     }
                     last_capture_time = Instant::now();
-                }
-            }
-
-            if let Some(ref agent_trigger) = self.agent_job_trigger {
-                match tokio::time::timeout(std::time::Duration::from_mins(1), agent_trigger.fire())
-                    .await
-                {
-                    Ok(Decision::Engage) => {
-                        info!(trigger = "agent_job", "runtime_session.reach_out");
-                    }
-                    Ok(_) => {}
-                    Err(_) => {
-                        warn!("runtime_session.agent_job_trigger_timeout");
-                    }
                 }
             }
 
@@ -277,6 +255,25 @@ impl RuntimeSession {
             .await;
     }
 
+    /// Voice variant: caller installs a text-delta observer that runs in
+    /// addition to the SSE EventQueue path. The SDK send rides
+    /// `DeliveryMode::Immediate` (atomic server-side interrupt of any
+    /// in-flight turn), so a barge-in's new transcript replaces the prior
+    /// generation in a single RPC without depending on `AbortGuard` drop
+    /// timing.
+    pub(crate) async fn handle_user_message_with_observer<F>(
+        &self,
+        content: &str,
+        message_id: &str,
+        on_text_delta: F,
+    ) where
+        F: FnMut(&str) + Send,
+    {
+        self.message_handler
+            .handle_message_with_observer(content, message_id, true, on_text_delta)
+            .await;
+    }
+
     pub(crate) fn try_begin_user_message(&self) -> Result<UserMessageGuard, &'static str> {
         if self
             .user_message_in_flight
@@ -292,7 +289,6 @@ impl RuntimeSession {
             return Err(match indicator {
                 IndicatorType::ScreenCapture => "BoBe is finishing capture work",
                 IndicatorType::Thinking => "BoBe is still thinking",
-                IndicatorType::ToolCalling => "BoBe is still using tools",
                 IndicatorType::Streaming => "BoBe is still responding",
                 IndicatorType::Idle => "BoBe is still finishing the previous message",
             });
@@ -314,16 +310,9 @@ impl RuntimeSession {
 
     fn push_error_event(&self, trigger: &str, message: &str) {
         error!(trigger, message, "runtime_session.trigger_error");
-        self.event_queue.push(StreamBundle {
-            event_type: EventType::Error,
-            message_id: uuid::Uuid::new_v4().to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            description: format!("{trigger} error"),
-            payload: serde_json::json!({
-                "trigger": trigger,
-                "message": message,
-                "recoverable": true,
-            }),
-        });
+        self.event_queue
+            .push(crate::util::sse::factories::trigger_error_event(
+                trigger, message, true,
+            ));
     }
 }

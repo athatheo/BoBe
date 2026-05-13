@@ -1,17 +1,5 @@
 import SwiftUI
-
-// MARK: - Visual Segment
-
-/// A visual unit within the chat — either a complete short message or
-/// one paragraph of a multi-paragraph response. Keeps the data model
-/// clean (1 SSE message = 1 `ChatMessage`) while letting the UI break
-/// long responses into digestible pills.
-private struct ChatSegment: Identifiable {
-    var id: String { self.message.id }
-    let message: ChatMessage
-    let showSender: Bool
-    let isContinuation: Bool
-}
+import Textual
 
 // MARK: - Chat Stack
 
@@ -20,121 +8,111 @@ struct ChatStack: View {
     var maxViewportHeight: CGFloat = WindowSizes.heightChatViewportMax
 
     @State private var isExpanded = false
-    /// Per-bubble expand — lets users reveal truncated text without expanding
-    /// the entire chat history.
     @State private var expandedBubbleIds: Set<String> = []
-    /// IDs of messages that just finished streaming. While present the message
-    /// stays as a single bubble; after 300 ms it splits into paragraph pills
-    /// so the transition feels like a natural "unfold" instead of a jarring cut.
-    @State private var deferSplitIds: Set<String> = []
     @Environment(\.theme) private var theme
 
-    private static let maxCompactSegments = 4
+    private static let maxCompactBubbles = 4
     private static let compactLineLimit = 5
 
-    // MARK: - Segment Computation
-
-    private var allSegments: [ChatSegment] {
-        self.messages.flatMap { msg in
-            if self.deferSplitIds.contains(msg.id) {
-                return [ChatSegment(message: msg, showSender: true, isContinuation: false)]
-            }
-            return Self.splitMessage(msg)
-        }
+    private var compactVisible: [ChatMessage] {
+        Array(self.messages.suffix(Self.maxCompactBubbles))
     }
 
-    private var visibleSegments: [ChatSegment] {
-        if self.isExpanded { return self.allSegments }
-        return Array(self.allSegments.suffix(Self.maxCompactSegments))
-    }
-
-    /// Only counts segments hidden above the visible window.
-    /// Per-bubble truncation is handled separately by "read more" links.
     private var hiddenCount: Int {
-        if self.isExpanded { return 0 }
-        return max(0, self.allSegments.count - Self.maxCompactSegments)
+        max(0, self.messages.count - Self.maxCompactBubbles)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: self.isExpanded) {
-                    VStack(spacing: 6) {
-                        if !self.isExpanded, self.hiddenCount > 0 {
-                            OverflowPill(count: self.hiddenCount, isExpanded: false) {
-                                self.toggleExpanded()
-                            }
-                            .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                        }
-
-                        if self.isExpanded, self.allSegments.count > Self.maxCompactSegments {
-                            OverflowPill(count: 0, isExpanded: true) {
-                                self.toggleExpanded()
-                            }
-                            .transition(.opacity)
-                        }
-
-                        ForEach(self.visibleSegments) { segment in
-                            ChatBubble(
-                                message: segment.message,
-                                showSender: segment.showSender,
-                                compactLineLimit: self.effectiveLineLimit(for: segment),
-                                isContinuation: segment.isContinuation,
-                                onReadMore: self.isExpanded ? nil : { self.expandBubble(segment.id) }
-                            )
-                            .id(segment.id)
-                        }
-                    }
-                    .padding(.top, 2)
-                    .padding(.bottom, 2)
-                }
-                // Shrink-to-fit: ScrollView takes only the space its content
-                // needs, up to maxViewportHeight. Without fixedSize the
-                // ScrollView is greedy and creates a huge gap above messages.
-                .defaultScrollAnchor(.bottom)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxHeight: self.maxViewportHeight, alignment: .bottom)
-                // Disable bounce when content fits — prevents rubberbanding
-                // on short conversations.
-                .scrollBounceBehavior(.basedOnSize)
-                // Allow bubble shadows to render outside the scroll clip rect.
-                .scrollClipDisabled()
-                .onAppear {
-                    self.scrollToBottom(proxy)
-                }
-                .onChange(of: self.messages.last?.id) { _, _ in
-                    withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-                        self.scrollToBottom(proxy)
-                    }
-                }
-                .onChange(of: self.messages.last?.content) { _, _ in
-                    withAnimation(OverlayMotionRuntime.reduceMotion ? nil : .linear(duration: 0.12)) {
-                        self.scrollToBottom(proxy)
-                    }
-                }
-                .onChange(of: self.messages.last?.isStreaming) { old, new in
-                    if old == true, new == false, let id = self.messages.last?.id {
-                        self.scheduleDeferredSplit(for: id)
-                    }
-                }
+        Group {
+            if self.isExpanded {
+                self.expandedView
+            } else {
+                self.compactView
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 4)
     }
 
-    // MARK: - Actions
+    // MARK: - Compact
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        if let last = self.visibleSegments.last {
+    /// Natural-height stack of last N short bubbles. No ScrollView — parent window resizes
+    /// to fit. Read-More on a bubble removes its line cap; an overflow pill at top reveals
+    /// older messages by switching to expanded mode.
+    private var compactView: some View {
+        VStack(spacing: 6) {
+            if self.hiddenCount > 0 {
+                OverflowPill(count: self.hiddenCount, isExpanded: false) {
+                    self.toggleExpanded()
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            }
+            ForEach(self.compactVisible) { message in
+                ChatBubble(
+                    message: message,
+                    compactLineLimit: self.effectiveCompactLineLimit(for: message),
+                    onReadMore: { self.expandBubble(message.id) }
+                )
+                .id(message.id)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    // MARK: - Expanded
+
+    /// Real ScrollView capped at `maxViewportHeight`. Scrolls cleanly between whole bubbles;
+    /// no mid-bubble clipping because the ScrollView's natural clip is at its frame edge.
+    private var expandedView: some View {
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: true) {
+                VStack(spacing: 6) {
+                    if self.messages.count > Self.maxCompactBubbles {
+                        OverflowPill(count: 0, isExpanded: true) {
+                            self.toggleExpanded()
+                        }
+                    }
+                    ForEach(self.messages) { message in
+                        ChatBubble(
+                            message: message,
+                            compactLineLimit: nil,
+                            onReadMore: nil
+                        )
+                        .id(message.id)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(maxHeight: self.maxViewportHeight, alignment: .bottom)
+            .scrollBounceBehavior(.basedOnSize)
+            // Let bubble shadows escape the clip rect.
+            .scrollClipDisabled()
+            .defaultScrollAnchor(.bottom)
+            .onAppear {
+                self.scrollToBottom(proxy, animated: false)
+            }
+            .onChange(of: self.messages.last?.id) { _, _ in
+                self.scrollToBottom(proxy, animated: true)
+            }
+            .onChange(of: self.messages.last?.content) { _, _ in
+                self.scrollToBottom(proxy, animated: true)
+            }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
+        guard let last = self.messages.last else { return }
+        if animated {
+            withAnimation(OverlayMotionRuntime.reduceMotion ? nil : .linear(duration: 0.12)) {
+                proxy.scrollTo(last.id, anchor: .bottom)
+            }
+        } else {
             proxy.scrollTo(last.id, anchor: .bottom)
         }
     }
 
     private func toggleExpanded() {
-        // No withAnimation — the window resize (triggered by GeometryReader
-        // preference key) fights with content animation, causing shake.
-        // Individual view transitions still fire from conditional presence.
+        // No withAnimation: window resize fights content animation, causing shake.
         self.isExpanded.toggle()
         if !self.isExpanded {
             self.expandedBubbleIds.removeAll()
@@ -147,56 +125,9 @@ struct ChatStack: View {
         }
     }
 
-    private func effectiveLineLimit(for segment: ChatSegment) -> Int? {
-        if self.isExpanded { return nil }
-        if self.expandedBubbleIds.contains(segment.id) { return nil }
+    private func effectiveCompactLineLimit(for message: ChatMessage) -> Int? {
+        if self.expandedBubbleIds.contains(message.id) { return nil }
         return Self.compactLineLimit
-    }
-
-    /// Keeps a just-finalized message as a single bubble for 300 ms, then
-    /// removes the deferral so paragraph splitting kicks in with animation.
-    private func scheduleDeferredSplit(for id: String) {
-        self.deferSplitIds.insert(id)
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            _ = withAnimation(OverlayMotionRuntime.animation(for: .chatTransition)) {
-                self.deferSplitIds.remove(id)
-            }
-        }
-    }
-
-    // MARK: - Segment Helpers
-
-    private static func splitMessage(_ message: ChatMessage) -> [ChatSegment] {
-        guard !message.isStreaming else {
-            return [ChatSegment(message: message, showSender: true, isContinuation: false)]
-        }
-
-        let paragraphs = message.content
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        guard paragraphs.count > 1 else {
-            return [ChatSegment(message: message, showSender: true, isContinuation: false)]
-        }
-
-        return paragraphs.enumerated().map { index, paragraph in
-            ChatSegment(
-                message: ChatMessage(
-                    // First paragraph keeps the original ID so SwiftUI animates
-                    // it as an update rather than a remove+insert.
-                    id: index == 0 ? message.id : "\(message.id)-p\(index)",
-                    sender: message.sender,
-                    content: paragraph,
-                    timestamp: message.timestamp,
-                    isPending: message.isPending
-                ),
-                showSender: index == 0,
-                isContinuation: index > 0
-            )
-        }
     }
 }
 
@@ -249,9 +180,7 @@ private struct OverflowPill: View {
 
 struct ChatBubble: View {
     let message: ChatMessage
-    var showSender: Bool = true
     var compactLineLimit: Int?
-    var isContinuation: Bool = false
     var onReadMore: (() -> Void)?
 
     @Environment(\.theme) private var theme
@@ -268,13 +197,20 @@ struct ChatBubble: View {
         self.isUser ? self.theme.colors.secondary : self.theme.colors.primary
     }
 
-    private var cornerRadius: CGFloat {
-        self.isContinuation ? 12 : 16
-    }
-
     private var showReadMore: Bool {
         guard let limit = self.compactLineLimit, self.onReadMore != nil else { return false }
         return Self.isLikelyTruncated(self.message.content, lineLimit: limit)
+    }
+
+    /// Inline markdown (bold/italic/code/links) only; block syntax stays as text so paragraphs and lists keep their layout.
+    private var renderedContent: AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        )
+        if let attr = try? AttributedString(markdown: self.message.content, options: options) {
+            return attr
+        }
+        return AttributedString(self.message.content)
     }
 
     var body: some View {
@@ -282,37 +218,43 @@ struct ChatBubble: View {
             if self.isUser { Spacer(minLength: 0) }
 
             VStack(spacing: 0) {
-                if !self.isContinuation {
-                    Rectangle()
-                        .fill(self.accentColor)
-                        .frame(height: 3)
-                }
+                Rectangle()
+                    .fill(self.accentColor)
+                    .frame(height: 3)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    if self.showSender {
-                        HStack(spacing: 0) {
-                            Text(self.isUser ? L10n.tr("overlay.chat.sender.you") : L10n.tr("overlay.chat.sender.bobe"))
-                                .bobeTextStyle(.chatSender)
-                                .tracking(0.8)
-                                .textCase(.uppercase)
-                                .foregroundStyle(self.accentColor)
-                            if self.isPending {
-                                Text(L10n.tr("overlay.chat.pending_suffix"))
-                                    .bobeTextStyle(.chatPending)
-                                    .italic()
-                                    .foregroundStyle(self.theme.colors.textMuted)
-                            }
+                    HStack(spacing: 0) {
+                        Text(self.isUser ? L10n.tr("overlay.chat.sender.you") : L10n.tr("overlay.chat.sender.bobe"))
+                            .bobeTextStyle(.chatSender)
+                            .tracking(0.8)
+                            .textCase(.uppercase)
+                            .foregroundStyle(self.accentColor)
+                        if self.isPending {
+                            Text(L10n.tr("overlay.chat.pending_suffix"))
+                                .bobeTextStyle(.chatPending)
+                                .italic()
+                                .foregroundStyle(self.theme.colors.textMuted)
                         }
-                        .padding(.bottom, 2)
                     }
+                    .padding(.bottom, 2)
 
                     HStack(spacing: 0) {
-                        Text(self.message.content)
-                            .bobeTextStyle(.chatBody)
-                            .lineSpacing(2)
-                            .foregroundStyle(self.theme.colors.text)
-                            .lineLimit(self.compactLineLimit)
-                            .fixedSize(horizontal: false, vertical: self.compactLineLimit == nil)
+                        // Streaming → fast inline parse. Expanded → full block-level markdown (lists, headers, code).
+                        // Compact → inline parse so truncation works (StructuredText doesn't support `lineLimit`).
+                        if !self.message.isStreaming, self.compactLineLimit == nil {
+                            StructuredText(markdown: self.message.content)
+                                .textual.structuredTextStyle(.gitHub)
+                                .textual.textSelection(.disabled)
+                                .foregroundStyle(self.theme.colors.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text(self.renderedContent)
+                                .bobeTextStyle(.chatBody)
+                                .lineSpacing(2)
+                                .foregroundStyle(self.theme.colors.text)
+                                .lineLimit(self.compactLineLimit)
+                                .fixedSize(horizontal: false, vertical: self.compactLineLimit == nil)
+                        }
 
                         if self.message.isStreaming {
                             BlinkingCursor(color: self.theme.colors.primary)
@@ -333,22 +275,18 @@ struct ChatBubble: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
-                .padding(.top, self.isContinuation ? 6 : 8)
+                .padding(.top, 8)
                 .padding(.bottom, 10)
             }
             .background(
                 self.isPending ? self.theme.colors.border : self.theme.colors.background
             )
-            .clipShape(RoundedRectangle(cornerRadius: self.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
-                RoundedRectangle(cornerRadius: self.cornerRadius)
-                    .stroke(self.theme.colors.border, lineWidth: self.isContinuation ? 1 : 1.5)
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(self.theme.colors.border, lineWidth: 1.5)
             )
-            .shadow(
-                color: Color.black.opacity(self.isContinuation ? 0.03 : 0.06),
-                radius: self.isContinuation ? 2 : 4,
-                y: self.isContinuation ? 1 : 2
-            )
+            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
             .opacity(self.isPending ? 0.5 : 1)
             .frame(maxWidth: self.isUser ? 410 : 460, alignment: self.isUser ? .trailing : .leading)
             .transition(
@@ -408,17 +346,18 @@ struct BlinkingCursor: View {
     .frame(width: 500)
 }
 
-#Preview("Chat Bubble - Continuation") {
-    VStack(spacing: 3) {
-        ChatBubble(
-            message: ChatMessage(sender: .bobe, content: "First paragraph with the main idea.")
-        )
-        ChatBubble(
-            message: ChatMessage(sender: .bobe, content: "Second paragraph with more details about the topic."),
-            showSender: false,
-            isContinuation: true
-        )
-    }
+#Preview("Chat Bubble - Markdown") {
+    ChatBubble(
+        message: ChatMessage(sender: .bobe, content: """
+        **Code & Development**
+        - Write, refactor, debug code across any language
+        - Explore unfamiliar codebases and explain how things work
+        - Run tests, builds, linters
+
+        **Git & Collaboration**
+        - Commits, branches, PRs via `gh` or `tea`
+        """)
+    )
     .environment(\.theme, allThemes[0])
     .padding()
     .frame(width: 500)
@@ -441,28 +380,6 @@ struct BlinkingCursor: View {
     ])
     .environment(\.theme, allThemes[0])
     .frame(width: 540, height: 400)
-    .background(allThemes[0].colors.background)
-}
-
-#Preview("Chat Stack - Long Response") {
-    ChatStack(messages: [
-        ChatMessage(sender: .user, content: "Tell me about the project structure."),
-        ChatMessage(sender: .bobe, content: """
-        The project has a clean separation between the Rust backend and the Swift frontend. \
-        The backend runs as a daemon on localhost:8766 and handles all the AI logic.
-
-        The Swift app is a transparent overlay that sits on top of your desktop. It communicates \
-        with the backend via HTTP REST for commands and SSE for real-time streaming updates.
-
-        The settings panel lets you configure everything from the AI model to the appearance. \
-        Each panel is a separate SwiftUI view that loads data from the backend.
-
-        I'd recommend starting with the overlay views if you want to understand the chat flow, \
-        since that's where user interaction happens most.
-        """),
-    ])
-    .environment(\.theme, allThemes[0])
-    .frame(width: 540, height: 500)
     .background(allThemes[0].colors.background)
 }
 #endif

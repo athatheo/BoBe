@@ -7,17 +7,19 @@ mod bootstrap;
 mod config;
 mod config_manager;
 mod constants;
+mod copilot;
 mod db;
 mod error;
-mod i18n;
-mod llm;
+mod mcp;
 mod models;
+mod ollama_manager;
 mod runtime;
 #[allow(unsafe_code)]
 mod secrets;
 mod services;
-mod tools;
+mod speech;
 mod util;
+mod voice;
 
 #[derive(Parser)]
 #[command(name = "bobe", about = "BoBe - Local-first proactive AI companion")]
@@ -62,11 +64,11 @@ async fn main() -> anyhow::Result<()> {
                 config.server.port
             );
 
-            let (state, goal_worker_manager) = bootstrap::run(config.clone()).await?;
+            let state = bootstrap::run(config.clone()).await?;
             let app = api::router::build_router(std::sync::Arc::clone(&state));
 
             let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);
-            let handles = spawn_background_tasks(&state, goal_worker_manager, &shutdown_tx);
+            let handles = spawn_background_tasks(&state, &shutdown_tx);
 
             let listener = tokio::net::TcpListener::bind(format!(
                 "{}:{}",
@@ -102,13 +104,11 @@ async fn main() -> anyhow::Result<()> {
 struct BackgroundHandles {
     heartbeat: tokio::task::JoinHandle<()>,
     runtime: tokio::task::JoinHandle<()>,
-    learning: Option<tokio::task::JoinHandle<()>>,
-    goal_worker: tokio::task::JoinHandle<()>,
+    consolidation: tokio::task::JoinHandle<()>,
 }
 
 fn spawn_background_tasks(
     state: &std::sync::Arc<app_state::AppState>,
-    goal_worker_manager: services::goal_worker::manager::GoalWorkerManager,
     shutdown_tx: &tokio::sync::broadcast::Sender<()>,
 ) -> BackgroundHandles {
     let heartbeat = {
@@ -141,34 +141,22 @@ fn spawn_background_tasks(
         })
     };
 
-    let learning = state.learning_loop.as_ref().map(|ll| {
-        let ll = std::sync::Arc::clone(ll);
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            tokio::select! {
-                () = ll.run() => {}
-                _ = shutdown_rx.recv() => {
-                    ll.stop();
-                }
-            }
-            tracing::info!("learning_loop_task.stopped");
-        })
-    });
-
-    let goal_worker = {
+    let consolidation = {
+        let trigger = copilot::consolidation::ConsolidationTrigger::new(
+            std::sync::Arc::clone(&state.workers),
+            std::sync::Arc::clone(&state.memory_file),
+        );
         let shutdown_rx = shutdown_tx.subscribe();
-        let mut manager = goal_worker_manager;
         tokio::spawn(async move {
-            manager.run(shutdown_rx).await;
-            tracing::info!("goal_worker_manager_task.stopped");
+            trigger.run(shutdown_rx).await;
+            tracing::info!("consolidation_trigger_task.stopped");
         })
     };
 
     BackgroundHandles {
         heartbeat,
         runtime,
-        learning,
-        goal_worker,
+        consolidation,
     }
 }
 
@@ -179,61 +167,20 @@ async fn drain_background_tasks(handles: BackgroundHandles) {
     if let Err(e) = handles.runtime.await {
         tracing::error!(error = %e, "runtime session task panicked");
     }
-    if let Some(h) = handles.learning
-        && let Err(e) = h.await
-    {
-        tracing::error!(error = %e, "learning loop task panicked");
-    }
-    if let Err(e) = handles.goal_worker.await {
-        tracing::error!(error = %e, "goal worker manager task panicked");
+    if let Err(e) = handles.consolidation.await {
+        tracing::error!(error = %e, "consolidation trigger task panicked");
     }
 }
 
 async fn run_graceful_shutdown(
     state: &std::sync::Arc<app_state::AppState>,
-    config: &config::Config,
+    _config: &config::Config,
 ) {
     tracing::info!("Stopping mDNS...");
     state.mdns_announcer.stop().await;
 
-    if let Some(ref mcp) = state.mcp_tool_adapter {
-        tracing::info!("Stopping MCP servers...");
-        tokio::time::timeout(std::time::Duration::from_secs(2), mcp.shutdown())
-            .await
-            .ok();
-    }
-
-    if config.llm.backend == crate::config::LlmBackend::Ollama
-        || config.vision.backend == crate::config::LlmBackend::Ollama
-    {
-        tracing::info!("Unloading Ollama models...");
-        let unload_client = reqwest::Client::new();
-        for model_name in [
-            &config.ollama.model,
-            &config.vision.ollama_model,
-            &config.embedding.model,
-        ] {
-            drop(
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(2),
-                    unload_client
-                        .post(format!("{}/api/generate", config.ollama.url))
-                        .json(&serde_json::json!({"model": model_name, "keep_alive": 0}))
-                        .send(),
-                )
-                .await,
-            );
-        }
-        tracing::debug!("ollama.models_unloaded");
-
-        tracing::info!("Stopping Ollama (if managed)...");
-        tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            state.ollama_manager.stop(),
-        )
-        .await
-        .ok();
-    }
+    tracing::info!("Stopping Copilot workers...");
+    state.workers.shutdown_all().await;
 
     tracing::info!("Closing database pool...");
     state.db.close().await;

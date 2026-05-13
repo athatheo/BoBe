@@ -1,36 +1,38 @@
-//! Capture-based proactive engagement: screenshot -> learn -> cooldown -> decision -> response.
-
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
+
+const VISION_FAILURE_BREAKER_THRESHOLD: u32 = 3;
+
+const VISION_FAILURE_COOLDOWN: Duration = Duration::from_mins(3);
 
 use crate::config::Config;
 use crate::db::CooldownRepository;
-use crate::db::ObservationRepository;
-use crate::models::observation::Observation;
+use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::learners::CaptureLearner;
-use crate::runtime::learners::types::LearnerObservation;
+use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::factories::indicator_event;
+use crate::util::sse::factories::{indicator_event, trigger_error_event};
 use crate::util::sse::types::IndicatorType;
-
-use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::proactive_generator::ProactiveGenerator;
 
 pub(crate) struct CaptureTrigger {
     screen_capture: Arc<ScreenCapture>,
     capture_learner: Arc<CaptureLearner>,
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-    observation_repo: Arc<dyn ObservationRepository>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
     enabled: bool,
     context_count: usize,
+    vision_failure_count: u32,
+    vision_breaker_tripped_at: Option<Instant>,
+    /// Suppresses alternating paused/restored SSE events while broken.
+    vision_pause_announced: bool,
 }
 
 impl CaptureTrigger {
@@ -39,8 +41,7 @@ impl CaptureTrigger {
         capture_learner: Arc<CaptureLearner>,
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
-        observation_repo: Arc<dyn ObservationRepository>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
@@ -50,11 +51,28 @@ impl CaptureTrigger {
             decision_engine,
             generator,
             cooldown_repo,
-            observation_repo,
             event_queue,
             config,
             enabled: false,
             context_count: 0,
+            vision_failure_count: 0,
+            vision_breaker_tripped_at: None,
+            vision_pause_announced: false,
+        }
+    }
+
+    fn vision_breaker_open(&mut self) -> bool {
+        let Some(tripped_at) = self.vision_breaker_tripped_at else {
+            return false;
+        };
+        if tripped_at.elapsed() >= VISION_FAILURE_COOLDOWN {
+            // Failure count stays high until a success clears it, so the
+            // breaker re-trips if vision is still broken.
+            self.vision_breaker_tripped_at = None;
+            info!("capture_trigger.vision_breaker_reopened");
+            false
+        } else {
+            true
         }
     }
 
@@ -69,18 +87,16 @@ impl CaptureTrigger {
     }
 
     pub(crate) async fn fire(&mut self) -> Decision {
-        let observation = self.run_capture_cycle().await;
-        let Some(obs) = observation else {
+        let Some(description) = self.run_capture_cycle().await else {
             return Decision::Idle;
         };
 
         let cfg = self.config.load();
 
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Some(cooldown) = cooldown_repo.check_cooldown(
-                cfg.decision.cooldown_minutes,
-                cfg.decision.extended_cooldown_minutes,
-            )
+        if let Some(cooldown) = self.cooldown_repo.check_cooldown(
+            cfg.decision.cooldown_minutes,
+            cfg.decision.extended_cooldown_minutes,
+        )
         {
             debug!(
                 remaining_s = cooldown.remaining.num_seconds(),
@@ -96,9 +112,7 @@ impl CaptureTrigger {
             .push(indicator_event(IndicatorType::Thinking, None));
         let context = TriggerContext {
             trigger_type: TriggerType::Capture,
-            context_text: obs.content.clone(),
-            observation: Some(obs),
-            goal: None,
+            context_text: description,
         };
 
         let decision = self.decision_engine.decide(&context).await;
@@ -114,7 +128,12 @@ impl CaptureTrigger {
         decision
     }
 
-    async fn run_capture_cycle(&mut self) -> Option<Observation> {
+    async fn run_capture_cycle(&mut self) -> Option<String> {
+        if self.vision_breaker_open() {
+            debug!("capture_trigger.vision_breaker_open_skipping_cycle");
+            return None;
+        }
+
         let cycle_num = self.context_count + 1;
         info!(cycle = cycle_num, "capture_trigger.cycle_start");
 
@@ -132,34 +151,74 @@ impl CaptureTrigger {
 
         self.event_queue
             .push(indicator_event(IndicatorType::Thinking, None));
-        let observation =
-            LearnerObservation::capture(capture_result.image, capture_result.active_window);
-        match self.capture_learner.learn(&observation).await {
-            Ok(result) => {
+        let result = self
+            .capture_learner
+            .learn(
+                capture_result.image,
+                capture_result.active_window.as_deref(),
+            )
+            .await;
+        self.event_queue
+            .push(indicator_event(IndicatorType::Idle, None));
+
+        match result {
+            Ok(description) if !description.is_empty() => {
                 self.context_count += 1;
-                debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
-                self.event_queue
-                    .push(indicator_event(IndicatorType::Idle, None));
-                match result {
-                    crate::runtime::learners::types::LearnerResult::Stored { observation_id } => {
-                        match self.observation_repo.get_by_id(observation_id).await {
-                            Ok(Some(obs)) => Some(obs),
-                            Ok(None) => {
-                                debug!("capture_trigger.observation_not_found_after_store");
-                                None
-                            }
-                            Err(e) => {
-                                error!(error = %e, "capture_trigger.observation_fetch_failed");
-                                None
-                            }
-                        }
-                    }
+                self.vision_failure_count = 0;
+                self.vision_breaker_tripped_at = None;
+                if self.vision_pause_announced {
+                    self.vision_pause_announced = false;
+                    self.event_queue.push(trigger_error_event(
+                        "vision",
+                        "Screen awareness restored.",
+                        true,
+                    ));
                 }
+                debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
+                Some(description)
+            }
+            Ok(_) => {
+                // Empty description = uninformative screen, not a failure.
+                self.vision_failure_count = 0;
+                self.vision_breaker_tripped_at = None;
+                if self.vision_pause_announced {
+                    self.vision_pause_announced = false;
+                    self.event_queue.push(trigger_error_event(
+                        "vision",
+                        "Screen awareness restored.",
+                        true,
+                    ));
+                }
+                debug!(cycle = cycle_num, "capture_trigger.empty_description");
+                None
             }
             Err(e) => {
-                error!(error = %e, cycle = cycle_num, "capture_trigger.cycle_failed");
-                self.event_queue
-                    .push(indicator_event(IndicatorType::Idle, None));
+                self.vision_failure_count += 1;
+                if self.vision_failure_count >= VISION_FAILURE_BREAKER_THRESHOLD {
+                    self.vision_breaker_tripped_at = Some(Instant::now());
+                    if !self.vision_pause_announced {
+                        self.vision_pause_announced = true;
+                        self.event_queue.push(trigger_error_event(
+                            "vision",
+                            "Screen awareness paused — vision unavailable.",
+                            true,
+                        ));
+                    }
+                    warn!(
+                        cycle = cycle_num,
+                        consecutive_failures = self.vision_failure_count,
+                        cooldown_secs = VISION_FAILURE_COOLDOWN.as_secs(),
+                        error = %e,
+                        "capture_trigger.vision_breaker_tripped"
+                    );
+                } else {
+                    warn!(
+                        cycle = cycle_num,
+                        consecutive_failures = self.vision_failure_count,
+                        error = %e,
+                        "capture_trigger.cycle_failed"
+                    );
+                }
                 None
             }
         }

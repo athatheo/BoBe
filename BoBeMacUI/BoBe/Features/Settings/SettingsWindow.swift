@@ -3,12 +3,10 @@ import SwiftUI
 enum SettingsCategory: String, CaseIterable, Identifiable {
     case souls, goals, memories
     case userProfiles = "user-profiles"
-    case tools
     case mcpServers = "mcp-servers"
-    case appearance
-    case aiModel = "ai-model"
-    case behavior, privacy
-    case goalWorker = "goal-worker"
+    case engine
+    case voice
+    case appearance, behavior, privacy
     case advanced
 
     var id: String {
@@ -21,13 +19,12 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .goals: L10n.tr("settings.category.goals")
         case .memories: L10n.tr("settings.category.memories")
         case .userProfiles: L10n.tr("settings.category.user_profiles")
-        case .tools: L10n.tr("settings.category.tools")
         case .mcpServers: L10n.tr("settings.category.mcp_servers")
+        case .engine: L10n.tr("settings.category.engine")
+        case .voice: L10n.tr("settings.category.voice")
         case .appearance: L10n.tr("settings.category.appearance")
-        case .aiModel: L10n.tr("settings.category.ai_model")
         case .behavior: L10n.tr("settings.category.behavior")
         case .privacy: L10n.tr("settings.category.privacy")
-        case .goalWorker: L10n.tr("settings.category.goal_worker")
         case .advanced: L10n.tr("settings.category.advanced")
         }
     }
@@ -38,13 +35,12 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .goals: "target"
         case .memories: "brain.head.profile"
         case .userProfiles: "person.fill"
-        case .tools: "wrench.fill"
         case .mcpServers: "server.rack"
+        case .engine: "cpu"
+        case .voice: "waveform"
         case .appearance: "paintpalette.fill"
-        case .aiModel: "cpu.fill"
         case .behavior: "slider.horizontal.3"
         case .privacy: "shield.fill"
-        case .goalWorker: "gearshape.2.fill"
         case .advanced: "terminal.fill"
         }
     }
@@ -61,9 +57,9 @@ enum SettingsCategoryGroup: String, CaseIterable {
         case .context:
             [.souls, .goals, .memories, .userProfiles]
         case .integrations:
-            [.tools, .mcpServers]
+            [.mcpServers, .engine]
         case .preferences:
-            [.appearance, .aiModel, .behavior, .privacy, .goalWorker]
+            [.voice, .appearance, .behavior, .privacy]
         case .advanced:
             [.advanced]
         }
@@ -80,10 +76,22 @@ enum SettingsCategoryGroup: String, CaseIterable {
 }
 
 struct SettingsWindow: View {
+    /// Optional initial category to navigate to on first appearance. Used by
+    /// the overlay's MicButton "needs setup" deep-link to land directly on
+    /// the Voice pane.
+    let initialCategory: SettingsCategory?
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedCategory: SettingsCategory?
     private let themeStore = ThemeStore.shared
     private let store = BobeStore.shared
+
+    init(initialCategory: SettingsCategory? = nil) {
+        self.initialCategory = initialCategory
+        // SwiftUI ignores the initial value of @State after the first render,
+        // so we set it explicitly via _selectedCategory's wrapped value.
+        self._selectedCategory = State(initialValue: initialCategory)
+    }
 
     private var theme: ThemeConfig {
         self.themeStore.currentTheme
@@ -118,7 +126,7 @@ struct SettingsWindow: View {
         .onChange(of: self.reduceMotion, initial: true) { _, new in
             OverlayMotionRuntime.reduceMotion = new
         }
-        .id(self.store.localeVersion)
+        .id(self.store.localeOverride)
     }
 
     private var settingsSidebar: some View {
@@ -233,20 +241,18 @@ struct SettingsWindow: View {
             MemoriesEditor()
         case .userProfiles:
             UserProfilesEditor()
-        case .tools:
-            ToolsPanel()
         case .mcpServers:
             MCPServersPanel()
+        case .engine:
+            EnginePanel()
+        case .voice:
+            VoicePanel()
         case .appearance:
             AppearancePanel()
-        case .aiModel:
-            AIModelPanel()
         case .behavior:
             BehaviorPanel()
         case .privacy:
             PrivacyPanel()
-        case .goalWorker:
-            GoalWorkerPanel()
         case .advanced:
             AdvancedPanel()
         }
@@ -306,13 +312,6 @@ struct SettingsOverview: View {
                         heading: L10n.tr("settings.window.overview.card.sounds.heading"),
                         body: L10n.tr("settings.window.overview.card.sounds.body"),
                         target: .souls
-                    )
-                    self.overviewCard(
-                        icon: "bolt.fill",
-                        color: self.theme.colors.secondary,
-                        heading: L10n.tr("settings.window.overview.card.can_do.heading"),
-                        body: L10n.tr("settings.window.overview.card.can_do.body"),
-                        target: .tools
                     )
                 }
                 .padding(.horizontal, 24)

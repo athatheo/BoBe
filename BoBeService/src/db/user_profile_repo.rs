@@ -60,12 +60,6 @@ impl UserProfileRepository for SqliteUserProfileRepo {
             .map_err(AppError::Database)
     }
 
-    async fn get_default(&self) -> Result<Option<UserProfile>, AppError> {
-        sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE is_default = 1 LIMIT 1")
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
-    }
 
     async fn find_enabled(&self) -> Result<Vec<UserProfile>, AppError> {
         sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE enabled = 1")

@@ -1,12 +1,6 @@
-pub(crate) mod agent_job;
 pub(crate) mod conversation;
 pub(crate) mod cooldown;
-pub(crate) mod goal;
-pub(crate) mod goal_plan;
 pub(crate) mod ids;
-pub(crate) mod learning_state;
-pub(crate) mod memory;
-pub(crate) mod observation;
 pub(crate) mod soul;
 pub(crate) mod types;
 pub(crate) mod user_profile;

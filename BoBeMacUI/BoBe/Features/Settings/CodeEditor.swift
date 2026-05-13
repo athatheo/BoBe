@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Monaco-like plain text editor backed by NSTextView for macOS settings panes.
 struct CodeEditor: NSViewRepresentable {
     @Binding var text: String
     let theme: ThemeConfig

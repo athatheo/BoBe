@@ -29,20 +29,6 @@ struct AnyEncodable: Encodable {
 }
 
 extension DaemonClient {
-    // MARK: Tools
-
-    func listTools() async throws -> ToolListResponse {
-        try await fetch("/tools")
-    }
-
-    func enableTool(_ name: String) async throws -> ToolUpdateResponse {
-        try await fetch("/tools/\(name)/enable", method: "POST")
-    }
-
-    func disableTool(_ name: String) async throws -> ToolUpdateResponse {
-        try await fetch("/tools/\(name)/disable", method: "POST")
-    }
-
     // MARK: MCP Servers
 
     func getMCPConfig() async throws -> MCPConfigDocumentResponse {
@@ -61,12 +47,6 @@ extension DaemonClient {
         try await fetch("/tools/mcp/config", method: "DELETE")
     }
 
-    // MARK: Goal Worker
-
-    func goalWorkerStatus() async throws -> GoalWorkerStatusResponse {
-        try await fetch("/goal-plans/status")
-    }
-
     // MARK: Settings
 
     func getSettings() async throws -> DaemonSettings {
@@ -77,43 +57,263 @@ extension DaemonClient {
         try await fetch("/settings", method: "PATCH", body: request)
     }
 
-    // MARK: Models
+    // MARK: Status
 
-    func listModels() async throws -> ModelsListResponse {
-        try await fetch("/models")
+    /// Used to seed local state after SSE reconnect.
+    func getStatus() async throws -> StatusResponse {
+        try await fetch("/status")
     }
 
-    func pullModel(_ name: String) async throws {
-        try await performModelPull(named: name)
+    // MARK: Engine + auth + models
+
+    func getAuthStatus() async throws -> AuthStatusResponse {
+        try await fetch("/auth/status")
     }
 
-    func deleteModel(_ name: String) async throws {
-        try await fetchVoid("/models/\(name)", method: "DELETE")
+    /// `engine == nil` uses daemon's current `Config.engine`. Local returns 503 if Ollama is down.
+    func listModels(engine: String? = nil) async throws -> ListModelsResponse {
+        let suffix = engine.map { "?engine=\($0)" } ?? ""
+        return try await fetch("/models\(suffix)")
+    }
+}
+
+// MARK: - Auth + models DTOs
+
+struct AuthStatusResponse: Codable, Sendable {
+    let isAuthenticated: Bool
+    let authType: String?
+    let host: String?
+    let login: String?
+    let statusMessage: String?
+    /// `nil` if the bundled-CLI feature is disabled or not yet extracted.
+    let cliPath: String?
+    let cliVersion: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isAuthenticated = "is_authenticated"
+        case authType = "auth_type"
+        case host
+        case login
+        case statusMessage = "status_message"
+        case cliPath = "cli_path"
+        case cliVersion = "cli_version"
+    }
+}
+
+struct ListModelsResponse: Codable, Sendable {
+    let engine: String
+    let models: [ModelInfo]
+}
+
+struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let vision: Bool
+    /// `nil` for Ollama — `/api/tags` doesn't expose context window.
+    let contextWindow: Int?
+    /// Billing cost relative to base rate. `nil` for Ollama; `0.0` = free tier.
+    let multiplier: Double?
+    let defaultReasoningEffort: String?
+    let supportedReasoningEfforts: [String]
+    /// `"enabled"` / `"disabled"` / `"unconfigured"` — UI dims non-enabled entries.
+    let policyState: String?
+
+    var supportsReasoningEffort: Bool { !self.supportedReasoningEfforts.isEmpty }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case vision
+        case contextWindow = "context_window"
+        case multiplier
+        case defaultReasoningEffort = "default_reasoning_effort"
+        case supportedReasoningEfforts = "supported_reasoning_efforts"
+        case policyState = "policy_state"
     }
 
-    // MARK: Onboarding
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.vision = try c.decode(Bool.self, forKey: .vision)
+        self.contextWindow = try c.decodeIfPresent(Int.self, forKey: .contextWindow)
+        self.multiplier = try c.decodeIfPresent(Double.self, forKey: .multiplier)
+        self.defaultReasoningEffort = try c.decodeIfPresent(String.self, forKey: .defaultReasoningEffort)
+        self.supportedReasoningEfforts = try c.decodeIfPresent([String].self, forKey: .supportedReasoningEfforts) ?? []
+        self.policyState = try c.decodeIfPresent(String.self, forKey: .policyState)
+    }
+}
 
-    func getOnboardingStatus() async throws -> OnboardingStatusResponse {
-        try await fetch("/onboarding/status")
+// MARK: - Local-runtime install DTOs
+
+extension DaemonClient {
+    /// Returns 202 immediately; listen on `streamLocalRuntimeStatus()` for progress.
+    @discardableResult
+    func startLocalRuntimeInstall(_ request: LocalRuntimeInstallRequest) async throws -> LocalRuntimeMessageResponse {
+        try await fetch("/local-runtime/install", method: "POST", body: request)
     }
 
-    func getOnboardingOptions() async throws -> OnboardingOptions {
-        try await fetch("/onboarding/options")
+    @discardableResult
+    func cancelLocalRuntimeInstall() async throws -> LocalRuntimeMessageResponse {
+        try await fetch("/local-runtime/cancel", method: "POST")
     }
 
-    func startSetupJob(_ request: SetupRequest) async throws -> SetupJobState {
-        try await fetch("/onboarding/setup", method: "POST", body: request)
+    /// Returns on terminal status (`complete`/`canceled`/`failed`) or task cancel.
+    func streamLocalRuntimeStatus(
+        onSnapshot: @Sendable @escaping (LocalRuntimeSnapshot) -> Void
+    ) async throws {
+        let url = self.endpointURL("local-runtime/status")
+        var request = URLRequest(url: url)
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 0
+
+        let (bytes, response) = try await self.session.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200
+        else {
+            throw DaemonError.invalidResponse
+        }
+
+        let decoder = JSONDecoder()
+        for try await line in bytes.lines {
+            if Task.isCancelled { break }
+            guard line.hasPrefix("data: ") else { continue }
+            let jsonStr = String(line.dropFirst(6))
+            guard let data = jsonStr.data(using: .utf8) else { continue }
+            do {
+                let snapshot = try decoder.decode(LocalRuntimeSnapshot.self, from: data)
+                onSnapshot(snapshot)
+                if ["complete", "canceled", "failed"].contains(snapshot.status) {
+                    break
+                }
+            } catch {
+                continue
+            }
+        }
+    }
+}
+
+struct LocalRuntimeInstallRequest: Codable, Sendable {
+    let chatModel: String
+    let batchModel: String
+    let visionModel: String
+
+    enum CodingKeys: String, CodingKey {
+        case chatModel = "chat_model"
+        case batchModel = "batch_model"
+        case visionModel = "vision_model"
+    }
+}
+
+struct LocalRuntimeMessageResponse: Codable, Sendable {
+    let message: String
+}
+
+struct LocalRuntimeSnapshot: Codable, Sendable {
+    let status: String
+    let error: String?
+    let runtime: LocalRuntimeDownload
+    let chatModel: LocalRuntimePull
+    let batchModel: LocalRuntimePull
+    let visionModel: LocalRuntimePull
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case error
+        case runtime
+        case chatModel = "chat_model"
+        case batchModel = "batch_model"
+        case visionModel = "vision_model"
+    }
+}
+
+struct LocalRuntimeDownload: Codable, Sendable {
+    let currentBytes: UInt64
+    let totalBytes: UInt64?
+    let percent: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case currentBytes = "current_bytes"
+        case totalBytes = "total_bytes"
+        case percent
+    }
+}
+
+struct LocalRuntimePull: Codable, Sendable {
+    let status: String
+    let completedBytes: UInt64?
+    let totalBytes: UInt64?
+    let percent: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case completedBytes = "completed_bytes"
+        case totalBytes = "total_bytes"
+        case percent
+    }
+}
+
+// MARK: - Voice install DTOs
+
+struct VoiceInstallSnapshot: Codable, Sendable {
+    let status: String
+    let models: [VoiceModelProgress]
+    let installed: VoiceInstallPresence
+
+    /// True when the daemon reports an active install. Matches the Rust
+    /// `InstallStatus::Running` variant's wire form.
+    var isRunning: Bool { self.status == "running" }
+    /// Convenience for the wizard step's continue button.
+    var isComplete: Bool { self.status == "complete" }
+    var isTerminal: Bool { ["complete", "canceled", "failed", "idle"].contains(self.status) }
+}
+
+struct VoiceModelProgress: Codable, Sendable, Identifiable {
+    let kind: String
+    let label: String
+    let status: String
+    let bytesDownloaded: UInt64
+    let bytesTotal: UInt64?
+    let percent: Int?
+
+    var id: String { self.kind }
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case label
+        case status
+        case bytesDownloaded = "bytes_downloaded"
+        case bytesTotal = "bytes_total"
+        case percent
+    }
+}
+
+struct VoiceInstallPresence: Codable, Sendable {
+    let streamingStt: Bool
+    let tts: Bool
+    let vad: Bool
+    let smartTurn: Bool
+    let allPresent: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case streamingStt = "streaming_stt"
+        case tts
+        case vad
+        case smartTurn = "smart_turn"
+        case allPresent = "all_present"
+    }
+}
+
+extension DaemonClient {
+    func voiceInstallStatus() async throws -> VoiceInstallSnapshot {
+        try await self.fetch("/voice/install/status")
     }
 
-    func getSetupJobStatus(jobId: String) async throws -> SetupJobState {
-        try await fetch("/onboarding/setup/\(jobId)")
+    func startVoiceInstall() async throws {
+        try await self.fetchVoid("/voice/install/start", method: "POST")
     }
 
-    func cancelSetupJob(jobId: String) async throws -> SetupJobState {
-        try await fetch("/onboarding/setup/\(jobId)", method: "DELETE")
-    }
-
-    func markOnboardingComplete() async throws {
-        try await fetchVoid("/onboarding/mark-complete", method: "POST")
+    func cancelVoiceInstall() async throws {
+        try await self.fetchVoid("/voice/install/cancel", method: "POST")
     }
 }

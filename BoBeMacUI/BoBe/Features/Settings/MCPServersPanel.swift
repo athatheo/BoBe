@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Edits the raw `mcp.json` document with validate-before-save flow.
 struct MCPServersPanel: View {
     @State private var rawJson = ""
     @State private var servers: [MCPServer] = []
@@ -130,15 +129,13 @@ struct MCPServersPanel: View {
                                 Text(server.name)
                                     .font(.system(size: 12, weight: .semibold))
                                 Text(
-                                    server.connected
-                                        ? L10n.tr("settings.mcp.discovery.status.connected")
-                                        : L10n.tr("settings.mcp.discovery.status.disconnected")
+                                    server.enabled
+                                        ? L10n.tr("settings.mcp.discovery.status.enabled")
+                                        : L10n.tr("settings.mcp.discovery.status.disabled")
                                 )
                                     .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(server.connected ? self.theme.colors.secondary : self.theme.colors.primary)
-                                Text(L10n.tr("settings.mcp.discovery.tools_format", server.toolCount))
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(self.theme.colors.textMuted)
+                                    .foregroundStyle(server.enabled ? self.theme.colors.secondary : self.theme.colors.textMuted)
+                                self.statusBadge(for: server)
                             }
                             .foregroundStyle(self.theme.colors.text)
 
@@ -158,9 +155,54 @@ struct MCPServersPanel: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 6).fill(self.theme.colors.surface))
                     }
+
+                    // Status comes from `session.mcp.list` RPC; absent until session spawns.
+                    if self.servers.contains(where: { $0.status == nil }) {
+                        Text(L10n.tr("settings.mcp.discovery.runtime_state_pending"))
+                            .font(.system(size: 10).italic())
+                            .foregroundStyle(self.theme.colors.textMuted.opacity(0.8))
+                            .padding(.top, 4)
+                    }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func statusBadge(for server: MCPServer) -> some View {
+        if let status = server.status {
+            switch status {
+            case "connected":
+                self.badge(text: L10n.tr("settings.mcp.runtime.connected"),
+                           color: self.theme.colors.secondary)
+            case "failed":
+                self.badge(text: L10n.tr("settings.mcp.runtime.failed"),
+                           color: self.theme.colors.primary)
+            case "needs-auth":
+                self.badge(text: L10n.tr("settings.mcp.runtime.needs_auth"),
+                           color: self.theme.colors.tertiary)
+            case "pending":
+                self.badge(text: L10n.tr("settings.mcp.runtime.pending"),
+                           color: self.theme.colors.textMuted)
+            case "disabled", "not-configured":
+                EmptyView()
+            default:
+                self.badge(text: status, color: self.theme.colors.textMuted)
+            }
+        }
+    }
+
+    private func badge(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .medium))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule()
+                    .fill(color.opacity(0.15))
+                    .overlay(Capsule().stroke(color.opacity(0.5), lineWidth: 0.5))
+            )
+            .foregroundStyle(color)
     }
 
     private func loadConfig() async {

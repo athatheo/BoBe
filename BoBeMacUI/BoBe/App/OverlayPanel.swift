@@ -15,7 +15,6 @@ final class PassthroughContentView: NSView {
     }
 }
 
-/// Borderless, always-on-top floating panel for the overlay.
 final class OverlayPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(

@@ -3,9 +3,7 @@ use chrono::{DateTime, Utc};
 use super::ids::{ConversationId, ConversationTurnId};
 use super::types::{ConversationState, TurnRole};
 
-/// Dialogue session. States: PENDING → ACTIVE → CLOSED.
-///
-/// Invariant: only one conversation should be open (`PENDING` or `ACTIVE`) at a time.
+/// Invariant: only one conversation open (`PENDING` or `ACTIVE`) at a time.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub(crate) struct Conversation {
     pub(crate) id: ConversationId,
@@ -49,7 +47,6 @@ impl Conversation {
         self.state == ConversationState::Closed
     }
 
-    /// True if no user activity within `auto_close_minutes`.
     pub(crate) fn is_stale(&self, auto_close_minutes: i64, turns: &[ConversationTurn]) -> bool {
         let reference = self.last_user_message_at(turns).unwrap_or(self.created_at);
         let elapsed = Utc::now() - reference;

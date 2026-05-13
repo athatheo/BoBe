@@ -1,74 +1,65 @@
-//! Handles incoming user messages: conversation lifecycle, LLM with tools, streaming.
+//! We persist user turn + final assistant turn; SDK owns context/history/tools.
 
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
 use chrono::Utc;
 use tracing::{error, info, warn};
 
-use crate::config::Config;
+use crate::copilot::registry::WorkerRegistry;
+use crate::copilot::types::ChatPrompt;
+use crate::copilot::workers::ChatWorker;
 use crate::db::CooldownRepository;
-use crate::llm::LlmProvider;
+use crate::error::AppError;
 use crate::models::ids::ConversationId;
 use crate::models::types::TurnRole;
-use crate::runtime::learners::MessageLearner;
-use crate::runtime::learners::types::LearnerObservation;
-use crate::runtime::prompts::response::UserResponsePrompt;
-use crate::runtime::response_streamer::{stream_llm_response, stream_response};
-use crate::services::context_assembler::{BuildContextOptions, ContextAssembler};
+use crate::runtime::response_streamer::stream_chat_delta_response;
 use crate::services::conversation_service::ConversationService;
-use crate::tools::ToolExecutionContext;
-use crate::tools::preselector::ToolPreselector;
-use crate::tools::registry::ToolRegistry;
-use crate::tools::tool_call_loop::ToolCallLoop;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
-use crate::util::tokens::{clamp_max_tokens, count_message_tokens, count_tokens};
 
 pub(crate) struct MessageHandler {
-    llm: Arc<dyn LlmProvider>,
-    context_assembler: Arc<ContextAssembler>,
+    workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
-    message_learner: Arc<MessageLearner>,
-    cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+    cooldown_repo: Arc<dyn CooldownRepository>,
     event_queue: Arc<EventQueue>,
-    config: Arc<ArcSwap<Config>>,
-    tool_registry: Option<Arc<ToolRegistry>>,
-    tool_preselector: Option<Arc<ToolPreselector>>,
-    tool_call_loop: Option<Arc<ToolCallLoop>>,
 }
 
 impl MessageHandler {
     pub(crate) fn new(
-        llm: Arc<dyn LlmProvider>,
-        context_assembler: Arc<ContextAssembler>,
+        workers: Arc<WorkerRegistry>,
         conversation: Arc<ConversationService>,
-        message_learner: Arc<MessageLearner>,
-        cooldown_repo: Option<Arc<dyn CooldownRepository>>,
+        cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
-        config: Arc<ArcSwap<Config>>,
-        tool_registry: Option<Arc<ToolRegistry>>,
-        tool_preselector: Option<Arc<ToolPreselector>>,
-        tool_call_loop: Option<Arc<ToolCallLoop>>,
     ) -> Self {
         Self {
-            llm,
-            context_assembler,
+            workers,
             conversation,
-            message_learner,
             cooldown_repo,
             event_queue,
-            config,
-            tool_registry,
-            tool_preselector,
-            tool_call_loop,
         }
     }
 
+    /// Default text-chat entry point. The observer is a no-op so SSE deltas
+    /// are the only consumer of token text.
     pub(crate) async fn handle_message(&self, content: &str, message_id: &str) {
-        if let Some(ref cooldown_repo) = self.cooldown_repo
-            && let Err(e) = cooldown_repo.update_last_user_response(Utc::now()).await
-        {
+        self.handle_message_with_observer(content, message_id, false, |_: &str| {})
+            .await;
+    }
+
+    /// Variant that lets the caller subscribe to text deltas in addition to
+    /// SSE delivery. Voice uses this to pipe the same tokens into a sentence
+    /// buffer for Kokoro TTS and passes `voice_mode=true` so the SDK send
+    /// rides `DeliveryMode::Immediate` (atomic server-side interrupt).
+    pub(crate) async fn handle_message_with_observer<F>(
+        &self,
+        content: &str,
+        message_id: &str,
+        voice_mode: bool,
+        on_text_delta: F,
+    ) where
+        F: FnMut(&str) + Send,
+    {
+        if let Err(e) = self.cooldown_repo.update_last_user_response(Utc::now()).await {
             warn!(error = %e, "message_handler.cooldown_update_failed");
         }
 
@@ -78,12 +69,7 @@ impl MessageHandler {
             return;
         };
 
-        let observation = LearnerObservation::message(content.to_owned());
-        if let Err(e) = self.message_learner.learn(&observation).await {
-            warn!(error = %e, "message_handler.learning_failed");
-        }
-
-        self.respond_to_message(message_id, content, conversation_id)
+        self.respond_to_message(message_id, content, conversation_id, voice_mode, on_text_delta)
             .await;
     }
 
@@ -101,161 +87,56 @@ impl MessageHandler {
         }
     }
 
-    async fn respond_to_message(
+    async fn respond_to_message<F>(
         &self,
         msg_id: &str,
         user_content: &str,
         conversation_id: ConversationId,
-    ) {
-        let cfg = self.config.load();
+        voice_mode: bool,
+        on_text_delta: F,
+    ) where
+        F: FnMut(&str) + Send,
+    {
         self.event_queue.set_indicator(IndicatorType::Streaming);
 
-        let assembled = self
-            .context_assembler
-            .build_context(
-                user_content,
-                BuildContextOptions {
-                    include_memories: true,
-                    include_goals: true,
-                    include_souls: true,
-                    include_observations: true,
-                    memory_limit: 5,
-                    observation_limit: 5,
-                    ..BuildContextOptions::default()
-                },
-            )
-            .await;
-
-        let (context_summary, soul) = assembled.to_context_string();
-        let prompt_config = UserResponsePrompt::config();
-
-        let system_tokens =
-            count_tokens(&context_summary) + count_tokens(soul.as_deref().unwrap_or("")) + 50;
-        let user_msg_tokens = count_tokens(user_content) + 4;
-        let overhead = system_tokens + user_msg_tokens + prompt_config.max_tokens as usize;
-        let history_budget = (cfg.llm.context_window as usize).saturating_sub(overhead);
-
-        let conversation_history = self
-            .build_conversation_history(conversation_id, history_budget)
-            .await;
-
-        let history_refs: Vec<(&str, &str)> = conversation_history
-            .iter()
-            .map(|(r, c)| (r.as_str(), c.as_str()))
-            .collect();
-        let locale = cfg.effective_locale();
-
-        let messages = UserResponsePrompt::messages(
-            user_content,
-            &context_summary,
-            if history_refs.is_empty() {
-                None
-            } else {
-                Some(&history_refs)
-            },
-            soul.as_deref(),
-            Some(&locale),
-        );
-
-        let tools = if cfg.tools.enabled {
-            self.get_tools(&messages).await
-        } else {
-            Vec::new()
-        };
-
-        let prompt_tokens = count_message_tokens(&messages);
-        let context_window = cfg.llm.context_window;
-        let max_tokens = clamp_max_tokens(context_window, prompt_tokens, prompt_config.max_tokens);
-        if max_tokens < prompt_config.max_tokens {
-            info!(
-                requested = prompt_config.max_tokens,
-                clamped = max_tokens,
-                prompt_tokens,
-                context_window,
-                "message_handler.max_tokens_clamped"
-            );
-        }
-
-        info!(
-            context_len = context_summary.len(),
-            history = conversation_history.len(),
-            tools = tools.len(),
-            prompt_tokens,
-            max_tokens,
-            "message_handler.stream_start"
-        );
-
-        let tool_context = ToolExecutionContext {
-            conversation_id: Some(conversation_id.to_string()),
-        };
-
-        let result = if let (false, Some(tcl)) = (tools.is_empty(), self.tool_call_loop.as_ref()) {
-            let stream = tcl.stream(
-                messages,
-                tools,
-                prompt_config.temperature,
-                max_tokens,
-                Some(tool_context),
-            );
-            stream_response(stream, &self.event_queue, Some(msg_id)).await
-        } else {
-            let stream = self.llm.stream(
-                messages,
-                None,
-                prompt_config.response_format,
-                prompt_config.temperature,
-                max_tokens,
-            );
-            stream_llm_response(stream, &self.event_queue, Some(msg_id)).await
+        let result = match self
+            .send_via_chat_worker(user_content, msg_id, voice_mode, on_text_delta)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                error!(error = %e, "message_handler.chat_worker_failed");
+                self.event_queue.set_indicator(IndicatorType::Idle);
+                return;
+            }
         };
 
         self.persist_response(&result, conversation_id).await;
         self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
-    async fn build_conversation_history(
+    async fn send_via_chat_worker<F>(
         &self,
-        conversation_id: ConversationId,
-        token_budget: usize,
-    ) -> Vec<(String, String)> {
-        let mut history: Vec<(String, String)> = Vec::new();
-        match self
-            .conversation
-            .get_conversation_turns(conversation_id, 20)
+        user_content: &str,
+        msg_id: &str,
+        voice_mode: bool,
+        on_text_delta: F,
+    ) -> Result<crate::runtime::response_streamer::StreamResult, AppError>
+    where
+        F: FnMut(&str) + Send,
+    {
+        let worker = self.workers.chat().await?;
+        let prompt = if voice_mode {
+            ChatPrompt::voice(user_content)
+        } else {
+            ChatPrompt::text(user_content)
+        };
+        let chat_stream = worker
+            .send(prompt)
             .await
-        {
-            Ok(turns) => {
-                if turns.len() <= 1 {
-                    let previous = self.conversation.get_previous_conversation_context().await;
-                    if !previous.is_empty() {
-                        info!(
-                            previous_turns = previous.len(),
-                            "message_handler.loaded_previous_context"
-                        );
-                    }
-                    history.extend(previous);
-                }
-
-                let slice = if turns.is_empty() {
-                    &[]
-                } else {
-                    &turns[..turns.len() - 1]
-                };
-                for turn in slice {
-                    history.push((turn.role.as_str().to_owned(), turn.content.clone()));
-                }
-            }
-            Err(e) => {
-                error!(
-                    error = %e,
-                    conversation_id = %conversation_id,
-                    "message_handler.history_load_failed"
-                );
-            }
-        }
-
-        trim_history_to_budget(&mut history, token_budget);
-        history
+            .map_err(|e| AppError::Internal(format!("chat_worker.send: {e}")))?;
+        info!(msg_id, voice_mode, "message_handler.stream_start");
+        Ok(stream_chat_delta_response(chat_stream, &self.event_queue, Some(msg_id), on_text_delta).await)
     }
 
     async fn persist_response(
@@ -295,134 +176,14 @@ impl MessageHandler {
                 );
             }
             Ok(None) => {
-                error!(conversation_id = %conversation_id, "message_handler.conversation_not_found");
+                error!(
+                    conversation_id = %conversation_id,
+                    "message_handler.conversation_not_found"
+                );
             }
             Err(e) => {
                 error!(error = %e, "message_handler.conversation_refetch_failed");
             }
         }
-    }
-
-    async fn get_tools(
-        &self,
-        messages: &[crate::llm::types::AiMessage],
-    ) -> Vec<crate::llm::types::ToolDefinition> {
-        let Some(ref registry) = self.tool_registry else {
-            return Vec::new();
-        };
-
-        let all_tools = registry.get_all_tools(false).await;
-        if all_tools.is_empty() {
-            return Vec::new();
-        }
-
-        let selected = if let Some(ref preselector) = self.tool_preselector {
-            preselector.preselect(messages, &all_tools).await
-        } else {
-            all_tools.clone()
-        };
-
-        if !selected.is_empty() {
-            info!(
-                total = all_tools.len(),
-                selected = selected.len(),
-                "message_handler.tools_loaded"
-            );
-        }
-        selected
-    }
-}
-
-const PER_TURN_OVERHEAD: usize = 4;
-
-fn trim_history_to_budget(history: &mut Vec<(String, String)>, budget: usize) {
-    let total: usize = history
-        .iter()
-        .map(|(role, content)| count_tokens(role) + count_tokens(content) + PER_TURN_OVERHEAD)
-        .sum();
-
-    if total <= budget {
-        return;
-    }
-
-    let mut excess = total - budget;
-    let mut drop_count = 0;
-    for (role, content) in history.iter() {
-        if excess == 0 {
-            break;
-        }
-        let turn_tokens = count_tokens(role) + count_tokens(content) + PER_TURN_OVERHEAD;
-        excess = excess.saturating_sub(turn_tokens);
-        drop_count += 1;
-    }
-
-    if drop_count > 0 {
-        info!(
-            dropped = drop_count,
-            original = history.len(),
-            budget,
-            "message_handler.history_trimmed"
-        );
-        history.drain(..drop_count);
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn trim_noop_when_within_budget() {
-        let mut history = vec![
-            ("user".into(), "Hello".into()),
-            ("assistant".into(), "Hi there".into()),
-        ];
-        let original_len = history.len();
-        trim_history_to_budget(&mut history, 10_000);
-        assert_eq!(history.len(), original_len);
-    }
-
-    #[test]
-    fn trim_drops_oldest_turns_first() {
-        let mut history: Vec<(String, String)> = (0..10)
-            .map(|i| {
-                (
-                    "user".into(),
-                    format!("Message number {i} with some content"),
-                )
-            })
-            .collect();
-        trim_history_to_budget(&mut history, 50);
-        assert!(history.len() < 10, "should have trimmed some turns");
-        assert!(
-            history[0].1.contains("Message number"),
-            "remaining turns should be the newest"
-        );
-        let first_num: usize = history[0]
-            .1
-            .split_whitespace()
-            .nth(2)
-            .unwrap()
-            .parse()
-            .unwrap();
-        assert!(first_num > 0, "oldest turns should be dropped");
-    }
-
-    #[test]
-    fn trim_empty_history_is_noop() {
-        let mut history: Vec<(String, String)> = Vec::new();
-        trim_history_to_budget(&mut history, 0);
-        assert!(history.is_empty());
-    }
-
-    #[test]
-    fn trim_zero_budget_drops_all() {
-        let mut history = vec![
-            ("user".into(), "Hello".into()),
-            ("assistant".into(), "Hi".into()),
-        ];
-        trim_history_to_budget(&mut history, 0);
-        assert!(history.is_empty());
     }
 }

@@ -1,0 +1,19 @@
+//! `GET /metrics` — Prometheus text exposition over the voice telemetry
+//! installed at bootstrap. Returns the standard Prometheus content-type so
+//! a vanilla scraper picks it up without configuration.
+
+use std::sync::Arc;
+
+use axum::extract::State;
+use axum::http::header::CONTENT_TYPE;
+use axum::response::IntoResponse;
+
+use crate::app_state::AppState;
+
+pub(crate) async fn metrics(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let body = state.metrics_handle.render();
+    (
+        [(CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        body,
+    )
+}

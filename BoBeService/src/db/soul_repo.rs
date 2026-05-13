@@ -60,12 +60,6 @@ impl SoulRepository for SqliteSoulRepo {
             .map_err(AppError::Database)
     }
 
-    async fn get_default(&self) -> Result<Option<Soul>, AppError> {
-        sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE is_default = 1 LIMIT 1")
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
-    }
 
     async fn get_all(&self) -> Result<Vec<Soul>, AppError> {
         sqlx::query_as::<_, Soul>("SELECT * FROM souls")
