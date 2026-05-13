@@ -222,9 +222,18 @@ public final class VoicePipeline {
                 try? await Task.sleep(nanoseconds: 100_000_000)
                 waited += 0.1
             }
-            if self.state == .connecting, self.lastError == nil {
-                self.lastError = "voice connection timed out"
-                logger.error("voice connection timed out")
+            if self.state == .connecting {
+                // Connection didn't make it out of .connecting in 2s. Surface
+                // the failure to the UI so MicButton becomes tappable again —
+                // without this transition the button stays disabled forever
+                // and the user has no recourse other than restarting the app.
+                let reason = self.lastError ?? "voice connection timed out"
+                if self.lastError == nil {
+                    self.lastError = reason
+                    logger.error("voice connection timed out")
+                }
+                self.state = .failed(reason)
+                self.disconnect()
             }
         case .connecting, .listening, .capturing, .thinking, .speaking, .cancelling:
             self.disconnect()
