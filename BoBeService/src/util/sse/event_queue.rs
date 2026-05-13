@@ -25,7 +25,11 @@ impl EventQueue {
     pub(crate) fn push(&self, event: StreamBundle) {
         let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
         if queue.len() >= self.max_size && queue.pop_front_if(|_| true).is_some() {
-            tracing::warn!("SSE event queue overflow, dropping oldest event");
+            // Drop-oldest is the correct behavior when no SSE consumer is
+            // attached (e.g., voice-WS-only sessions, daemon running without
+            // the overlay app). Logged at debug because the queue still
+            // works — newest events take precedence over stale ones.
+            tracing::debug!("SSE event queue overflow, dropping oldest event");
         }
         queue.push_back(event);
         drop(queue);
