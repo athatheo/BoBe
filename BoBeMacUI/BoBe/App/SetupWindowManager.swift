@@ -34,7 +34,6 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
             return
         }
 
-        let theme = ThemeStore.shared.currentTheme
         let view = WelcomeWizard(
             onComplete: { [weak self] in
                 self?.markOnboardingCompleted()
@@ -42,21 +41,14 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
             }
         )
 
-        let window = NSWindow(
+        let window = BobeWindowFactory.make(
             contentRect: NSRect(x: 0, y: 0, width: 540, height: 640),
             styleMask: [.titled, .closable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
+            title: L10n.tr("setup.window.title"),
+            animationBehavior: .documentWindow,
+            rootView: view
         )
-        window.title = L10n.tr("setup.window.title")
-        window.center()
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = true
-        window.animationBehavior = .documentWindow
         window.delegate = self
-        window.backgroundColor = NSColor(theme.colors.background)
-        window.contentViewController = NSHostingController(rootView: view)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window

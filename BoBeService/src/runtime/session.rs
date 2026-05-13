@@ -299,15 +299,6 @@ impl RuntimeSession {
         })
     }
 
-    /// Same single-flight admission as `try_begin_user_message` but for
-    /// proactive turns (M5.2 hammering-pushback path). Today this just
-    /// wraps the same atomic so a proactive synth can't interleave with a
-    /// user-initiated turn; later it may grow its own gating policy
-    /// (e.g., suppress proactive while user is mid-typing).
-    pub(crate) fn try_begin_proactive_message(&self) -> Result<UserMessageGuard, &'static str> {
-        self.try_begin_user_message()
-    }
-
     pub(crate) fn get_status(&self) -> serde_json::Value {
         serde_json::json!({
             "indicator": self.event_queue.current_indicator().as_str(),

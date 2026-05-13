@@ -24,29 +24,18 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
             return
         }
 
-        let theme = ThemeStore.shared.currentTheme
-        let settingsView = SettingsWindow(initialCategory: initialCategory)
-
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let width = min(max(screen.width * 0.72, 900), 1400)
         let height = min(max(screen.height * 0.78, 600), 1000)
 
-        let window = NSWindow(
+        let window = BobeWindowFactory.make(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
+            title: L10n.tr("settings.window.title"),
+            rootView: SettingsWindow(initialCategory: initialCategory)
         )
-        window.title = L10n.tr("settings.window.title")
-        window.center()
         window.minSize = NSSize(width: 800, height: 550)
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = true
-        window.animationBehavior = .none
         window.delegate = self
-        window.backgroundColor = NSColor(theme.colors.background)
-        window.contentViewController = NSHostingController(rootView: settingsView)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
