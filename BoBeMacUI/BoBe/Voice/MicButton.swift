@@ -76,15 +76,33 @@ struct MicButton: View {
     }
 
     private var accessibilityLabel: String {
-        self.needsSetup
+        if self.permissionStatus == .denied || self.permissionStatus == .restricted {
+            return L10n.tr("overlay.input.mic.permission_denied")
+        }
+        return self.needsSetup
             ? L10n.tr("overlay.input.mic.needs_setup")
             : L10n.tr("overlay.input.mic.accessibility")
     }
 
     private var tooltip: String {
-        self.needsSetup
-            ? L10n.tr("overlay.input.mic.needs_setup")
-            : L10n.tr("overlay.input.mic.accessibility")
+        // Permission > setup gate > pipeline error > pipeline busy state >
+        // generic toggle. Show whichever takes precedence.
+        if self.permissionStatus == .denied || self.permissionStatus == .restricted {
+            return L10n.tr("overlay.input.mic.permission_denied")
+        }
+        if self.needsSetup {
+            return L10n.tr("overlay.input.mic.needs_setup")
+        }
+        if let err = self.pipeline.lastError, !err.isEmpty {
+            return err
+        }
+        switch self.pipeline.state {
+        case .connecting: return L10n.tr("overlay.input.mic.disabled.connecting")
+        case .thinking: return L10n.tr("overlay.input.mic.disabled.thinking")
+        case .speaking: return L10n.tr("overlay.input.mic.disabled.speaking")
+        case .cancelling: return L10n.tr("overlay.input.mic.disabled.cancelling")
+        default: return L10n.tr("overlay.input.mic.accessibility")
+        }
     }
 
     private func handleTap() {
@@ -167,9 +185,13 @@ struct MicButton: View {
 
     private var icon: String {
         if self.needsSetup { return "wrench.and.screwdriver" }
+        if self.permissionStatus == .denied || self.permissionStatus == .restricted {
+            return "mic.slash.circle.fill"
+        }
         return switch self.pipeline.state {
         case .idle: "mic.slash.fill"
-        case .connecting, .thinking: "hourglass"
+        case .connecting: "antenna.radiowaves.left.and.right" // distinct from .thinking
+        case .thinking: "hourglass"
         case .listening: "mic.fill"
         case .capturing: "waveform.circle.fill"
         case .speaking: "waveform"

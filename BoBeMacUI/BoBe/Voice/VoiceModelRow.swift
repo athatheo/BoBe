@@ -15,7 +15,7 @@ struct VoiceModelRow: View {
                 Text(self.model.label.capitalized)
                     .font(.system(size: 13))
                     .foregroundStyle(self.theme.colors.text)
-                Text(self.model.status)
+                Text(self.localizedStatus)
                     .font(.system(size: 11))
                     .foregroundStyle(self.theme.colors.textMuted)
             }
@@ -25,6 +25,23 @@ struct VoiceModelRow: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(self.theme.colors.textMuted)
             }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(self.model.label.capitalized): \(self.localizedStatus)")
+    }
+
+    /// Map daemon-side status strings to localized labels. Daemon strings come
+    /// from `voice/install_service.rs::ModelProgress::{pending,downloading,
+    /// installed,already installed,failed,canceled}`.
+    private var localizedStatus: String {
+        switch self.model.status {
+        case "installed": L10n.tr("voice.model.status.installed")
+        case "already installed": L10n.tr("voice.model.status.already_installed")
+        case "downloading": L10n.tr("voice.model.status.downloading")
+        case "pending": L10n.tr("voice.model.status.pending")
+        case "failed": L10n.tr("voice.model.status.failed")
+        case "canceled": L10n.tr("voice.model.status.canceled")
+        default: self.model.status
         }
     }
 }
@@ -51,5 +68,6 @@ struct VoiceModelStatusIcon: View {
                     .foregroundStyle(self.theme.colors.textMuted.opacity(0.6))
             }
         }
+        .accessibilityHidden(true)
     }
 }

@@ -32,14 +32,14 @@ const N_FRAMES: usize = 800;
 
 type RunnableModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
 
-pub(crate) struct OnnxSmartTurn {
+pub(crate) struct LocalSmartTurnOnnx {
     /// Wrapped in a Mutex so the Tract runnable can be called from concurrent
     /// turns. Inference is single-threaded internally anyway; the lock is
     /// rarely contended because the voice pipeline single-flights turns.
     model: Mutex<RunnableModel>,
 }
 
-impl OnnxSmartTurn {
+impl LocalSmartTurnOnnx {
     pub(crate) fn load(model_path: &Path) -> Result<Self, AppError> {
         let model = tract_onnx::onnx()
             .model_for_path(model_path)
@@ -54,7 +54,7 @@ impl OnnxSmartTurn {
     }
 }
 
-impl SemanticTurn for OnnxSmartTurn {
+impl SemanticTurn for LocalSmartTurnOnnx {
     fn probability_complete(&self, samples: &[f32]) -> Result<f32, AppError> {
         let window = last_window_with_left_pad(samples, WINDOW_SAMPLES);
         let mel = compute_mel_features(&window)?;

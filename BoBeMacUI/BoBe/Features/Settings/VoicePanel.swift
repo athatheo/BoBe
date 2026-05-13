@@ -48,6 +48,18 @@ struct VoicePanel: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 40)
+                } else {
+                    // Daemon unreachable / settings fetch failed — surface
+                    // an explicit empty state rather than rendering nothing.
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle")
+                            .foregroundStyle(self.theme.colors.textMuted)
+                        Text(L10n.tr("settings.voice.empty.unreachable"))
+                            .font(.system(size: 13))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 40)
                 }
             }
             .padding(24)
@@ -103,10 +115,14 @@ struct VoicePanel: View {
                             step: 0.05
                         )
                         .frame(width: 220)
+                        .accessibilityLabel(L10n.tr("settings.voice.speed"))
+                        .accessibilityHint(L10n.tr("settings.voice.speed.description"))
+                        .accessibilityValue(String(format: "%.2f×", Double(self.settings?.voiceSpeed ?? 1.0)))
                         Text(String(format: "%.2f×", Double(self.settings?.voiceSpeed ?? 1.0)))
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(self.theme.colors.textMuted)
                             .frame(width: 56, alignment: .trailing)
+                            .accessibilityHidden(true)
                     }
                 }
             }
@@ -134,6 +150,8 @@ struct VoicePanel: View {
                 .bobeButton(.primary, size: .small)
                 .disabled(self.isReinstalling)
                 .padding(.top, 4)
+                .accessibilityLabel(L10n.tr("settings.voice.reinstall"))
+                .accessibilityHint(L10n.tr("settings.voice.section.models"))
             }
         }
     }

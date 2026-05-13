@@ -377,3 +377,18 @@
 "settings.voice.partial_label" = "Partial — some models missing";
 "overlay.input.mic.accessibility" = "Toggle voice";
 "overlay.input.mic.needs_setup" = "Voice models need to be installed";
+
+/* Voice — model row status (mirrors install_service.rs status strings) */
+"voice.model.status.installed" = "Installed";
+"voice.model.status.already_installed" = "Already installed";
+"voice.model.status.downloading" = "Downloading…";
+"voice.model.status.pending" = "Pending";
+"voice.model.status.failed" = "Failed";
+"voice.model.status.canceled" = "Canceled";
+"settings.voice.empty.unreachable" = "Couldn't reach the daemon. Voice settings will appear once it's connected.";
+"settings.voice.partial.detail" = "Some voice models are missing. Use Reinstall below to recover.";
+"overlay.input.mic.disabled.thinking" = "BoBe is thinking…";
+"overlay.input.mic.disabled.speaking" = "BoBe is speaking — barge-in lands in M4.5.5";
+"overlay.input.mic.disabled.connecting" = "Connecting to voice…";
+"overlay.input.mic.disabled.cancelling" = "Stopping the current turn…";
+"overlay.input.mic.permission_denied" = "Microphone access denied — open System Settings";

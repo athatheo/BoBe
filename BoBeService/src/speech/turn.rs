@@ -2,7 +2,7 @@
 //! looking at audio prosody + content, beyond pure-acoustic silence.
 //!
 //! Implementations:
-//! - [`super::smart_turn_onnx::OnnxSmartTurn`] — Pipecat smart-turn-v3.2
+//! - [`super::smart_turn_onnx::LocalSmartTurnOnnx`] — Pipecat smart-turn-v3.2
 //!   8MB int8 ONNX via tract + Whisper-compatible mel preprocessing.
 
 use crate::error::AppError;

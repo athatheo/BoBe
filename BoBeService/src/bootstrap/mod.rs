@@ -297,7 +297,7 @@ fn load_engine_files() -> (
     let smart_turn = {
         let path = models_root.join("smart-turn-v3.2-cpu.onnx");
         if path.exists() {
-            match crate::speech::smart_turn_onnx::OnnxSmartTurn::load(&path) {
+            match crate::speech::smart_turn_onnx::LocalSmartTurnOnnx::load(&path) {
                 Ok(e) => {
                     info!(path = %path.display(), "voice.smart_turn_loaded");
                     Some(Arc::new(e) as Arc<dyn crate::speech::SemanticTurn>)
