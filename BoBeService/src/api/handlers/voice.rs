@@ -114,6 +114,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // mid-turn disconnect lets subsequent hook fires safely no-op.
     let _sink_guard = state.voice_sink.install(out_tx.clone()).await;
 
+    // CRITICAL: reset shared engines on WS-accept so prior session state
+    // doesn't leak forward. The streaming Zipformer + Silero engines are
+    // Arc-shared across all WS handlers via AppState.voice_engines, so a
+    // disconnect that happened mid-utterance leaves accumulated decoder
+    // state that the next connection's commit_final would surface as
+    // "your prior session's text + this session's text" pollution.
+    engines.stt.reset();
+    engines.vad.reset();
+
     // Bundle per-WS deps so subsystem fns don't drill 5 args each.
     let ctx = VoiceContext {
         out_tx: out_tx.clone(),
