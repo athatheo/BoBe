@@ -17,6 +17,22 @@ use crate::services::conversation_service::ConversationService;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
 
+/// RAII guard that resets the indicator to Idle on drop. Critical for
+/// the voice path: when the WS disconnects mid-TTS, the per-turn task
+/// is aborted via `JoinHandle::abort()` which drops the future without
+/// running any explicit cleanup. Without this guard, the indicator
+/// stays Streaming and the next `try_begin_user_message` is rejected
+/// with "BoBe is still responding" forever.
+struct IndicatorGuard {
+    queue: Arc<EventQueue>,
+}
+
+impl Drop for IndicatorGuard {
+    fn drop(&mut self) {
+        self.queue.set_indicator(IndicatorType::Idle);
+    }
+}
+
 pub(crate) struct MessageHandler {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
@@ -98,6 +114,14 @@ impl MessageHandler {
         F: FnMut(&str) + Send,
     {
         self.event_queue.set_indicator(IndicatorType::Streaming);
+        // RAII: ensures Indicator returns to Idle on every exit path —
+        // normal completion, error return, AND mid-flight task abort
+        // (voice WS disconnect cancels the per-turn task; explicit
+        // set_indicator(Idle) below would otherwise be skipped, leaving
+        // the indicator stuck Streaming and rejecting all future turns).
+        let _indicator_guard = IndicatorGuard {
+            queue: Arc::clone(&self.event_queue),
+        };
 
         let result = match self
             .send_via_chat_worker(user_content, msg_id, voice_mode, on_text_delta)
@@ -106,13 +130,11 @@ impl MessageHandler {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "message_handler.chat_worker_failed");
-                self.event_queue.set_indicator(IndicatorType::Idle);
                 return;
             }
         };
 
         self.persist_response(&result, conversation_id).await;
-        self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
     async fn send_via_chat_worker<F>(
