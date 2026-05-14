@@ -1,9 +1,10 @@
-pub(crate) mod capture_result;
+//! Screen capture wrapper. Returns active-window title + raw PNG bytes
+//! for LLM context. Driven by `CaptureTrigger` on a config-controlled
+//! interval; result is fed into the conversation context.
 
 use tracing::{debug, info};
 
 use crate::error::AppError;
-use capture_result::CaptureResult;
 
 const CAPTURE_DIR: &str = "/tmp";
 
@@ -108,4 +109,9 @@ fn get_active_window() -> Option<String> {
     } else {
         None
     }
+}
+#[derive(Debug, Clone)]
+pub(crate) struct CaptureResult {
+    pub(crate) image: Vec<u8>,
+    pub(crate) active_window: Option<String>,
 }
