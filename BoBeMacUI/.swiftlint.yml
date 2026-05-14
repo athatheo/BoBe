@@ -31,7 +31,7 @@ line_length:
   error: 200
 
 file_length:
-  warning: 750
+  warning: 800
   error: 1000
 
 type_name:

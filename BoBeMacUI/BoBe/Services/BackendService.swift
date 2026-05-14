@@ -296,7 +296,7 @@ actor BackendService {
         }
         guard written > 0 else { return nil }
         let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-        return String(decoding: bytes, as: UTF8.self)
+        return String(bytes: bytes, encoding: .utf8)
     }
 
     private func isManagedDaemonPath(_ path: String) -> Bool {

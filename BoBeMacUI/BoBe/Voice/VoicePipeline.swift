@@ -538,7 +538,6 @@ public final class VoicePipeline {
         case .ttsEnd:
             // Authoritative end-of-turn — daemon will follow with state(Listening).
             self.partialTranscript = ""
-            break
         case let .truncate(_, keepMs):
             // M4.5.5 barge-in path — drop queued audio beyond keepMs.
             self.truncatePlayback(keepMs: keepMs)
