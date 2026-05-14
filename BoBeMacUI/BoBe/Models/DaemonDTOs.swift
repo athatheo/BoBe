@@ -1,82 +1,5 @@
 import Foundation
 
-enum DaemonError: Error, LocalizedError {
-    case invalidResponse
-    case httpError(statusCode: Int, message: String)
-    case connectionFailed
-    case operationFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidResponse: "Invalid response from daemon"
-        case let .httpError(code, msg): "HTTP \(code): \(msg)"
-        case .connectionFailed: "Failed to connect to daemon"
-        case let .operationFailed(message): message
-        }
-    }
-}
-
-struct AnyEncodable: Encodable {
-    private let encode: (Encoder) throws -> Void
-
-    init(_ wrapped: any Encodable) {
-        self.encode = wrapped.encode
-    }
-
-    func encode(to encoder: Encoder) throws {
-        try self.encode(encoder)
-    }
-}
-
-extension DaemonClient {
-    // MARK: MCP Servers
-
-    func getMCPConfig() async throws -> MCPConfigDocumentResponse {
-        try await fetch("/tools/mcp/config")
-    }
-
-    func validateMCPConfig(_ request: MCPConfigMutationRequest) async throws -> MCPConfigValidateResponse {
-        try await fetch("/tools/mcp/config/validate", method: "POST", body: request)
-    }
-
-    func saveMCPConfig(_ request: MCPConfigMutationRequest) async throws -> MCPConfigSaveResponse {
-        try await fetch("/tools/mcp/config", method: "PUT", body: request)
-    }
-
-    func resetMCPConfig() async throws -> MCPConfigResetResponse {
-        try await fetch("/tools/mcp/config", method: "DELETE")
-    }
-
-    // MARK: Settings
-
-    func getSettings() async throws -> DaemonSettings {
-        try await fetch("/settings")
-    }
-
-    func updateSettings(_ request: SettingsUpdateRequest) async throws -> SettingsUpdateResponse {
-        try await fetch("/settings", method: "PATCH", body: request)
-    }
-
-    // MARK: Status
-
-    /// Used to seed local state after SSE reconnect.
-    func getStatus() async throws -> StatusResponse {
-        try await fetch("/status")
-    }
-
-    // MARK: Engine + auth + models
-
-    func getAuthStatus() async throws -> AuthStatusResponse {
-        try await fetch("/auth/status")
-    }
-
-    /// `engine == nil` uses daemon's current `Config.engine`. Local returns 503 if Ollama is down.
-    func listModels(engine: String? = nil) async throws -> ListModelsResponse {
-        let suffix = engine.map { "?engine=\($0)" } ?? ""
-        return try await fetch("/models\(suffix)")
-    }
-}
-
 // MARK: - Auth + models DTOs
 
 struct AuthStatusResponse: Codable, Sendable {
@@ -145,53 +68,6 @@ struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
 }
 
 // MARK: - Local-runtime install DTOs
-
-extension DaemonClient {
-    /// Returns 202 immediately; listen on `streamLocalRuntimeStatus()` for progress.
-    @discardableResult
-    func startLocalRuntimeInstall(_ request: LocalRuntimeInstallRequest) async throws -> LocalRuntimeMessageResponse {
-        try await fetch("/local-runtime/install", method: "POST", body: request)
-    }
-
-    @discardableResult
-    func cancelLocalRuntimeInstall() async throws -> LocalRuntimeMessageResponse {
-        try await fetch("/local-runtime/cancel", method: "POST")
-    }
-
-    /// Returns on terminal status (`complete`/`canceled`/`failed`) or task cancel.
-    func streamLocalRuntimeStatus(
-        onSnapshot: @Sendable @escaping (LocalRuntimeSnapshot) -> Void
-    ) async throws {
-        let url = self.endpointURL("local-runtime/status")
-        var request = URLRequest(url: url)
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 0
-
-        let (bytes, response) = try await self.session.bytes(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200
-        else {
-            throw DaemonError.invalidResponse
-        }
-
-        let decoder = JSONDecoder()
-        for try await line in bytes.lines {
-            if Task.isCancelled { break }
-            guard line.hasPrefix("data: ") else { continue }
-            let jsonStr = String(line.dropFirst(6))
-            guard let data = jsonStr.data(using: .utf8) else { continue }
-            do {
-                let snapshot = try decoder.decode(LocalRuntimeSnapshot.self, from: data)
-                onSnapshot(snapshot)
-                if ["complete", "canceled", "failed"].contains(snapshot.status) {
-                    break
-                }
-            } catch {
-                continue
-            }
-        }
-    }
-}
 
 struct LocalRuntimeInstallRequest: Codable, Sendable {
     let chatModel: String
@@ -301,19 +177,5 @@ struct VoiceInstallPresence: Codable, Sendable {
         case vad
         case smartTurn = "smart_turn"
         case allPresent = "all_present"
-    }
-}
-
-extension DaemonClient {
-    func voiceInstallStatus() async throws -> VoiceInstallSnapshot {
-        try await self.fetch("/voice/install/status")
-    }
-
-    func startVoiceInstall() async throws {
-        try await self.fetchVoid("/voice/install/start", method: "POST")
-    }
-
-    func cancelVoiceInstall() async throws {
-        try await self.fetchVoid("/voice/install/cancel", method: "POST")
     }
 }
