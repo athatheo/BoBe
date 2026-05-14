@@ -31,10 +31,14 @@ struct DoneStepView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
                 if let error = self.settingsError {
-                    Text(error)
-                        .bobeTextStyle(.helper)
-                        .foregroundStyle(self.theme.colors.primary)
-                        .multilineTextAlignment(.center)
+                    VStack(spacing: 6) {
+                        Text(error)
+                            .bobeTextStyle(.helper)
+                            .foregroundStyle(self.theme.colors.primary)
+                            .multilineTextAlignment(.center)
+                        Button("Retry", action: self.retrySettings)
+                            .bobeButton(.secondary, size: .small)
+                    }
                 }
             }
 
@@ -70,9 +74,15 @@ struct DoneStepView: View {
             self.settingsApplied = true
         } catch {
             self.settingsError = error.localizedDescription
-            // Don't block — user can fix from Settings → Engine.
-            self.settingsApplied = true
+            // Block the Launch button on save failure so the user
+            // explicitly retries rather than landing in the overlay
+            // with their engine choice silently dropped.
+            self.settingsApplied = false
         }
+    }
+
+    private func retrySettings() {
+        Task { await self.applyEngineSettings() }
     }
 }
 

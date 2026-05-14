@@ -161,15 +161,27 @@ fn spawn_background_tasks(
 }
 
 async fn drain_background_tasks(handles: BackgroundHandles) {
-    if let Err(e) = handles.heartbeat.await {
-        tracing::error!(error = %e, "heartbeat task panicked");
+    // Bound the wait so a non-cancel-safe await in any background task
+    // can't hang the whole shutdown sequence. Tasks should respect the
+    // broadcast::Sender<()> shutdown signal and exit promptly; the
+    // timeout is a backstop for misbehaving task code.
+    const DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    async fn await_with_timeout(
+        handle: tokio::task::JoinHandle<()>,
+        name: &'static str,
+        timeout: std::time::Duration,
+    ) {
+        match tokio::time::timeout(timeout, handle).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::error!(task = name, error = %e, "background task panicked"),
+            Err(_) => tracing::warn!(task = name, "background task drain timeout, abandoning"),
+        }
     }
-    if let Err(e) = handles.runtime.await {
-        tracing::error!(error = %e, "runtime session task panicked");
-    }
-    if let Err(e) = handles.consolidation.await {
-        tracing::error!(error = %e, "consolidation trigger task panicked");
-    }
+
+    await_with_timeout(handles.heartbeat, "heartbeat", DRAIN_TIMEOUT).await;
+    await_with_timeout(handles.runtime, "runtime_session", DRAIN_TIMEOUT).await;
+    await_with_timeout(handles.consolidation, "consolidation", DRAIN_TIMEOUT).await;
 }
 
 async fn run_graceful_shutdown(
@@ -178,6 +190,12 @@ async fn run_graceful_shutdown(
 ) {
     tracing::info!("Stopping mDNS...");
     state.mdns_announcer.stop().await;
+
+    // Cancel + drain any in-flight install jobs so they don't outlive
+    // the resources they depend on (db, http client, file system handles).
+    tracing::info!("Cancelling in-flight installs...");
+    state.voice_install.cancel().await;
+    state.voice_install.await_idle().await;
 
     tracing::info!("Stopping Copilot workers...");
     state.workers.shutdown_all().await;

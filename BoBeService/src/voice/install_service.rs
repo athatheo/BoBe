@@ -301,7 +301,10 @@ impl VoiceInstallService {
     }
 
     /// Wait for any in-flight install to finish — used by shutdown paths.
-    #[allow(dead_code, reason = "drain-on-shutdown helper, wired in M5.x")]
+    /// Block until any in-flight install completes (or polls every 50ms
+    /// if there isn't one). Used by the graceful shutdown path so the
+    /// install task doesn't outlive the http client / file-system
+    /// resources it depends on.
     pub(crate) async fn await_idle(&self) {
         loop {
             let handle = {
