@@ -210,20 +210,14 @@ struct MCPServer: Identifiable, Codable, Sendable {
     /// `nil` = chat session not spawned yet; render indeterminate, not disconnected.
     var status: String?
     var enabled: Bool
-    var toolCount: Int
-    var excludedTools: [String]
     var tools: [MCPServerTool]?
     var envKeys: [String]?
-    var secretEnvKeys: [String]?
     var error: String?
 
     enum CodingKeys: String, CodingKey {
         case name, command, args, connected, enabled, error, status
         case tools
         case envKeys = "env_keys"
-        case secretEnvKeys = "secret_env_keys"
-        case toolCount = "tool_count"
-        case excludedTools = "excluded_tools"
     }
 }
 

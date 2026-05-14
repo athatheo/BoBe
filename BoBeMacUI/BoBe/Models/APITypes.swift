@@ -24,14 +24,12 @@ struct StreamBundle: Codable, Sendable {
     let payload: AnyCodablePayload
     let messageId: String
     let timestamp: String
-    let description: String
 
     enum CodingKeys: String, CodingKey {
         case type
         case payload
         case messageId = "message_id"
         case timestamp
-        case description
     }
 }
 
