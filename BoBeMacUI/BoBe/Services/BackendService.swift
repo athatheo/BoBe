@@ -84,6 +84,15 @@ actor BackendService {
         logger.info("bobe backend stopped")
     }
 
+    /// User-initiated restart from the overlay's "Daemon down" CTA. Stops
+    /// the current process (if any) then starts fresh. Resets the auto-
+    /// restart counter so a manual retry isn't blocked by the backoff.
+    func userRestart() async throws {
+        self.restartCount = 0
+        await self.stop()
+        try await self.start()
+    }
+
     // MARK: - Spawn & Health
 
     private func spawnAndWaitHealthy() async throws {

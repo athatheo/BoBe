@@ -197,6 +197,7 @@ struct OverlayView: View {
                         isBusy: self.store.composerBlockReason != nil
                     )
                     .layoutPriority(1)
+                    StopButton()
                     MicButton()
                 }
             }
@@ -208,7 +209,35 @@ struct OverlayView: View {
 
     @ViewBuilder
     private var errorBannerSection: some View {
-        if let error = self.store.errorMessage {
+        if self.store.context.daemonError {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.slash.fill")
+                    .font(.system(size: 11))
+                Text("Daemon disconnected")
+                    .bobeTextStyle(.overlayStatus)
+                    .lineLimit(1)
+                Spacer()
+                Button("Restart") {
+                    Task {
+                        try? await BackendService.shared.userRestart()
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.white.opacity(0.2))
+                )
+                .accessibilityLabel("Restart daemon")
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
+            .padding(.horizontal, 12)
+            .transition(self.overlaySectionTransition)
+        } else if let error = self.store.errorMessage {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10))

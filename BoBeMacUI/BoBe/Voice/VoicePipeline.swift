@@ -252,6 +252,28 @@ public final class VoicePipeline {
         }
     }
 
+    /// Send a click-driven barge-in. Used by the overlay's stop button so
+    /// the user can interrupt BoBe mid-reply without speaking over them.
+    /// No-op when the daemon is idle / listening — there's nothing to stop.
+    public func interrupt() {
+        guard let task = self.task else { return }
+        switch self.state {
+        case .thinking, .speaking, .capturing:
+            break
+        default:
+            return
+        }
+        let abort = ClientVoiceMessage.control(action: .abort)
+        guard let data = try? JSONEncoder().encode(abort),
+              let text = String(data: data, encoding: .utf8) else { return }
+        Task { [weak self, weak task] in
+            try? await task?.send(.string(text))
+            await MainActor.run {
+                self?.state = .cancelling
+            }
+        }
+    }
+
     // MARK: - Audio engine
 
     private func configureEngine() throws {
