@@ -12,6 +12,7 @@ use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::services::goals::goals_service::GoalsService;
 use crate::util::sse::event_queue::EventQueue;
+use crate::util::sse::indicator_guard::IndicatorGuard;
 use crate::util::sse::types::IndicatorType;
 
 pub(crate) struct GoalTrigger {
@@ -72,6 +73,11 @@ impl GoalTrigger {
         info!(goal_count = goals.len(), "goal_trigger.checking_goals");
 
         for goal in &goals {
+            // RAII: ensures Indicator returns to Idle even if decide()
+            // panics or this loop is aborted mid-flight (shutdown,
+            // task cancel). Generator path also has its own guard,
+            // so the Streaming → Idle transition is covered there.
+            let indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
             self.event_queue.set_indicator(IndicatorType::Thinking);
 
             let context = TriggerContext {
@@ -87,6 +93,7 @@ impl GoalTrigger {
                     title = &goal.title[..goal.title.len().min(50)],
                     "goal_trigger.engagement_triggered"
                 );
+                drop(indicator_guard);
                 self.generator
                     .generate_proactive_response(
                         cfg.conversation.auto_close_minutes as i64,
@@ -95,8 +102,8 @@ impl GoalTrigger {
                     .await;
                 return Decision::Engage;
             }
-
-            self.event_queue.set_indicator(IndicatorType::Idle);
+            // indicator_guard drops here → Idle restored.
+            drop(indicator_guard);
         }
 
         debug!("goal_trigger.no_engagement");
