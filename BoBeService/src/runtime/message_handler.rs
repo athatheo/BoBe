@@ -15,23 +15,8 @@ use crate::models::types::TurnRole;
 use crate::runtime::response_streamer::stream_chat_delta_response;
 use crate::services::conversation_service::ConversationService;
 use crate::util::sse::event_queue::EventQueue;
+use crate::util::sse::indicator_guard::IndicatorGuard;
 use crate::util::sse::types::IndicatorType;
-
-/// RAII guard that resets the indicator to Idle on drop. Critical for
-/// the voice path: when the WS disconnects mid-TTS, the per-turn task
-/// is aborted via `JoinHandle::abort()` which drops the future without
-/// running any explicit cleanup. Without this guard, the indicator
-/// stays Streaming and the next `try_begin_user_message` is rejected
-/// with "BoBe is still responding" forever.
-struct IndicatorGuard {
-    queue: Arc<EventQueue>,
-}
-
-impl Drop for IndicatorGuard {
-    fn drop(&mut self) {
-        self.queue.set_indicator(IndicatorType::Idle);
-    }
-}
 
 pub(crate) struct MessageHandler {
     workers: Arc<WorkerRegistry>,
@@ -119,9 +104,7 @@ impl MessageHandler {
         // (voice WS disconnect cancels the per-turn task; explicit
         // set_indicator(Idle) below would otherwise be skipped, leaving
         // the indicator stuck Streaming and rejecting all future turns).
-        let _indicator_guard = IndicatorGuard {
-            queue: Arc::clone(&self.event_queue),
-        };
+        let _indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
 
         let result = match self
             .send_via_chat_worker(user_content, msg_id, voice_mode, on_text_delta)

@@ -16,6 +16,7 @@ use crate::runtime::response_streamer::stream_chat_delta_response;
 use crate::services::conversation_service::ConversationService;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::conversation_closed_event;
+use crate::util::sse::indicator_guard::IndicatorGuard;
 use crate::util::sse::types::IndicatorType;
 
 const PROACTIVE_TRIGGER_PROMPT: &str = "[bobe.proactive_check] \
@@ -117,6 +118,12 @@ impl ProactiveGenerator {
         context_summary: Option<String>,
     ) {
         self.event_queue.set_indicator(IndicatorType::Streaming);
+        // RAII: covers normal completion, error return, AND mid-flight
+        // task abort (e.g., shutdown). Without this guard a panic or
+        // abort during send_proactive_via_chat / persist_proactive_response
+        // would leave the indicator stuck Streaming and reject every
+        // subsequent turn. Mirror of the message_handler.rs pattern.
+        let _indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
         let msg_id = format!("msg_{}", Uuid::new_v4().simple());
         let conversation_id = target_conversation.id;
 
@@ -135,7 +142,6 @@ impl ProactiveGenerator {
             Err(e) => {
                 error!(error = %e, "proactive_generator.chat_failed");
                 self.conversation.discard_proactive_stream(conversation_id);
-                self.event_queue.set_indicator(IndicatorType::Idle);
                 return;
             }
         };
@@ -156,8 +162,6 @@ impl ProactiveGenerator {
                 "proactive_generator.stream_incomplete"
             );
         }
-
-        self.event_queue.set_indicator(IndicatorType::Idle);
     }
 
     async fn send_proactive_via_chat(
