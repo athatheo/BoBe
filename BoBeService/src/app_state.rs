@@ -50,6 +50,15 @@ pub(crate) struct AppState {
     /// via the guard in `voice.rs::process_turn`. Safe under single-flight
     /// serialization (UserMessageGuard + chat submit_lock).
     pub(crate) voice_turn_active: Arc<AtomicBool>,
+    /// Single-flight permit for `/voice/stream` connections. Voice engines
+    /// (Silero VAD, streaming Zipformer STT) are Arc-shared globally and
+    /// not safe for concurrent feed: two simultaneous WS handlers would
+    /// interleave audio frames into the same engine state and produce
+    /// corrupted transcripts (or worse — Silero is not documented as
+    /// thread-safe for concurrent accept). Set true by voice.rs on accept,
+    /// cleared on disconnect via RAII; a second concurrent connect is
+    /// rejected with a 409-equivalent close.
+    pub(crate) voice_ws_active: Arc<AtomicBool>,
     /// Single-slot voice sink that hooks (PreToolUse, ErrorOccurred) read
     /// to push cached filler PCM directly to the active client.
     pub(crate) voice_sink: Arc<VoiceSink>,

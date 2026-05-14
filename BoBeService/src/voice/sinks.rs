@@ -68,15 +68,29 @@ impl VoiceSink {
     pub(crate) async fn get(&self) -> Option<mpsc::Sender<Message>> {
         self.inner.read().await.as_ref().map(|slot| slot.sender.clone())
     }
+
+    /// Synchronously clear the slot if it still holds `generation`. Used
+    /// by the WS handler's cleanup path so the writer task's `out_rx`
+    /// can see all senders dropped and exit, allowing handle_socket to
+    /// return promptly. The Drop fallback covers panic-unwind.
+    pub(crate) async fn uninstall_if_current(&self, generation: u64) {
+        let mut guard = self.inner.write().await;
+        if guard.as_ref().is_some_and(|s| s.generation == generation) {
+            *guard = None;
+        }
+    }
 }
 
 /// RAII guard that clears the voice sink slot on drop. The clear runs in a
 /// detached task so destruction stays sync from the caller's perspective.
 /// Only clears if the slot still holds the guard's generation — a newer
 /// `install` between this drop's spawn and run is preserved.
+///
+/// Prefer the explicit `VoiceSink::uninstall_if_current(generation)` from
+/// the WS handler's cleanup path; the Drop is the panic-unwind fallback.
 pub(crate) struct SinkGuard {
     slot: Arc<VoiceSink>,
-    generation: u64,
+    pub(crate) generation: u64,
 }
 
 impl Drop for SinkGuard {

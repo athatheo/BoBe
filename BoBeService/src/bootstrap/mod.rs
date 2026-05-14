@@ -41,6 +41,9 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // Voice-turn signal lives here so AppState (consumed by voice.rs) and
     // WorkerRegistry (consumed by BobeHooks) both reference the same Arc.
     let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Single-flight permit for /voice/stream. Engines are not safe for
+    // concurrent feed; CAS true→false in voice.rs::handle_socket admits.
+    let voice_ws_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
     // Single-slot voice sink — same dual-consumer pattern as the flag.
     let voice_sink = Arc::new(crate::voice::sinks::VoiceSink::new());
     // Install the Prometheus recorder once at boot. The handle goes on
@@ -174,6 +177,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         voice_install,
         voice_engines,
         voice_turn_active,
+        voice_ws_active,
         voice_sink,
         metrics_handle,
     });

@@ -12,6 +12,7 @@
 //!   - Disconnect → abort any in-flight turn before tearing down.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use axum::extract::State;
@@ -40,6 +41,16 @@ const KEEPALIVE_PING_INTERVAL: Duration = Duration::from_secs(25);
 /// 25s server pings trigger auto-Pong from any live client, so a healthy
 /// connection always replenishes within this window even when muted.
 const KEEPALIVE_STALE_TIMEOUT: Duration = Duration::from_mins(1);
+
+/// RAII guard for the single-flight voice WS permit. Clears the flag on
+/// drop including panic-unwind so a crashed handler doesn't lock the slot.
+struct VoiceWsPermit(Arc<AtomicBool>);
+
+impl Drop for VoiceWsPermit {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
 
 
 pub(crate) async fn voice_stream(
@@ -73,6 +84,34 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let (ws_tx, mut rx) = socket.split();
     let (out_tx, mut out_rx) = mpsc::channel::<Message>(OUTBOUND_CHANNEL_CAPACITY);
+
+    // Single-flight: voice engines (Silero VAD, streaming Zipformer STT)
+    // are Arc-shared globally and not safe for concurrent feed. CAS
+    // false→true to acquire; reject with conflict if another connection
+    // owns the slot. Cleared via RAII guard on drop.
+    if state
+        .voice_ws_active
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        warn!("voice.ws_concurrent_rejected");
+        let err = ServerMessage::Error {
+            code: "voice_busy".into(),
+            message: "another voice session is already active".into(),
+        };
+        if let Ok(json) = serde_json::to_string(&err) {
+            drop(out_tx.send(Message::Text(json.into())).await);
+        }
+        // Drain so writer task exits.
+        drop(out_tx);
+        let mut ws_tx = ws_tx;
+        while let Some(msg) = out_rx.recv().await {
+            drop(ws_tx.send(msg).await);
+        }
+        drop(ws_tx.close().await);
+        return;
+    }
+    let _ws_permit = VoiceWsPermit(Arc::clone(&state.voice_ws_active));
 
     // Dedicated WS writer task — sole owner of ws_tx. Main loop, per-turn
     // tasks, and the Kokoro task all post via cloned out_tx senders.
@@ -112,7 +151,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // Install the WS sink for the AppState's single-slot voice sink. The
     // returned guard clears the slot on drop (this scope's end), so a
     // mid-turn disconnect lets subsequent hook fires safely no-op.
-    let _sink_guard = state.voice_sink.install(out_tx.clone()).await;
+    let sink_guard = state.voice_sink.install(out_tx.clone()).await;
 
     // CRITICAL: reset shared engines on WS-accept so prior session state
     // doesn't leak forward. The streaming Zipformer + Silero engines are
@@ -263,6 +302,20 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
         info!(session = %s.session_id, "voice.disconnect");
     }
+    // Synchronously clear the sink slot so writer.await sees all senders
+    // dropped. The Drop on sink_guard at function end is a panic-unwind
+    // fallback only — without this explicit await the spawned-task clear
+    // races with handle_socket return and the writer hangs.
+    state
+        .voice_sink
+        .uninstall_if_current(sink_guard.generation)
+        .await;
+    drop(sink_guard);
+    // VoiceContext holds an out_tx clone. Drop it BEFORE the explicit
+    // out_tx drop below — otherwise out_rx would still have a sender
+    // (via ctx.out_tx) and the writer task would hang forever, leaking
+    // the _ws_permit and locking the single-flight slot.
+    drop(ctx);
     drop(out_tx);
     match writer.await {
         Ok(()) => {}
