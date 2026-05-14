@@ -317,13 +317,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // the _ws_permit and locking the single-flight slot.
     drop(ctx);
     drop(out_tx);
-    match writer.await {
-        Ok(()) => {}
-        Err(e) if e.is_panic() => {
+    // Bound the writer drain. Per-turn sub-tasks (kokoro_task, filler_task)
+    // hold cloned out_tx senders; if the WS disconnected mid-TTS, those
+    // tasks may still be running (kokoro inside spawn_blocking is not
+    // cancellation-aware until synthesis returns). Without a timeout the
+    // writer.await would hold the function open for 5-15s, leaking the
+    // ws_permit and voice_busy-rejecting subsequent connections in that
+    // window. The 2s bound is a backstop — clean disconnects (no in-flight
+    // turn) drain in <10ms.
+    const WRITER_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
+    match tokio::time::timeout(WRITER_DRAIN_TIMEOUT, writer).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) if e.is_panic() => {
             error!(error = %e, "voice.ws_writer_panic");
         }
-        Err(e) if e.is_cancelled() => {}
-        Err(e) => warn!(error = %e, "voice.ws_writer_join_failed"),
+        Ok(Err(e)) if e.is_cancelled() => {}
+        Ok(Err(e)) => warn!(error = %e, "voice.ws_writer_join_failed"),
+        Err(_) => warn!("voice.ws_writer_drain_timeout_abandoning"),
     }
 }
 
