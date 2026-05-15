@@ -1,9 +1,9 @@
 import AVFoundation
 import SwiftUI
 
-/// Mic toggle button. Tap once to connect — the daemon's Silero VAD drives
-/// recording start/stop after that. While the daemon is thinking/speaking, the
-/// button shows the current state and is disabled until M4.5.5 barge-in lands.
+/// Mic toggle button. Tap once to connect — the client-side FluidAudio
+/// engine drives recording start/stop after that. While the daemon is
+/// thinking/speaking, the button shows the current state.
 struct MicButton: View {
     @Environment(\.theme) private var theme
     @State private var pipeline = VoicePipeline.shared
@@ -266,8 +266,8 @@ struct MicButton: View {
         }
     }
 
-    /// Disable taps while the daemon owns the turn — until M4.5.5 barge-in,
-    /// clicks would orphan an in-flight TTS playback. Always enabled when
+    /// Disable taps while the daemon owns the turn — taps go through the
+    /// stop-button affordance for explicit cancellation. Always enabled when
     /// in needs-setup so the user can reach settings. Also disabled while
     /// either model is downloading (~600MB first run) — tapping would
     /// either no-op or trigger a redundant download attempt.

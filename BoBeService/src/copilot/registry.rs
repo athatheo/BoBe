@@ -16,13 +16,12 @@ use tokio::sync::Mutex;
 
 use crate::config::{Config, EngineConfig};
 use crate::error::AppError;
-use crate::services::model_resolver::ModelResolver;
 
 use super::client::ClientHandle;
 use super::handler::BobeHandler;
 use super::hooks::{BobeHooks, HooksVoiceContext};
 use super::memory_file::MemoryFile;
-use super::session_store::{CHAT_RETENTION_DAYS, SessionStore};
+use super::session_store::SessionStore;
 use super::types::WorkerClass;
 use super::workers::batch::BatchWorker;
 use super::workers::chat::CopilotChatWorker;
@@ -33,12 +32,6 @@ const DEFAULT_LOCAL_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub(crate) struct WorkerRegistry {
     client: Arc<ClientHandle>,
     config: Arc<ArcSwap<Config>>,
-    /// Pivot-side model lookup helper. Wires alongside the existing per-class
-    /// `EngineConfig.provider_*_model` fields; held here so callers that need
-    /// runtime model resolution can borrow it. `#[allow(dead_code)]` because
-    /// the consumer call sites are still being migrated post-merge.
-    #[allow(dead_code)]
-    model_resolver: Arc<ModelResolver>,
     session_store: SessionStore,
     memory_file: Arc<MemoryFile>,
     data_dir: PathBuf,
@@ -74,7 +67,6 @@ impl WorkerRegistry {
         voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>>,
     ) -> Arc<Self> {
         let client = ClientHandle::new(Arc::clone(&config));
-        let model_resolver = ModelResolver::new(Arc::clone(&client));
         let voice = HooksVoiceContext {
             voice_turn_active,
             voice_sink,
@@ -83,7 +75,6 @@ impl WorkerRegistry {
         Arc::new(Self {
             client,
             config,
-            model_resolver,
             session_store: SessionStore::new(&data_dir),
             memory_file,
             data_dir,
@@ -96,75 +87,6 @@ impl WorkerRegistry {
             chat: Mutex::new(None),
             reload_lock: Mutex::new(()),
         })
-    }
-
-    /// Prune chat sessions older than `CHAT_RETENTION_DAYS`. Currently
-    /// unused — wired in for the upcoming pruning trigger; keeping the
-    /// implementation in tree avoids re-derivation churn when it lands.
-    #[allow(dead_code)]
-    pub(crate) async fn prune_old_chat_sessions(&self) {
-        let now = Local::now();
-        let victims = match self
-            .session_store
-            .old_chat_sessions(now, CHAT_RETENTION_DAYS)
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(err = %e, "registry.prune_chat.scan_failed");
-                return;
-            }
-        };
-
-        if victims.is_empty() {
-            return;
-        }
-
-        let client = match self.client.ensure_started().await {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    err = %e,
-                    count = victims.len(),
-                    "registry.prune_chat.client_unavailable_skipping_destroy"
-                );
-                for (path, _) in &victims {
-                    drop(tokio::fs::remove_file(path).await);
-                }
-                return;
-            }
-        };
-
-        let mut destroyed = 0usize;
-        for (path, id) in victims {
-            let resume_cfg = github_copilot_sdk::types::ResumeSessionConfig::new(id.clone());
-            if let Ok(session) = client.resume_session(resume_cfg).await
-                && let Err(e) = session.destroy().await
-            {
-                tracing::debug!(
-                    session_id = %id,
-                    err = %e,
-                    "registry.prune_chat.destroy_failed"
-                );
-            }
-            if let Err(e) = tokio::fs::remove_file(&path).await {
-                tracing::warn!(
-                    path = %path.display(),
-                    err = %e,
-                    "registry.prune_chat.unlink_failed"
-                );
-            } else {
-                destroyed += 1;
-            }
-        }
-
-        if destroyed > 0 {
-            tracing::info!(
-                count = destroyed,
-                retention_days = CHAT_RETENTION_DAYS,
-                "registry.prune_chat.cleaned"
-            );
-        }
     }
 
     pub(crate) fn memory_file(&self) -> Arc<MemoryFile> {

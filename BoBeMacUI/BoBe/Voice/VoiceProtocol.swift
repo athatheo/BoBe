@@ -12,14 +12,14 @@ enum VoiceControlAction: String, Codable {
     case reset
 }
 
+/// Subset of `VoicePipeline.State` that's authoritative from the daemon.
+/// The client-only states (`.connecting`, `.cancelling`, `.failed`,
+/// `.capturing`) are driven from local audio/WS events, not the wire.
 enum VoicePhaseWire: String, Codable {
     case idle
     case listening
-    case capturing
     case thinking
     case speaking
-    case cancelling
-    case failed
 }
 
 enum ClientVoiceMessage: Codable {
@@ -183,5 +183,4 @@ struct TtsFrameHeader {
 
     var isFiller: Bool { flags & 0b0000_0001 != 0 }
     var isFirstOfTurn: Bool { flags & 0b0000_0010 != 0 }
-    var isLastOfTurn: Bool { flags & 0b0000_0100 != 0 }
 }

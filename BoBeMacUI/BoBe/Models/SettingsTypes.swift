@@ -29,8 +29,9 @@ struct DaemonSettings: Codable, Sendable {
     /// pick in `ModeNegotiator`. Field added in M6.A; UI lands in M6.B.
     var voiceSttLanguage: String
     /// Kebab-case enum mirroring Rust `PauseSensitivity`: `"tight"`,
-    /// `"balanced"`, `"patient"`. Maps to FluidAudio `eouDebounceMs` in
-    /// Mode B and Silero `min_silence_duration` in Mode A.
+    /// `"balanced"`, `"patient"`. Drives the FluidAudio EOU debounce
+    /// (Parakeet built-in + Qwen3 VAD-driven silence timer) — same ms
+    /// value flows to both engines.
     var voicePauseSensitivity: String
     /// Whether the overlay shows the live partial-transcript caption while
     /// the user is speaking. Pure UI toggle — daemon doesn't consume.

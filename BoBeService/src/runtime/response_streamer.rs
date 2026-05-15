@@ -15,7 +15,8 @@ use crate::util::sse::factories::{
 
 /// Inter-token gap above which we consider the LLM stream stalled. Production
 /// pattern (LiveKit, Pipecat) treats >500-800ms gaps as a stall worth audible
-/// feedback. M4.5.6 logs only; M4.5.4 will surface a cached filler clip.
+/// feedback. Today logs only — filler-on-stall lives in the voice path via
+/// `filler_watchdog`, this is purely an observability hook.
 const STALL_THRESHOLD: Duration = Duration::from_millis(800);
 
 #[derive(Debug)]
@@ -96,9 +97,9 @@ where
                     if state.first_token_time.is_none() {
                         state.first_token_time = Some(now);
                     }
-                    // Stall watchdog (M4.5.6): emit a structured log every time
-                    // the inter-token gap exceeds the threshold. M4.5.4 will
-                    // hook this to fire a cached filler clip.
+                    // Stall watchdog: emit a structured log every time the
+                    // inter-token gap exceeds the threshold. The voice path
+                    // fires its own filler-watchdog in parallel.
                     if let Some(prev) = last_token_at {
                         let gap = now.duration_since(prev);
                         if gap > STALL_THRESHOLD {

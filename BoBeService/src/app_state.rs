@@ -45,19 +45,18 @@ pub(crate) struct AppState {
     /// from an in-flight turn. Hooks (PreToolUse, PostToolUse) read at
     /// fire time so post-install reloads pick up the new filler library.
     pub(crate) voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
-    /// Voice-turn signal — flipped true by `voice.rs` while a voice turn is
-    /// in flight so `BobeHooks` can branch on tone/filler behavior. Cleared
-    /// via the guard in `voice.rs::process_turn`. Safe under single-flight
-    /// serialization (UserMessageGuard + chat submit_lock).
+    /// Voice-turn signal — flipped true by the voice turn-flow while a
+    /// voice turn is in flight so `BobeHooks` can branch on tone/filler
+    /// behavior. Cleared by the `VoiceTurnFlag` RAII guard at turn end.
+    /// Safe under single-flight serialization (UserMessageGuard + chat
+    /// submit_lock).
     pub(crate) voice_turn_active: Arc<AtomicBool>,
-    /// Single-flight permit for `/voice/stream` connections. Voice engines
-    /// (Silero VAD, streaming Zipformer STT) are Arc-shared globally and
-    /// not safe for concurrent feed: two simultaneous WS handlers would
-    /// interleave audio frames into the same engine state and produce
-    /// corrupted transcripts (or worse — Silero is not documented as
-    /// thread-safe for concurrent accept). Set true by voice.rs on accept,
-    /// cleared on disconnect via RAII; a second concurrent connect is
-    /// rejected with a 409-equivalent close.
+    /// Single-flight permit for `/voice/stream` connections. Kokoro TTS +
+    /// the per-WS Opus encoder are not safe for concurrent feed: two
+    /// simultaneous WS handlers would interleave frames and produce
+    /// scrambled audio. Set true by voice.rs on accept, cleared on
+    /// disconnect via RAII; a second concurrent connect is rejected with
+    /// a 409-equivalent close.
     pub(crate) voice_ws_active: Arc<AtomicBool>,
     /// Single-slot voice sink that hooks (PreToolUse, ErrorOccurred) read
     /// to push cached filler PCM directly to the active client.

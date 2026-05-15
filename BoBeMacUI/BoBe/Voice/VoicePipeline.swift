@@ -492,7 +492,7 @@ public final class VoicePipeline {
         let inputNode = self.audioEngine.inputNode
         try inputNode.setVoiceProcessingEnabled(true)
         // VPIO on the output node too — gives Apple's AEC a reference signal
-        // for AEC during full-duplex (M4.5.5 barge-in territory). Required by
+        // for AEC during full-duplex (barge-in path). Required by
         // the architecture doc; on macOS it's idempotent if already enabled.
         try self.audioEngine.outputNode.setVoiceProcessingEnabled(true)
 
@@ -721,7 +721,7 @@ public final class VoicePipeline {
             // Authoritative end-of-turn — daemon will follow with state(Listening).
             self.partialTranscript = ""
         case let .truncate(_, keepMs):
-            // M4.5.5 barge-in path — drop queued audio beyond keepMs.
+            // Barge-in path — drop queued audio beyond keepMs.
             self.truncatePlayback(keepMs: keepMs)
         case let .error(code, message):
             self.lastError = "\(code): \(message)"
@@ -741,7 +741,6 @@ public final class VoicePipeline {
         switch phase {
         case .idle: self.state = .idle
         case .listening: self.state = .listening
-        case .capturing: self.state = .capturing
         case .thinking: self.state = .thinking
         case .speaking:
             // New turn — reset the per-turn schedule bookkeeping. Capture the
@@ -755,8 +754,6 @@ public final class VoicePipeline {
             }
             self.state = .speaking
             self.ensureDecoder()
-        case .cancelling: self.state = .cancelling
-        case .failed: self.state = .failed("daemon reported failure")
         }
     }
 

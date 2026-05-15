@@ -1,8 +1,5 @@
 //! Chat rotates daily; cross-day continuity comes from `memory.md`, not chat history.
 
-#[allow(dead_code)] // Used by `prune_old_chat_sessions` once the pruning trigger lands.
-pub(crate) const CHAT_RETENTION_DAYS: i64 = 7;
-
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local};
@@ -89,69 +86,6 @@ impl SessionStore {
         }
     }
 
-    /// Load a session ID from a specific path. Used by `old_chat_sessions`
-    /// (which is itself awaiting wire-up by the pruning trigger).
-    #[allow(dead_code)]
-    pub(crate) async fn load_path(
-        &self,
-        path: &std::path::Path,
-    ) -> Result<Option<SessionId>, AppError> {
-        match tokio::fs::read_to_string(path).await {
-            Ok(s) => {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(SessionId::new(trimmed)))
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(AppError::Io(e)),
-        }
-    }
-
-    /// Scan for chat session files older than the cutoff. Consumed by
-    /// `WorkerRegistry::prune_old_chat_sessions` (currently scaffolded —
-    /// the pruning trigger is post-merge work).
-    #[allow(dead_code)]
-    pub(crate) async fn old_chat_sessions(
-        &self,
-        now_local: DateTime<Local>,
-        retention_days: i64,
-    ) -> Result<Vec<(std::path::PathBuf, SessionId)>, AppError> {
-        let chat_dir = self.workers_root.join(WorkerClass::Chat.name());
-        let mut read_dir = match tokio::fs::read_dir(&chat_dir).await {
-            Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(AppError::Io(e)),
-        };
-
-        let cutoff = now_local.date_naive() - chrono::Duration::days(retention_days);
-        let mut victims = Vec::new();
-
-        while let Some(entry) = read_dir.next_entry().await? {
-            let path = entry.path();
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            let Some(date_part) = name
-                .strip_prefix("session-")
-                .and_then(|rest| rest.strip_suffix(".id"))
-            else {
-                continue;
-            };
-            let Ok(file_date) = chrono::NaiveDate::parse_from_str(date_part, "%Y-%m-%d") else {
-                continue;
-            };
-            if file_date < cutoff
-                && let Ok(Some(id)) = self.load_path(&path).await
-            {
-                victims.push((path, id));
-            }
-        }
-
-        Ok(victims)
-    }
 }
 
 #[cfg(test)]
@@ -221,30 +155,4 @@ mod tests {
         assert!(store.load(WorkerClass::Goals, now).await.unwrap().is_none());
     }
 
-    #[tokio::test]
-    async fn old_chat_sessions_returns_only_files_past_cutoff() {
-        let store = SessionStore::new(&tempdir());
-        let today = Local.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
-        let yesterday = Local.with_ymd_and_hms(2026, 5, 14, 10, 0, 0).unwrap();
-        let week_ago = Local.with_ymd_and_hms(2026, 5, 8, 10, 0, 0).unwrap();
-        let two_weeks_ago = Local.with_ymd_and_hms(2026, 5, 1, 10, 0, 0).unwrap();
-
-        for (when, id) in [
-            (today, "today-id"),
-            (yesterday, "yest-id"),
-            (week_ago, "week-id"),
-            (two_weeks_ago, "old-id"),
-        ] {
-            store
-                .save(WorkerClass::Chat, when, &SessionId::new(id))
-                .await
-                .unwrap();
-        }
-
-        let victims = store.old_chat_sessions(today, 7).await.unwrap();
-
-        // week_ago is exactly 7 days; cutoff is `< today - 7d` so it's kept.
-        assert_eq!(victims.len(), 1);
-        assert_eq!(victims[0].1, SessionId::new("old-id"));
-    }
 }

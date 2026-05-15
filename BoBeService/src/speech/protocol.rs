@@ -21,17 +21,15 @@ pub(crate) enum ControlAction {
 }
 
 /// Daemon-side authoritative turn phase. Client mirrors for UI only.
+/// Client-driven states (`Connecting`, `Cancelling`, `Failed`) live in the
+/// Swift `VoicePipeline.State` enum and never cross the wire.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code, reason = "Capturing/Cancelling/Failed reserved for client-side states")]
 pub(crate) enum VoicePhase {
     Idle,
     Listening,
-    Capturing,
     Thinking,
     Speaking,
-    Cancelling,
-    Failed,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,12 +101,9 @@ pub(crate) enum ServerMessage {
 ///
 /// flags bit 0: 1 = filler (preemptible by real reply)
 /// flags bit 1: 1 = first chunk of turn
-/// flags bit 2: 1 = last chunk of turn
 pub(crate) const TTS_FRAME_HEADER_LEN: usize = 9;
 pub(crate) const FLAG_FILLER: u8 = 0b0000_0001;
 pub(crate) const FLAG_FIRST_OF_TURN: u8 = 0b0000_0010;
-#[allow(dead_code, reason = "wire contract; emitted in future TTS path polish")]
-pub(crate) const FLAG_LAST_OF_TURN: u8 = 0b0000_0100;
 
 pub(crate) fn encode_tts_frame(chunk_id: u64, flags: u8, opus: &[u8]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(TTS_FRAME_HEADER_LEN + opus.len());

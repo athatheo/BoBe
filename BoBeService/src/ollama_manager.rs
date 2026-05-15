@@ -255,24 +255,6 @@ impl OllamaManager {
         Ok(tags.models.into_iter().map(|m| m.name).collect())
     }
 
-    /// No-op if we never spawned the daemon (i.e. reusing user's Ollama).
-    #[allow(dead_code)]
-    pub(crate) async fn stop(&self) {
-        let mut guard = self.child.lock().await;
-        let Some(mut child) = guard.take() else {
-            return;
-        };
-        if let Err(e) = child.start_kill() {
-            warn!(err = %e, "ollama_manager.stop_kill_failed");
-            return;
-        }
-        match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
-            Ok(Ok(status)) => info!(status = %status, "ollama_manager.stopped"),
-            Ok(Err(e)) => warn!(err = %e, "ollama_manager.stop_wait_failed"),
-            Err(_) => warn!("ollama_manager.stop_timeout"),
-        }
-    }
-
     /// `http://host/v1` → `http://host` for Ollama's native API root.
     pub(crate) fn root_from_provider_url(provider_url: &str) -> String {
         provider_url

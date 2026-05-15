@@ -58,8 +58,8 @@ pub(crate) async fn dispatch_from_control(
     });
 }
 
-/// Spawn the per-turn task. Mirrors the old Mode A `spawn_turn` shape so
-/// disconnect cleanup and barge-in abort plumbing stay uniform.
+/// Spawn the per-turn task. Disconnect cleanup + barge-in abort plumbing
+/// reads `current_turn` regardless of how the turn started.
 fn spawn_text_turn(
     text: String,
     turn_id: String,

@@ -13,8 +13,8 @@ import OSLog
 /// hop to `@MainActor` at the UI boundary (VoicePipeline already does).
 actor FluidAudioStt: VoiceSttEngine {
     private let logger = Logger(subsystem: "com.bobe.app", category: "FluidAudioStt")
-    private let variant: StreamingModelVariant
-    private let eouDebounceMs: Int
+    private let chunkSize: StreamingChunkSize
+    private var eouDebounceMs: Int
     private var manager: StreamingEouAsrManager?
     private var loaded = false
     /// In-flight load task. Concurrent `loadModels` callers (e.g. MicButton
@@ -22,14 +22,26 @@ actor FluidAudioStt: VoiceSttEngine {
     /// instead of triggering N parallel downloads.
     private var loadTask: Task<Void, Error>?
 
-    /// Variant tuning — `.parakeetEou320ms` is the balanced default. The
-    /// 160ms variant is lowest-latency; 1280ms is highest-throughput.
+    /// Variant tuning — `.ms320` is the balanced default. The 160ms variant
+    /// is lowest-latency; 1280ms is highest-throughput.
+    /// `eouDebounceMs` defaults to Parakeet's documented "balanced" value;
+    /// callers update it via `setEouDebounceMs(_:)` to honor the user's
+    /// pause sensitivity preference.
     init(
-        variant: StreamingModelVariant = .parakeetEou320ms,
+        chunkSize: StreamingChunkSize = .ms320,
         eouDebounceMs: Int = 1280
     ) {
-        self.variant = variant
+        self.chunkSize = chunkSize
         self.eouDebounceMs = eouDebounceMs
+    }
+
+    /// Update the EOU debounce. Picked up on the next loaded manager
+    /// (next reload) — the live manager's value also gets set if loaded.
+    func setEouDebounceMs(_ value: Int) async {
+        self.eouDebounceMs = max(100, min(5_000, value))
+        if let mgr = self.manager {
+            await mgr.updateEouDebounceMs(self.eouDebounceMs)
+        }
     }
 
     /// Load the model (downloads from HuggingFace on first run, then caches
@@ -44,10 +56,16 @@ actor FluidAudioStt: VoiceSttEngine {
             try await existing.value
             return
         }
-        let variant = self.variant
+        let chunkSize = self.chunkSize
+        let debounceMs = self.eouDebounceMs
         let task = Task<Void, Error> { [weak self] in
             guard let self else { return }
-            try await self.performLoad(variant: variant, onPartial: onPartial, onEou: onEou)
+            try await self.performLoad(
+                chunkSize: chunkSize,
+                debounceMs: debounceMs,
+                onPartial: onPartial,
+                onEou: onEou
+            )
         }
         self.loadTask = task
         do {
@@ -60,21 +78,25 @@ actor FluidAudioStt: VoiceSttEngine {
 
     /// Actual load work, run inside the deduped Task.
     private func performLoad(
-        variant: StreamingModelVariant,
+        chunkSize: StreamingChunkSize,
+        debounceMs: Int,
         onPartial: @escaping @Sendable (String) -> Void,
         onEou: @escaping @Sendable (String) -> Void
     ) async throws {
-        let mgr = variant.createManager() as? StreamingEouAsrManager
-        guard let mgr else {
-            throw FluidAudioSttError.unexpectedManagerType
-        }
+        // Build StreamingEouAsrManager directly so we can pass the user's
+        // pause-sensitivity-derived `eouDebounceMs` — the variant factory
+        // (`StreamingModelVariant.createManager()`) hard-codes 1280ms.
+        let mgr = StreamingEouAsrManager(
+            chunkSize: chunkSize,
+            eouDebounceMs: debounceMs
+        )
         await mgr.setPartialCallback(onPartial)
         await mgr.setEouCallback(onEou)
         try await mgr.loadModels()
         self.manager = mgr
         self.loaded = true
         self.loadTask = nil
-        self.logger.info("FluidAudioStt loaded \(variant.rawValue)")
+        self.logger.info("FluidAudioStt loaded chunk=\(chunkSize.durationMs)ms eou=\(debounceMs)ms")
     }
 
     /// Append one PCM buffer (any format — FluidAudio resamples internally
@@ -115,5 +137,14 @@ actor FluidAudioStt: VoiceSttEngine {
 
 enum FluidAudioSttError: Error {
     case notLoaded
-    case unexpectedManagerType
+}
+
+/// Cross-actor write helper for the EOU debounce. FluidAudio exposes
+/// `eouDebounceMs` as a `public var` but no setter method, so writing it
+/// from outside the actor requires going through an isolated method on
+/// the actor — which extensions of actors get for free.
+extension StreamingEouAsrManager {
+    public func updateEouDebounceMs(_ value: Int) {
+        self.eouDebounceMs = value
+    }
 }

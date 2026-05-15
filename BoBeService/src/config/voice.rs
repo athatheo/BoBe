@@ -15,18 +15,17 @@ pub(crate) struct VoiceConfig {
     /// Default playback speed (0.5–2.0). Hello handshake's `speed` overrides
     /// this per WS connection. Outside the range gets clamped at synth time.
     pub(crate) speed: f32,
-    /// User's primary language (BCP-47: `"en"`, `"zh"`, ...). Drives client-
-    /// side STT engine selection in Mode B (`EnglishParakeetEngines` vs
-    /// `MultilingualQwen3Engines`). In Mode A the daemon's Zipformer is
-    /// English-only; requesting a non-English language at Hello rejects.
-    /// v1 supported: `"en"`, `"zh"`. Other listed: `"es"`, `"el"`, `"ko"`, `"ja"`.
-    /// Field added in M6.A; consumed by M6.B Hello dispatch + Swift engine
-    /// negotiator.
+    /// User's primary language (BCP-47: `"en"`, `"zh"`, ...). Drives the
+    /// Swift client's per-language STT engine pick (Parakeet for English,
+    /// Qwen3-ASR for everything else). Daemon stores + echoes for tracing
+    /// only — it never inspects the value in turn dispatch.
+    /// v1 shipping: `"en"`, `"zh"`. Surfaced but not wired:
+    /// `"es"`, `"el"`, `"ko"`, `"ja"`.
     pub(crate) stt_language: String,
     /// End-of-utterance debounce / silence tolerance preference.
-    /// Maps to FluidAudio `eouDebounceMs` (English) or acoustic silence
-    /// threshold (multilingual) in Mode B; to Silero `min_silence_duration`
-    /// in Mode A. Field added in M6.A; consumed by M6.B engines.
+    /// Maps to FluidAudio Parakeet's `eouDebounceMs` (English) and the
+    /// Swift Qwen3 wrapper's VAD-driven silence timer (Mandarin), both
+    /// consuming the same ms value. Daemon stores for round-trip.
     pub(crate) pause_sensitivity: PauseSensitivity,
     /// Whether the live partial-transcript caption ("VoicePartialCaption")
     /// is shown in the overlay while the user is speaking. Default on —

@@ -1,7 +1,7 @@
 //! Voice-handler-side modules — distinct from `speech/` which holds the
-//! engine traits + their model wrappers. Files here are about wiring
-//! engines into the WS turn loop: pre-rendered fillers, sink registry
-//! (M4.5.0c+), telemetry (D1), proactive-routing scaffold (M5.2).
+//! Kokoro TTS engine. Files here are about wiring TTS into the WS turn
+//! loop: per-WS session state, per-turn convergence body, pre-rendered
+//! filler library, sink registry, telemetry counters.
 
 pub(crate) mod cancel_phrases;
 pub(crate) mod context;

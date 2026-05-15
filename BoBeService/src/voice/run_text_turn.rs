@@ -1,9 +1,8 @@
-//! Shared convergence helper for both voice variants.
+//! Shared convergence helper for the voice turn lifecycle.
 //!
-//! Mode A (server-side STT): `voice/turn_flow.rs::process_turn` runs the
-//! smart-turn gate + Zipformer commit, then calls `run_text_turn`.
-//! Mode B (client-side STT): `voice/modes/transcript_in.rs` receives a
-//! `transcript.final` from the WS and calls `run_text_turn` directly.
+//! `voice/modes/transcript_in.rs` receives a `transcript.final` from the
+//! WS and calls `run_text_turn` directly. (Daemon-side ASR was removed in
+//! the M6.B Mode-B-only pivot; this used to be one of two entry points.)
 //!
 //! The function owns single-flight admission, Thinking/Speaking/Listening
 //! state emission, the per-turn TTS pipeline (filler + Kokoro), and the
@@ -54,19 +53,9 @@ impl Drop for VoiceTurnFlag {
     }
 }
 
-/// The convergence body. Both Mode A and Mode B reach this with a
-/// pre-validated non-empty trimmed `text`. Caller is responsible for any
-/// pre-text work (smart-turn gate, STT commit, empty-transcript handling)
-/// and for populating the session's `current_turn` slot if barge-in must
-/// be honored.
-///
-/// **M6.A ordering shift:** in the pre-refactor flow, Mode A emitted
-/// `state(Thinking)` BEFORE STT and rolled back to `state(Listening)` on
-/// STT failure / empty transcript. Post-refactor, STT runs first
-/// (`voice/turn_flow.rs::process_turn`) and only successful commits reach
-/// here, so `Thinking` is emitted after the transcript exists. The
-/// observable delta: STT error/empty no longer flashes a Thinking pulse
-/// before the error. Acceptable — clients handle out-of-order states.
+/// The convergence body. Caller is responsible for pre-validating the
+/// trimmed `text` (non-empty) and populating the session's `current_turn`
+/// slot if barge-in must be honored.
 pub(crate) async fn run_text_turn(
     text: &str,
     turn_id: &str,
@@ -82,11 +71,9 @@ pub(crate) async fn run_text_turn(
         Ok(g) => g,
         Err(reason) => {
             send_error(out_tx, "conflict", reason).await;
-            // Roll the wire state back to Listening so the client UI doesn't
-            // get stuck mid-turn (relevant when Mode B has pre-emitted
-            // Thinking before calling here; Mode A hasn't emitted anything
-            // beyond the ambient state at this point but the explicit
-            // Listening is harmless).
+            // Roll the wire state back to Listening so the client UI
+            // doesn't get stuck mid-turn (relevant since the caller has
+            // pre-emitted Thinking before reaching here).
             send_state(out_tx, VoicePhase::Listening, turn_id).await;
             return;
         }

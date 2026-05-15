@@ -369,8 +369,6 @@
 "settings.voice.persona.description" = "Which Kokoro voice slot to use by default.";
 "settings.voice.speed" = "Speed";
 "settings.voice.speed.description" = "TTS playback speed (0.5×–2.0×). 1.0× is natural pace.";
-"settings.voice.reinstall" = "Reinstall models";
-"settings.voice.reinstalling" = "Reinstalling…";
 "settings.voice.installed_label" = "Installed";
 "settings.voice.missing_label" = "Not installed";
 "settings.voice.partial_label" = "Partial — some models missing";
@@ -386,7 +384,7 @@
 "voice.model.status.canceled" = "Canceled";
 "settings.voice.empty.unreachable" = "Couldn't reach the daemon. Voice settings will appear once it's connected.";
 "overlay.input.mic.disabled.thinking" = "BoBe is thinking…";
-"overlay.input.mic.disabled.speaking" = "BoBe is speaking — barge-in lands in M4.5.5";
+"overlay.input.mic.disabled.speaking" = "BoBe is speaking — wait for the reply to finish";
 "overlay.input.mic.disabled.connecting" = "Connecting to voice…";
 "overlay.input.mic.disabled.cancelling" = "Stopping the current turn…";
 "overlay.input.mic.permission_denied" = "Microphone access denied — open System Settings";

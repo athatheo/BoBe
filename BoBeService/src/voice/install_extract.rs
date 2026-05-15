@@ -1,7 +1,6 @@
-//! Tarball extraction helpers for the voice install service. Streaming
-//! Zipformer ships its onnx files with epoch-NN-avg-N suffixes; the
-//! daemon's loader inspects bare `encoder.onnx` / `decoder.onnx` /
-//! `joiner.onnx`, so we rename on the way in.
+//! Tarball extraction helpers for the voice install service. The only
+//! tarball today is Kokoro TTS; daemon-side ASR/VAD/smart-turn were ripped
+//! out in M6.B (Mode-B-only pivot) along with their epoch-suffix renaming.
 
 use std::path::{Path, PathBuf};
 
@@ -22,7 +21,6 @@ pub(super) fn tempfile_dir() -> Result<PathBuf, std::io::Error> {
 
 /// Extract a .tar.bz2 archive whose contents are a single directory.
 /// Find that directory inside `tmp_dir`, move it to `final_target`.
-/// Also handles encoder/decoder/joiner rename for streaming Zipformer.
 pub(super) async fn extract_and_install(
     archive: &Path,
     tmp_dir: &Path,
@@ -63,12 +61,6 @@ pub(super) async fn extract_and_install(
     let extracted =
         extracted.ok_or_else(|| AppError::Internal("tarball had no directory inside".into()))?;
 
-    // Streaming Zipformer rename: drop epoch suffixes so the daemon's
-    // loader finds canonical encoder.onnx / decoder.onnx / joiner.onnx.
-    for prefix in ["encoder", "decoder", "joiner"] {
-        rename_first_glob(&extracted, prefix, "onnx").await?;
-    }
-
     if let Some(parent) = final_target.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -78,33 +70,5 @@ pub(super) async fn extract_and_install(
         .await
         .map_err(|e| AppError::Internal(format!("move into models_root: {e}")))?;
     drop(tokio::fs::remove_file(archive).await);
-    Ok(())
-}
-
-/// Find the first file under `dir` whose name matches `{prefix}*.{ext}`
-/// and rename it to `{prefix}.{ext}`. No-op when nothing matches (so
-/// non-Zipformer tarballs are unaffected).
-async fn rename_first_glob(dir: &Path, prefix: &str, ext: &str) -> Result<(), AppError> {
-    let mut entries = tokio::fs::read_dir(dir)
-        .await
-        .map_err(|e| AppError::Internal(format!("readdir for rename: {e}")))?;
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| AppError::Internal(format!("readdir entry rename: {e}")))?
-    {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name == format!("{prefix}.{ext}") {
-            return Ok(());
-        }
-        if name.starts_with(prefix) && name.ends_with(&format!(".{ext}")) {
-            let from = entry.path();
-            let to = dir.join(format!("{prefix}.{ext}"));
-            tokio::fs::rename(&from, &to)
-                .await
-                .map_err(|e| AppError::Internal(format!("rename {prefix}: {e}")))?;
-            return Ok(());
-        }
-    }
     Ok(())
 }

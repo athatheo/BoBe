@@ -18,17 +18,6 @@ use crate::voice::telemetry::{CTR_BARGE_IN_FALSE, CTR_BARGE_IN_SUCCESS};
 /// and get dropped as false barge-ins.
 pub(crate) const MIN_WORDS_FOR_BARGE_IN: usize = 3;
 
-/// Reap a `current_turn` slot whose join handle has finished. Safe to call
-/// from the WS loop; idempotent.
-#[allow(dead_code, reason = "wired by api/handlers/voice.rs loop after turn completion")]
-pub(crate) fn reap_finished_turn(session: &mut VoiceSession) {
-    if let Some(turn) = session.current_turn.as_ref()
-        && turn.join.is_finished()
-    {
-        session.current_turn = None;
-    }
-}
-
 /// Shared abort body for all "stop this turn" paths (RMS barge-in,
 /// cancel phrase, explicit Abort/Reset control). Assumes the caller has
 /// already authorized the abort — does NOT enforce MinWords.

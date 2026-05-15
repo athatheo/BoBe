@@ -104,7 +104,11 @@ extension VoicePipeline {
                 }
                 let delayMs = Self.eouDelayMs(for: settingsRes.voicePauseSensitivity)
                 let qwen3 = self.qwen3Stt
-                Task { await qwen3.setEouDelayMs(delayMs) }
+                let parakeet = self.parakeetStt
+                Task {
+                    await qwen3.setEouDelayMs(delayMs)
+                    await parakeet.setEouDebounceMs(delayMs)
+                }
             }
         }
         self.refreshDaemonTask = task
@@ -112,14 +116,17 @@ extension VoicePipeline {
         self.refreshDaemonTask = nil
     }
 
-    /// Map the daemon's `voice.pause_sensitivity` string to an EOU delay
-    /// (ms) that the Qwen3 VAD timer waits after speechEnd before firing.
-    /// Parakeet ignores this — its EOU is built into the streaming manager.
+    /// Map the daemon's `voice.pause_sensitivity` string to an EOU debounce
+    /// (ms). Same value flows to both engines: Parakeet's built-in EOU
+    /// debounce, and the Qwen3 wrapper's VAD-driven silence timer. Values
+    /// mirror Rust `config::voice::PauseSensitivity` (tight=600, balanced=
+    /// 1280, patient=2000) — the 1280ms balanced value matches the
+    /// Parakeet EOU model's published default debounce.
     static func eouDelayMs(for sensitivity: String) -> Int {
         switch sensitivity.lowercased() {
         case "tight": return 600
-        case "patient": return 1_200
-        default: return 800
+        case "patient": return 2_000
+        default: return 1_280
         }
     }
 
