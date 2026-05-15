@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Shows what BoBe is hearing in near-real-time. Bound to
-/// `VoicePipeline.partialTranscript` which is set on every TranscriptPartial
-/// frame from the daemon's streaming Zipformer STT and cleared at turn-end.
+/// `VoicePipeline.partialTranscript` which is set on every partial callback
+/// from the local FluidAudio Parakeet streaming ASR (Mode B) and cleared
+/// at end-of-utterance.
 ///
 /// Renders nothing while empty so it doesn't take layout space when the user
 /// isn't speaking. Fades in/out so the appearance feels like dictation rather

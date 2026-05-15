@@ -25,6 +25,13 @@ struct DaemonSettings: Codable, Sendable {
     var voiceEnabled: Bool
     var voicePersona: String
     var voiceSpeed: Float
+    /// BCP-47 language code (`"en"`, `"zh"`). Drives the per-language engine
+    /// pick in `ModeNegotiator`. Field added in M6.A; UI lands in M6.B.
+    var voiceSttLanguage: String
+    /// Kebab-case enum mirroring Rust `PauseSensitivity`: `"tight"`,
+    /// `"balanced"`, `"patient"`. Maps to FluidAudio `eouDebounceMs` in
+    /// Mode B and Silero `min_silence_duration` in Mode A.
+    var voicePauseSensitivity: String
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -48,6 +55,8 @@ struct DaemonSettings: Codable, Sendable {
         case voiceEnabled = "voice_enabled"
         case voicePersona = "voice_persona"
         case voiceSpeed = "voice_speed"
+        case voiceSttLanguage = "voice_stt_language"
+        case voicePauseSensitivity = "voice_pause_sensitivity"
     }
 }
 
@@ -73,6 +82,8 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var voiceEnabled: Bool?
     var voicePersona: String?
     var voiceSpeed: Float?
+    var voiceSttLanguage: String?
+    var voicePauseSensitivity: String?
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -96,6 +107,8 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case voiceEnabled = "voice_enabled"
         case voicePersona = "voice_persona"
         case voiceSpeed = "voice_speed"
+        case voiceSttLanguage = "voice_stt_language"
+        case voicePauseSensitivity = "voice_pause_sensitivity"
     }
 }
 

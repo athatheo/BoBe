@@ -164,18 +164,14 @@ struct VoiceModelProgress: Codable, Sendable, Identifiable {
     }
 }
 
+/// Daemon-side install presence. Mirrors PresenceSnapshot in
+/// BoBeService/src/api/handlers/voice_install.rs (Mode B: TTS-only).
 struct VoiceInstallPresence: Codable, Sendable {
-    let streamingStt: Bool
     let tts: Bool
-    let vad: Bool
-    let smartTurn: Bool
     let allPresent: Bool
 
     enum CodingKeys: String, CodingKey {
-        case streamingStt = "streaming_stt"
         case tts
-        case vad
-        case smartTurn = "smart_turn"
         case allPresent = "all_present"
     }
 }
