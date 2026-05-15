@@ -1,8 +1,5 @@
 import AVFoundation
-import OSLog
 import SwiftUI
-
-private let logger = Logger(subsystem: "com.bobe.app", category: "MicButton")
 
 /// Mic toggle button. Tap once to connect — the daemon's Silero VAD drives
 /// recording start/stop after that. While the daemon is thinking/speaking, the
@@ -10,15 +7,6 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "MicButton")
 struct MicButton: View {
     @Environment(\.theme) private var theme
     @State private var pipeline = VoicePipeline.shared
-    @State private var permissionStatus: AVAuthorizationStatus =
-        AVCaptureDevice.authorizationStatus(for: .audio)
-    /// `nil` until first poll completes. `true` when all four voice models
-    /// are on disk; `false` means tapping should route to settings rather
-    /// than attempt a doomed `/voice/stream` connection.
-    @State private var modelsInstalled: Bool?
-    /// Mirrors `DaemonSettings.voiceEnabled`. `nil` until the first settings
-    /// fetch lands; `false` hides the mic + opens settings on tap.
-    @State private var voiceEnabled: Bool?
     @State private var pollTask: Task<Void, Never>?
 
     var body: some View {
@@ -47,6 +35,28 @@ struct MicButton: View {
                 Image(systemName: self.icon)
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(self.foreground)
+                    .opacity(self.unusableDim ? 0.45 : 1.0)
+                if self.isSttBusy {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                }
+                // Setup-needed badge: a small warning glyph in the corner
+                // that stays mic-icon-anchored so the user still knows this
+                // is the voice button. Doesn't render during downloads —
+                // that's a spinner overlay (above).
+                if self.needsSetup && !self.isSttBusy {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(self.theme.colors.primary)
+                        .background(
+                            Circle()
+                                .fill(self.theme.colors.background)
+                                .frame(width: 14, height: 14)
+                        )
+                        .offset(x: 11, y: -11)
+                }
             }
         }
         .buttonStyle(.plain)
@@ -56,27 +66,26 @@ struct MicButton: View {
         .contentShape(Circle())
         .disabled(self.isDisabled)
         .task {
-            await self.refreshGate()
+            self.pipeline.updatePermission(
+                AVCaptureDevice.authorizationStatus(for: .audio)
+            )
+            // Pull settings first so the pipeline's activeSttLanguage is
+            // current — the presence check below routes to the right engine
+            // (Parakeet for English, Qwen3 for everything else).
+            await self.pipeline.refreshDaemonState()
+            // Filesystem presence check — cheap, doesn't need mic permission
+            // or active load. Fixes a chicken-and-egg where the mic showed
+            // the needs-setup badge at boot because sttStatus started as
+            // .notLoaded even when the model was on disk.
+            self.pipeline.bootstrapSttPresence()
             // Pre-warm VPIO/AGC so the first 300ms-1s of speech isn't attenuated.
             // Skipped when permission isn't granted, voice models aren't
             // installed, or voice is disabled in settings.
-            if self.shouldPrewarmEagerly {
+            if self.pipeline.readiness == .ready {
                 await self.pipeline.prewarm()
             }
         }
         .onDisappear { self.pollTask?.cancel() }
-        .onReceive(
-            NotificationCenter.default.publisher(for: .bobeWelcomeCompleted)
-        ) { _ in
-            // Wizard finished — install/settings state likely changed.
-            Task { await self.refreshGate() }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: .bobeVoiceConfigChanged)
-        ) { _ in
-            // Voice settings or install state changed in Settings → Voice.
-            Task { await self.refreshGate() }
-        }
     }
 
     /// Show the pulsing ring only when the daemon could plausibly be
@@ -89,36 +98,41 @@ struct MicButton: View {
         }
     }
 
+    /// Voice can't be used right now — show the warning badge + route taps
+    /// to settings/wizard rather than attempt a doomed connect. Excludes
+    /// `.installing` (that gets a spinner overlay instead) and `.preparing`
+    /// (transient — avoid a wrench-flicker during the boot window).
     private var needsSetup: Bool {
-        // True when models are missing OR voice is explicitly disabled.
-        // `nil` (unknown) is NOT needsSetup — avoids a wrench during the
-        // brief boot window before the first poll lands.
-        self.modelsInstalled == false || self.voiceEnabled == false
-    }
-
-    private var shouldPrewarmEagerly: Bool {
-        self.permissionStatus == .authorized
-            && self.modelsInstalled == true
-            && self.voiceEnabled != false
+        switch self.pipeline.readiness {
+        case .disabledByUser, .modelsMissing, .failed: true
+        default: false
+        }
     }
 
     private var accessibilityLabel: String {
-        if self.permissionStatus == .denied || self.permissionStatus == .restricted {
+        switch self.pipeline.readiness {
+        case .permissionMissing:
             return L10n.tr("overlay.input.mic.permission_denied")
+        case .disabledByUser, .modelsMissing, .failed:
+            return L10n.tr("overlay.input.mic.needs_setup")
+        default:
+            return L10n.tr("overlay.input.mic.accessibility")
         }
-        return self.needsSetup
-            ? L10n.tr("overlay.input.mic.needs_setup")
-            : L10n.tr("overlay.input.mic.accessibility")
     }
 
     private var tooltip: String {
-        // Permission > setup gate > pipeline error > pipeline busy state >
-        // generic toggle. Show whichever takes precedence.
-        if self.permissionStatus == .denied || self.permissionStatus == .restricted {
+        // Readiness > pipeline error > pipeline busy state > generic toggle.
+        switch self.pipeline.readiness {
+        case .permissionMissing:
             return L10n.tr("overlay.input.mic.permission_denied")
-        }
-        if self.needsSetup {
+        case .disabledByUser, .modelsMissing:
             return L10n.tr("overlay.input.mic.needs_setup")
+        case .installing:
+            return "Downloading voice model… (~600MB, first run only)"
+        case .failed(let msg):
+            return "Voice model failed to load: \(msg). Tap to retry."
+        case .preparing, .ready:
+            break
         }
         if let err = self.pipeline.lastError, !err.isEmpty {
             return err
@@ -142,7 +156,7 @@ struct MicButton: View {
             self.openVoiceSettings()
             return
         }
-        switch self.permissionStatus {
+        switch self.pipeline.permission {
         case .authorized:
             Task {
                 guard let url = URL(string: DaemonConfig.baseURL)
@@ -152,8 +166,8 @@ struct MicButton: View {
         case .notDetermined:
             Task {
                 let granted = await AVCaptureDevice.requestAccess(for: .audio)
-                self.permissionStatus = granted ? .authorized : .denied
-                if granted, self.shouldPrewarmEagerly {
+                self.pipeline.updatePermission(granted ? .authorized : .denied)
+                if granted, self.pipeline.readiness == .ready {
                     await self.pipeline.prewarm()
                 }
             }
@@ -175,46 +189,29 @@ struct MicButton: View {
         self.schedulePoll()
     }
 
-    /// Refresh both install presence and the voice-enabled toggle. The two
-    /// signals are independent and either flips the wrench affordance, so
-    /// they share one refresh entry point.
-    private func refreshGate() async {
-        async let install: VoiceInstallSnapshot? = (try? await DaemonClient.shared.voiceInstallStatus())
-        async let settings: DaemonSettings? = (try? await DaemonClient.shared.getSettings())
-        let (installRes, settingsRes) = await (install, settings)
-        if let installRes {
-            self.modelsInstalled = installRes.installed.allPresent
-        } else {
-            logger.debug("voice install status fetch failed")
-            self.modelsInstalled = nil
-        }
-        if let settingsRes {
-            self.voiceEnabled = settingsRes.voiceEnabled
-        } else {
-            logger.debug("settings fetch failed")
-            self.voiceEnabled = nil
-        }
-    }
-
-    /// Background poll until the gate flips. Stops once both signals are
-    /// "ready" (installed=true, enabled=true) so we don't burn requests
-    /// every 30s forever.
+    /// Background poll until the gate flips. Stops once readiness reaches
+    /// `.ready` so we don't burn requests every 30s forever.
     private func schedulePoll() {
         self.pollTask?.cancel()
         self.pollTask = Task {
             for _ in 0..<60 where !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
-                await self.refreshGate()
+                await self.pipeline.refreshDaemonState()
                 if !self.needsSetup { break }
             }
         }
     }
 
     private var icon: String {
-        if self.needsSetup { return "wrench.and.screwdriver" }
-        if self.permissionStatus == .denied || self.permissionStatus == .restricted {
+        // Icon ALWAYS reads as a mic (or a mic-state variant). When voice
+        // can't be used, the button stays mic-shaped but dims + shows a
+        // small warning badge; the tooltip + tap routing explain what's
+        // wrong. The wrench-icon-swap was confusing — users couldn't tell
+        // the button was still about voice.
+        if self.pipeline.readiness == .permissionMissing {
             return "mic.slash.circle.fill"
         }
+        if self.needsSetup { return "mic.fill" } // mic-shaped, dimmed via opacity below
         return switch self.pipeline.state {
         case .idle: "mic.slash.fill"
         case .connecting: "antenna.radiowaves.left.and.right" // distinct from .thinking
@@ -224,6 +221,22 @@ struct MicButton: View {
         case .speaking: "waveform"
         case .cancelling: "exclamationmark.octagon.fill"
         case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+
+    /// True only while an active download is running (either Kokoro daemon-
+    /// side or Parakeet client-side). Drives the spinner overlay; distinct
+    /// from `needsSetup` which routes taps to the wizard.
+    private var isSttBusy: Bool {
+        self.pipeline.readiness == .installing
+    }
+
+    /// Whether the mic icon should render with reduced opacity (signals
+    /// "voice unavailable" while keeping the icon recognizable as a mic).
+    private var unusableDim: Bool {
+        switch self.pipeline.readiness {
+        case .ready, .preparing: false
+        case .disabledByUser, .permissionMissing, .installing, .modelsMissing, .failed: true
         }
     }
 
@@ -244,7 +257,7 @@ struct MicButton: View {
         return switch self.pipeline.state {
         case .capturing, .speaking, .listening: self.theme.colors.background
         case .idle:
-            if self.permissionStatus == .authorized {
+            if self.pipeline.permission == .authorized {
                 self.theme.colors.text
             } else {
                 self.theme.colors.textMuted
@@ -255,9 +268,15 @@ struct MicButton: View {
 
     /// Disable taps while the daemon owns the turn — until M4.5.5 barge-in,
     /// clicks would orphan an in-flight TTS playback. Always enabled when
-    /// in needs-setup so the user can reach settings.
+    /// in needs-setup so the user can reach settings. Also disabled while
+    /// either model is downloading (~600MB first run) — tapping would
+    /// either no-op or trigger a redundant download attempt.
     private var isDisabled: Bool {
-        if self.needsSetup { return false }
+        switch self.pipeline.readiness {
+        case .ready: break
+        case .disabledByUser, .modelsMissing, .failed, .permissionMissing: return false
+        case .installing, .preparing: return true
+        }
         return switch self.pipeline.state {
         case .connecting, .thinking, .speaking, .cancelling: true
         default: false

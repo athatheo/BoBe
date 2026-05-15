@@ -183,9 +183,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if SetupWindowManager.shared.isOnboardingCompleted {
             self.showOverlay()
             self.store.connect()
+            // Reconfirm voice models are still on disk after onboarding —
+            // if the user wiped a cache or the install was partial, pop the
+            // wizard so they can recover without hunting through Settings.
+            Task { @MainActor in
+                await self.repromptVoiceSetupIfModelsMissing()
+            }
         } else {
             SetupWindowManager.shared.show()
             // store.connect() defers until handleWelcomeCompleted observer fires.
+        }
+    }
+
+    /// Onboarding-completed user but a voice model went missing → re-pop the
+    /// wizard so the install path is one click away. Skips silently when
+    /// voice is disabled or both models are still present. Routes everything
+    /// through `VoicePipeline.readiness` so the gate matches what the mic
+    /// button sees.
+    private func repromptVoiceSetupIfModelsMissing() async {
+        let pipeline = VoicePipeline.shared
+        // Order matters: pull settings first so activeSttLanguage is set,
+        // then the presence probe routes to the right model bundle.
+        await pipeline.refreshDaemonState()
+        pipeline.bootstrapSttPresence()
+        switch pipeline.readiness {
+        case .modelsMissing, .failed:
+            logger.warning("voice models missing post-onboarding — re-opening setup wizard (readiness=\(String(describing: pipeline.readiness)))")
+            SetupWindowManager.shared.show()
+        case .ready, .preparing, .installing, .disabledByUser, .permissionMissing:
+            return
         }
     }
 

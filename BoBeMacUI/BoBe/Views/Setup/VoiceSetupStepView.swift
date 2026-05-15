@@ -6,12 +6,49 @@ struct VoiceSetupStepView: View {
     let onContinue: () -> Void
 
     @Environment(\.theme) private var theme
-    @State private var status: VoiceInstallSnapshot?
+    @State private var pipeline = VoicePipeline.shared
     @State private var phase: Phase = .checking
     @State private var errorMessage: String?
 
     enum Phase {
         case checking, idle, installing, complete, failed, skipped
+    }
+
+    /// Reads through the pipeline's shared snapshot so the wizard, mic
+    /// button, and settings card all see the same daemon install state.
+    private var status: VoiceInstallSnapshot? {
+        self.pipeline.installSnapshot
+    }
+
+    /// True once daemon-side install completes AND FluidAudio is loaded.
+    /// Pulled straight from `pipeline.readiness` for consistency with every
+    /// other consumer; falls back through the underlying signals only as a
+    /// readability convenience in the per-model UI.
+    private var allReady: Bool {
+        self.pipeline.readiness == .ready
+    }
+
+    private var sttLabel: String {
+        switch pipeline.sttStatus {
+        case .notLoaded: return "Speech recognition: waiting…"
+        case .downloading:
+            // FluidAudio doesn't expose progress, but we observe directory
+            // size vs the known target to give a real percent. Target +
+            // observer pair depend on which engine is loading (Parakeet
+            // ~600 MB for English, Qwen3 + VAD ~1.75 GB for everything else).
+            let isEnglish = self.pipeline.activeSttLanguage == "en"
+            let percent = isEnglish
+                ? FluidAudioModelPresence.observedPercent()
+                : FluidAudioQwen3ModelPresence.observedPercent()
+            let bytes = isEnglish
+                ? FluidAudioModelPresence.observedBytes()
+                : FluidAudioQwen3ModelPresence.observedBytes()
+            let mb = Int(bytes / 1_048_576)
+            let targetLabel = isEnglish ? "~600 MB" : "~1.75 GB"
+            return "Speech recognition: downloading \(mb) MB (\(percent)% of \(targetLabel))…"
+        case .ready: return "Speech recognition: ready"
+        case .failed(let msg): return "Speech recognition: failed — \(msg)"
+        }
     }
 
     var body: some View {
@@ -73,6 +110,25 @@ struct VoiceSetupStepView: View {
             ForEach(self.status?.models ?? [], id: \.id) { model in
                 VoiceModelRow(model: model)
             }
+            HStack(spacing: 10) {
+                switch self.pipeline.sttStatus {
+                case .ready:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(self.theme.colors.secondary)
+                case .downloading, .notLoaded:
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                case .failed:
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(self.theme.colors.primary)
+                }
+                Text(self.sttLabel)
+                    .bobeTextStyle(.setupBody)
+                    .foregroundStyle(self.theme.colors.textMuted)
+                Spacer()
+            }
+            .padding(.horizontal, 4)
         }
         .task { await self.poll() }
     }
@@ -121,7 +177,7 @@ struct VoiceSetupStepView: View {
             }
         case .installing:
             Button(L10n.tr("setup.voice.cancel")) {
-                Task { try? await DaemonClient.shared.cancelVoiceInstall() }
+                Task { await self.cancelAll() }
             }
             .bobeButton(.secondary, size: .regular)
         case .complete, .failed, .skipped:
@@ -132,58 +188,84 @@ struct VoiceSetupStepView: View {
     }
 
     private func refreshStatus() async {
+        await self.pipeline.refreshDaemonState()
+        guard let s = self.status else {
+            self.errorMessage = "Daemon not reachable"
+            self.phase = .failed
+            return
+        }
+        // Reflect current FluidAudio state too; if either side is
+        // unfinished we go back to idle/installing.
+        if self.allReady {
+            self.phase = .complete
+        } else if s.isRunning || self.pipeline.sttStatus == .downloading {
+            self.phase = .installing
+            Task { await self.pipeline.ensureSttLoaded() }
+        } else {
+            self.phase = .idle
+        }
+    }
+
+    private func kickoff() async {
+        // Kick off both installs in parallel — daemon-side Kokoro download
+        // via /voice/install, client-side FluidAudio model via the Swift
+        // pipeline. The view-attached `.task` on `progressList` then drives
+        // `poll()` until both finish; that task gets free cancellation when
+        // the view disappears (e.g., user closes the wizard mid-install).
+        Task { await self.pipeline.ensureSttLoaded() }
         do {
-            let s = try await DaemonClient.shared.voiceInstallStatus()
-            self.status = s
-            if s.installed.allPresent {
-                self.phase = .complete
-            } else if s.isRunning {
-                self.phase = .installing
-            } else {
-                self.phase = .idle
-            }
+            try await DaemonClient.shared.startVoiceInstall()
+            self.phase = .installing
         } catch {
             self.errorMessage = error.localizedDescription
             self.phase = .failed
         }
     }
 
-    private func kickoff() async {
-        do {
-            try await DaemonClient.shared.startVoiceInstall()
-            self.phase = .installing
-            await self.poll()
-        } catch {
-            self.errorMessage = error.localizedDescription
-            self.phase = .failed
-        }
+    /// Cancel-everything: stop the daemon install AND mark FluidAudio as
+    /// failed (we can't truly cancel the FluidAudio download — see TODO).
+    /// Used both for the explicit Cancel button and the STT-failed
+    /// short-circuit so the user never sees a partially-running install.
+    private func cancelAll() async {
+        try? await DaemonClient.shared.cancelVoiceInstall()
+        // TODO: also cancel FluidAudio load — requires FluidAudio
+        // cancellation support (Task.cancel() may not interrupt the
+        // HuggingFace download). For now the in-flight load continues
+        // in the background and updates `sttStatus` when it finishes.
     }
 
     private func poll() async {
         while !Task.isCancelled, self.phase == .installing {
             try? await Task.sleep(nanoseconds: 500_000_000)
-            do {
-                let s = try await DaemonClient.shared.voiceInstallStatus()
-                self.status = s
-                if s.installed.allPresent {
-                    self.phase = .complete
-                    return
-                }
-                switch s.status {
-                case "complete":
-                    self.phase = .complete; return
-                case "failed":
-                    self.errorMessage = L10n.tr("setup.voice.poll_failure")
-                    self.phase = .failed; return
-                case "canceled":
-                    self.phase = .idle; return
-                default:
-                    continue
-                }
-            } catch {
-                self.errorMessage = error.localizedDescription
+            // STT failure short-circuits the poll loop AND cancels the
+            // daemon-side install so the user doesn't see a half-running
+            // background download after the failure screen.
+            if case let .failed(msg) = self.pipeline.sttStatus {
+                self.errorMessage = msg
+                await self.cancelAll()
                 self.phase = .failed
                 return
+            }
+            await self.pipeline.refreshDaemonState()
+            guard let s = self.status else {
+                self.errorMessage = "Daemon not reachable"
+                self.phase = .failed
+                return
+            }
+            if self.allReady {
+                self.phase = .complete
+                return
+            }
+            switch s.status {
+            case "failed":
+                self.errorMessage = L10n.tr("setup.voice.poll_failure")
+                self.phase = .failed; return
+            case "canceled":
+                self.phase = .idle; return
+            default:
+                // Daemon may already be complete while FluidAudio is
+                // still downloading; keep polling until both finish.
+                continue
             }
         }
     }

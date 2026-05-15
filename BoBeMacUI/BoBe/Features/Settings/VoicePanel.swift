@@ -7,8 +7,8 @@ import SwiftUI
 /// All fields hot-swap (no daemon restart). Voice toggle takes effect at the
 /// next `/voice/stream` connect. Persona/speed apply on the next turn.
 struct VoicePanel: View {
+    @State private var pipeline = VoicePipeline.shared
     @State private var settings: DaemonSettings?
-    @State private var installStatus: VoiceInstallSnapshot?
     @State private var isLoading = false
     @State private var isReinstalling = false
     @State private var error: String?
@@ -16,7 +16,17 @@ struct VoicePanel: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var savedToastTask: Task<Void, Never>?
     @State private var statusPollTask: Task<Void, Never>?
+    /// Tick that increments every 500ms while a FluidAudio download is in
+    /// flight, forcing the parakeet card to recompute its observed-percent.
+    @State private var sttProgressTick: Int = 0
+    @State private var sttProgressTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
+
+    /// Install snapshot — pulled from the central `VoicePipeline` observable
+    /// so the wizard, mic button, and settings card all see the same data.
+    private var installStatus: VoiceInstallSnapshot? {
+        self.pipeline.installSnapshot
+    }
 
     var body: some View {
         ScrollView {
@@ -69,10 +79,14 @@ struct VoicePanel: View {
         }
         .onDisappear {
             self.statusPollTask?.cancel()
+            self.sttProgressTask?.cancel()
             // Don't cancel saveTask — let any pending PATCH complete in the
             // background even after the panel closes, otherwise rapid edits
             // followed by closing Settings would silently lose changes.
             self.savedToastTask?.cancel()
+        }
+        .onChange(of: self.pipeline.sttStatus) { _, newValue in
+            self.startSttProgressTickerIfNeeded(for: newValue)
         }
     }
 
@@ -90,6 +104,34 @@ struct VoicePanel: View {
                     description: L10n.tr("settings.voice.enabled.description")
                 ) {
                     BobeToggle(isOn: self.binding(\.voiceEnabled, fallback: true))
+                }
+
+                // Language picker — drives client-side engine selection.
+                // English uses FluidAudio Parakeet EOU today; other languages
+                // are visible but marked "coming soon" until Qwen3-ASR wiring
+                // lands (per the language matrix in docs/voice-architecture.md).
+                SettingsRow(
+                    label: "Language",
+                    description: "Primary speech-recognition language. English ships today; others are queued behind FluidAudio Qwen3-ASR support."
+                ) {
+                    BobeMenuPicker(
+                        selection: self.binding(\.voiceSttLanguage, fallback: "en"),
+                        options: VoiceLanguages.all,
+                        label: VoiceLanguages.displayName(for:),
+                        width: 280
+                    )
+                }
+
+                SettingsRow(
+                    label: "Pause sensitivity",
+                    description: "How long the silence after you stop talking before BoBe decides the turn is over. Patient = wait longer; Tight = cut earlier."
+                ) {
+                    BobeMenuPicker(
+                        selection: self.binding(\.voicePauseSensitivity, fallback: "balanced"),
+                        options: ["tight", "balanced", "patient"],
+                        label: { $0.capitalized },
+                        width: 280
+                    )
                 }
 
                 SettingsRow(
@@ -135,34 +177,167 @@ struct VoicePanel: View {
             icon: "internaldrive",
             description: self.modelsSummary
         ) {
-            VStack(alignment: .leading, spacing: 10) {
-                if let models = self.installStatus?.models {
-                    ForEach(models, id: \.id) { model in
-                        VoiceModelRow(model: model)
+            VStack(alignment: .leading, spacing: 14) {
+                // Daemon-side TTS (Kokoro).
+                VoiceModelCard(
+                    name: "Kokoro v1.0 multilingual",
+                    purpose: "Text-to-speech voice synthesis (what BoBe sounds like).",
+                    sizeHint: "~340 MB",
+                    location: "~/.bobe/models/kokoro-multi-lang-v1_0/",
+                    status: self.kokoroStatus,
+                    daemonProgress: self.installStatus?.models.first(where: { $0.kind == "tts" })
+                )
+
+                // Client-side STT — English (FluidAudio Parakeet EOU).
+                VoiceModelCard(
+                    name: "FluidAudio Parakeet EOU (English)",
+                    purpose: "Speech-to-text recognition with end-of-utterance detection (what BoBe hears when language = English).",
+                    sizeHint: "~600 MB",
+                    location: "~/Library/Application Support/FluidAudio/Models/parakeet-eou-streaming/",
+                    status: self.parakeetStatus,
+                    daemonProgress: nil
+                )
+
+                // Client-side STT — Mandarin (FluidAudio Qwen3-ASR + VAD).
+                // Card is always visible so the user can see the install
+                // weight before switching languages; only consumed when
+                // `voice.stt_language` is non-English (Qwen3 covers them all).
+                VoiceModelCard(
+                    name: "FluidAudio Qwen3-ASR (Mandarin)",
+                    purpose: "Multilingual speech-to-text plus a Silero VAD for end-of-utterance detection (used when language ≠ English).",
+                    sizeHint: "~1.75 GB",
+                    location: "~/Library/Application Support/FluidAudio/Models/qwen3-asr-0.6b-coreml/",
+                    status: self.qwen3Status,
+                    daemonProgress: nil
+                )
+
+                // Global reinstall — restarts both pipelines in parallel.
+                HStack(spacing: 8) {
+                    Button(self.isReinstalling
+                        ? "Reinstalling…"
+                        : "Reinstall all"
+                    ) {
+                        Task { await self.reinstall() }
                     }
+                    .bobeButton(.primary, size: .small)
+                    .disabled(self.isReinstalling)
+                    .accessibilityLabel("Reinstall all voice models")
+                    Text(self.isReinstalling
+                        ? "Models are downloading — see the per-model rows above for progress."
+                        : "Re-downloads voice models if you suspect a corrupted install."
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(self.theme.colors.textMuted)
                 }
-                Button(self.isReinstalling
-                    ? L10n.tr("settings.voice.reinstalling")
-                    : L10n.tr("settings.voice.reinstall")
-                ) {
-                    Task { await self.reinstall() }
-                }
-                .bobeButton(.primary, size: .small)
-                .disabled(self.isReinstalling)
                 .padding(.top, 4)
-                .accessibilityLabel(L10n.tr("settings.voice.reinstall"))
-                .accessibilityHint(L10n.tr("settings.voice.section.models"))
             }
         }
     }
 
+    private var kokoroStatus: VoiceModelCard.Status {
+        guard let progress = self.installStatus?.models.first(where: { $0.kind == "tts" }) else {
+            return .unknown
+        }
+        if self.installStatus?.installed.tts == true {
+            return .installed
+        }
+        // Daemon's per-model status: "pending" / "downloading X/Y" / "complete" / "failed".
+        if progress.status.starts(with: "downloading") || self.isReinstalling {
+            return .downloading(
+                bytesDownloaded: progress.bytesDownloaded,
+                bytesTotal: progress.bytesTotal,
+                percent: progress.percent
+            )
+        }
+        if progress.status == "failed" {
+            return .failed(progress.status)
+        }
+        return .missing
+    }
+
+    private var parakeetStatus: VoiceModelCard.Status {
+        // Reading `sttProgressTick` forces re-render during downloads so
+        // the observed-bytes percent updates live without depending on the
+        // @Observable system to fire (which it won't — fs polling isn't
+        // an observable signal).
+        _ = self.sttProgressTick
+        switch self.pipeline.sttStatus {
+        case .ready: return .installed
+        case .downloading:
+            // FluidAudio doesn't expose a download progress callback, so
+            // we infer percent from observed directory size vs the known
+            // ~600MB target. Updated each poll tick by `sttProgressTask`.
+            return .downloading(
+                bytesDownloaded: FluidAudioModelPresence.observedBytes(),
+                bytesTotal: FluidAudioModelPresence.approximateTotalBytes,
+                percent: FluidAudioModelPresence.observedPercent()
+            )
+        case .failed(let msg): return .failed(msg)
+        case .notLoaded:
+            return FluidAudioModelPresence.isInstalled() ? .installed : .missing
+        }
+    }
+
+    private var qwen3Status: VoiceModelCard.Status {
+        _ = self.sttProgressTick
+        // When the user has a non-English language selected, the pipeline's
+        // sttStatus tracks Qwen3 directly; otherwise we just report disk
+        // presence (Qwen3 isn't loaded under English).
+        let activeLanguage = self.settings?.voiceSttLanguage ?? "en"
+        if activeLanguage != "en" {
+            switch self.pipeline.sttStatus {
+            case .ready: return .installed
+            case .downloading:
+                return .downloading(
+                    bytesDownloaded: FluidAudioQwen3ModelPresence.observedBytes(),
+                    bytesTotal: FluidAudioQwen3ModelPresence.approximateTotalBytes,
+                    percent: FluidAudioQwen3ModelPresence.observedPercent()
+                )
+            case .failed(let msg): return .failed(msg)
+            case .notLoaded:
+                return FluidAudioQwen3ModelPresence.isInstalled() ? .installed : .missing
+            }
+        }
+        return FluidAudioQwen3ModelPresence.isInstalled() ? .installed : .missing
+    }
+
+    /// Start (or stop) the 500ms tick that drives the FluidAudio
+    /// download-progress recompute. Idempotent — starting twice is a no-op,
+    /// the .notLoaded/.ready/.failed cases cancel the task.
+    private func startSttProgressTickerIfNeeded(for status: VoicePipeline.SttStatus) {
+        switch status {
+        case .downloading:
+            if self.sttProgressTask != nil { return }
+            self.sttProgressTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    if Task.isCancelled { return }
+                    self.sttProgressTick &+= 1
+                }
+            }
+        case .ready, .failed, .notLoaded:
+            self.sttProgressTask?.cancel()
+            self.sttProgressTask = nil
+        }
+    }
+
     private var modelsSummary: String {
-        guard let installed = self.installStatus?.installed else { return "" }
-        if installed.allPresent { return L10n.tr("settings.voice.installed_label") }
-        let any = installed.streamingStt || installed.tts || installed.vad || installed.smartTurn
-        return any
-            ? L10n.tr("settings.voice.partial_label")
-            : L10n.tr("settings.voice.missing_label")
+        switch self.pipeline.readiness {
+        case .ready:
+            return L10n.tr("settings.voice.installed_label")
+        case .installing, .modelsMissing, .failed:
+            // Partial when one side is on disk; missing otherwise. Surface
+            // through underlying signals so the label is honest rather than
+            // collapsing to a single "in progress" word.
+            let daemonReady = self.installStatus?.installed.allPresent ?? false
+            let sttReady = self.pipeline.sttStatus == .ready
+            if daemonReady || sttReady {
+                return L10n.tr("settings.voice.partial_label")
+            }
+            return L10n.tr("settings.voice.missing_label")
+        case .disabledByUser, .permissionMissing, .preparing:
+            return L10n.tr("settings.voice.missing_label")
+        }
     }
 
     // MARK: - I/O
@@ -181,13 +356,10 @@ struct VoicePanel: View {
     }
 
     private func refreshInstallStatus() async {
-        do {
-            self.installStatus = try await DaemonClient.shared.voiceInstallStatus()
-        } catch {
-            // Status endpoint failure is non-fatal — leave the section blank
-            // rather than show a top-level error banner.
-            self.installStatus = nil
-        }
+        // Delegate to the pipeline so all observers (mic button, wizard,
+        // future banners) stay coherent. The pipeline dedupes concurrent
+        // calls and publishes to `installSnapshot` which this view reads.
+        await self.pipeline.refreshDaemonState()
     }
 
     private func reinstall() async {
@@ -199,9 +371,16 @@ struct VoicePanel: View {
             self.error = error.localizedDescription
             return
         }
+        // Also kick the client-side STT (Parakeet or Qwen3 depending on the
+        // selected language) so a "Reinstall all" actually touches both
+        // sides. FluidAudio's loadModels is idempotent — already-present
+        // models return fast; missing ones re-download.
+        Task { @MainActor in
+            await self.pipeline.ensureSttLoaded()
+        }
         // Poll until terminal so the model rows update live. 5min ceiling
-        // covers slow-network installs of the 600MB bundle; daemon-side
-        // single-flight makes a second click safely no-op.
+        // covers slow-network installs of the larger Qwen3 bundle;
+        // daemon-side single-flight makes a second click safely no-op.
         self.statusPollTask?.cancel()
         self.statusPollTask = Task {
             for _ in 0..<600 where !Task.isCancelled {
@@ -274,6 +453,8 @@ struct VoicePanel: View {
         req.voiceEnabled = settings.voiceEnabled
         req.voicePersona = settings.voicePersona
         req.voiceSpeed = settings.voiceSpeed
+        req.voiceSttLanguage = settings.voiceSttLanguage
+        req.voicePauseSensitivity = settings.voicePauseSensitivity
         do {
             let resp = try await DaemonClient.shared.updateSettings(req)
             if resp.persistFailed == true {
@@ -283,6 +464,14 @@ struct VoicePanel: View {
                 self.error = nil
                 self.savedMessage = resp.message
                 self.scheduleSavedToastDismiss()
+                // Trigger a background load of the (now-active) engine. The
+                // pipeline's `bobeVoiceConfigChanged` listener will refresh
+                // its activeSttLanguage first; this kicks off the download
+                // for the new engine if needed.
+                Task { @MainActor in
+                    await self.pipeline.refreshDaemonState()
+                    await self.pipeline.ensureSttLoaded()
+                }
                 NotificationCenter.default.post(name: .bobeVoiceConfigChanged, object: nil)
             }
         } catch {
@@ -302,7 +491,7 @@ struct VoicePanel: View {
 }
 
 /// Kokoro v1.0 multilingual voice slot table. Mirrored from the daemon's
-/// `BoBeService/src/speech/local_kokoro.rs::voice_id` enum.
+/// `BoBeService/src/speech/providers/sherpa/kokoro_tts.rs::voice_id` enum.
 ///
 /// **Split-brain warning**: there is no shared schema. Both lists must update
 /// together when Kokoro publishes a new voice. The Rust side is authoritative
@@ -358,5 +547,34 @@ private enum KokoroVoices {
         default: gender = ""
         }
         return gender.isEmpty ? lang : "\(lang) \(gender)"
+    }
+}
+
+/// Languages exposed in the Settings → Voice picker. The matrix in
+/// `docs/voice-architecture.md` lists 6 — English ships today via
+/// FluidAudio Parakeet EOU; the rest are queued behind Qwen3-ASR support.
+private enum VoiceLanguages {
+    /// BCP-47 codes. Order surfaces English first because it's the only
+    /// shipping option; 'zh' / others are visible-but-marked-coming-soon.
+    static let all: [String] = ["en", "zh", "es", "el", "ko", "ja"]
+
+    /// Languages that have a working STT engine wired up. English ships
+    /// via FluidAudio Parakeet EOU; Mandarin via FluidAudio Qwen3-ASR + VAD.
+    /// Everything else falls through to "(coming soon)" until Qwen3 gets
+    /// driven for those locales (Qwen3 itself supports all six).
+    static let shipping: Set<String> = ["en", "zh"]
+
+    static func displayName(for code: String) -> String {
+        let base: String
+        switch code {
+        case "en": base = "English"
+        case "zh": base = "Mandarin"
+        case "es": base = "Spanish"
+        case "el": base = "Greek"
+        case "ko": base = "Korean"
+        case "ja": base = "Japanese"
+        default: base = code
+        }
+        return Self.shipping.contains(code) ? base : "\(base)  (coming soon)"
     }
 }
