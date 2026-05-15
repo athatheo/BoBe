@@ -6,29 +6,21 @@
 
 use serde::{Deserialize, Serialize};
 
-/// One of the four voice-model artifacts the daemon expects on disk.
-/// Wire-serialized as snake_case for the install snapshot surfaced by the
-/// `/voice/install/status` endpoint + the wizard.
+/// Voice-model artifacts the daemon needs on disk. Mode B: only the
+/// daemon-side TTS engine (Kokoro) — STT/VAD/smart-turn moved to the
+/// Swift client (FluidAudio). Wire-serialized as snake_case for the
+/// install snapshot surfaced by `/voice/install/status` + the wizard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum VoiceModelKind {
-    /// Streaming Zipformer English ASR (~80MB, sherpa-onnx).
-    StreamingStt,
     /// Kokoro v1.0 multilingual TTS (~340MB, sherpa-onnx).
     Tts,
-    /// Silero v6.2.1 acoustic VAD (~2MB, ONNX).
-    Vad,
-    /// Pipecat smart-turn v3.2 semantic VAD (~8MB CPU ONNX).
-    SmartTurn,
 }
 
 impl VoiceModelKind {
     pub(super) const fn label(self) -> &'static str {
         match self {
-            Self::StreamingStt => "streaming-stt",
             Self::Tts => "tts",
-            Self::Vad => "vad",
-            Self::SmartTurn => "smart-turn",
         }
     }
 
@@ -54,28 +46,10 @@ pub(super) struct ModelArtifact {
 
 pub(super) const ARTIFACTS: &[ModelArtifact] = &[
     ModelArtifact {
-        kind: VoiceModelKind::StreamingStt,
-        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2",
-        is_tarball: true,
-        target_subpath: "sherpa-onnx-streaming-zipformer-en",
-    },
-    ModelArtifact {
         kind: VoiceModelKind::Tts,
         url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
         is_tarball: true,
         target_subpath: "kokoro-multi-lang-v1_0",
-    },
-    ModelArtifact {
-        kind: VoiceModelKind::Vad,
-        url: "https://github.com/snakers4/silero-vad/raw/v6.2.1/src/silero_vad/data/silero_vad.onnx",
-        is_tarball: false,
-        target_subpath: "silero-vad/silero_vad.onnx",
-    },
-    ModelArtifact {
-        kind: VoiceModelKind::SmartTurn,
-        url: "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.2-cpu.onnx",
-        is_tarball: false,
-        target_subpath: "smart-turn-v3.2-cpu.onnx",
     },
 ];
 

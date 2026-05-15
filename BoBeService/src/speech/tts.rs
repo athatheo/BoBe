@@ -2,7 +2,7 @@ use crate::error::AppError;
 
 /// A loaded TTS engine ready to synthesize text to PCM audio.
 ///
-/// Implementations: see [`super::local_kokoro::LocalKokoroTts`].
+/// Implementations: see [`super::providers::sherpa::kokoro_tts::LocalKokoroTts`].
 /// Cloud impls (Azure Neural, ElevenLabs) plug in here in a later commit.
 pub(crate) trait TtsEngine: Send + Sync {
     /// Synthesize `text` with the given voice + speed. Returns f32 PCM at the

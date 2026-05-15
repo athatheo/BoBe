@@ -75,7 +75,11 @@ mod tests {
         assert_eq!(frames.len(), 5, "expected 5 × 20ms frames");
         for f in &frames {
             assert!(!f.is_empty(), "frame should be non-empty");
-            assert!(f.len() < 200, "VoIP @ 24kbps fits in <200B per frame: {}", f.len());
+            assert!(
+                f.len() < 200,
+                "VoIP @ 24kbps fits in <200B per frame: {}",
+                f.len()
+            );
         }
     }
 
@@ -105,10 +109,14 @@ mod tests {
         assert!(!decoded_pcm.is_empty(), "got decoded samples");
 
         let in_rms = (pcm.iter().map(|&s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
-        let out_rms_i = decoded_pcm.iter().map(|&s| {
-            let f = f32::from(s) / 32_767.0;
-            f * f
-        }).sum::<f32>() / decoded_pcm.len() as f32;
+        let out_rms_i = decoded_pcm
+            .iter()
+            .map(|&s| {
+                let f = f32::from(s) / 32_767.0;
+                f * f
+            })
+            .sum::<f32>()
+            / decoded_pcm.len() as f32;
         let out_rms = out_rms_i.sqrt();
         let ratio = out_rms / in_rms;
         assert!(

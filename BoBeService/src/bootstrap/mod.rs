@@ -38,6 +38,10 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     crate::copilot::skills::ensure_skills(&crate::util::paths::bobe_data_dir()).await;
     // SDK owns MCP process spawn + tool dispatch via `SessionConfig::mcp_servers`.
     let mcp_servers = load_mcp_servers_for_sdk(&config);
+    // One-shot cleanup of files left behind after the Mode A rip-out
+    // (Zipformer/Silero/SmartTurn no longer used; daemon = TTS only).
+    // Idempotent — silently no-ops once the files are gone.
+    cleanup_legacy_mode_a_files();
     // Voice-turn signal lives here so AppState (consumed by voice.rs) and
     // WorkerRegistry (consumed by BobeHooks) both reference the same Arc.
     let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -76,15 +80,19 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // preserves the chat session so the user doesn't lose context.
     {
         let registry_for_listener = Arc::clone(&workers);
-        wired.config_manager.set_engine_change_listener(move |kind| {
-            let registry = Arc::clone(&registry_for_listener);
-            tokio::spawn(async move {
-                match kind {
-                    crate::config_manager::EngineChangeKind::Hard => registry.reload().await,
-                    crate::config_manager::EngineChangeKind::Soft => registry.reload_soft().await,
-                }
+        wired
+            .config_manager
+            .set_engine_change_listener(move |kind| {
+                let registry = Arc::clone(&registry_for_listener);
+                tokio::spawn(async move {
+                    match kind {
+                        crate::config_manager::EngineChangeKind::Hard => registry.reload().await,
+                        crate::config_manager::EngineChangeKind::Soft => {
+                            registry.reload_soft().await
+                        }
+                    }
+                });
             });
-        });
     }
 
     if config.seed_default_documents {
@@ -121,10 +129,10 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             Arc::clone(&http),
         ));
         // Strip `/v1` OpenAI-compat suffix to get the native Ollama API root.
-        let base_url = config
-            .engine
-            .provider_base_url
-            .as_deref().map_or_else(|| "http://127.0.0.1:11434".to_string(), crate::ollama_manager::OllamaManager::root_from_provider_url);
+        let base_url = config.engine.provider_base_url.as_deref().map_or_else(
+            || "http://127.0.0.1:11434".to_string(),
+            crate::ollama_manager::OllamaManager::root_from_provider_url,
+        );
         let manager = Arc::new(crate::ollama_manager::OllamaManager::new(
             Arc::clone(&http),
             &base_url,
@@ -152,11 +160,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
                     engines.store(Arc::new(snap));
                 })
             });
-        crate::voice::install_service::VoiceInstallService::new(
-            http,
-            models_root,
-            on_complete,
-        )
+        crate::voice::install_service::VoiceInstallService::new(http, models_root, on_complete)
     };
 
     let state = Arc::new(AppState {
@@ -183,6 +187,37 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     });
 
     Ok(state)
+}
+
+/// Delete on-disk model files left behind after the Mode A rip-out. The
+/// daemon now only needs Kokoro TTS (Mode B): STT/VAD/smart-turn moved to
+/// the Swift client (FluidAudio). The legacy Zipformer/Silero/SmartTurn
+/// downloads (~90MB combined) just take up space if they survived the
+/// model-catalog change. Idempotent — silent no-op once cleaned up.
+fn cleanup_legacy_mode_a_files() {
+    let Some(home) = dirs::home_dir() else { return };
+    let models = home.join(".bobe").join("models");
+    let legacy: &[(&str, bool)] = &[
+        // (path under models/, is_dir)
+        ("sherpa-onnx-streaming-zipformer-en", true),
+        ("silero-vad", true),
+        ("smart-turn-v3.2-cpu.onnx", false),
+    ];
+    for (rel, is_dir) in legacy {
+        let path = models.join(rel);
+        if !path.exists() {
+            continue;
+        }
+        let result = if *is_dir {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        match result {
+            Ok(()) => info!(path = %path.display(), "voice.legacy_mode_a_file_removed"),
+            Err(e) => warn!(path = %path.display(), error = %e, "voice.legacy_mode_a_remove_failed"),
+        }
+    }
 }
 
 /// Top-of-boot info banner.

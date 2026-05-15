@@ -16,7 +16,10 @@ use crate::speech::TtsEngine;
 /// Discrete filler intents the voice handler can emit. Lookups go through
 /// `FillerLibrary::get`. Adding a variant requires a phrase entry below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(dead_code, reason = "ListenResume/LookupBridge/Tool*/Error wired in C1/C4/B5+")]
+#[allow(
+    dead_code,
+    reason = "ListenResume/LookupBridge/Tool*/Error wired in C1/C4/B5+"
+)]
 pub(crate) enum FillerKind {
     /// 800ms TTFT watchdog — "Hmm, let me think."
     Thinking,
@@ -95,10 +98,9 @@ impl FillerLibrary {
             let phrase = kind.phrase();
             let k = *kind;
             async move {
-                let result = tokio::task::spawn_blocking(move || {
-                    tts_clone.synthesize(phrase, VOICE, 1.0)
-                })
-                .await;
+                let result =
+                    tokio::task::spawn_blocking(move || tts_clone.synthesize(phrase, VOICE, 1.0))
+                        .await;
                 (k, phrase, result)
             }
         });

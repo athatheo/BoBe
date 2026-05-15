@@ -35,8 +35,7 @@ pub(crate) use crate::voice::install_artifacts::{
 /// Fired by `run()` on Ok-completion so bootstrap can re-run the engine
 /// loader and ArcSwap the AppState snapshot — wizard hits "Continue" and
 /// voice works without a daemon restart.
-type OnCompleteCallback =
-    Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>;
+type OnCompleteCallback = Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>;
 
 pub(crate) struct VoiceInstallService {
     http: reqwest::Client,
@@ -116,7 +115,9 @@ impl VoiceInstallService {
         if let Some(h) = state.in_flight.as_ref()
             && !h.is_finished()
         {
-            return Err(AppError::Conflict("Voice install already in progress".into()));
+            return Err(AppError::Conflict(
+                "Voice install already in progress".into(),
+            ));
         }
         let (cancel_tx, cancel_rx) = watch::channel(false);
         state.cancel_tx = Some(cancel_tx);

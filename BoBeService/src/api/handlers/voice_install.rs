@@ -10,10 +10,10 @@
 
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 use serde::Serialize;
 
 use crate::app_state::AppState;
@@ -35,25 +35,19 @@ pub(crate) struct InstallStatusResponse {
 
 #[derive(Serialize)]
 pub(crate) struct PresenceSnapshot {
-    pub streaming_stt: bool,
+    /// Daemon-side TTS (Kokoro) presence — Mode B's only daemon model.
     pub tts: bool,
-    pub vad: bool,
-    pub smart_turn: bool,
+    /// True when all required daemon models are present.
     pub all_present: bool,
 }
 
 pub(crate) async fn status(State(state): State<Arc<AppState>>) -> Json<InstallStatusResponse> {
     let snap: VoiceInstallSnapshot = state.voice_install.subscribe().await.borrow().clone();
     let install = state.voice_install.as_ref();
+    let tts = install.is_installed(VoiceModelKind::Tts);
     let presence = PresenceSnapshot {
-        streaming_stt: install.is_installed(VoiceModelKind::StreamingStt),
-        tts: install.is_installed(VoiceModelKind::Tts),
-        vad: install.is_installed(VoiceModelKind::Vad),
-        smart_turn: install.is_installed(VoiceModelKind::SmartTurn),
-        all_present: install.is_installed(VoiceModelKind::StreamingStt)
-            && install.is_installed(VoiceModelKind::Tts)
-            && install.is_installed(VoiceModelKind::Vad)
-            && install.is_installed(VoiceModelKind::SmartTurn),
+        tts,
+        all_present: tts,
     };
     Json(InstallStatusResponse {
         status: snap.status,
@@ -65,9 +59,7 @@ pub(crate) async fn status(State(state): State<Arc<AppState>>) -> Json<InstallSt
 pub(crate) async fn start(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match state.voice_install.start().await {
         Ok(()) => StatusCode::ACCEPTED.into_response(),
-        Err(crate::error::AppError::Conflict(msg)) => {
-            (StatusCode::CONFLICT, msg).into_response()
-        }
+        Err(crate::error::AppError::Conflict(msg)) => (StatusCode::CONFLICT, msg).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

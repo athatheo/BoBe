@@ -1,19 +1,11 @@
-//! WS wire protocol for `/voice/stream`. Deepgram-style: binary frames carry
-//! Opus packets, text JSON on the same socket carries control.
+//! WS wire protocol for `/voice/stream`.
 //!
-//! See `docs/voice-plan.md` §3 for the full 13-message contract:
-//!   6 client→daemon (json) + 6 daemon→client (json) + 2 binary frame types.
+//! Mode B only: client owns ASR (FluidAudio Parakeet EOU / Qwen3-ASR via the
+//! Swift `Voice/` module). Daemon owns LLM + TTS. Wire carries transcripts
+//! and control in JSON; daemon-to-client TTS audio in Opus binary frames.
+//! Client never sends audio.
 
 use serde::{Deserialize, Serialize};
-
-/// Speech-activity hint from client (cheap RMS gate). Daemon-side Silero VAD is
-/// authoritative; these are bandwidth-saver signals only.
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum VadHintKind {
-    SpeechStart,
-    SpeechEnd,
-}
 
 /// Control actions the client may request mid-session.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -21,7 +13,7 @@ pub(crate) enum VadHintKind {
 pub(crate) enum ControlAction {
     /// Cancel the in-flight turn (user-initiated barge-in or explicit abort).
     Abort,
-    /// Pause mic uplink — daemon stops accepting `audio.in` until Unmute.
+    /// Pause input — client should stop forwarding ASR transcripts until Unmute.
     Mute,
     Unmute,
     /// Reset session state (clear running turn; conversation context preserved).
@@ -29,13 +21,9 @@ pub(crate) enum ControlAction {
 }
 
 /// Daemon-side authoritative turn phase. Client mirrors for UI only.
-///
-/// Some variants are not yet emitted by the daemon — they're part of the
-/// protocol contract for future milestones (Capturing on partial-speech UX,
-/// Cancelling on M4.5.5 barge-in, Failed on engine-load errors).
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code, reason = "Capturing/Cancelling/Failed reserved for M4.5.5+")]
+#[allow(dead_code, reason = "Capturing/Cancelling/Failed reserved for client-side states")]
 pub(crate) enum VoicePhase {
     Idle,
     Listening,
@@ -50,28 +38,22 @@ pub(crate) enum VoicePhase {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(
     dead_code,
-    reason = "VadHint/BargeIn/Wake/PlaybackAck fields are wire-protocol contract; consumed in M4.5.5+"
+    reason = "BargeIn/Wake/PlaybackAck fields are wire-protocol contract"
 )]
 pub(crate) enum ClientMessage {
-    /// Session handshake; sent once after WS connect. Optional voice fields
-    /// let the client express per-session voice preferences (Kokoro voice
-    /// slot, speed) that override the daemon's DaemonSettings defaults for
-    /// this WS only. Absence falls through to the daemon defaults.
+    /// Session handshake; sent once after WS connect. `language` (BCP-47)
+    /// drives daemon-side telemetry/tracing; the client decides which local
+    /// ASR engine to use. `voice_id`/`speed` override the daemon's Kokoro
+    /// persona defaults for this WS only.
     Hello {
         session_id: String,
-        capture_rate: u32,
         playback_rate: u32,
-        codec: String,
         #[serde(default)]
         voice_id: Option<String>,
         #[serde(default)]
         speed: Option<f32>,
-    },
-    /// Optional fast hint that mic energy crossed threshold.
-    VadHint {
-        kind: VadHintKind,
-        rms_dbfs: f32,
-        ts_ms: u64,
+        #[serde(default)]
+        language: Option<String>,
     },
     /// Client detected speech during BoBe TTS playback — candidate barge-in.
     /// Daemon decides whether to honour after the min-words gate.
@@ -86,40 +68,34 @@ pub(crate) enum ClientMessage {
     PlaybackAck { chunk_id: u64, played_ms: u64 },
     /// User-initiated control.
     Control { action: ControlAction },
+    /// Client's streaming ASR emitted a partial transcript. Daemon stores it
+    /// on `session.last_partial_text` for the cancel-phrase regex and the
+    /// MinWords barge-in gate.
+    TranscriptPartial { turn_id: String, text: String },
+    /// Client's streaming ASR finalized this turn's text. Daemon admits the
+    /// turn (single-flight) and hands off to the convergence pipeline.
+    TranscriptFinal { turn_id: String, text: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ServerMessage {
+    /// Capability ack sent once, immediately after a valid `Hello`, before
+    /// any `State`. Confirms the resolved Kokoro persona and playback rate.
+    HelloAck {
+        voice_pack: String,
+        playback_rate: u32,
+    },
     /// Authoritative phase transition. Sent on every state change.
-    State {
-        phase: VoicePhase,
-        turn_id: String,
-    },
-    /// Optional partial transcript (only emitted when streaming STT lands).
-    TranscriptPartial {
-        turn_id: String,
-        text: String,
-    },
-    /// Confirmed final transcript after smart-turn + STT.
-    TranscriptFinal {
-        turn_id: String,
-        text: String,
-    },
+    State { phase: VoicePhase, turn_id: String },
+    /// Echo of the client-finalized transcript for chat persistence + UI.
+    TranscriptFinal { turn_id: String, text: String },
     /// All sentences flushed for this turn — client may leave Speaking.
-    TtsEnd {
-        turn_id: String,
-    },
+    TtsEnd { turn_id: String },
     /// Post-barge-in: client drops queued audio beyond `keep_ms`.
-    Truncate {
-        turn_id: String,
-        keep_ms: u64,
-    },
+    Truncate { turn_id: String, keep_ms: u64 },
     /// Non-fatal error message.
-    Error {
-        code: String,
-        message: String,
-    },
+    Error { code: String, message: String },
 }
 
 /// Binary frame layout for `tts.chunk` and `filler.chunk`:
@@ -129,11 +105,9 @@ pub(crate) enum ServerMessage {
 /// flags bit 1: 1 = first chunk of turn
 /// flags bit 2: 1 = last chunk of turn
 pub(crate) const TTS_FRAME_HEADER_LEN: usize = 9;
-#[allow(dead_code, reason = "used by tts_pipeline in 0.d / fillers in M4.5.4")]
 pub(crate) const FLAG_FILLER: u8 = 0b0000_0001;
-#[allow(dead_code, reason = "used by tts_pipeline in 0.d")]
 pub(crate) const FLAG_FIRST_OF_TURN: u8 = 0b0000_0010;
-#[allow(dead_code, reason = "used by tts_pipeline in 0.d")]
+#[allow(dead_code, reason = "wire contract; emitted in future TTS path polish")]
 pub(crate) const FLAG_LAST_OF_TURN: u8 = 0b0000_0100;
 
 pub(crate) fn encode_tts_frame(chunk_id: u64, flags: u8, opus: &[u8]) -> Vec<u8> {
@@ -152,64 +126,76 @@ mod tests {
 
     #[test]
     fn hello_deserialize_minimal() {
-        let raw = r#"{"type":"hello","session_id":"abc","capture_rate":16000,"playback_rate":24000,"codec":"opus"}"#;
+        let raw = r#"{"type":"hello","session_id":"abc","playback_rate":24000}"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
         match parsed {
             ClientMessage::Hello {
                 session_id,
-                capture_rate,
                 playback_rate,
-                codec,
                 voice_id,
                 speed,
+                language,
             } => {
                 assert_eq!(session_id, "abc");
-                assert_eq!(capture_rate, 16_000);
                 assert_eq!(playback_rate, 24_000);
-                assert_eq!(codec, "opus");
                 assert_eq!(voice_id, None);
                 assert_eq!(speed, None);
+                assert_eq!(language, None);
             }
             other => panic!("expected Hello, got {other:?}"),
         }
     }
 
     #[test]
-    fn hello_deserialize_with_voice_cfg() {
+    fn hello_deserialize_full() {
         let raw = r#"{
             "type":"hello",
             "session_id":"abc",
-            "capture_rate":16000,
             "playback_rate":24000,
-            "codec":"opus",
             "voice_id":"am_michael",
-            "speed":1.2
+            "speed":1.2,
+            "language":"zh"
         }"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
         match parsed {
             ClientMessage::Hello {
                 voice_id,
                 speed,
+                language,
                 ..
             } => {
                 assert_eq!(voice_id, Some("am_michael".into()));
                 assert_eq!(speed, Some(1.2));
+                assert_eq!(language.as_deref(), Some("zh"));
             }
             other => panic!("expected Hello, got {other:?}"),
         }
     }
 
     #[test]
-    fn vad_hint_deserialize() {
-        let raw = r#"{"type":"vad_hint","kind":"speech_start","rms_dbfs":-30.5,"ts_ms":1234}"#;
+    fn transcript_partial_deserialize() {
+        let raw = r#"{"type":"transcript_partial","turn_id":"voice_t1","text":"hello wor"}"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
-        assert!(matches!(
-            parsed,
-            ClientMessage::VadHint {
-                kind: VadHintKind::SpeechStart,
-                ..
+        match parsed {
+            ClientMessage::TranscriptPartial { turn_id, text } => {
+                assert_eq!(turn_id, "voice_t1");
+                assert_eq!(text, "hello wor");
             }
-        ));
+            other => panic!("expected TranscriptPartial, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn transcript_final_deserialize() {
+        let raw = r#"{"type":"transcript_final","turn_id":"voice_t1","text":"hello world"}"#;
+        let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
+        match parsed {
+            ClientMessage::TranscriptFinal { turn_id, text } => {
+                assert_eq!(turn_id, "voice_t1");
+                assert_eq!(text, "hello world");
+            }
+            other => panic!("expected TranscriptFinal, got {other:?}"),
+        }
     }
 
     #[test]
@@ -241,13 +227,33 @@ mod tests {
     }
 
     #[test]
+    fn hello_ack_serialize() {
+        let msg = ServerMessage::HelloAck {
+            voice_pack: "af_bella".into(),
+            playback_rate: 24_000,
+        };
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            v,
+            json!({
+                "type":"hello_ack",
+                "voice_pack":"af_bella",
+                "playback_rate":24000
+            })
+        );
+    }
+
+    #[test]
     fn state_serialize_uses_snake_case() {
         let msg = ServerMessage::State {
             phase: VoicePhase::Speaking,
             turn_id: "voice_xyz".into(),
         };
         let v = serde_json::to_value(&msg).unwrap();
-        assert_eq!(v, json!({"type":"state","phase":"speaking","turn_id":"voice_xyz"}));
+        assert_eq!(
+            v,
+            json!({"type":"state","phase":"speaking","turn_id":"voice_xyz"})
+        );
     }
 
     #[test]
@@ -293,29 +299,12 @@ mod tests {
         let framed = encode_tts_frame(chunk_id, flags, &opus);
 
         assert_eq!(framed.len(), TTS_FRAME_HEADER_LEN + opus.len());
-        // Big-endian u64 header
         assert_eq!(
             &framed[0..8],
             &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
         );
         assert_eq!(framed[8], flags);
         assert_eq!(&framed[9..], &opus[..]);
-    }
-
-    #[test]
-    fn voice_phase_serializes_snake_case() {
-        for (phase, want) in [
-            (VoicePhase::Idle, "idle"),
-            (VoicePhase::Listening, "listening"),
-            (VoicePhase::Capturing, "capturing"),
-            (VoicePhase::Thinking, "thinking"),
-            (VoicePhase::Speaking, "speaking"),
-            (VoicePhase::Cancelling, "cancelling"),
-            (VoicePhase::Failed, "failed"),
-        ] {
-            let v = serde_json::to_value(phase).unwrap();
-            assert_eq!(v.as_str(), Some(want));
-        }
     }
 
     #[test]

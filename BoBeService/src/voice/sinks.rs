@@ -58,7 +58,10 @@ impl VoiceSink {
     /// tagging guarantees the clear only fires for the install it owns.
     pub(crate) async fn install(self: &Arc<Self>, sink: mpsc::Sender<Message>) -> SinkGuard {
         let generation = self.next_generation.fetch_add(1, Ordering::AcqRel);
-        *self.inner.write().await = Some(SinkSlot { sender: sink, generation });
+        *self.inner.write().await = Some(SinkSlot {
+            sender: sink,
+            generation,
+        });
         SinkGuard {
             slot: Arc::clone(self),
             generation,
@@ -66,7 +69,11 @@ impl VoiceSink {
     }
 
     pub(crate) async fn get(&self) -> Option<mpsc::Sender<Message>> {
-        self.inner.read().await.as_ref().map(|slot| slot.sender.clone())
+        self.inner
+            .read()
+            .await
+            .as_ref()
+            .map(|slot| slot.sender.clone())
     }
 
     /// Synchronously clear the slot if it still holds `generation`. Used
@@ -177,6 +184,9 @@ mod tests {
         tokio::task::yield_now().await;
 
         // Newer install must still be live.
-        assert!(sink.get().await.is_some(), "older guard drop must not clear newer slot");
+        assert!(
+            sink.get().await.is_some(),
+            "older guard drop must not clear newer slot"
+        );
     }
 }

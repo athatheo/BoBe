@@ -13,11 +13,7 @@
 //!   - Smart-turn-data-v3-test accuracy ≥ 85%
 //!   - Kokoro UTMOS ≥ 3.5 (round-trip via Whisper as a proxy until UTMOS-rs lands)
 //!
-#![allow(
-    clippy::print_stderr,
-    clippy::unwrap_used,
-    clippy::expect_used
-)]
+#![allow(clippy::print_stderr, clippy::unwrap_used, clippy::expect_used)]
 
 //! Each test is independent — a failure in one shouldn't block the others.
 

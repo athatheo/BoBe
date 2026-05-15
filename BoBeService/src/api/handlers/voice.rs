@@ -1,14 +1,13 @@
-//! WS endpoint `/voice/stream`.
+//! WS endpoint `/voice/stream` (Mode B only).
 //!
 //! Lifecycle per session:
-//!   - WS upgrade + handshake (rate + codec validation)
-//!   - Audio decode → Silero VAD per-frame → speech-segment queue
-//!   - On segment: smart-turn gate → spawn a per-turn task (`process_turn`)
-//!     that runs STT + chat pipeline + Kokoro TTS in the background while
-//!     the WS rx loop keeps reading control messages.
-//!   - Client BargeIn → main loop aborts the current turn JoinHandle →
-//!     UserMessageGuard drops + AbortGuard on the SDK stream fires
-//!     `session.abort()` → Truncate + state(Listening) sent to client.
+//!   - WS upgrade + Hello handshake (playback_rate validation)
+//!   - Client streams `transcript_partial` / `transcript_final` over JSON.
+//!     `transcript_final` admits a turn (single-flight) and spawns the
+//!     convergence pipeline (`voice/run_text_turn`).
+//!   - Daemon streams TTS Opus binary back to the client.
+//!   - Barge-in (RMS-detected client-side, sent as `barge_in` control)
+//!     or cancel-phrase (regex on echoed partials) → abort the active turn.
 //!   - Disconnect → abort any in-flight turn before tearing down.
 
 use std::sync::Arc;
@@ -23,15 +22,11 @@ use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
 use crate::app_state::AppState;
-use crate::speech::protocol::ServerMessage;
-use crate::voice::cancel_phrases::is_cancel_phrase;
 use crate::voice::context::VoiceContext;
 use crate::voice::control::handle_control_text;
 use crate::voice::engines::VoiceEngines;
-use crate::voice::protocol_helpers::{close_with_error, send_json};
+use crate::voice::protocol_helpers::close_with_error;
 use crate::voice::session::{VoiceDefaults, VoiceSession};
-use crate::voice::telemetry::{CTR_CANCEL_PHRASE, CTR_SEGMENT_DROP};
-use crate::voice::turn_flow::{abort_active_turn, reap_finished_turn, spawn_turn};
 
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
 /// Server-initiated Ping cadence. The WS layer auto-responds to Pings with
@@ -51,7 +46,6 @@ impl Drop for VoiceWsPermit {
         self.0.store(false, Ordering::Release);
     }
 }
-
 
 pub(crate) async fn voice_stream(
     ws: WebSocketUpgrade,
@@ -95,7 +89,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         .is_err()
     {
         warn!("voice.ws_concurrent_rejected");
-        let err = ServerMessage::Error {
+        let err = crate::speech::protocol::ServerMessage::Error {
             code: "voice_busy".into(),
             message: "another voice session is already active".into(),
         };
@@ -158,10 +152,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // Arc-shared across all WS handlers via AppState.voice_engines, so a
     // disconnect that happened mid-utterance leaves accumulated decoder
     // state that the next connection's commit_final would surface as
-    // "your prior session's text + this session's text" pollution.
-    engines.stt.reset();
-    engines.vad.reset();
-
     // Bundle per-WS deps so subsystem fns don't drill 5 args each.
     let ctx = VoiceContext {
         out_tx: out_tx.clone(),
@@ -194,88 +184,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     break;
                 }
             }
-            Message::Binary(bytes) => {
-                let Some(s) = session.as_mut() else {
-                    warn!("voice.binary_before_hello");
-                    continue;
-                };
-                if s.muted {
-                    // Mute gate — drop the frame before VAD ever sees it.
-                    continue;
-                }
-                let samples = match s.decode_opus(&bytes) {
-                    Ok(samples) => samples,
-                    Err(e) => {
-                        warn!(error = %e, "voice.opus_decode_failed");
-                        continue;
-                    }
-                };
-                // Feed streaming Zipformer per-frame; emit any new partial.
-                // pop_partial dedupes so identical text doesn't get re-sent.
-                if let Err(e) = engines.stt.accept_audio(&samples) {
-                    warn!(error = %e, "voice.streaming_stt_accept_failed");
-                }
-                if let Some(partial) = engines.stt.pop_partial() {
-                    let turn_id = s
-                        .current_turn
-                        .as_ref()
-                        .map_or_else(|| s.session_id.clone(), |t| t.turn_id.clone());
-                    s.last_partial_text.clone_from(&partial);
-                    send_json(
-                        &out_tx,
-                        &ServerMessage::TranscriptPartial {
-                            turn_id: turn_id.clone(),
-                            text: partial.clone(),
-                        },
-                    )
-                    .await;
-                    // C7: cancel-phrase bypass. If the user says "stop" /
-                    // "nevermind" during BoBe's TTS, abort the in-flight
-                    // turn locally — no LLM round-trip. Bypasses MinWords
-                    // because the cancel command IS the signal.
-                    if s.current_turn.is_some() && is_cancel_phrase(&partial) {
-                        metrics::counter!(CTR_CANCEL_PHRASE).increment(1);
-                        info!(partial = %partial, "voice.cancel_phrase_abort");
-                        let keep_ms = s.last_acked_played_ms;
-                        abort_active_turn(s, &ctx, keep_ms, "cancel_phrase").await;
-                        continue;
-                    }
-                }
-                if let Err(e) = engines.vad.accept(&samples) {
-                    warn!(error = %e, "voice.vad_accept_failed");
-                    continue;
-                }
-                // Reap a finished turn before processing the next segment.
-                reap_finished_turn(s);
-                // Drain every COMPLETED segment from the VAD queue. Using
-                // `while let Some(...) = pop_segment()` is critical — the
-                // earlier `while has_segment() { if let Some(...) = pop... }`
-                // pattern spun the worker thread at 100% CPU because
-                // `has_segment()` reflects the live "speech detected"
-                // signal, not "completed segment in queue", so it stayed
-                // true while pop_segment() returned None mid-utterance.
-                while let Some(segment) = engines.vad.pop_segment() {
-                    if s.current_turn.is_some() {
-                        // A turn is already running. Drop the segment for
-                        // now — M5.2 hammering pushback will queue these
-                        // and merge into the in-flight or next turn.
-                        s.segments_dropped =
-                            s.segments_dropped.saturating_add(1);
-                        metrics::counter!(CTR_SEGMENT_DROP).increment(1);
-                        warn!(
-                            session = %s.session_id,
-                            drops = s.segments_dropped,
-                            "voice.segment_backpressure_drop"
-                        );
-                        continue;
-                    }
-                    let turn = spawn_turn(segment, &ctx, s.voice_cfg.clone());
-                    s.current_turn = Some(turn);
-                    // Partial-text carries until the next utterance
-                    // begins. Clear here so the MinWords gate doesn't
-                    // see stale words from the previous turn.
-                    s.last_partial_text.clear();
-                }
+            Message::Binary(_) => {
+                // Mode B: client never sends audio over the wire. Drop the
+                // frame defensively; well-behaved clients won't trigger this.
+                warn!("voice.unexpected_binary_dropped");
             }
             Message::Close(_) => {
                 info!("voice.close_received");
@@ -336,7 +248,3 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         Err(_) => warn!("voice.ws_writer_drain_timeout_abandoning"),
     }
 }
-
-
-
-

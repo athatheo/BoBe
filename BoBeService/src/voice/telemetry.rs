@@ -42,7 +42,11 @@ pub(crate) fn install_recorder() -> Result<PrometheusHandle, String> {
         .install_recorder()
         .map_err(|e| format!("prometheus install: {e}"))?;
 
-    describe_histogram!(HIST_STT_MS, Unit::Milliseconds, "STT segment transcribe time");
+    describe_histogram!(
+        HIST_STT_MS,
+        Unit::Milliseconds,
+        "STT segment transcribe time"
+    );
     describe_histogram!(
         HIST_SMART_TURN_MS,
         Unit::Milliseconds,
@@ -54,8 +58,16 @@ pub(crate) fn install_recorder() -> Result<PrometheusHandle, String> {
         "End-of-speech to first audio frame on the wire (composite SLO)"
     );
 
-    describe_counter!(CTR_TURN_COMPLETE, Unit::Count, "Voice turns that ran to completion");
-    describe_counter!(CTR_TURN_ERROR, Unit::Count, "Voice turns aborted by an error path");
+    describe_counter!(
+        CTR_TURN_COMPLETE,
+        Unit::Count,
+        "Voice turns that ran to completion"
+    );
+    describe_counter!(
+        CTR_TURN_ERROR,
+        Unit::Count,
+        "Voice turns aborted by an error path"
+    );
     describe_counter!(
         CTR_BARGE_IN_SUCCESS,
         Unit::Count,

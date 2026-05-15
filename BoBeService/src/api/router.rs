@@ -55,7 +55,10 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         .route("/message", post(handlers::conversation::send_message))
         .route("/capture/start", post(handlers::capture::start_capture))
         .route("/capture/stop", post(handlers::capture::stop_capture))
-        .route("/goals", get(handlers::goals::list_goals).post(handlers::goals::create_goal))
+        .route(
+            "/goals",
+            get(handlers::goals::list_goals).post(handlers::goals::create_goal),
+        )
         .route(
             "/goals/{goal_id}",
             get(handlers::goals::get_goal)
@@ -94,8 +97,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/user-profiles",
-            get(handlers::user_profile::list_profiles)
-                .post(handlers::user_profile::create_profile),
+            get(handlers::user_profile::list_profiles).post(handlers::user_profile::create_profile),
         )
         .route(
             "/user-profiles/{profile_id}",
@@ -113,8 +115,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/settings",
-            get(handlers::settings::get_settings)
-                .patch(handlers::settings::update_settings),
+            get(handlers::settings::get_settings).patch(handlers::settings::update_settings),
         )
         .route("/auth/status", get(handlers::engine::get_auth_status))
         .route("/models", get(handlers::engine::list_models))
@@ -140,10 +141,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/voice/install/status",
             get(handlers::voice_install::status),
         )
-        .route(
-            "/voice/install/start",
-            post(handlers::voice_install::start),
-        )
+        .route("/voice/install/start", post(handlers::voice_install::start))
         .route(
             "/voice/install/cancel",
             post(handlers::voice_install::cancel),
