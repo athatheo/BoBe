@@ -19,7 +19,8 @@ const STARTUP_MAX_ATTEMPTS: u32 = 30;
 
 /// `completed`/`total` are `None` early in the pull (manifest fetch phase).
 #[derive(Debug, Clone, Default)]
-pub(crate) struct PullProgress {    pub(crate) status: String,
+pub(crate) struct PullProgress {
+    pub(crate) status: String,
     pub(crate) completed_bytes: Option<u64>,
     pub(crate) total_bytes: Option<u64>,
     pub(crate) percent: Option<u8>,
@@ -174,8 +175,8 @@ impl OllamaManager {
                 return Err(AppError::Canceled("Model pull canceled".into()));
             }
 
-            let bytes = chunk
-                .map_err(|e| AppError::ServiceUnavailable(format!("pull stream: {e}")))?;
+            let bytes =
+                chunk.map_err(|e| AppError::ServiceUnavailable(format!("pull stream: {e}")))?;
             buf.push_str(&String::from_utf8_lossy(&bytes));
 
             while let Some(nl) = buf.find('\n') {

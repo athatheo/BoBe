@@ -149,8 +149,7 @@ impl SessionHooks for BobeHooks {
                     return HookOutput::PreToolUse(PreToolUseOutput {
                         permission_decision: Some("deny".into()),
                         permission_decision_reason: Some(
-                            "voice mode cannot collect user input; respond inline instead"
-                                .into(),
+                            "voice mode cannot collect user input; respond inline instead".into(),
                         ),
                         ..Default::default()
                     });

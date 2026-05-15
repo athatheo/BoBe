@@ -13,13 +13,13 @@ use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
-use crate::voice::install_service::VoiceInstallService;
-use crate::voice::engines::VoiceEnginesSnapshot;
-use crate::voice::sinks::VoiceSink;
-use metrics_exporter_prometheus::PrometheusHandle;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
+use crate::voice::engines::VoiceEnginesSnapshot;
+use crate::voice::install_service::VoiceInstallService;
+use crate::voice::sinks::VoiceSink;
+use metrics_exporter_prometheus::PrometheusHandle;
 
 pub(crate) struct AppState {
     pub(crate) db: SqlitePool,

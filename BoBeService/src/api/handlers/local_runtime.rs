@@ -13,9 +13,7 @@ use crate::app_state::AppState;
 use crate::binary_manager::DownloadProgress;
 use crate::error::AppError;
 use crate::ollama_manager::PullProgress;
-use crate::services::ollama_install_service::{
-    InstallRequest, InstallSnapshot, InstallStatus,
-};
+use crate::services::ollama_install_service::{InstallRequest, InstallSnapshot, InstallStatus};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct InstallRequestBody {

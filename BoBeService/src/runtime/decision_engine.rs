@@ -15,7 +15,6 @@ use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::services::conversation_service::ConversationService;
 use crate::util::text::truncate_str;
 
-
 pub(crate) struct DecisionEngine {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,

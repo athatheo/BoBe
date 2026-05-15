@@ -274,13 +274,21 @@ impl OllamaInstallService {
     ) -> Result<(), AppError> {
         let already_installed = installed.iter().any(|m| m == name);
         if already_installed {
-            info!(model = name, stage = stage.name(), "ollama_install.model_already_installed");
-            self.write_stage(snapshot_tx, stage, PullProgress {
-                status: "already installed".into(),
-                completed_bytes: None,
-                total_bytes: None,
-                percent: Some(100),
-            });
+            info!(
+                model = name,
+                stage = stage.name(),
+                "ollama_install.model_already_installed"
+            );
+            self.write_stage(
+                snapshot_tx,
+                stage,
+                PullProgress {
+                    status: "already installed".into(),
+                    completed_bytes: None,
+                    total_bytes: None,
+                    percent: Some(100),
+                },
+            );
             return Ok(());
         }
 

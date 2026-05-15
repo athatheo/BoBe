@@ -106,5 +106,4 @@ mod tests {
             other => panic!("expected Blob, got {other:?}"),
         }
     }
-
 }

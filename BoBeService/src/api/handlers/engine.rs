@@ -37,8 +37,8 @@ pub(crate) async fn get_auth_status(
         .await
         .map_err(|e| AppError::Internal(format!("auth_status: get_auth_status failed: {e}")))?;
 
-    let cli_path = github_copilot_sdk::embeddedcli::path()
-        .map(|p| p.to_string_lossy().into_owned());
+    let cli_path =
+        github_copilot_sdk::embeddedcli::path().map(|p| p.to_string_lossy().into_owned());
     let cli_version =
         github_copilot_sdk::embeddedcli::bundled_version().map(std::string::ToString::to_string);
 
@@ -160,7 +160,10 @@ struct OllamaTagDetails {
 
 async fn list_local_models(base_url: Option<&str>) -> Result<Vec<ModelInfo>, AppError> {
     // Ollama's `/api/tags` lives on the root, not the `/v1` OpenAI-compat prefix.
-    let root = base_url.map_or_else(|| "http://127.0.0.1:11434".to_string(), |u| u.trim_end_matches('/').trim_end_matches("/v1").to_string());
+    let root = base_url.map_or_else(
+        || "http://127.0.0.1:11434".to_string(),
+        |u| u.trim_end_matches('/').trim_end_matches("/v1").to_string(),
+    );
 
     let url = format!("{root}/api/tags");
     let client = reqwest::Client::builder()

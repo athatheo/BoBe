@@ -34,7 +34,9 @@ impl TaskRequirements {
     pub(crate) const fn from_class(class: WorkerClass) -> Self {
         match class {
             WorkerClass::Vision => Self { needs_vision: true },
-            _ => Self { needs_vision: false },
+            _ => Self {
+                needs_vision: false,
+            },
         }
     }
 }
@@ -89,7 +91,10 @@ impl ModelResolver {
             return pick.id.clone();
         }
 
-        debug!(needs_vision = req.needs_vision, "model_resolver.no_match_using_auto");
+        debug!(
+            needs_vision = req.needs_vision,
+            "model_resolver.no_match_using_auto"
+        );
         FALLBACK_MODEL.to_string()
     }
 

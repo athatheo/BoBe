@@ -96,8 +96,7 @@ impl CaptureTrigger {
         if let Some(cooldown) = self.cooldown_repo.check_cooldown(
             cfg.decision.cooldown_minutes,
             cfg.decision.extended_cooldown_minutes,
-        )
-        {
+        ) {
             debug!(
                 remaining_s = cooldown.remaining.num_seconds(),
                 cooldown_type = %cooldown.cooldown_type,

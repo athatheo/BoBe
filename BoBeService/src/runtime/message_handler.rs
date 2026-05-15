@@ -60,7 +60,11 @@ impl MessageHandler {
     ) where
         F: FnMut(&str) + Send,
     {
-        if let Err(e) = self.cooldown_repo.update_last_user_response(Utc::now()).await {
+        if let Err(e) = self
+            .cooldown_repo
+            .update_last_user_response(Utc::now())
+            .await
+        {
             warn!(error = %e, "message_handler.cooldown_update_failed");
         }
 
@@ -70,8 +74,14 @@ impl MessageHandler {
             return;
         };
 
-        self.respond_to_message(message_id, content, conversation_id, voice_mode, on_text_delta)
-            .await;
+        self.respond_to_message(
+            message_id,
+            content,
+            conversation_id,
+            voice_mode,
+            on_text_delta,
+        )
+        .await;
     }
 
     async fn ensure_active_conversation(&self, user_content: &str) -> Option<ConversationId> {
@@ -141,7 +151,10 @@ impl MessageHandler {
             .await
             .map_err(|e| AppError::Internal(format!("chat_worker.send: {e}")))?;
         info!(msg_id, voice_mode, "message_handler.stream_start");
-        Ok(stream_chat_delta_response(chat_stream, &self.event_queue, Some(msg_id), on_text_delta).await)
+        Ok(
+            stream_chat_delta_response(chat_stream, &self.event_queue, Some(msg_id), on_text_delta)
+                .await,
+        )
     }
 
     async fn persist_response(

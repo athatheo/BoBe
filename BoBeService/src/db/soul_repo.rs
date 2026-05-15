@@ -60,7 +60,6 @@ impl SoulRepository for SqliteSoulRepo {
             .map_err(AppError::Database)
     }
 
-
     async fn get_all(&self) -> Result<Vec<Soul>, AppError> {
         sqlx::query_as::<_, Soul>("SELECT * FROM souls")
             .fetch_all(&self.pool)

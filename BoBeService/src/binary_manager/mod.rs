@@ -15,14 +15,12 @@ use tracing::info;
 use crate::error::AppError;
 
 /// `percent` is best-effort: 0..90 download, 92 post-download, 100 ready.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct DownloadProgress {
     pub(crate) current_bytes: u64,
     pub(crate) total_bytes: Option<u64>,
     pub(crate) percent: Option<u8>,
 }
-
 
 pub(crate) struct BinaryManager {
     data_dir: PathBuf,

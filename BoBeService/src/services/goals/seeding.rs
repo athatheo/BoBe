@@ -13,10 +13,12 @@ pub(crate) struct SeedResult {
 }
 
 /// First-run only: drops a starter goal so the UI isn't empty on first launch.
-pub(crate) async fn seed_sample_goal(
-    goals_service: &GoalsService,
-) -> Result<SeedResult, AppError> {
-    let mut result = SeedResult { created: 0, skipped: 0, errors: 0 };
+pub(crate) async fn seed_sample_goal(goals_service: &GoalsService) -> Result<SeedResult, AppError> {
+    let mut result = SeedResult {
+        created: 0,
+        skipped: 0,
+        errors: 0,
+    };
 
     match goals_service.list_all().await {
         Ok(existing) if !existing.is_empty() => {
