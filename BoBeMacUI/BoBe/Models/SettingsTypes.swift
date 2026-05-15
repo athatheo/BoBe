@@ -32,6 +32,9 @@ struct DaemonSettings: Codable, Sendable {
     /// `"balanced"`, `"patient"`. Maps to FluidAudio `eouDebounceMs` in
     /// Mode B and Silero `min_silence_duration` in Mode A.
     var voicePauseSensitivity: String
+    /// Whether the overlay shows the live partial-transcript caption while
+    /// the user is speaking. Pure UI toggle — daemon doesn't consume.
+    var voiceShowPartialCaption: Bool
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -57,6 +60,7 @@ struct DaemonSettings: Codable, Sendable {
         case voiceSpeed = "voice_speed"
         case voiceSttLanguage = "voice_stt_language"
         case voicePauseSensitivity = "voice_pause_sensitivity"
+        case voiceShowPartialCaption = "voice_show_partial_caption"
     }
 }
 
@@ -84,6 +88,7 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var voiceSpeed: Float?
     var voiceSttLanguage: String?
     var voicePauseSensitivity: String?
+    var voiceShowPartialCaption: Bool?
 
     enum CodingKeys: String, CodingKey {
         case captureEnabled = "capture_enabled"
@@ -109,6 +114,7 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case voiceSpeed = "voice_speed"
         case voiceSttLanguage = "voice_stt_language"
         case voicePauseSensitivity = "voice_pause_sensitivity"
+        case voiceShowPartialCaption = "voice_show_partial_caption"
     }
 }
 

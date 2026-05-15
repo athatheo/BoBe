@@ -28,6 +28,11 @@ pub(crate) struct VoiceConfig {
     /// threshold (multilingual) in Mode B; to Silero `min_silence_duration`
     /// in Mode A. Field added in M6.A; consumed by M6.B engines.
     pub(crate) pause_sensitivity: PauseSensitivity,
+    /// Whether the live partial-transcript caption ("VoicePartialCaption")
+    /// is shown in the overlay while the user is speaking. Default on —
+    /// gives instant feedback that BoBe heard the words; some users want
+    /// it off because it can distract during long phrases.
+    pub(crate) show_partial_caption: bool,
 }
 
 /// User-facing pause-sensitivity preset. Concrete millisecond mapping lives
@@ -51,6 +56,7 @@ impl Default for VoiceConfig {
             speed: 1.0,
             stt_language: "en".into(),
             pause_sensitivity: PauseSensitivity::Balanced,
+            show_partial_caption: true,
         }
     }
 }

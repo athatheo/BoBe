@@ -37,6 +37,9 @@ pub(crate) struct SettingsResponse {
     pub(crate) voice_stt_language: String,
     /// End-of-utterance debounce preset. Kebab-case enum: "tight"|"balanced"|"patient".
     pub(crate) voice_pause_sensitivity: String,
+    /// Whether the live partial-transcript caption is shown while the user
+    /// speaks. Pure UI toggle — daemon doesn't consume; Swift overlay does.
+    pub(crate) voice_show_partial_caption: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +67,7 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) voice_speed: Option<f32>,
     pub(crate) voice_stt_language: Option<String>,
     pub(crate) voice_pause_sensitivity: Option<String>,
+    pub(crate) voice_show_partial_caption: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +110,7 @@ pub(crate) async fn get_settings(
             .ok()
             .and_then(|v| v.as_str().map(str::to_owned))
             .unwrap_or_else(|| "balanced".into()),
+        voice_show_partial_caption: cfg.voice.show_partial_caption,
     }))
 }
 
@@ -147,6 +152,7 @@ pub(crate) async fn update_settings(
     collect_opt!(voice_speed);
     collect_opt!(voice_stt_language);
     collect_opt!(voice_pause_sensitivity);
+    collect_opt!(voice_show_partial_caption);
 
     if let Some(ref v) = body.checkin_times {
         changes.insert(

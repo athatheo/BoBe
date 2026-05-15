@@ -115,6 +115,9 @@ pub(crate) fn apply(config: &mut Config, changes: &HashMap<String, serde_json::V
             "voice.speed" => set_parsed!(config.voice.speed, value, k),
             "voice.stt_language" => set_parsed!(config.voice.stt_language, value, k),
             "voice.pause_sensitivity" => set_parsed!(config.voice.pause_sensitivity, value, k),
+            "voice.show_partial_caption" => {
+                set_parsed!(config.voice.show_partial_caption, value, k);
+            }
 
             "seed_default_documents" => set_parsed!(config.seed_default_documents, value, k),
 
@@ -171,6 +174,7 @@ fn normalize_key(key: &str) -> String {
         "voice_speed" => "voice.speed",
         "voice_stt_language" => "voice.stt_language",
         "voice_pause_sensitivity" => "voice.pause_sensitivity",
+        "voice_show_partial_caption" => "voice.show_partial_caption",
         other => other,
     }
     .to_string()

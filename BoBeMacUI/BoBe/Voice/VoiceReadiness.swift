@@ -95,6 +95,9 @@ extension VoicePipeline {
             }
             if let settingsRes {
                 self.voiceEnabled = settingsRes.voiceEnabled
+                self.showPartialCaption = settingsRes.voiceShowPartialCaption
+                self.voicePersona = settingsRes.voicePersona
+                self.voiceSpeed = settingsRes.voiceSpeed
                 let lang = settingsRes.voiceSttLanguage
                 if !lang.isEmpty {
                     self.activeSttLanguage = lang

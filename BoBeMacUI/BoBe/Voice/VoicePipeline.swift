@@ -77,6 +77,14 @@ public final class VoicePipeline {
     /// `false` flips the mic button into a hidden / disabled state.
     var voiceEnabled: Bool?
 
+    /// Mirrors of `DaemonSettings.{voiceShowPartialCaption, voicePersona,
+    /// voiceSpeed}` — populated by `refreshDaemonState`. Caption drives
+    /// `VoicePartialCaption` visibility; persona + speed get sent in every
+    /// Hello so the daemon doesn't fall back to its config default.
+    var showPartialCaption: Bool = true
+    var voicePersona: String?
+    var voiceSpeed: Float?
+
     /// Dedup guard so concurrent `refreshDaemonState()` calls share one
     /// fetch instead of stampeding the daemon at view-appear time.
     var refreshDaemonTask: Task<Void, Never>?
@@ -384,11 +392,12 @@ public final class VoicePipeline {
 
         self.sessionId = "voice-\(Int(Date().timeIntervalSince1970))"
         let sid = self.sessionId
-        // Per-WS voice prefs from BobeStore (M4.5.0c plumbs the soul/settings
-        // wiring later — for now Hello just sends nil, and the daemon falls
-        // through to its defaults).
-        let voiceId: String? = nil
-        let speed: Float? = nil
+        // Per-WS voice prefs sourced from the daemon settings mirror that
+        // `refreshDaemonState` keeps current. Sending them explicitly in
+        // Hello means the daemon doesn't have to fall back to its config
+        // default — the user's pick flows through to this exact session.
+        let voiceId = self.voicePersona
+        let speed = self.voiceSpeed
         Task { [weak self] in
             guard let self else { return }
             // After a previous disconnect(), tearDownAudio() removed the input

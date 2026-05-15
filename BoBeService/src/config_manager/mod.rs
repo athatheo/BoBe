@@ -53,6 +53,7 @@ static HOT_SWAP_FIELDS: &[&str] = &[
     "voice.speed",
     "voice.stt_language",
     "voice.pause_sensitivity",
+    "voice.show_partial_caption",
     "seed_default_documents",
 ];
 
