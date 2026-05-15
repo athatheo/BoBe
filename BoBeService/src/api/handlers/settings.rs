@@ -32,6 +32,11 @@ pub(crate) struct SettingsResponse {
     pub(crate) voice_enabled: bool,
     pub(crate) voice_persona: String,
     pub(crate) voice_speed: f32,
+    /// User's primary STT language (BCP-47: "en", "zh"). Drives client-side
+    /// engine selection in Mode B (FluidAudio). Field added in M6.A.
+    pub(crate) voice_stt_language: String,
+    /// End-of-utterance debounce preset. Kebab-case enum: "tight"|"balanced"|"patient".
+    pub(crate) voice_pause_sensitivity: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +62,8 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) voice_enabled: Option<bool>,
     pub(crate) voice_persona: Option<String>,
     pub(crate) voice_speed: Option<f32>,
+    pub(crate) voice_stt_language: Option<String>,
+    pub(crate) voice_pause_sensitivity: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +101,11 @@ pub(crate) async fn get_settings(
         voice_enabled: cfg.voice.enabled,
         voice_persona: cfg.voice.persona.clone(),
         voice_speed: cfg.voice.speed,
+        voice_stt_language: cfg.voice.stt_language.clone(),
+        voice_pause_sensitivity: serde_json::to_value(cfg.voice.pause_sensitivity)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_else(|| "balanced".into()),
     }))
 }
 
@@ -133,6 +145,8 @@ pub(crate) async fn update_settings(
     collect_opt!(voice_enabled);
     collect_opt!(voice_persona);
     collect_opt!(voice_speed);
+    collect_opt!(voice_stt_language);
+    collect_opt!(voice_pause_sensitivity);
 
     if let Some(ref v) = body.checkin_times {
         changes.insert(

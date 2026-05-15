@@ -15,6 +15,32 @@ pub(crate) struct VoiceConfig {
     /// Default playback speed (0.5–2.0). Hello handshake's `speed` overrides
     /// this per WS connection. Outside the range gets clamped at synth time.
     pub(crate) speed: f32,
+    /// User's primary language (BCP-47: `"en"`, `"zh"`, ...). Drives client-
+    /// side STT engine selection in Mode B (`EnglishParakeetEngines` vs
+    /// `MultilingualQwen3Engines`). In Mode A the daemon's Zipformer is
+    /// English-only; requesting a non-English language at Hello rejects.
+    /// v1 supported: `"en"`, `"zh"`. Other listed: `"es"`, `"el"`, `"ko"`, `"ja"`.
+    /// Field added in M6.A; consumed by M6.B Hello dispatch + Swift engine
+    /// negotiator.
+    pub(crate) stt_language: String,
+    /// End-of-utterance debounce / silence tolerance preference.
+    /// Maps to FluidAudio `eouDebounceMs` (English) or acoustic silence
+    /// threshold (multilingual) in Mode B; to Silero `min_silence_duration`
+    /// in Mode A. Field added in M6.A; consumed by M6.B engines.
+    pub(crate) pause_sensitivity: PauseSensitivity,
+}
+
+/// User-facing pause-sensitivity preset. Concrete millisecond mapping lives
+/// in the engine layer so each provider can tune to its own characteristics.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PauseSensitivity {
+    /// 600ms — fast end-of-turn, can cut users off.
+    Tight,
+    /// 1280ms — default, matches FluidAudio Parakeet EOU model default.
+    Balanced,
+    /// 2000ms — favor waiting; good for thoughtful speakers / long pauses.
+    Patient,
 }
 
 impl Default for VoiceConfig {
@@ -23,6 +49,8 @@ impl Default for VoiceConfig {
             enabled: true,
             persona: "af_bella".into(),
             speed: 1.0,
+            stt_language: "en".into(),
+            pause_sensitivity: PauseSensitivity::Balanced,
         }
     }
 }
