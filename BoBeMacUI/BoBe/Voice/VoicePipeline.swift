@@ -5,9 +5,6 @@ import Observation
 import Opus
 import OSLog
 
-/// Thrown when `VoicePipeline.ensureSttLoaded` exceeds its deadline.
-struct VoiceLoadTimeout: Error {}
-
 private let logger = Logger(subsystem: "com.bobe.app", category: "VoicePipeline")
 
 /// Production voice pipeline (client side, Mode B).
@@ -44,11 +41,11 @@ public final class VoicePipeline {
     public static let shared = VoicePipeline()
 
     public private(set) var state: State = .idle
-    /// Last surfaced error message. Today nothing in the overlay binds this;
-    /// the value is also logged via `logger.error` at every write site so
-    /// engineers can see it in Console.app. The Voice settings pane (#85)
-    /// will surface it as a UI affordance.
-    public private(set) var lastError: String?
+    /// Last surfaced error message. Also logged via `logger.error` at every
+    /// write site so engineers can see it in Console.app. `internal(set)`
+    /// lets the TTS playback chain in `TtsPlayback.swift` surface decode /
+    /// queue errors without needing a wrapper method.
+    public internal(set) var lastError: String?
     /// Readiness of the local FluidAudio STT model. Drives UI affordances
     /// so the user sees "Downloading voice model…" instead of an
     /// unresponsive mic icon when the ~600MB Parakeet model is fetching.
@@ -107,11 +104,13 @@ public final class VoicePipeline {
     /// 20ms slice at 16kHz — RMS + barge-in cadence (not a wire frame size
     /// in Mode B, since the client never sends audio).
     private let rmsFrameSamples: Int = 320
-    /// 24kHz mono — Kokoro native.
-    private let playbackSampleRate: Double = 24_000
+    /// 24kHz mono — Kokoro native. Internal so the TTS playback chain in
+    /// `TtsPlayback.swift` can use it for buffer sizing + truncation math.
+    let playbackSampleRate: Double = 24_000
 
     private let audioEngine = AVAudioEngine()
-    private let playerNode = AVAudioPlayerNode()
+    // Internal so the TTS playback chain in `TtsPlayback.swift` can drive it.
+    let playerNode = AVAudioPlayerNode()
 
     /// FluidAudio Parakeet EOU streaming ASR (English; built-in EOU).
     /// Loaded lazily on first `prewarm()` when the active language is
@@ -155,31 +154,23 @@ public final class VoicePipeline {
     // check, which engine to load). See `effectiveLanguage`, `activeStt`,
     // and `activeModelIsInstalled` there.
 
-    private var decoder: Opus.Decoder?
-    private var converter: AVAudioConverter?
-    private var pcmAccumulator: [Int16] = []
-
-    /// One scheduled TTS chunk. We retain the decoded `AVAudioPCMBuffer` so
-    /// `truncatePlayback` can reschedule the head of a straddling buffer
-    /// after `playerNode.stop()` wipes the queue.
-    private struct ScheduledTtsChunk {
-        let chunkId: UInt64
-        let buffer: AVAudioPCMBuffer
-        /// Cumulative frame index across the current turn at which this
-        /// chunk's first sample lives. `playerTime.sampleTime` is also
-        /// monotonic across the engine's life — we map between the two via
-        /// `sampleTimeBase` / `turnFrameBase`.
-        let startFrame: AVAudioFramePosition
-    }
-    private var scheduledChunks: [ScheduledTtsChunk] = []
-    private var nextScheduleFrame: AVAudioFramePosition = 0
+    // TTS playback state. Internal so the extension in `TtsPlayback.swift`
+    // can drive scheduling + truncation. ScheduledTtsChunk + the methods
+    // (handleAudioFrame, truncatePlayback, ensureDecoder, playedFramesThisTurn,
+    // currentPlayerSampleTime) all live there.
+    var decoder: Opus.Decoder?
+    var scheduledChunks: [ScheduledTtsChunk] = []
+    var nextScheduleFrame: AVAudioFramePosition = 0
     /// Captured at the start of every `.speaking` transition. Subtracted
     /// from the player's `sampleTime` to get "frames played in this turn".
-    private var sampleTimeBase: AVAudioFramePosition = 0
+    var sampleTimeBase: AVAudioFramePosition = 0
     /// Jumps forward by `played` on every truncate so subsequent
     /// `playedFramesThisTurn` calls stay in turn-relative space across
     /// `stop()` + `play()` (which resets the player's clock).
-    private var turnFrameBase: AVAudioFramePosition = 0
+    var turnFrameBase: AVAudioFramePosition = 0
+
+    private var converter: AVAudioConverter?
+    private var pcmAccumulator: [Int16] = []
 
     private let urlSession = URLSession(configuration: .default)
     private var task: URLSessionWebSocketTask?
@@ -199,8 +190,9 @@ public final class VoicePipeline {
     /// speech detection at -45) avoids residual-echo false positives.
     private let bargeInRmsDbfs: Float = -40
     private let bargeInFramesNeeded: Int = 3
-    private var bargeInCount: Int = 0
-    private var bargeInSent: Bool = false
+    // Internal so `TtsPlayback.truncatePlayback` can reset them on barge-in.
+    var bargeInCount: Int = 0
+    var bargeInSent: Bool = false
 
     private init() {
         self.audioEngine.attach(self.playerNode)
@@ -298,7 +290,7 @@ public final class VoicePipeline {
         let language = self.activeSttLanguage
         let timeoutSeconds: TimeInterval = (language == "en") ? 60 : 120
         do {
-            try await Self.withTimeout(seconds: timeoutSeconds) {
+            try await withVoiceLoadTimeout(seconds: timeoutSeconds) {
                 try await engine.loadModels(onPartial: onPartial, onEou: onEou)
             }
             self.loadedLanguages.insert(language)
@@ -314,24 +306,6 @@ public final class VoicePipeline {
             self.lastError = "STT load: \(msg)"
             self.sttStatus = .failed(msg)
             logger.error("FluidAudio STT load failed (language=\(language)): \(msg)")
-        }
-    }
-
-    /// Race an async operation against a deadline. Throws `VoiceLoadTimeout`
-    /// if the operation doesn't return before the deadline elapses.
-    private static func withTimeout(
-        seconds: TimeInterval,
-        _ operation: @escaping @Sendable () async throws -> Void
-    ) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw VoiceLoadTimeout()
-            }
-            // First task to finish wins; cancel the other.
-            _ = try await group.next()
-            group.cancelAll()
         }
     }
 
@@ -371,7 +345,7 @@ public final class VoicePipeline {
     public func connect(daemonBaseURL: URL) {
         self.lastError = nil
 
-        guard let wsURL = Self.wsEndpoint(from: daemonBaseURL) else {
+        guard let wsURL = voiceWsEndpoint(from: daemonBaseURL) else {
             self.lastError = "invalid daemon URL for WS"
             logger.error("invalid daemon URL for WS")
             return
@@ -559,7 +533,7 @@ public final class VoicePipeline {
         self.audioEngine.prepare()
         try self.audioEngine.start()
         self.playerNode.play()
-        logger.info("voice engine configured; input \(self.describe(inputFormat))")
+        logger.info("voice engine configured; input \(describe(inputFormat))")
     }
 
     private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -786,151 +760,6 @@ public final class VoicePipeline {
         }
     }
 
-    /// Frames played by `playerNode` since this turn began, accounting for
-    /// `stop()` / `play()` resets via `turnFrameBase`. Returns
-    /// `turnFrameBase` if the render clock hasn't tickled yet.
-    private func playedFramesThisTurn() -> AVAudioFramePosition {
-        guard let lrt = self.playerNode.lastRenderTime,
-              let pt = self.playerNode.playerTime(forNodeTime: lrt) else {
-            return self.turnFrameBase
-        }
-        let st = max(self.sampleTimeBase, pt.sampleTime)
-        return self.turnFrameBase + (st - self.sampleTimeBase)
-    }
-
-    private func currentPlayerSampleTime() -> AVAudioFramePosition {
-        guard let lrt = self.playerNode.lastRenderTime,
-              let pt = self.playerNode.playerTime(forNodeTime: lrt) else {
-            return 0
-        }
-        return max(0, pt.sampleTime)
-    }
-
-    private func ensureDecoder() {
-        if self.decoder != nil { return }
-        guard let format = AVAudioFormat(
-            opusPCMFormat: .int16,
-            sampleRate: self.playbackSampleRate,
-            channels: 1
-        ) else { return }
-        do {
-            self.decoder = try Opus.Decoder(format: format)
-        } catch {
-            self.lastError = "decoder init: \(error.localizedDescription)"
-            logger.error("decoder init: \(error.localizedDescription)")
-        }
-    }
-
-    private func handleAudioFrame(_ bytes: Data) {
-        guard let parsed = TtsFrameHeader.parse(bytes) else {
-            logger.warning("voice.malformed_tts_frame size=\(bytes.count)")
-            return
-        }
-        self.ensureDecoder()
-        guard let decoder = self.decoder else { return }
-        guard let format = AVAudioFormat(
-            opusPCMFormat: .int16,
-            sampleRate: self.playbackSampleRate,
-            channels: 1
-        ),
-        // 60ms @ 24kHz upper bound for Opus frame size.
-        let outBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_440) else {
-            return
-        }
-        do {
-            try parsed.payload.withUnsafeBytes { raw in
-                let typed = UnsafeBufferPointer(
-                    start: raw.bindMemory(to: UInt8.self).baseAddress,
-                    count: raw.count
-                )
-                try decoder.decode(typed, to: outBuffer)
-            }
-            let chunk = ScheduledTtsChunk(
-                chunkId: parsed.header.chunkId,
-                buffer: outBuffer,
-                startFrame: self.nextScheduleFrame
-            )
-            self.scheduledChunks.append(chunk)
-            self.nextScheduleFrame += AVAudioFramePosition(outBuffer.frameLength)
-            // Fire-and-forget queue insertion — the async overload returns
-            // when the buffer FINISHES playing and deadlocks streaming inserts.
-            self.playerNode.scheduleBuffer(outBuffer, completionHandler: nil)
-        } catch {
-            self.lastError = "decode: \(error.localizedDescription)"
-            logger.error("decode: \(error.localizedDescription)")
-        }
-    }
-
-    /// Sample-accurate playback truncation. Keeps the head of in-flight audio
-    /// up to `keepMs` and drops the tail. The daemon emits `truncate{keep_ms}`
-    /// after a barge-in, where `keep_ms` is what the user actually heard
-    /// (max of client RMS-detect playback position and last `PlaybackAck`).
-    /// Implementation:
-    ///   1. Capture frames-played-this-turn BEFORE `stop()` (which resets
-    ///      the player's clock).
-    ///   2. `stop()` to wipe the pending queue.
-    ///   3. Re-schedule slices of retained `AVAudioPCMBuffer`s covering the
-    ///      half-open range [played, target). Earlier audio has already
-    ///      reached the speakers; nothing to do for it. Track the slices in
-    ///      `scheduledChunks` so a second truncate within the same turn
-    ///      remains sample-accurate.
-    ///   4. `play()` and bump `turnFrameBase` so future render-clock reads
-    ///      stay in turn-relative space.
-    private func truncatePlayback(keepMs: UInt64) {
-        let target = AVAudioFramePosition(Double(keepMs) * self.playbackSampleRate / 1_000.0)
-        let played = self.playedFramesThisTurn()
-
-        self.playerNode.stop()
-        self.bargeInCount = 0
-        self.bargeInSent = false
-
-        guard target > played else {
-            // We're already past the keep point — nothing to re-schedule.
-            self.scheduledChunks.removeAll(keepingCapacity: true)
-            self.nextScheduleFrame = played
-            self.turnFrameBase = played
-            self.sampleTimeBase = self.currentPlayerSampleTime()
-            self.playerNode.play()
-            return
-        }
-
-        var newChunks: [ScheduledTtsChunk] = []
-        for chunk in self.scheduledChunks {
-            let chunkStart = chunk.startFrame
-            let chunkEnd = chunkStart + AVAudioFramePosition(chunk.buffer.frameLength)
-            let sliceStart = max(chunkStart, played)
-            let sliceEnd = min(chunkEnd, target)
-            guard sliceEnd > sliceStart else { continue }
-            let offset = AVAudioFrameCount(sliceStart - chunkStart)
-            let frames = AVAudioFrameCount(sliceEnd - sliceStart)
-            let buffer: AVAudioPCMBuffer
-            if offset == 0, frames == chunk.buffer.frameLength {
-                buffer = chunk.buffer
-            } else if let sliced = sliceInt16Buffer(chunk.buffer, offset: offset, frames: frames) {
-                buffer = sliced
-            } else {
-                continue
-            }
-            newChunks.append(ScheduledTtsChunk(
-                chunkId: chunk.chunkId,
-                buffer: buffer,
-                startFrame: sliceStart
-            ))
-        }
-
-        // Replace (not clear) so a second truncate within the same turn
-        // can slice further from the still-tracked tail.
-        self.scheduledChunks = newChunks
-        self.nextScheduleFrame = target
-        self.turnFrameBase = played
-        self.sampleTimeBase = self.currentPlayerSampleTime()
-
-        for chunk in newChunks {
-            self.playerNode.scheduleBuffer(chunk.buffer, completionHandler: nil)
-        }
-        self.playerNode.play()
-    }
-
     // MARK: - Keepalive
 
     private func startKeepalive() {
@@ -968,33 +797,4 @@ public final class VoicePipeline {
 
     // MARK: - Helpers
 
-    private static func wsEndpoint(from baseURL: URL) -> URL? {
-        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        let scheme = components.scheme?.lowercased()
-        components.scheme = (scheme == "https") ? "wss" : "ws"
-        components.path = "/voice/stream"
-        return components.url
-    }
-
-    private func describe(_ format: AVAudioFormat) -> String {
-        let fmtName: String = switch format.commonFormat {
-        case .pcmFormatFloat32: "f32"
-        case .pcmFormatFloat64: "f64"
-        case .pcmFormatInt16: "i16"
-        case .pcmFormatInt32: "i32"
-        default: "?"
-        }
-        return "\(Int(format.sampleRate))Hz \(format.channelCount)ch \(fmtName)\(format.isInterleaved ? "" : " (planar)")"
-    }
-}
-
-private enum VoiceError: Error, CustomStringConvertible {
-    case runtime(String)
-    var description: String {
-        switch self {
-        case let .runtime(s): s
-        }
-    }
 }

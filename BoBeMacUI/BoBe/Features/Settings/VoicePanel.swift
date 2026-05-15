@@ -170,7 +170,7 @@ struct VoicePanel: View {
 
                 SettingsRow(
                     label: "Show partial caption",
-                    description: "Display the live partial transcript over the overlay while you speak. Off if you find the streaming text distracting."
+                    description: "Display the live partial transcript while you speak. Off if you find the streaming text distracting."
                 ) {
                     BobeToggle(isOn: self.binding(\.voiceShowPartialCaption, fallback: true))
                 }
