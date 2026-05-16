@@ -268,44 +268,34 @@ struct VoicePanel: View {
         // @Observable system to fire (which it won't — fs polling isn't
         // an observable signal).
         _ = self.sttProgressTick
-        switch self.pipeline.sttStatus {
-        case .ready: return .installed
-        case .downloading:
-            // FluidAudio doesn't expose a download progress callback, so
-            // we infer percent from observed directory size vs the known
-            // ~600MB target. Updated each poll tick by `sttProgressTask`.
-            return .downloading(
-                bytesDownloaded: FluidAudioModelPresence.observedBytes(),
-                bytesTotal: FluidAudioModelPresence.approximateTotalBytes,
-                percent: FluidAudioModelPresence.observedPercent()
-            )
-        case .failed(let msg): return .failed(msg)
-        case .notLoaded:
-            return FluidAudioModelPresence.isInstalled() ? .installed : .missing
-        }
+        return self.cardStatus(for: FluidAudioModelPresence.self)
     }
 
     private var qwen3Status: VoiceModelCard.Status {
         _ = self.sttProgressTick
         // When the user has a non-English language selected, the pipeline's
-        // sttStatus tracks Qwen3 directly; otherwise we just report disk
-        // presence (Qwen3 isn't loaded under English).
+        // sttStatus tracks Qwen3 directly; under English, the pipeline is
+        // running Parakeet so we fall back to bare disk presence.
         let activeLanguage = self.settings?.voiceSttLanguage ?? "en"
         if activeLanguage != "en" {
-            switch self.pipeline.sttStatus {
-            case .ready: return .installed
-            case .downloading:
-                return .downloading(
-                    bytesDownloaded: FluidAudioQwen3ModelPresence.observedBytes(),
-                    bytesTotal: FluidAudioQwen3ModelPresence.approximateTotalBytes,
-                    percent: FluidAudioQwen3ModelPresence.observedPercent()
-                )
-            case .failed(let msg): return .failed(msg)
-            case .notLoaded:
-                return FluidAudioQwen3ModelPresence.isInstalled() ? .installed : .missing
-            }
+            return self.cardStatus(for: FluidAudioQwen3ModelPresence.self)
         }
         return FluidAudioQwen3ModelPresence.isInstalled() ? .installed : .missing
+    }
+
+    private func cardStatus<P: FluidAudioPresence>(for presence: P.Type) -> VoiceModelCard.Status {
+        switch self.pipeline.sttStatus {
+        case .ready: return .installed
+        case .downloading:
+            return .downloading(
+                bytesDownloaded: P.observedBytes(),
+                bytesTotal: P.approximateTotalBytes,
+                percent: P.observedPercent()
+            )
+        case .failed(let msg): return .failed(msg)
+        case .notLoaded:
+            return P.isInstalled() ? .installed : .missing
+        }
     }
 
     /// Start (or stop) the 500ms tick that drives the FluidAudio
