@@ -2,7 +2,6 @@
 import FluidAudio
 import Foundation
 import Observation
-import Opus
 import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "VoicePipeline")
@@ -142,7 +141,7 @@ public final class VoicePipeline {
     // can drive scheduling + truncation. ScheduledTtsChunk + the methods
     // (handleAudioFrame, truncatePlayback, ensureDecoder, playedFramesThisTurn,
     // currentPlayerSampleTime) all live there.
-    var decoder: Opus.Decoder?
+    var decoder: OpusDecoder?
     var scheduledChunks: [ScheduledTtsChunk] = []
     var nextScheduleFrame: AVAudioFramePosition = 0
     /// Captured at the start of every `.speaking` transition. Subtracted
@@ -187,13 +186,13 @@ public final class VoicePipeline {
 
     private init() {
         self.audioEngine.attach(self.playerNode)
-        // Connect the player chain once with Kokoro's native format. This
-        // routes TTS through the engine's mainMixer → outputNode so VPIO on
-        // the output node has a reference signal for AEC.
+        // Kokoro native format → mainMixer → outputNode; VPIO needs the
+        // reference signal at the output node for AEC.
         if let format = AVAudioFormat(
-            opusPCMFormat: .int16,
+            commonFormat: .pcmFormatInt16,
             sampleRate: self.playbackSampleRate,
-            channels: 1
+            channels: 1,
+            interleaved: false
         ) {
             self.audioEngine.connect(
                 self.playerNode,
@@ -505,9 +504,10 @@ public final class VoicePipeline {
             throw VoiceError.runtime("input sample rate is 0 — no mic device?")
         }
         guard let int16Format = AVAudioFormat(
-            opusPCMFormat: .int16,
+            commonFormat: .pcmFormatInt16,
             sampleRate: self.captureSampleRate,
-            channels: 1
+            channels: 1,
+            interleaved: false
         ) else {
             throw VoiceError.runtime("could not create Int16 target format")
         }

@@ -1,6 +1,5 @@
 @preconcurrency import AVFoundation
 import Foundation
-import Opus
 import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "TtsPlayback")
@@ -25,12 +24,13 @@ extension VoicePipeline {
     func ensureDecoder() {
         if self.decoder != nil { return }
         guard let format = AVAudioFormat(
-            opusPCMFormat: .int16,
+            commonFormat: .pcmFormatInt16,
             sampleRate: self.playbackSampleRate,
-            channels: 1
+            channels: 1,
+            interleaved: false
         ) else { return }
         do {
-            self.decoder = try Opus.Decoder(format: format)
+            self.decoder = try OpusDecoder(outputFormat: format)
         } catch {
             self.lastError = "decoder init: \(error.localizedDescription)"
             logger.error("decoder init: \(error.localizedDescription)")
@@ -48,9 +48,10 @@ extension VoicePipeline {
         self.ensureDecoder()
         guard let decoder = self.decoder else { return }
         guard let format = AVAudioFormat(
-            opusPCMFormat: .int16,
+            commonFormat: .pcmFormatInt16,
             sampleRate: self.playbackSampleRate,
-            channels: 1
+            channels: 1,
+            interleaved: false
         ),
         // 60ms @ 24kHz upper bound for Opus frame size.
         let outBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_440) else {

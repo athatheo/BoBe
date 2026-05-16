@@ -1,5 +1,5 @@
 {
-  "originHash" : "9dffa286e159b4e3f84d1cc9542f0a5d6a69c4820f607b25ab874d0e81623e7d",
+  "originHash" : "06f3f373e1f97014f78107b4e954ef2c23cdf7e5f0f75eaa7cf785ea32713f2e",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -26,14 +26,6 @@
       "state" : {
         "revision" : "5a3825302b1a0d744183200915a47b508c828e6f",
         "version" : "1.3.2"
-      }
-    },
-    {
-      "identity" : "swift-opus",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/alta/swift-opus",
-      "state" : {
-        "revision" : "6f3cb6bd3ffed1fe5f06d00a962d5c191a50daf8"
       }
     },
     {
