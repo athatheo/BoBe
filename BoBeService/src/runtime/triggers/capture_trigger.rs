@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
@@ -19,6 +20,19 @@ use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::{indicator_event, trigger_error_event};
 use crate::util::sse::types::IndicatorType;
 
+/// RAII release of the shared in-flight flag. Mirrors `UserMessageGuard`
+/// in `runtime/session.rs` but lives here so the capture trigger doesn't
+/// import RuntimeSession (circular: RuntimeSession owns CaptureTrigger).
+struct InFlightGuard {
+    flag: Arc<AtomicBool>,
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::Release);
+    }
+}
+
 pub(crate) struct CaptureTrigger {
     screen_capture: Arc<ScreenCapture>,
     capture_learner: Arc<CaptureLearner>,
@@ -27,6 +41,13 @@ pub(crate) struct CaptureTrigger {
     cooldown_repo: Arc<dyn CooldownRepository>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
+    /// Same Arc as `RuntimeSession.user_message_in_flight`. CAS true at
+    /// the top of `fire()` to serialize with text + voice turns; skip the
+    /// cycle if another turn is already running. Without this gate the
+    /// capture trigger's indicator pushes (`ScreenCapture` → `Thinking`
+    /// → `Idle`) overwrote whatever indicator a concurrent voice or
+    /// text turn had set, leaving the Swift store out of sync.
+    user_message_in_flight: Arc<AtomicBool>,
     enabled: bool,
     context_count: usize,
     vision_failure_count: u32,
@@ -44,6 +65,7 @@ impl CaptureTrigger {
         cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
+        user_message_in_flight: Arc<AtomicBool>,
     ) -> Self {
         Self {
             screen_capture,
@@ -53,12 +75,28 @@ impl CaptureTrigger {
             cooldown_repo,
             event_queue,
             config,
+            user_message_in_flight,
             enabled: false,
             context_count: 0,
             vision_failure_count: 0,
             vision_breaker_tripped_at: None,
             vision_pause_announced: false,
         }
+    }
+
+    /// CAS the shared in-flight flag; returns a guard that releases on drop.
+    /// `None` means another turn is already running — caller should skip.
+    fn try_acquire_in_flight(&self) -> Option<InFlightGuard> {
+        if self
+            .user_message_in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return None;
+        }
+        Some(InFlightGuard {
+            flag: Arc::clone(&self.user_message_in_flight),
+        })
     }
 
     fn vision_breaker_open(&mut self) -> bool {
@@ -87,6 +125,14 @@ impl CaptureTrigger {
     }
 
     pub(crate) async fn fire(&mut self) -> Decision {
+        // Single-flight gate: skip if a text- or voice-turn is in flight
+        // so concurrent indicators don't race. RAII guard releases on
+        // every return path including panic-unwind.
+        let Some(_in_flight_guard) = self.try_acquire_in_flight() else {
+            debug!("capture_trigger.skipped_user_message_in_flight");
+            return Decision::Idle;
+        };
+
         let Some(description) = self.run_capture_cycle().await else {
             return Decision::Idle;
         };

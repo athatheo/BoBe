@@ -91,6 +91,12 @@ pub(crate) async fn wire(
 
     let screen_capture = Arc::new(ScreenCapture::new());
 
+    // Pre-create the single-flight gate so both CaptureTrigger and
+    // RuntimeSession use the SAME Arc. The capture trigger CAS-acquires
+    // this at the top of fire() so its indicator pushes can't race with a
+    // concurrent text- or voice-turn's IndicatorGuard.
+    let user_message_in_flight = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
     let capture_trigger = CaptureTrigger::new(
         Arc::clone(&screen_capture),
         capture_learner,
@@ -99,6 +105,7 @@ pub(crate) async fn wire(
         Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
+        Arc::clone(&user_message_in_flight),
     );
 
     let checkin_trigger = CheckinTrigger::new(
@@ -137,6 +144,7 @@ pub(crate) async fn wire(
         Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
+        user_message_in_flight,
     ));
 
     let config_manager = Arc::new(ConfigManager::new(Arc::clone(config_arc)));

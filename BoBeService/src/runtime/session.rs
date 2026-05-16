@@ -49,6 +49,7 @@ impl RuntimeSession {
         cooldown_repo: Arc<dyn CooldownRepository>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
+        user_message_in_flight: Arc<AtomicBool>,
     ) -> Self {
         Self {
             checkin_trigger: Mutex::new(checkin_trigger),
@@ -61,7 +62,7 @@ impl RuntimeSession {
             config,
             running: std::sync::atomic::AtomicBool::new(false),
             capture_enabled: std::sync::atomic::AtomicBool::new(false),
-            user_message_in_flight: Arc::new(AtomicBool::new(false)),
+            user_message_in_flight,
         }
     }
 
