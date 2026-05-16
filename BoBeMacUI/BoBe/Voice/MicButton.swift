@@ -159,8 +159,7 @@ struct MicButton: View {
         switch self.pipeline.permission {
         case .authorized:
             Task {
-                guard let url = URL(string: DaemonConfig.baseURL)
-                    ?? URL(string: "http://127.0.0.1:8766") else { return }
+                guard let url = URL(string: DaemonConfig.baseURL) else { return }
                 await self.pipeline.toggle(daemonBaseURL: url)
             }
         case .notDetermined:

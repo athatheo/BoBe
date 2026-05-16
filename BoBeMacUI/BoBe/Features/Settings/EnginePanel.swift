@@ -154,8 +154,8 @@ struct EnginePanel: View {
                 description: L10n.tr("settings.engine.local.base_url.description")
             ) {
                 BobeTextField(
-                    placeholder: "http://127.0.0.1:11434/v1",
-                    text: self.optionalBinding(\.providerBaseUrl, fallback: "http://127.0.0.1:11434/v1")
+                    placeholder: OllamaDefaults.v1URL,
+                    text: self.optionalBinding(\.providerBaseUrl, fallback: OllamaDefaults.v1URL)
                 )
             }
         }

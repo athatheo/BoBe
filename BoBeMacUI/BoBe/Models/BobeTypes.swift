@@ -133,8 +133,21 @@ func deriveStateType(from context: BobeContext) -> BobeStateType {
 
 enum DaemonConfig {
     static let host = "127.0.0.1"
+    /// Must match Rust `constants::DEFAULT_DAEMON_PORT`. If you change one,
+    /// change the other — a CI assertion will eventually catch this drift.
     static let port = 8766
     static let baseURL = "http://\(host):\(port)"
+}
+
+/// Defaults shared with the Rust daemon's `constants` module. Living in
+/// `App/Constants.swift` would be cleaner long-term; today they share
+/// `BobeTypes.swift` so consumers don't need a new import.
+enum OllamaDefaults {
+    /// Native Ollama API root (no `/v1`). For `/api/tags`, `/api/pull`.
+    static let baseURL = "http://127.0.0.1:11434"
+    /// OpenAI-compat root (with `/v1`). For chat completions when
+    /// `engine == "local"`.
+    static let v1URL = "http://127.0.0.1:11434/v1"
 }
 
 enum WindowSizes {

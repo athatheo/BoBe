@@ -18,7 +18,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),
-            port: 8766,
+            port: crate::constants::DEFAULT_DAEMON_PORT,
             mdns_enabled: false,
             cors_origins: vec!["http://localhost:5175".into()],
         }

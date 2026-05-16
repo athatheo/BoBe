@@ -130,7 +130,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         ));
         // Strip `/v1` OpenAI-compat suffix to get the native Ollama API root.
         let base_url = config.engine.provider_base_url.as_deref().map_or_else(
-            || "http://127.0.0.1:11434".to_string(),
+            || crate::constants::DEFAULT_OLLAMA_BASE_URL.to_string(),
             crate::ollama_manager::OllamaManager::root_from_provider_url,
         );
         let manager = Arc::new(crate::ollama_manager::OllamaManager::new(

@@ -33,7 +33,7 @@ enum Commands {
     Serve {
         #[arg(short = 'H', long, default_value = "127.0.0.1")]
         host: String,
-        #[arg(short, long, default_value_t = 8766)]
+        #[arg(short, long, default_value_t = constants::DEFAULT_DAEMON_PORT)]
         port: u16,
         #[arg(short, long, default_value = "INFO")]
         log_level: String,

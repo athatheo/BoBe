@@ -60,7 +60,7 @@ struct DoneStepView: View {
         case .local:
             request = SettingsUpdateRequest(
                 engine: "local",
-                providerBaseUrl: "http://127.0.0.1:11434/v1",
+                providerBaseUrl: OllamaDefaults.v1URL,
                 providerChatModel: "qwen2.5:7b-instruct",
                 providerBatchModel: "qwen2.5:7b-instruct",
                 providerVisionModel: "qwen2.5vl:7b",

@@ -18,8 +18,11 @@ actor DaemonClient {
         if let url = URL(string: DaemonConfig.baseURL) {
             return url
         }
+        // Fallback only fires if `DaemonConfig.baseURL` ever stops parsing.
+        // Both URL strings come from the same `DaemonConfig.{host,port}` so
+        // this is unreachable today; left as defense in depth.
         logger.error("Invalid daemon base URL, falling back to localhost")
-        return URL(string: "http://127.0.0.1:8766") ?? URL(fileURLWithPath: "/")
+        return URL(string: DaemonConfig.baseURL) ?? URL(fileURLWithPath: "/")
     }()
 
     let session: URLSession

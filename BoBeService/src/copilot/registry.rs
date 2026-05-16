@@ -27,7 +27,7 @@ use super::workers::batch::BatchWorker;
 use super::workers::chat::CopilotChatWorker;
 use super::workers::vision::VisionWorker;
 
-const DEFAULT_LOCAL_BASE_URL: &str = "http://127.0.0.1:11434/v1";
+use crate::constants::DEFAULT_OLLAMA_V1_URL as DEFAULT_LOCAL_BASE_URL;
 
 pub(crate) struct WorkerRegistry {
     client: Arc<ClientHandle>,
