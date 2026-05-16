@@ -115,6 +115,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             try? await Task.sleep(for: .milliseconds(600))
 
+            // Stop power observers BEFORE BackendService.stop(): a
+            // willSleep notification during the SIGTERM window would call
+            // VoicePipeline.disconnect() on a half-torn-down store.
+            await MainActor.run { SystemPowerObserver.shared.stop() }
+
             self.store.disconnect()
             await BackendService.shared.stop()
 
