@@ -55,6 +55,12 @@ pub(super) const ARTIFACTS: &[ModelArtifact] = &[ModelArtifact {
 pub(crate) struct VoiceInstallSnapshot {
     pub(crate) models: Vec<ModelProgress>,
     pub(crate) status: InstallStatus,
+    /// Populated when `status == Failed`. Split out from the enum so the
+    /// wire format is `{"status": "failed", "error": "..."}` instead of
+    /// `{"status": {"failed": "..."}}` — Swift `VoiceInstallSnapshot`
+    /// decodes `status: String` and would throw on the latter shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -92,7 +98,7 @@ impl ModelProgress {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum InstallStatus {
     #[default]
@@ -100,5 +106,5 @@ pub(crate) enum InstallStatus {
     Running,
     Complete,
     Canceled,
-    Failed(String),
+    Failed,
 }

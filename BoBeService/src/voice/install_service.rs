@@ -60,6 +60,7 @@ impl VoiceInstallService {
         let initial = VoiceInstallSnapshot {
             models: VoiceModelKind::all().map(ModelProgress::pending).collect(),
             status: InstallStatus::Idle,
+            error: None,
         };
         let (snapshot_tx, snapshot_rx) = watch::channel(initial);
         Arc::new(Self {
@@ -126,18 +127,19 @@ impl VoiceInstallService {
             .send(VoiceInstallSnapshot {
                 models: VoiceModelKind::all().map(ModelProgress::pending).collect(),
                 status: InstallStatus::Running,
+                error: None,
             })
             .ok();
         let svc = Arc::clone(self);
         let on_complete = Arc::clone(&self.on_complete);
         state.in_flight = Some(tokio::spawn(async move {
             let result = svc.run(snapshot_tx.clone(), cancel_rx).await;
-            let final_status = match result {
-                Ok(()) => InstallStatus::Complete,
-                Err(AppError::Canceled(_)) => InstallStatus::Canceled,
+            let (final_status, final_error) = match result {
+                Ok(()) => (InstallStatus::Complete, None),
+                Err(AppError::Canceled(_)) => (InstallStatus::Canceled, None),
                 Err(e) => {
                     warn!(err = %e, "voice_install.failed");
-                    InstallStatus::Failed(e.to_string())
+                    (InstallStatus::Failed, Some(e.to_string()))
                 }
             };
             // Hot-swap engines BEFORE flipping the snapshot status to
@@ -151,6 +153,7 @@ impl VoiceInstallService {
             snapshot_tx
                 .send(VoiceInstallSnapshot {
                     status: final_status,
+                    error: final_error,
                     ..snap
                 })
                 .ok();

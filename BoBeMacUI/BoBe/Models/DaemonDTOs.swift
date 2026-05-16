@@ -133,6 +133,7 @@ struct LocalRuntimePull: Codable, Sendable {
 
 struct VoiceInstallSnapshot: Codable, Sendable {
     let status: String
+    let error: String?
     let models: [VoiceModelProgress]
     let installed: VoiceInstallPresence
 
