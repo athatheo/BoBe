@@ -23,6 +23,11 @@ pub(crate) enum ControlAction {
 /// Daemon-side authoritative turn phase. Client mirrors for UI only.
 /// Client-driven states (`Connecting`, `Cancelling`, `Failed`) live in the
 /// Swift `VoicePipeline.State` enum and never cross the wire.
+///
+/// **Wire contract:** match `BoBeMacUI/BoBe/Voice/VoiceProtocol.swift::
+/// VoicePhaseWire` variant set. Adding a variant here without the Swift
+/// counterpart makes decode fail on the client; the converse silently
+/// drops unknown phases.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum VoicePhase {
@@ -32,6 +37,11 @@ pub(crate) enum VoicePhase {
     Speaking,
 }
 
+/// **Wire contract:** `type` tag values (`hello`, `barge_in`, `wake`,
+/// `playback_ack`, `control`, `transcript_partial`, `transcript_final`)
+/// must match `BoBeMacUI/BoBe/Voice/VoiceProtocol.swift::ClientVoiceMessage`
+/// encoder/decoder. Field names inside each variant mirror the Swift
+/// `CodingKeys` switch — if you add/rename one, update both files.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(
@@ -75,6 +85,10 @@ pub(crate) enum ClientMessage {
     TranscriptFinal { turn_id: String, text: String },
 }
 
+/// **Wire contract:** `type` tag values (`hello_ack`, `state`, `tts_end`,
+/// `truncate`, `transcript_final`, `error`) must match
+/// `BoBeMacUI/BoBe/Voice/VoiceProtocol.swift::ServerVoiceMessage` decoder.
+/// Note Binary TTS frames bypass this enum — see `encode_tts_frame` below.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ServerMessage {

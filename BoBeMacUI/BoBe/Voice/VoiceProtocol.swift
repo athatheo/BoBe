@@ -15,6 +15,10 @@ enum VoiceControlAction: String, Codable {
 /// Subset of `VoicePipeline.State` that's authoritative from the daemon.
 /// The client-only states (`.connecting`, `.cancelling`, `.failed`,
 /// `.capturing`) are driven from local audio/WS events, not the wire.
+///
+/// **Wire contract:** match `BoBeService/src/speech/protocol.rs::VoicePhase`
+/// variant set. Adding a daemon-side variant without the Swift counterpart
+/// makes this decode throw — clients drop the whole state message.
 enum VoicePhaseWire: String, Codable {
     case idle
     case listening
@@ -22,6 +26,11 @@ enum VoicePhaseWire: String, Codable {
     case speaking
 }
 
+/// **Wire contract:** the `type` discriminator values encoded by this
+/// enum must match `BoBeService/src/speech/protocol.rs::ClientMessage`
+/// serde variant snake_case form, AND each variant's `CodingKeys` must
+/// align with the Rust struct field set. Drift here makes the daemon
+/// reject the JSON at deserialization.
 enum ClientVoiceMessage: Codable {
     case hello(
         sessionId: String,
@@ -104,6 +113,10 @@ enum ClientVoiceMessage: Codable {
     }
 }
 
+/// **Wire contract:** mirrors `BoBeService/src/speech/protocol.rs::
+/// ServerMessage`. Each `case` corresponds to a Rust variant with the
+/// `type` tag in snake_case. Binary TTS frames (9-byte header + Opus
+/// payload) do NOT come through this enum — see `TtsFrameHeader` below.
 enum ServerVoiceMessage: Decodable {
     case helloAck(voicePack: String, playbackRate: UInt32)
     case state(phase: VoicePhaseWire, turnId: String)
