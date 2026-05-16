@@ -11,7 +11,7 @@ use crate::copilot::registry::WorkerRegistry;
 use crate::runtime::session::RuntimeSession;
 use crate::secrets::SecretStore;
 use crate::services::goals::goals_service::GoalsService;
-use crate::services::ollama_install_service::OllamaInstallService;
+use crate::services::ollama::install_service::OllamaInstallService;
 use crate::services::souls_service::SoulsService;
 use crate::services::user_profile_service::UserProfileService;
 use crate::util::network::MdnsAnnouncer;

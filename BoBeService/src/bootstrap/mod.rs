@@ -132,20 +132,20 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
                 .build()
                 .map_err(|e| AppError::Internal(format!("reqwest client build: {e}")))?,
         );
-        let binary = Arc::new(crate::binary_manager::BinaryManager::new(
+        let binary = Arc::new(crate::services::ollama::binary_manager::BinaryManager::new(
             &data_dir,
             Arc::clone(&http),
         ));
         // Strip `/v1` OpenAI-compat suffix to get the native Ollama API root.
         let base_url = config.engine.provider_base_url.as_deref().map_or_else(
             || crate::constants::DEFAULT_OLLAMA_BASE_URL.to_string(),
-            crate::ollama_manager::OllamaManager::root_from_provider_url,
+            crate::services::ollama::manager::OllamaManager::root_from_provider_url,
         );
-        let manager = Arc::new(crate::ollama_manager::OllamaManager::new(
+        let manager = Arc::new(crate::services::ollama::manager::OllamaManager::new(
             Arc::clone(&http),
             &base_url,
         ));
-        crate::services::ollama_install_service::OllamaInstallService::new(binary, manager)
+        crate::services::ollama::install_service::OllamaInstallService::new(binary, manager)
     };
 
     let voice_install = {

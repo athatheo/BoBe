@@ -1,7 +1,7 @@
 //! No SHA pin — Ollama's `latest` release lacks stable SHA256SUMS; trust = GitHub HTTPS.
 
-mod download;
-mod extract;
+use super::binary_download as download;
+use super::binary_extract as extract;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;

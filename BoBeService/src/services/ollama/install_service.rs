@@ -7,9 +7,9 @@ use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
-use crate::binary_manager::{BinaryManager, DownloadProgress};
 use crate::error::AppError;
-use crate::ollama_manager::{OllamaManager, PullProgress};
+use crate::services::ollama::binary_manager::{BinaryManager, DownloadProgress};
+use crate::services::ollama::manager::{OllamaManager, PullProgress};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallStage {

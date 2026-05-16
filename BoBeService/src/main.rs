@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand};
 
 mod api;
 mod app_state;
-mod binary_manager;
 mod bootstrap;
 mod config;
 mod constants;
@@ -11,7 +10,6 @@ mod db;
 mod error;
 mod mcp;
 mod models;
-mod ollama_manager;
 mod runtime;
 #[allow(unsafe_code)]
 mod secrets;

@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::WatchStream;
 
 use crate::app_state::AppState;
-use crate::binary_manager::DownloadProgress;
 use crate::error::AppError;
-use crate::ollama_manager::PullProgress;
-use crate::services::ollama_install_service::{InstallRequest, InstallSnapshot, InstallStatus};
+use crate::services::ollama::binary_manager::DownloadProgress;
+use crate::services::ollama::install_service::{InstallRequest, InstallSnapshot, InstallStatus};
+use crate::services::ollama::manager::PullProgress;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct InstallRequestBody {
