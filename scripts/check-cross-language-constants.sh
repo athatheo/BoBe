@@ -100,6 +100,26 @@ rust_pause_patient=$(grep -E 'PATIENT: u32 =' "$RUST" | sed -E 's/.*= ([0-9]+);.
 swift_pause_patient=$(grep -E 'static let patient: Int = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
 expect_match "pause_sensitivity_ms::PATIENT" "$rust_pause_patient" "$swift_pause_patient"
 
+# Kokoro voice slot table (53 entries, 0..=52). The Rust `voice_id`
+# function is authoritative — daemon rejects unknown ids; the Swift
+# allSlots array drives the settings picker. Adding a voice to one side
+# without the other gives the user a phantom option or hides a working
+# one. We extract every quoted `xx_name` identifier from both files and
+# diff them — same set, same count.
+RUST_KOKORO="$ROOT/BoBeService/src/speech/providers/sherpa/kokoro_tts.rs"
+SWIFT_KOKORO="$ROOT/BoBeMacUI/BoBe/Voice/VoiceSettingsEnums.swift"
+
+rust_voices=$(grep -oE '"[a-z][a-z]_[a-z0-9]+"' "$RUST_KOKORO" | sort -u)
+swift_voices=$(grep -oE '"[a-z][a-z]_[a-z0-9]+"' "$SWIFT_KOKORO" | sort -u)
+rust_voice_count=$(echo "$rust_voices" | wc -l | tr -d ' ')
+swift_voice_count=$(echo "$swift_voices" | wc -l | tr -d ' ')
+expect_match "Kokoro voice slot count" "$rust_voice_count" "$swift_voice_count"
+if [[ "$rust_voices" != "$swift_voices" ]]; then
+    echo "drift: Kokoro voice set differs between Rust and Swift" >&2
+    diff <(echo "$rust_voices") <(echo "$swift_voices") >&2 || true
+    fail=1
+fi
+
 # TTS binary frame header: 8B BE u64 chunk_id + 1B flags + N opus.
 # Rust speech/protocol.rs defines the three; Swift Voice/VoiceProtocol.swift
 # mirrors them. If either side adds a header byte or shifts a flag bit
