@@ -6,10 +6,10 @@ use tracing::{debug, info};
 
 use crate::config::Config;
 use crate::db::CooldownRepository;
+use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::Decision;
 use crate::runtime::triggers::checkin_scheduler::CheckinScheduler;
-use crate::services::conversation_service::ConversationService;
 
 pub(crate) struct CheckinTrigger {
     scheduler: CheckinScheduler,

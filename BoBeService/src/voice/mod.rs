@@ -20,4 +20,5 @@ pub(crate) mod sentence_pipeline;
 pub(crate) mod session;
 pub(crate) mod sinks;
 pub(crate) mod telemetry;
+pub(crate) mod text_prep;
 pub(crate) mod turn_flow;

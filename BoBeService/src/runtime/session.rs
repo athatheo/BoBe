@@ -8,10 +8,10 @@ use tracing::{error, info, warn};
 
 use crate::config::Config;
 use crate::db::CooldownRepository;
+use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::state::Decision;
 use crate::runtime::triggers::{CaptureTrigger, CheckinTrigger, GoalTrigger};
-use crate::services::conversation_service::ConversationService;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
 

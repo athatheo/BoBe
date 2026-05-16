@@ -14,8 +14,8 @@
 use tokio::sync::mpsc;
 use tracing::warn;
 
-use crate::speech::markdown_strip::MarkdownStripper;
-use crate::speech::sentence_buffer::SentenceBuffer;
+use crate::voice::text_prep::markdown_strip::MarkdownStripper;
+use crate::voice::text_prep::sentence_buffer::SentenceBuffer;
 
 pub(crate) struct SentencePipeline {
     md: MarkdownStripper,

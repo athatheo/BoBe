@@ -7,6 +7,7 @@ use crate::db::SoulRepository;
 use crate::error::AppError;
 use crate::models::ids::SoulId;
 use crate::models::soul::Soul;
+use crate::services::DeleteOutcome;
 
 const MIN_CONTENT_LEN: usize = 10;
 
@@ -164,9 +165,4 @@ impl SoulsService {
             Ok(DeleteOutcome::NotFound)
         }
     }
-}
-
-pub(crate) enum DeleteOutcome {
-    Deleted,
-    NotFound,
 }

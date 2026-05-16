@@ -6,8 +6,7 @@ use crate::db::UserProfileRepository;
 use crate::error::AppError;
 use crate::models::ids::UserProfileId;
 use crate::models::user_profile::UserProfile;
-
-use super::super::souls::souls_service::DeleteOutcome;
+use crate::services::DeleteOutcome;
 
 const MIN_CONTENT_LEN: usize = 10;
 

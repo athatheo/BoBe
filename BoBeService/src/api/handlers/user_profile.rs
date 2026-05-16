@@ -4,7 +4,7 @@ use crate::app_state::AppState;
 use crate::error::AppError;
 use crate::models::ids::UserProfileId;
 use crate::models::user_profile::UserProfile;
-use crate::services::souls::souls_service::DeleteOutcome;
+use crate::services::DeleteOutcome;
 use crate::services::user_profile::user_profile_service::UserProfileService;
 use axum::Json;
 use axum::extract::{Path, Query, State};

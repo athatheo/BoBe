@@ -1,3 +1,4 @@
+pub(crate) mod conversation_service;
 pub(crate) mod decision_engine;
 pub(crate) mod message_handler;
 pub(crate) mod proactive_generator;
