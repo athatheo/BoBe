@@ -65,38 +65,31 @@ impl CheckinScheduler {
         }
 
         let now = Utc::now();
+        self.refresh_schedules(now);
 
-        if !self.times.is_empty() {
-            if self.next_checkin.is_none() {
-                self.schedule_next_checkin(now);
-            }
-            if let Some(next) = self.next_checkin
-                && now >= next
-                && self.last_checkin.is_none_or(|last| last < next)
-            {
-                info!(
-                    trigger_type = "scheduled_time",
-                    scheduled = %next,
-                    "checkin_scheduler.triggered"
-                );
-                return true;
-            }
+        if !self.times.is_empty()
+            && let Some(next) = self.next_checkin
+            && now >= next
+            && self.last_checkin.is_none_or(|last| last < next)
+        {
+            info!(
+                trigger_type = "scheduled_time",
+                scheduled = %next,
+                "checkin_scheduler.triggered"
+            );
+            return true;
         }
 
-        if let Some(_interval) = self.interval_minutes {
-            if self.next_interval_checkin.is_none() {
-                self.schedule_next_interval(now);
-            }
-            if let Some(next) = self.next_interval_checkin
-                && now >= next
-            {
-                info!(
-                    trigger_type = "interval",
-                    scheduled = %next,
-                    "checkin_scheduler.triggered"
-                );
-                return true;
-            }
+        if self.interval_minutes.is_some()
+            && let Some(next) = self.next_interval_checkin
+            && now >= next
+        {
+            info!(
+                trigger_type = "interval",
+                scheduled = %next,
+                "checkin_scheduler.triggered"
+            );
+            return true;
         }
 
         false
@@ -129,27 +122,23 @@ impl CheckinScheduler {
         }
 
         let now = Utc::now();
-        let mut candidates = Vec::new();
+        self.refresh_schedules(now);
 
-        if !self.times.is_empty() {
-            if self.next_checkin.is_none() {
-                self.schedule_next_checkin(now);
-            }
-            if let Some(next) = self.next_checkin {
-                candidates.push(next);
-            }
+        [self.next_checkin, self.next_interval_checkin]
+            .into_iter()
+            .flatten()
+            .min()
+    }
+
+    /// Lazy-init both scheduling slots. Idempotent — only schedules a slot
+    /// that's currently `None`; cleared slots are recomputed against `now`.
+    fn refresh_schedules(&mut self, now: DateTime<Utc>) {
+        if !self.times.is_empty() && self.next_checkin.is_none() {
+            self.schedule_next_checkin(now);
         }
-
-        if self.interval_minutes.is_some() {
-            if self.next_interval_checkin.is_none() {
-                self.schedule_next_interval(now);
-            }
-            if let Some(next) = self.next_interval_checkin {
-                candidates.push(next);
-            }
+        if self.interval_minutes.is_some() && self.next_interval_checkin.is_none() {
+            self.schedule_next_interval(now);
         }
-
-        candidates.into_iter().min()
     }
 
     fn schedule_next_checkin(&mut self, after: DateTime<Utc>) {
