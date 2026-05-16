@@ -1,5 +1,34 @@
 import SwiftUI
 
+/// Geometry constants for the avatar card stack. Tightly coupled — the
+/// inner-face radial gradient stops at `faceSize / 2`, the message badge
+/// outer ring is twice the badge dot's diameter, etc. Adjust together.
+private enum AvatarMetrics {
+    /// Body of the avatar card (inner circle).
+    static let cardSize: CGFloat = 116
+    /// Outer frame of the avatar card including breathing room.
+    static let cardFrameWidth: CGFloat = 116
+    static let cardFrameHeight: CGFloat = 132
+    /// Full column including the BoBe label below.
+    static let columnWidth: CGFloat = 132
+    static let columnHeight: CGFloat = 146
+    /// Inner face circle (eyes + gradient).
+    static let faceSize: CGFloat = 76
+    /// Radial highlight gradient extent — half the face size.
+    static let faceHighlightRadius: CGFloat = 38
+    /// `ConnectionDot` offset from card center (top-right corner).
+    static let connectionDotOffset: CGFloat = 30
+    /// `MessageBadge` offset from card center (top-right corner, slightly
+    /// further out than the connection dot so the two don't overlap).
+    static let messageBadgeOffset: CGFloat = 34
+    /// Connection-dot inner fill diameter and outer-ring frame.
+    static let connectionDotInner: CGFloat = 10
+    static let connectionDotOuter: CGFloat = 14
+    /// Message-badge inner fill diameter and outer-ring frame.
+    static let messageBadgeInner: CGFloat = 16
+    static let messageBadgeOuter: CGFloat = 20
+}
+
 struct AvatarView: View {
     let stateType: BobeStateType
     let isCapturing: Bool
@@ -27,20 +56,20 @@ struct AvatarView: View {
                     }
 
                 ConnectionDot(isConnected: isConnected)
-                    .offset(x: 30, y: 30)
+                    .offset(x: AvatarMetrics.connectionDotOffset, y: AvatarMetrics.connectionDotOffset)
 
                 if hasMessage && !showInput {
                     MessageBadge()
-                        .offset(x: 34, y: -34)
+                        .offset(x: AvatarMetrics.messageBadgeOffset, y: -AvatarMetrics.messageBadgeOffset)
                 }
             }
             .padding(.top, 16)
-            .frame(width: 116, height: 132)
+            .frame(width: AvatarMetrics.cardFrameWidth, height: AvatarMetrics.cardFrameHeight)
 
             BobeLabel()
                 .padding(.top, -2)
         }
-        .frame(width: 132, height: 146)
+        .frame(width: AvatarMetrics.columnWidth, height: AvatarMetrics.columnHeight)
         .task(id: shouldBreathe) {
             breathingExpanded = false
             guard shouldBreathe else { return }
@@ -74,7 +103,7 @@ struct AvatarView: View {
         let base = ZStack {
             Circle()
                 .fill(theme.colors.background)
-                .frame(width: 116, height: 116)
+                .frame(width: AvatarMetrics.cardSize, height: AvatarMetrics.cardSize)
                 .overlay(
                     Circle().stroke(theme.colors.border, lineWidth: 2)
                 )
@@ -117,7 +146,7 @@ struct AvatarView: View {
                         endPoint: .init(x: 0.85, y: 1.0)
                     )
                 )
-                .frame(width: 76, height: 76)
+                .frame(width: AvatarMetrics.faceSize, height: AvatarMetrics.faceSize)
                 .overlay(
                     Circle().stroke(theme.colors.avatarRing, lineWidth: 2)
                 )
@@ -129,10 +158,10 @@ struct AvatarView: View {
                                 colors: [.white.opacity(0.25), .clear],
                                 center: .init(x: 0.35, y: 0.25),
                                 startRadius: 0,
-                                endRadius: 38
+                                endRadius: AvatarMetrics.faceHighlightRadius
                             )
                         )
-                        .frame(width: 76, height: 76)
+                        .frame(width: AvatarMetrics.faceSize, height: AvatarMetrics.faceSize)
                 )
 
             EyesIndicator(state: stateType, chatOpen: showInput)
@@ -170,11 +199,11 @@ struct ConnectionDot: View {
     var body: some View {
         Circle()
             .fill(isConnected ? theme.colors.secondary : theme.colors.primary)
-            .frame(width: 10, height: 10)
+            .frame(width: AvatarMetrics.connectionDotInner, height: AvatarMetrics.connectionDotInner)
             .overlay(
                 Circle().stroke(theme.colors.background, lineWidth: 2)
             )
-            .frame(width: 14, height: 14)
+            .frame(width: AvatarMetrics.connectionDotOuter, height: AvatarMetrics.connectionDotOuter)
             .accessibilityLabel(
                 isConnected
                     ? L10n.tr("overlay.connection.connected")
@@ -192,11 +221,11 @@ struct MessageBadge: View {
     var body: some View {
         Circle()
             .fill(theme.colors.primary)
-            .frame(width: 16, height: 16)
+            .frame(width: AvatarMetrics.messageBadgeInner, height: AvatarMetrics.messageBadgeInner)
             .overlay(
                 Circle().stroke(theme.colors.background, lineWidth: 2)
             )
-            .frame(width: 20, height: 20)
+            .frame(width: AvatarMetrics.messageBadgeOuter, height: AvatarMetrics.messageBadgeOuter)
             .scaleEffect(scale)
             .onAppear {
                 guard OverlayMotionRuntime.shouldAnimate else {
