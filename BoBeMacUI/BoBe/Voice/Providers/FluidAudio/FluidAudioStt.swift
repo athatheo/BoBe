@@ -1,6 +1,6 @@
 import AVFoundation
-import Foundation
 import FluidAudio
+import Foundation
 import OSLog
 
 /// Thin wrapper around FluidAudio's `StreamingEouAsrManager` (Parakeet EOU

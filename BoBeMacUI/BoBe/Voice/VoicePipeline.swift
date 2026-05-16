@@ -140,8 +140,6 @@ public final class VoicePipeline {
     /// actor hop on every prewarm + lets a language switch correctly
     /// re-trigger a load for the new engine.
     private var loadedLanguages: Set<String> = []
-    /// Convenience — true if the currently effective engine has been
-    /// successfully loaded at least once this app run.
     private var sttLoaded: Bool {
         self.loadedLanguages.contains(self.effectiveLanguage)
     }
@@ -149,10 +147,8 @@ public final class VoicePipeline {
     /// EOU final and cleared after sending. Each utterance gets a fresh id.
     private var pendingTurnId: String?
 
-    // Engine-selection helpers live in VoiceReadiness.swift since they're
-    // conceptually part of the readiness layer (which model presence to
-    // check, which engine to load). See `effectiveLanguage`, `activeStt`,
-    // and `activeModelIsInstalled` there.
+    // Engine-selection helpers (`effectiveLanguage`, `activeStt`,
+    // `activeModelIsInstalled`) live in VoiceReadiness.swift.
 
     // TTS playback state. Internal so the extension in `TtsPlayback.swift`
     // can drive scheduling + truncation. ScheduledTtsChunk + the methods
@@ -217,10 +213,8 @@ public final class VoicePipeline {
                 format: format
             )
         }
-        // Auto-refresh aggregated readiness whenever upstream state likely
-        // changed (wizard completed, settings/install endpoint mutated).
-        // Consumers used to do this themselves with parallel observers; the
-        // centralized refresh keeps the four underlying signals coherent.
+        // Centralized refresh so the four readiness signals don't drift
+        // after wizard or settings mutations.
         for name in [Notification.Name.bobeWelcomeCompleted, .bobeVoiceConfigChanged] {
             let token = NotificationCenter.default.addObserver(
                 forName: name,
@@ -317,9 +311,7 @@ public final class VoicePipeline {
         }
     }
 
-    /// Streaming partial from FluidAudio. Mint a turn_id on first partial of
-    /// the utterance, update the local caption, ship to daemon for
-    /// cancel-phrase + MinWords gating.
+    /// Daemon needs the partial for cancel-phrase + MinWords gating.
     private func handleSttPartial(_ text: String) {
         guard !text.isEmpty else { return }
         if self.pendingTurnId == nil {
@@ -332,9 +324,6 @@ public final class VoicePipeline {
         }
     }
 
-    /// End-of-utterance from FluidAudio. Ship the final transcript to the
-    /// daemon (which admits the turn + runs LLM/TTS), reset the engine for
-    /// the next utterance.
     private func handleSttEou(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -354,7 +343,6 @@ public final class VoicePipeline {
         Task { [weak self] in
             guard let self else { return }
             await self.sendClient(.transcriptFinal(turnId: turnId, text: trimmed))
-            // Clear the engine's buffer so the next utterance starts fresh.
             try? await engine.reset()
         }
     }
@@ -453,7 +441,6 @@ public final class VoicePipeline {
         self.isWarm = false
     }
 
-    /// Single-tap toggle: idle → connect; otherwise → disconnect.
     public func toggle(daemonBaseURL: URL) async {
         switch self.state {
         case .idle, .failed:
@@ -534,7 +521,6 @@ public final class VoicePipeline {
             converter.channelMap = [NSNumber(value: 0)]
         }
         self.converter = converter
-        // No Opus encoder in Mode B — client never sends audio over WS.
 
         // installTap's block runs on the realtime audio dispatch queue. Marked
         // @Sendable so it doesn't inherit @MainActor isolation from the
@@ -554,8 +540,6 @@ public final class VoicePipeline {
     }
 
     private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
-        // Mode B: feed audio to local FluidAudio STT, not the daemon. The
-        // daemon receives transcripts, not audio.
         guard self.task != nil,
               let converter = self.converter else { return }
         switch self.state {
@@ -565,9 +549,6 @@ public final class VoicePipeline {
             break
         }
 
-        // RMS + barge-in path still uses int16 16k mono — same converter
-        // pipeline as before for the inputLevel ring and the RMS-detected
-        // barge-in during TTS playback.
         let outFormat = converter.outputFormat
         let cap = AVAudioFrameCount(
             Double(buffer.frameLength) * outFormat.sampleRate / buffer.format.sampleRate
@@ -747,7 +728,6 @@ public final class VoicePipeline {
             // Authoritative end-of-turn — daemon will follow with state(Listening).
             self.partialTranscript = ""
         case let .truncate(_, keepMs):
-            // Barge-in path — drop queued audio beyond keepMs.
             self.truncatePlayback(keepMs: keepMs)
         case let .error(code, message):
             self.lastError = "\(code): \(message)"
@@ -817,7 +797,4 @@ public final class VoicePipeline {
             logger.error("ws send text: \(error.localizedDescription)")
         }
     }
-
-    // MARK: - Helpers
-
 }

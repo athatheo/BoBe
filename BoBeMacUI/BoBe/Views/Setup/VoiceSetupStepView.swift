@@ -222,16 +222,14 @@ struct VoiceSetupStepView: View {
         }
     }
 
-    /// Cancel-everything: stop the daemon install AND mark FluidAudio as
-    /// failed (we can't truly cancel the FluidAudio download — see TODO).
-    /// Used both for the explicit Cancel button and the STT-failed
-    /// short-circuit so the user never sees a partially-running install.
+    /// Cancel-everything: stop the daemon install AND let any in-flight
+    /// FluidAudio load finish in the background (the SDK doesn't expose a
+    /// cancel hook today; `Task.cancel()` does not interrupt the
+    /// HuggingFace download). Used both for the explicit Cancel button
+    /// and the STT-failed short-circuit so the user never sees a
+    /// partially-running install.
     private func cancelAll() async {
         try? await DaemonClient.shared.cancelVoiceInstall()
-        // TODO: also cancel FluidAudio load — requires FluidAudio
-        // cancellation support (Task.cancel() may not interrupt the
-        // HuggingFace download). For now the in-flight load continues
-        // in the background and updates `sttStatus` when it finishes.
     }
 
     private func poll() async {

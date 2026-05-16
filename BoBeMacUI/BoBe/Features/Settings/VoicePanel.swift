@@ -124,7 +124,8 @@ struct VoicePanel: View {
 
                 SettingsRow(
                     label: "Pause sensitivity",
-                    description: "How long the silence after you stop talking before BoBe decides the turn is over. Patient = wait longer; Tight = cut earlier."
+                    description: "How long the silence after you stop talking before BoBe decides the turn is over. "
+                        + "Patient = wait longer; Tight = cut earlier."
                 ) {
                     BobeMenuPicker(
                         selection: self.binding(\.voicePauseSensitivity, fallback: "balanced"),
