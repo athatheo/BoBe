@@ -19,7 +19,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::app_state::AppState;
 use crate::voice::context::VoiceContext;
@@ -153,50 +153,73 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // disconnect that happened mid-utterance leaves accumulated decoder
     // state that the next connection's commit_final would surface as
     // Bundle per-WS deps so subsystem fns don't drill 5 args each.
+    // Completion back-channel: spawned per-turn tasks signal here on exit
+    // so the recv loop clears `session.current_turn`. Capacity > 1 lets a
+    // double-Hello rehello's aborted task and the new turn both signal
+    // without blocking. See `voice/modes/transcript_in.rs::spawn_text_turn`.
+    let (turn_completion_tx, mut turn_completion_rx) = mpsc::channel::<()>(8);
+
     let ctx = VoiceContext {
         out_tx: out_tx.clone(),
         runtime_session: Arc::clone(&runtime_session),
         engines: engines.clone(),
         voice_defaults: voice_defaults.clone(),
         voice_turn_active: Arc::clone(&state.voice_turn_active),
+        turn_completion_tx,
     };
 
     loop {
-        let next = match tokio::time::timeout(KEEPALIVE_STALE_TIMEOUT, rx.next()).await {
-            Ok(Some(m)) => m,
-            Ok(None) => break, // stream ended
-            Err(_) => {
-                warn!("voice.keepalive_recv_timeout_closing");
-                break;
-            }
-        };
-        let msg = match next {
-            Ok(m) => m,
-            Err(e) => {
-                warn!(error = %e, "voice.ws_recv_error");
-                break;
-            }
-        };
-
-        match msg {
-            Message::Text(text) => {
-                if !handle_control_text(text.as_str(), &ctx, &mut session).await {
-                    break;
+        tokio::select! {
+            biased;
+            // Reap any naturally-completed turn so the next TranscriptFinal
+            // isn't dropped at the single-flight gate. `take()` may return
+            // None if abort_active_turn already cleared the slot — safe.
+            Some(()) = turn_completion_rx.recv() => {
+                if let Some(s) = session.as_mut()
+                    && let Some(turn) = s.current_turn.take() {
+                    debug!(turn_id = %turn.turn_id, "voice.turn_completed_slot_cleared");
+                    // join is already finished; await is instant.
+                    drop(turn.join.await);
                 }
             }
-            Message::Binary(_) => {
-                // Mode B: client never sends audio over the wire. Drop the
-                // frame defensively; well-behaved clients won't trigger this.
-                warn!("voice.unexpected_binary_dropped");
-            }
-            Message::Close(_) => {
-                info!("voice.close_received");
-                break;
-            }
-            Message::Pong(_) | Message::Ping(_) => {
-                // Pong arrives in response to our keepalive Pings (auto-echoed
-                // by the WS layer on the client). Pong receipt is implicit
-                // keepalive — rx.next() returning at all resets the timeout.
+            next = tokio::time::timeout(KEEPALIVE_STALE_TIMEOUT, rx.next()) => {
+                let next = match next {
+                    Ok(Some(m)) => m,
+                    Ok(None) => break, // stream ended
+                    Err(_) => {
+                        warn!("voice.keepalive_recv_timeout_closing");
+                        break;
+                    }
+                };
+                let msg = match next {
+                    Ok(m) => m,
+                    Err(e) => {
+                        warn!(error = %e, "voice.ws_recv_error");
+                        break;
+                    }
+                };
+
+                match msg {
+                    Message::Text(text) => {
+                        if !handle_control_text(text.as_str(), &ctx, &mut session).await {
+                            break;
+                        }
+                    }
+                    Message::Binary(_) => {
+                        // Mode B: client never sends audio over the wire. Drop the
+                        // frame defensively; well-behaved clients won't trigger this.
+                        warn!("voice.unexpected_binary_dropped");
+                    }
+                    Message::Close(_) => {
+                        info!("voice.close_received");
+                        break;
+                    }
+                    Message::Pong(_) | Message::Ping(_) => {
+                        // Pong arrives in response to our keepalive Pings (auto-echoed
+                        // by the WS layer on the client). Pong receipt is implicit
+                        // keepalive — rx.next() returning at all resets the timeout.
+                    }
+                }
             }
         }
     }

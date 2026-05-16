@@ -40,4 +40,11 @@ pub(crate) struct VoiceContext {
     pub(crate) voice_defaults: VoiceDefaults,
     /// Voice-turn-active flag. Set by `process_turn`, read by BobeHooks.
     pub(crate) voice_turn_active: Arc<AtomicBool>,
+    /// Spawned turn tasks signal here when they exit (natural completion
+    /// OR early-return after a `try_begin_user_message` Err). `voice.rs`'s
+    /// recv loop drains this and clears `session.current_turn`. Without
+    /// this, the slot stays `Some(finished_join)` after a turn and the next
+    /// `TranscriptFinal` is dropped at the single-flight gate — voice mode
+    /// would lock up after exactly one turn.
+    pub(crate) turn_completion_tx: mpsc::Sender<()>,
 }

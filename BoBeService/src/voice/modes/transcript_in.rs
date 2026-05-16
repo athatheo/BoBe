@@ -56,7 +56,11 @@ pub(crate) async fn dispatch_from_control(
 }
 
 /// Spawn the per-turn task. Disconnect cleanup + barge-in abort plumbing
-/// reads `current_turn` regardless of how the turn started.
+/// reads `current_turn` regardless of how the turn started. The task
+/// always signals `turn_completion_tx` on exit (natural OR early-return)
+/// so the recv loop can clear `session.current_turn`; without it the slot
+/// stays pinned to a finished `JoinHandle` and the single-flight gate
+/// drops every subsequent `TranscriptFinal`.
 fn spawn_text_turn(
     text: String,
     turn_id: String,
@@ -66,8 +70,12 @@ fn spawn_text_turn(
     let task_ctx = ctx.clone();
     let voice_cfg = s.voice_cfg.clone();
     let language = s.language.clone();
+    let completion_tx = ctx.turn_completion_tx.clone();
     tokio::spawn(async move {
         run_mode_b_turn(text, turn_id, task_ctx, voice_cfg, language).await;
+        // Failure here means recv loop dropped the receiver (WS already
+        // tore down) — slot is being dismantled anyway, ignore.
+        let _ = completion_tx.send(()).await;
     })
 }
 
