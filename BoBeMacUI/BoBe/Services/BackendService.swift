@@ -15,6 +15,21 @@ private enum ManagedProcessIdentity {
     case unverifiable
 }
 
+/// Seconds we wait between SIGTERM and SIGKILL during graceful daemon
+/// stop. Past this the daemon is considered wedged.
+private let terminateGraceSeconds: TimeInterval = 12
+/// Initial poll cadence after spawn; ramps geometrically toward the cap.
+private let healthCheckInitialDelay: TimeInterval = 0.2
+/// Multiplier applied to the poll cadence after each failure.
+private let healthCheckBackoffMultiplier: Double = 1.5
+/// Maximum delay between consecutive health checks.
+private let healthCheckMaxDelay: TimeInterval = 5.0
+/// Total number of health-check attempts before giving up.
+private let healthCheckMaxAttempts = 30
+/// In-memory stderr ring capacity for the daemon child; older lines are
+/// discarded so a stuck process doesn't bloat the host.
+private let stderrBufferMaxLines = 50
+
 actor BackendService {
     static let shared = BackendService()
 
@@ -70,7 +85,7 @@ actor BackendService {
         logger.info("Stopping bobe backend (PID: \(proc.processIdentifier))")
         proc.terminate()
 
-        let deadline = Date().addingTimeInterval(12)
+        let deadline = Date().addingTimeInterval(terminateGraceSeconds)
         while proc.isRunning, Date() < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }
@@ -186,10 +201,9 @@ actor BackendService {
 
     /// Daemon returns 200 even on degraded DB — inspect body, not status.
     private func waitForHealth() async throws {
-        var delay: TimeInterval = 0.2
-        let maxAttempts = 30
+        var delay = healthCheckInitialDelay
 
-        for attempt in 1 ... maxAttempts {
+        for attempt in 1 ... healthCheckMaxAttempts {
             if self.stopping { throw BackendServiceError.stoppedDuringHealthCheck }
             if self.process?.isRunning != true { throw BackendServiceError.processExitedDuringHealthCheck }
 
@@ -201,9 +215,9 @@ actor BackendService {
                 }
                 return
             } catch {
-                logger.debug("Health check attempt \(attempt)/\(maxAttempts) failed, retrying in \(delay)s")
+                logger.debug("Health check attempt \(attempt)/\(healthCheckMaxAttempts) failed, retrying in \(delay)s")
                 try await Task.sleep(for: .seconds(delay))
-                delay = min(delay * 1.5, 5.0)
+                delay = min(delay * healthCheckBackoffMultiplier, healthCheckMaxDelay)
             }
         }
         throw BackendServiceError.healthCheckFailed
@@ -397,7 +411,9 @@ private final class StderrBuffer: @unchecked Sendable {
         self.lock.lock()
         defer { lock.unlock() }
         self.lines.append(line)
-        if self.lines.count > 50 { self.lines.removeFirst(self.lines.count - 50) }
+        if self.lines.count > stderrBufferMaxLines {
+            self.lines.removeFirst(self.lines.count - stderrBufferMaxLines)
+        }
     }
 
     var text: String {
