@@ -52,7 +52,10 @@ struct OllamaPullEvent {
 pub(crate) struct OllamaManager {
     http_client: Arc<reqwest::Client>,
     base_url: String,
-    /// `Some` only if WE started Ollama; reused daemons stay `None` so `stop()` is a no-op.
+    /// `Some` only if WE started Ollama; reused daemons stay `None`. The
+    /// child is killed on Drop (Tokio process Drop semantics); explicit
+    /// shutdown is handled by the daemon's graceful shutdown path which
+    /// drops the OllamaInstallService.
     child: Mutex<Option<tokio::process::Child>>,
 }
 

@@ -12,7 +12,6 @@ import Foundation
 enum Validations {
     static let soulContentMinLength = 10
     static let userProfileContentMinLength = 10
-    static let goalPriorityRange = 0 ... 5
 
     static func validateSoulContent(_ content: String) -> String? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,17 +30,6 @@ enum Validations {
             return String(
                 format: L10n.tr("settings.shared.validation.content_min_length_format"),
                 userProfileContentMinLength
-            )
-        }
-        return nil
-    }
-
-    static func validateGoalPriority(_ priority: Int) -> String? {
-        if !goalPriorityRange.contains(priority) {
-            return String(
-                format: L10n.tr("settings.shared.validation.priority_range_format"),
-                goalPriorityRange.lowerBound,
-                goalPriorityRange.upperBound
             )
         }
         return nil

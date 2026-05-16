@@ -190,9 +190,6 @@
 "settings.shared.action.persist_failed" = "Saved in memory but couldn't write to disk — restart BoBe to retry.";
 "settings.shared.action.save" = "Enregistrer";
 "settings.shared.action.saving" = "Enregistrement...";
-"settings.shared.bytes.gb_format" = "%.1f Go";
-"settings.shared.bytes.kb_format" = "%.0f Ko";
-"settings.shared.bytes.mb_format" = "%.0f Mo";
 "settings.shared.restart_banner.dismiss" = "Got it";
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ activé";

@@ -613,8 +613,11 @@ public final class VoicePipeline {
         // buffer storage may be reused after the installTap block returns;
         // capturing the buffer across `Task { ... await }` would let the
         // realtime queue clobber the bytes under heavy CPU load before
-        // FluidAudio reads them. The copy is cheap (≤512 frames × 4 B).
-        guard let copy = self.copyPcmBuffer(buffer) else { return }
+        // FluidAudio reads them. Helper lives in VoicePipelineSupport.
+        guard let copy = copyPcmFloatBuffer(buffer) else {
+            logger.warning("stt.buffer_copy_failed")
+            return
+        }
         let engine = self.activeStt
         Task { [copy] in
             do {
@@ -627,29 +630,6 @@ public final class VoicePipeline {
                 logger.warning("stt.acceptAudio failed: \(error.localizedDescription)")
             }
         }
-    }
-
-    /// Deep-copy the tap buffer's float channel data into a fresh
-    /// AVAudioPCMBuffer that's safe to send across `Task` hops. Returns
-    /// nil if buffer allocation fails or the source isn't Float32 (which
-    /// shouldn't happen for our VPIO tap; logged for diagnosis).
-    private func copyPcmBuffer(_ src: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let copy = AVAudioPCMBuffer(pcmFormat: src.format, frameCapacity: src.frameCapacity)
-        else {
-            logger.warning("stt.buffer_copy_alloc_failed")
-            return nil
-        }
-        copy.frameLength = src.frameLength
-        guard let srcChannels = src.floatChannelData, let dstChannels = copy.floatChannelData else {
-            logger.warning("stt.buffer_copy_unexpected_format")
-            return nil
-        }
-        let frameCount = Int(src.frameLength)
-        let bytes = frameCount * MemoryLayout<Float>.size
-        for ch in 0 ..< Int(src.format.channelCount) {
-            memcpy(dstChannels[ch], srcChannels[ch], bytes)
-        }
-        return copy
     }
 
     /// Client-requested mute — gates FluidAudio feeding so we don't

@@ -2,28 +2,13 @@ use serde_json::json;
 
 use super::types::{EventType, IndicatorType, StreamBundle};
 
-pub(crate) fn indicator_event(indicator: IndicatorType, message: Option<&str>) -> StreamBundle {
-    indicator_event_with_progress(indicator, message, None)
-}
-
-pub(crate) fn indicator_event_with_progress(
-    indicator: IndicatorType,
-    message: Option<&str>,
-    progress: Option<f64>,
-) -> StreamBundle {
-    let mut payload = json!({"indicator": indicator});
-    if let Some(msg) = message {
-        payload["message"] = json!(msg);
-    }
-    if let Some(p) = progress {
-        payload["progress"] = json!(p);
-    }
+pub(crate) fn indicator_event(indicator: IndicatorType, _message: Option<&str>) -> StreamBundle {
     StreamBundle {
         event_type: EventType::Indicator,
         message_id: String::new(),
         timestamp: chrono::Utc::now().to_rfc3339(),
         description: indicator.as_str().to_owned(),
-        payload,
+        payload: json!({"indicator": indicator}),
     }
 }
 

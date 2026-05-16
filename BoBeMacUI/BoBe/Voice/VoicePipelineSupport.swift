@@ -44,6 +44,29 @@ func voiceWsEndpoint(from baseURL: URL) -> URL? {
     return components.url
 }
 
+/// Deep-copy the tap buffer's float channel data into a fresh
+/// `AVAudioPCMBuffer` that's safe to send across `Task { ... }` hops.
+/// Apple's docs state tap buffer storage may be reused after the
+/// `installTap` block returns; capturing the raw buffer across an async
+/// hop lets the realtime queue clobber bytes before the consumer reads
+/// them. Returns nil on alloc failure or if the source isn't Float32.
+func copyPcmFloatBuffer(_ src: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+    guard let copy = AVAudioPCMBuffer(pcmFormat: src.format, frameCapacity: src.frameCapacity)
+    else {
+        return nil
+    }
+    copy.frameLength = src.frameLength
+    guard let srcChannels = src.floatChannelData, let dstChannels = copy.floatChannelData else {
+        return nil
+    }
+    let frameCount = Int(src.frameLength)
+    let bytes = frameCount * MemoryLayout<Float>.size
+    for ch in 0 ..< Int(src.format.channelCount) {
+        memcpy(dstChannels[ch], srcChannels[ch], bytes)
+    }
+    return copy
+}
+
 /// One-line dump of an `AVAudioFormat` for log lines, e.g. "16000Hz 1ch f32".
 func describe(_ format: AVAudioFormat) -> String {
     let fmtName: String = switch format.commonFormat {

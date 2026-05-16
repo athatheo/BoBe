@@ -143,48 +143,6 @@ struct DebouncedNumberInput: View {
     }
 }
 
-struct DebouncedDecimalInput: View {
-    @Binding var value: Double
-    var range: ClosedRange<Double> = 0 ... 1
-    var step = 0.05
-    var width: CGFloat = 80
-
-    @State private var text = ""
-    @State private var debounceTask: Task<Void, Never>?
-    @FocusState private var isFocused: Bool
-    @State private var isHovered = false
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        TextField("", text: self.$text)
-            .textFieldStyle(.plain)
-            .font(.system(size: 13, weight: .medium, design: .monospaced))
-            .multilineTextAlignment(.trailing)
-            .foregroundStyle(self.theme.colors.text)
-            .tint(self.theme.colors.primary)
-            .focused(self.$isFocused)
-            .bobeInputChrome(focused: self.isFocused, hovered: self.isHovered)
-            .onHover { self.isHovered = $0 }
-            .frame(width: self.width)
-            .onChange(of: self.text) { _, newText in
-                guard self.isFocused else { return }
-                self.debounceTask?.cancel()
-                self.debounceTask = Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(0.6))
-                    if let parsed = Double(newText), range.contains(parsed) {
-                        self.value = parsed
-                    }
-                }
-            }
-            .onAppear { self.text = String(format: "%.2f", self.value) }
-            .onChange(of: self.value) { _, newVal in
-                guard !self.isFocused else { return }
-                let str = String(format: "%.2f", newVal)
-                if self.text != str { self.text = str }
-            }
-    }
-}
-
 struct CollapsibleSection<Content: View>: View {
     let title: String
     let icon: String
@@ -282,15 +240,6 @@ struct CollapsibleSection<Content: View>: View {
         .tint(self.theme.colors.primary)
         .animation(OverlayMotionRuntime.reduceMotion ? nil : .easeInOut(duration: 0.2), value: self.isExpanded)
     }
-}
-
-func formatBytes(_ bytes: Int) -> String {
-    let gb = Double(bytes) / 1_073_741_824
-    if gb >= 1 { return L10n.tr("settings.shared.bytes.gb_format", gb) }
-    let mb = Double(bytes) / 1_048_576
-    if mb >= 1 { return L10n.tr("settings.shared.bytes.mb_format", mb) }
-    let kb = Double(bytes) / 1024
-    return L10n.tr("settings.shared.bytes.kb_format", kb)
 }
 
 #if !SPM_BUILD

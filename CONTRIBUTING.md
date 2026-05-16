@@ -114,7 +114,7 @@ BoBeService/                  # Rust backend (bobe-daemon)
     i18n/                     # Internationalization (Fluent)
     llm/                      # LLM provider abstraction
     models/                   # Domain structs
-    runtime/                  # Session state, learners, triggers, prompts
+    runtime/                  # Session state, learners, triggers
     secrets.rs                # macOS Keychain integration
     services/                 # Business logic layer
     tools/                    # Native tools + MCP integration
@@ -141,7 +141,7 @@ docs/                         # Additional documentation
 - **Edition 2024**, MSRV 1.93, `unsafe_code = "deny"`
 - **Clippy pedantic** enabled with justified allows (see `Cargo.toml`)
 - Errors via `thiserror`, handlers return `Result<T, AppError>` — no `unwrap()`/`expect()` outside tests
-- LLM prompt templates live in `runtime/prompts/` (some supplementary prompts in `tools/preselector.rs` and `i18n/`)
+- LLM prompts: per-class SKILL.md in `copilot/skills/` (loaded by the SDK via `SessionConfig::skill_directories`); inline system-message hints in `copilot/hooks.rs` and `copilot/workers/chat.rs`
 - Configuration via `BOBE_*` env vars, persisted to `~/.bobe/config.toml`
 - API keys stored in macOS Keychain via `security-framework`, handled in-memory with the `secrecy` crate
 - Follow [docs/RUST_GUIDELINES.md](docs/RUST_GUIDELINES.md) for architecture and style
