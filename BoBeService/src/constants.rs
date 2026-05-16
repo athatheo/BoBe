@@ -45,6 +45,15 @@ pub(crate) mod mcp_status {
 /// settings UI must agree on that path. Persona is the default Kokoro
 /// voice id when the user hasn't picked one in settings.
 /// Match `BoBeMacUI/BoBe/App/Constants.swift::VoiceWire`.
+/// Tool-call SSE status discriminator strings. Emitted by
+/// `util::sse::factories::{tool_call_start_event, tool_call_complete_event}`;
+/// consumed by Swift `Stores::ToolExecutionController` via the payload
+/// `status` field. Match `BoBeMacUI/BoBe/App/Constants.swift::ToolCallStatusWire`.
+pub(crate) mod tool_call_status {
+    pub(crate) const START: &str = "start";
+    pub(crate) const COMPLETE: &str = "complete";
+}
+
 pub(crate) mod voice_wire {
     pub(crate) const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
     pub(crate) const KOKORO_MODEL_DIR: &str = "kokoro-multi-lang-v1_0";

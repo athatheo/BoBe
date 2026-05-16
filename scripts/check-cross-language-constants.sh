@@ -72,6 +72,15 @@ rust_kind_tts=$(grep -E 'MODEL_KIND_TTS: &str =' "$RUST" | sed -E 's/.*= "([^"]+
 swift_kind_tts=$(grep -E 'static let modelKindTts = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
 expect_match "voice model kind TTS" "$rust_kind_tts" "$swift_kind_tts"
 
+# tool_call_status::*
+rust_tc_start=$(grep -E 'pub\(crate\) const START: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
+swift_tc_start=$(grep -E 'static let start = "[^"]+"' "$SWIFT_CONST" | head -n 1 | sed -E 's/.*= "([^"]+)".*/\1/')
+expect_match "tool_call_status::START" "$rust_tc_start" "$swift_tc_start"
+
+rust_tc_complete=$(grep -E 'pub\(crate\) const COMPLETE: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
+swift_tc_complete=$(grep -E 'static let complete = "[^"]+"' "$SWIFT_CONST" | head -n 1 | sed -E 's/.*= "([^"]+)".*/\1/')
+expect_match "tool_call_status::COMPLETE" "$rust_tc_complete" "$swift_tc_complete"
+
 if [[ $fail -eq 0 ]]; then
     echo "cross-language constants ok"
 fi

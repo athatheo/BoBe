@@ -78,7 +78,7 @@ pub(crate) fn tool_call_start_event(
         payload: json!({
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
-            "status": "start",
+            "status": crate::constants::tool_call_status::START,
         }),
     }
 }
@@ -102,7 +102,7 @@ pub(crate) fn tool_call_complete_event(
             "success": success,
             "error": error,
             "duration_ms": duration_ms,
-            "status": "complete",
+            "status": crate::constants::tool_call_status::COMPLETE,
         }),
     }
 }

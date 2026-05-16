@@ -31,6 +31,14 @@ enum EngineKind {
 /// is the on-disk path Settings → Voice → Models displays as the user's
 /// model location. The persona default is the fallback voice id when
 /// Settings haven't been touched yet.
+/// Tool-call SSE status strings emitted by the daemon's
+/// `util::sse::factories::tool_call_*_event`. Match Rust
+/// `constants::tool_call_status::*`.
+enum ToolCallStatusWire {
+    static let start = "start"
+    static let complete = "complete"
+}
+
 enum VoiceWire {
     static let ttsOutputSampleRate = 24_000
     static let kokoroModelDir = "kokoro-multi-lang-v1_0"
