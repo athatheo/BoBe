@@ -120,12 +120,75 @@ if [[ "$rust_voices" != "$swift_voices" ]]; then
     fail=1
 fi
 
+RUST_PROTO="$ROOT/BoBeService/src/speech/protocol.rs"
+SWIFT_PROTO="$ROOT/BoBeMacUI/BoBe/Voice/VoiceProtocol.swift"
+
+# Voice WS wire-type discriminators (SB11) + VoicePhase wire (SB12).
+# Rust serializes enum variants via serde rename_all = "snake_case"; Swift
+# encoder/decoder hand-writes the snake_case strings. If a Rust variant is
+# added/renamed without the Swift side, the type tag stops round-tripping
+# silently — daemon rejects the message or Swift drops a state update.
+#
+# Strategy: extract Rust variant identifiers (PascalCase) from each enum
+# body, convert to snake_case; extract Swift wire literal strings from
+# the encoder/decoder; diff.
+
+pascal_to_snake() {
+    # PascalCase → snake_case. Inserts `_` before each capital except the
+    # first, then lowercases everything. `HelloAck` → `hello_ack`,
+    # `BargeIn` → `barge_in`, `Idle` → `idle`.
+    sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr '[:upper:]' '[:lower:]'
+}
+
+rust_enum_variants() {
+    # Slice the enum body and grep top-level variant identifiers (4-space
+    # indent, capital first letter). Skips nested struct fields which are
+    # 8-space indented and lowercase.
+    awk "/pub\\(crate\\) enum $1 \\{/,/^}/" "$RUST_PROTO" \
+        | grep -oE '^    [A-Z][a-zA-Z0-9]+' \
+        | sed -E 's/^    //' \
+        | pascal_to_snake \
+        | sort -u
+}
+
+diff_sets() {
+    local name="$1" rust="$2" swift="$3"
+    if [[ "$rust" != "$swift" ]]; then
+        echo "drift: $name variant set differs between Rust and Swift" >&2
+        diff <(echo "$rust") <(echo "$swift") >&2 || true
+        fail=1
+    fi
+}
+
+# VoicePhase (4 variants)
+rust_phase=$(rust_enum_variants VoicePhase)
+swift_phase=$(awk '/enum VoicePhaseWire: String, Codable \{/,/^}/' "$SWIFT_PROTO" \
+    | grep -oE 'case [a-z][a-zA-Z0-9]+' \
+    | sed -E 's/case //' \
+    | sort -u)
+diff_sets "VoicePhase" "$rust_phase" "$swift_phase"
+
+# ClientMessage (7 variants). Swift encoder hand-writes the type literal
+# as `try c.encode("foo", forKey: .type)` — extract those strings.
+rust_client=$(rust_enum_variants ClientMessage)
+swift_client=$(grep -oE 'c\.encode\("[a-z_]+", forKey: \.type\)' "$SWIFT_PROTO" \
+    | sed -E 's/.*"([a-z_]+)".*/\1/' \
+    | sort -u)
+diff_sets "ClientMessage" "$rust_client" "$swift_client"
+
+# ServerMessage (6 variants). Swift decoder switch arms are `case "foo":`
+rust_server=$(rust_enum_variants ServerMessage)
+swift_server=$(awk '/enum ServerVoiceMessage: Decodable \{/,/^    \}/' "$SWIFT_PROTO" \
+    | grep -oE 'case "[a-z_]+":' \
+    | sed -E 's/case "([a-z_]+)":/\1/' \
+    | sort -u)
+diff_sets "ServerMessage" "$rust_server" "$swift_server"
+
 # TTS binary frame header: 8B BE u64 chunk_id + 1B flags + N opus.
 # Rust speech/protocol.rs defines the three; Swift Voice/VoiceProtocol.swift
 # mirrors them. If either side adds a header byte or shifts a flag bit
 # without the other, every TTS chunk silently misaligns at runtime.
-RUST_PROTO="$ROOT/BoBeService/src/speech/protocol.rs"
-SWIFT_PROTO="$ROOT/BoBeMacUI/BoBe/Voice/VoiceProtocol.swift"
+# (RUST_PROTO / SWIFT_PROTO are defined earlier in the file.)
 
 rust_header_len=$(grep -E 'TTS_FRAME_HEADER_LEN: usize =' "$RUST_PROTO" | sed -E 's/.*= ([0-9]+);.*/\1/')
 swift_header_len=$(grep -E 'static let length = ' "$SWIFT_PROTO" | sed -E 's/.*= ([0-9]+).*/\1/')
