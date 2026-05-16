@@ -86,6 +86,20 @@ rust_data_dir=$(grep -E 'BOBE_DATA_DIR_NAME: &str =' "$RUST" | sed -E 's/.*= "([
 swift_data_dir=$(grep -E 'static let dataDirName = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
 expect_match "BOBE_DATA_DIR_NAME" "$rust_data_dir" "$swift_data_dir"
 
+# pause_sensitivity_ms::* — Swift consumes via Voice/VoiceReadiness.swift
+# eouDelayMs(). Rust defines as canonical documentation/drift checkpoint.
+rust_pause_tight=$(grep -E 'TIGHT: u32 =' "$RUST" | sed -E 's/.*= ([0-9]+);.*/\1/')
+swift_pause_tight=$(grep -E 'static let tight: Int = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
+expect_match "pause_sensitivity_ms::TIGHT" "$rust_pause_tight" "$swift_pause_tight"
+
+rust_pause_balanced=$(grep -E 'BALANCED: u32 =' "$RUST" | sed -E 's/.*= ([0-9]+);.*/\1/')
+swift_pause_balanced=$(grep -E 'static let balanced: Int = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
+expect_match "pause_sensitivity_ms::BALANCED" "$rust_pause_balanced" "$swift_pause_balanced"
+
+rust_pause_patient=$(grep -E 'PATIENT: u32 =' "$RUST" | sed -E 's/.*= ([0-9]+);.*/\1/')
+swift_pause_patient=$(grep -E 'static let patient: Int = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
+expect_match "pause_sensitivity_ms::PATIENT" "$rust_pause_patient" "$swift_pause_patient"
+
 # TTS binary frame header: 8B BE u64 chunk_id + 1B flags + N opus.
 # Rust speech/protocol.rs defines the three; Swift Voice/VoiceProtocol.swift
 # mirrors them. If either side adds a header byte or shifts a flag bit

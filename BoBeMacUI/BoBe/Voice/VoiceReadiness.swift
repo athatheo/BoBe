@@ -118,15 +118,15 @@ extension VoicePipeline {
 
     /// Map the daemon's `voice.pause_sensitivity` string to an EOU debounce
     /// (ms). Same value flows to both engines: Parakeet's built-in EOU
-    /// debounce, and the Qwen3 wrapper's VAD-driven silence timer. Values
-    /// mirror Rust `config::voice::PauseSensitivity` (tight=600, balanced=
-    /// 1280, patient=2000) — the 1280ms balanced value matches the
-    /// Parakeet EOU model's published default debounce.
+    /// debounce, and the Qwen3 wrapper's VAD-driven silence timer. The
+    /// 1280ms balanced default matches the Parakeet EOU model's published
+    /// debounce. Concrete values live in `Constants.PauseSensitivityMs` so
+    /// the drift script can lock them to Rust `constants::pause_sensitivity_ms::*`.
     static func eouDelayMs(for sensitivity: String) -> Int {
         switch sensitivity.lowercased() {
-        case "tight": return 600
-        case "patient": return 2_000
-        default: return 1_280
+        case "tight": return PauseSensitivityMs.tight
+        case "patient": return PauseSensitivityMs.patient
+        default: return PauseSensitivityMs.balanced
         }
     }
 

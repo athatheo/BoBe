@@ -61,6 +61,23 @@ pub(crate) mod tool_call_status {
     pub(crate) const COMPLETE: &str = "complete";
 }
 
+/// EOU debounce values for `PauseSensitivity` variants. The daemon ships
+/// the enum string; Swift `Voice::VoiceReadiness::eouDelayMs` maps each
+/// to one of these millisecond values and hands it to FluidAudio's
+/// Parakeet (built-in EOU debounce) or the Qwen3 wrapper's silence
+/// timer. Defined on the Rust side as the canonical contract so the
+/// drift script catches anyone moving a value out of lockstep with the
+/// Swift `PauseSensitivityMs` mirror.
+#[allow(
+    dead_code,
+    reason = "Documentation + drift checkpoint; the daemon forwards the enum string and never reads the ms — Swift does."
+)]
+pub(crate) mod pause_sensitivity_ms {
+    pub(crate) const TIGHT: u32 = 600;
+    pub(crate) const BALANCED: u32 = 1280;
+    pub(crate) const PATIENT: u32 = 2000;
+}
+
 pub(crate) mod voice_wire {
     pub(crate) const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
     pub(crate) const KOKORO_MODEL_DIR: &str = "kokoro-multi-lang-v1_0";

@@ -48,6 +48,16 @@ enum ToolCallStatusWire {
     static let complete = "complete"
 }
 
+/// EOU debounce mapping for the daemon's `voice.pause_sensitivity`
+/// string. Mirrors Rust `constants::pause_sensitivity_ms::*`. Drift
+/// script asserts each value matches; bumping a number on one side
+/// without the other will silently miscalibrate end-of-turn detection.
+enum PauseSensitivityMs {
+    static let tight: Int = 600
+    static let balanced: Int = 1280
+    static let patient: Int = 2000
+}
+
 /// Install-progress status emitted by both `/voice/install/status` and
 /// `/local-runtime/status`. Mirrors Rust `voice::install_artifacts::
 /// InstallStatus` (serde rename_all = "snake_case") and the manual
