@@ -6,10 +6,10 @@ use tokio::task::JoinHandle;
 
 use crate::app_state::AppState;
 
-/// Outbound TTS Opus sample rate (Kokoro native). Mirrored client-side in
-/// the Swift voice pipeline. Wire-protocol contract; do not change without
-/// coordinating across both stacks.
-pub(crate) const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
+/// Outbound TTS Opus sample rate (Kokoro native). Single source at
+/// `crate::constants::voice_wire::TTS_OUTPUT_SAMPLE_RATE`; re-exported
+/// here so existing imports keep working.
+pub(crate) use crate::constants::voice_wire::TTS_OUTPUT_SAMPLE_RATE;
 
 /// Per-WS voice preferences carried in the Hello handshake. Stored on
 /// `VoiceSession` and read by the kokoro task. Falls back to the daemon's

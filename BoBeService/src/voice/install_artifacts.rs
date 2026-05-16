@@ -48,7 +48,7 @@ pub(super) const ARTIFACTS: &[ModelArtifact] = &[ModelArtifact {
     kind: VoiceModelKind::Tts,
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
     is_tarball: true,
-    target_subpath: "kokoro-multi-lang-v1_0",
+    target_subpath: crate::constants::voice_wire::KOKORO_MODEL_DIR,
 }];
 
 #[derive(Debug, Clone, Default, Serialize)]

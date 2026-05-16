@@ -106,7 +106,7 @@ public final class VoicePipeline {
     private let rmsFrameSamples: Int = 320
     /// 24kHz mono — Kokoro native. Internal so the TTS playback chain in
     /// `TtsPlayback.swift` can use it for buffer sizing + truncation math.
-    let playbackSampleRate: Double = 24_000
+    let playbackSampleRate: Double = Double(VoiceWire.ttsOutputSampleRate)
 
     private let audioEngine = AVAudioEngine()
     // Internal so the TTS playback chain in `TtsPlayback.swift` can drive it.
@@ -399,7 +399,7 @@ public final class VoicePipeline {
             await self.prewarm()
             await self.sendClient(.hello(
                 sessionId: sid,
-                playbackRate: 24_000,
+                playbackRate: UInt32(VoiceWire.ttsOutputSampleRate),
                 voiceId: voiceId,
                 speed: speed,
                 language: language

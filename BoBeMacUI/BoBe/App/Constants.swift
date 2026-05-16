@@ -24,6 +24,19 @@ enum EngineKind {
     static let local = "local"
 }
 
+/// Voice-pipeline wire/disk constants shared with the daemon. Match
+/// Rust `constants::voice_wire::*`. The TTS sample rate is the
+/// `AVAudioPlayerNode` playback rate AND the Hello-handshake claim sent
+/// to the daemon (mismatch → rate_mismatch close). The Kokoro dir name
+/// is the on-disk path Settings → Voice → Models displays as the user's
+/// model location. The persona default is the fallback voice id when
+/// Settings haven't been touched yet.
+enum VoiceWire {
+    static let ttsOutputSampleRate = 24_000
+    static let kokoroModelDir = "kokoro-multi-lang-v1_0"
+    static let defaultPersona = "af_bella"
+}
+
 /// Wire-format MCP server status strings emitted by the daemon's
 /// `services::mcp_config_service`. Match the Rust `constants::mcp_status`
 /// consts. A typed `Codable` enum would be the next-level fix; the

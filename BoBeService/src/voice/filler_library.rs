@@ -90,7 +90,7 @@ impl FillerLibrary {
     /// without per-engine locking this drops bootstrap delay from ~2-5s
     /// (sequential) to roughly the longest single phrase.
     pub(crate) async fn render(tts: Arc<dyn TtsEngine>) -> Self {
-        const VOICE: &str = "af_bella";
+        const VOICE: &str = crate::constants::voice_wire::DEFAULT_PERSONA;
         let sample_rate = tts.sample_rate();
         let kinds = FillerKind::all();
         let futs = kinds.iter().map(|kind| {

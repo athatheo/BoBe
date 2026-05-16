@@ -27,7 +27,7 @@ pub(crate) mod engine_kind {
 /// Wire-format MCP server status strings. Emitted by
 /// `services::mcp_config_service::build_server_summary`; consumed by the
 /// Swift `MCPServersPanel.statusBadge` switch. Match the values in
-/// `BoBeMacUI/BoBe/Models/BobeTypes.swift::McpServerStatusWire`.
+/// `BoBeMacUI/BoBe/App/Constants.swift::McpServerStatusWire`.
 pub(crate) mod mcp_status {
     pub(crate) const CONNECTED: &str = "connected";
     pub(crate) const FAILED: &str = "failed";
@@ -36,4 +36,17 @@ pub(crate) mod mcp_status {
     pub(crate) const DISABLED: &str = "disabled";
     pub(crate) const NOT_CONFIGURED: &str = "not-configured";
     pub(crate) const UNKNOWN: &str = "unknown";
+}
+
+/// Voice-pipeline wire/disk constants shared across Rust + Swift.
+/// Daemon emits TTS frames at this sample rate; Swift `AVAudioPlayerNode`
+/// must match. Install script downloads the Kokoro tarball, extracts to
+/// the named subdir of `~/.bobe/models/`; the daemon loader + Swift voice
+/// settings UI must agree on that path. Persona is the default Kokoro
+/// voice id when the user hasn't picked one in settings.
+/// Match `BoBeMacUI/BoBe/App/Constants.swift::VoiceWire`.
+pub(crate) mod voice_wire {
+    pub(crate) const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
+    pub(crate) const KOKORO_MODEL_DIR: &str = "kokoro-multi-lang-v1_0";
+    pub(crate) const DEFAULT_PERSONA: &str = "af_bella";
 }

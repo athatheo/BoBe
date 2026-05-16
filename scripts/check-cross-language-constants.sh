@@ -55,6 +55,19 @@ expect_match "mcp_status::DISABLED"       "$(extract_rust_engine DISABLED)"     
 expect_match "mcp_status::NOT_CONFIGURED" "$(extract_rust_engine NOT_CONFIGURED)" "$(extract_swift_engine notConfigured)"
 expect_match "mcp_status::UNKNOWN"        "$(extract_rust_engine UNKNOWN)"        "$(extract_swift_engine unknown)"
 
+# voice_wire::*
+rust_sample=$(grep -E 'TTS_OUTPUT_SAMPLE_RATE: u32 =' "$RUST" | sed -E 's/.*= ([0-9_]+);.*/\1/' | tr -d '_')
+swift_sample=$(grep -E 'static let ttsOutputSampleRate = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9_]+).*/\1/' | tr -d '_')
+expect_match "voice TTS sample rate" "$rust_sample" "$swift_sample"
+
+rust_kokoro=$(grep -E 'KOKORO_MODEL_DIR: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
+swift_kokoro=$(grep -E 'static let kokoroModelDir = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
+expect_match "Kokoro model dir name" "$rust_kokoro" "$swift_kokoro"
+
+rust_persona=$(grep -E 'DEFAULT_PERSONA: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
+swift_persona=$(grep -E 'static let defaultPersona = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
+expect_match "voice default persona" "$rust_persona" "$swift_persona"
+
 if [[ $fail -eq 0 ]]; then
     echo "cross-language constants ok"
 fi

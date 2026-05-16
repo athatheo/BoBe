@@ -51,7 +51,7 @@ fn load_tts() -> Option<Arc<dyn crate::speech::TtsEngine>> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(4);
 
-    let dir = models_root.join("kokoro-multi-lang-v1_0");
+    let dir = models_root.join(crate::constants::voice_wire::KOKORO_MODEL_DIR);
     let model = dir.join("model.onnx");
     let voices = dir.join("voices.bin");
     if !model.exists() || !voices.exists() {
