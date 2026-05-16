@@ -10,6 +10,7 @@ use crate::copilot::memory_file::MemoryFile;
 use crate::copilot::registry::WorkerRegistry;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
+use crate::secrets::SecretStore;
 use crate::services::ollama_install_service::OllamaInstallService;
 use crate::services::souls::souls_service::SoulsService;
 use crate::services::user_profile::user_profile_service::UserProfileService;
@@ -36,6 +37,10 @@ pub(crate) struct AppState {
     pub(crate) workers: Arc<WorkerRegistry>,
     pub(crate) memory_file: Arc<MemoryFile>,
     pub(crate) ollama_install: Arc<OllamaInstallService>,
+    /// Persistent secret backend. Production uses `KeychainSecretStore`;
+    /// the trait exists so deep MCP config materialization in `mcp/config.rs`
+    /// stays free-function while handler/service code is DI-friendly.
+    pub(crate) secret_store: Arc<dyn SecretStore>,
     /// Daemon-owned voice-model installer. Wizard + Settings call its
     /// HTTP endpoints; legacy `scripts/install-voice-models.sh` is gone.
     pub(crate) voice_install: Arc<VoiceInstallService>,

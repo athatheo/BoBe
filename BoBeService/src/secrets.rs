@@ -1,4 +1,8 @@
 //! Data Protection Keychain (macOS 10.15+); auth via code-signing identity.
+//!
+//! Free functions are the storage backend; production code reaches them
+//! through the `SecretStore` trait + `KeychainSecretStore` impl so handlers
+//! and services can be wired against a swappable backend.
 
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
@@ -137,5 +141,27 @@ pub(crate) fn delete_secret(account: &str) -> Result<(), String> {
         Err(format!(
             "Failed to delete secret '{account}': OSStatus {status}"
         ))
+    }
+}
+
+/// Stable surface for handler/service code so secret access can be swapped
+/// (e.g. test doubles, future cloud backend). The Keychain free functions
+/// remain the only production impl; deep config materialization in
+/// `mcp/config.rs` still calls them directly since it runs outside any
+/// handler context.
+pub(crate) trait SecretStore: Send + Sync {
+    fn store(&self, account: &str, value: &str) -> Result<(), String>;
+    fn delete(&self, account: &str) -> Result<(), String>;
+}
+
+pub(crate) struct KeychainSecretStore;
+
+impl SecretStore for KeychainSecretStore {
+    fn store(&self, account: &str, value: &str) -> Result<(), String> {
+        store_secret(account, value)
+    }
+
+    fn delete(&self, account: &str) -> Result<(), String> {
+        delete_secret(account)
     }
 }

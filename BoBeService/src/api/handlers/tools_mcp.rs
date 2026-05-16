@@ -14,6 +14,7 @@ fn deps_from(state: &AppState) -> McpConfigDeps<'_> {
         config: &state.config,
         mcp_config_lock: &state.mcp_config_lock,
         workers: &state.workers,
+        secret_store: &state.secret_store,
     }
 }
 

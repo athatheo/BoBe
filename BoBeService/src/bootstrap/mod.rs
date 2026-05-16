@@ -163,6 +163,9 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         crate::voice::install_service::VoiceInstallService::new(http, models_root, on_complete)
     };
 
+    let secret_store: Arc<dyn crate::secrets::SecretStore> =
+        Arc::new(crate::secrets::KeychainSecretStore);
+
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
@@ -178,6 +181,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         workers,
         memory_file,
         ollama_install,
+        secret_store,
         voice_install,
         voice_engines,
         voice_turn_active,

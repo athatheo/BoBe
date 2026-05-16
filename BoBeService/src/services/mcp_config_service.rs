@@ -12,15 +12,17 @@ use crate::copilot::registry::WorkerRegistry;
 use crate::error::AppError;
 use crate::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
 use crate::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
+use crate::secrets::SecretStore;
 
 /// Deps the MCP config service needs. Bundled so each public function
-/// can stay short instead of drilling three Arcs through every signature.
+/// can stay short instead of drilling four Arcs through every signature.
 /// Constructed once per request from `AppState` in the route handlers
 /// (see `api/handlers/tools_mcp.rs`).
 pub(crate) struct McpConfigDeps<'a> {
     pub(crate) config: &'a ArcSwap<Config>,
     pub(crate) mcp_config_lock: &'a Mutex<()>,
     pub(crate) workers: &'a Arc<WorkerRegistry>,
+    pub(crate) secret_store: &'a Arc<dyn SecretStore>,
 }
 
 #[derive(Debug, Serialize)]
@@ -114,7 +116,7 @@ pub(crate) fn validate_document(
 
     match parse_and_validate(&body.raw_json, &blocked_cmds, &dangerous_keys) {
         Ok(file) => {
-            let normalized = normalize_secrets(file, &body.secret_keys, false)?;
+            let normalized = normalize_secrets(file, &body.secret_keys, None)?;
             Ok(McpConfigValidateResponse {
                 valid: true,
                 normalized_json: redacted_json(&normalized)?,
@@ -138,7 +140,7 @@ pub(crate) async fn save_document(
 ) -> Result<McpConfigSaveResponse, AppError> {
     let (blocked_cmds, dangerous_keys) = blocked_and_dangerous(deps);
     let file = parse_and_validate(&body.raw_json, &blocked_cmds, &dangerous_keys)?;
-    let file = normalize_secrets(file, &body.secret_keys, true)?;
+    let file = normalize_secrets(file, &body.secret_keys, Some(deps.secret_store.as_ref()))?;
 
     let guard = deps.mcp_config_lock.lock().await;
     let path = resolve_config_path(deps)?;
@@ -147,7 +149,7 @@ pub(crate) async fn save_document(
     mcp_config::save_mcp_config_file(&path, &file)?;
 
     if let Some(ref prev) = previous {
-        cleanup_removed_secret_refs(prev, &file);
+        cleanup_removed_secret_refs(deps.secret_store.as_ref(), prev, &file);
     }
 
     drop(guard);
@@ -178,7 +180,7 @@ pub(crate) async fn reset_document(
     mcp_config::save_mcp_config_file(&path, &empty)?;
 
     if let Some(ref prev) = previous {
-        cleanup_removed_secret_refs(prev, &empty);
+        cleanup_removed_secret_refs(deps.secret_store.as_ref(), prev, &empty);
     }
 
     Ok(McpConfigResetResponse {
@@ -218,15 +220,16 @@ fn parse_and_validate(
     Ok(file)
 }
 
-/// When `persist` is true, real values are stored in Keychain.
+/// When `secret_store` is `Some`, real values are persisted via the store
+/// (Keychain in production); `None` is validate-only mode.
 fn normalize_secrets(
     mut file: McpConfigFile,
     secret_keys: &HashMap<String, Vec<String>>,
-    persist: bool,
+    secret_store: Option<&dyn SecretStore>,
 ) -> Result<McpConfigFile, AppError> {
     for (server_name, entry) in &mut file.mcp_servers {
         let explicit = secret_keys.get(server_name).cloned().unwrap_or_default();
-        entry.env = build_env_with_refs(server_name, &entry.env, &explicit, persist)?;
+        entry.env = build_env_with_refs(server_name, &entry.env, &explicit, secret_store)?;
     }
     Ok(file)
 }
@@ -235,7 +238,7 @@ fn build_env_with_refs(
     server_name: &str,
     env: &HashMap<String, String>,
     explicit_secret_keys: &[String],
-    persist: bool,
+    secret_store: Option<&dyn SecretStore>,
 ) -> Result<HashMap<String, String>, AppError> {
     let explicit: HashSet<&str> = explicit_secret_keys.iter().map(String::as_str).collect();
     let mut out = HashMap::with_capacity(env.len());
@@ -248,8 +251,8 @@ fn build_env_with_refs(
 
         if explicit.contains(key.as_str()) || mcp_config::should_treat_as_secret_key(key) {
             let account = mcp_config::secret_account(server_name, key);
-            if persist {
-                crate::secrets::store_secret(&account, value).map_err(|e| {
+            if let Some(store) = secret_store {
+                store.store(&account, value).map_err(|e| {
                     AppError::Config(format!("Failed to store MCP secret '{key}': {e}"))
                 })?;
             }
@@ -385,12 +388,16 @@ fn env_metadata(entry: &McpServerEntry) -> (Vec<String>, Vec<String>) {
     (env_keys, secret_env_keys)
 }
 
-fn cleanup_removed_secret_refs(previous: &McpConfigFile, current: &McpConfigFile) {
+fn cleanup_removed_secret_refs(
+    secret_store: &dyn SecretStore,
+    previous: &McpConfigFile,
+    current: &McpConfigFile,
+) {
     let prev = secret_accounts_in(previous);
     let curr = secret_accounts_in(current);
 
     for account in prev.difference(&curr) {
-        if let Err(e) = crate::secrets::delete_secret(account) {
+        if let Err(e) = secret_store.delete(account) {
             warn!(account, error = %e, "mcp_config.cleanup_secret_failed");
         }
     }
