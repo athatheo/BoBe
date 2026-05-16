@@ -45,6 +45,13 @@ pub(crate) mod mcp_status {
 /// settings UI must agree on that path. Persona is the default Kokoro
 /// voice id when the user hasn't picked one in settings.
 /// Match `BoBeMacUI/BoBe/App/Constants.swift::VoiceWire`.
+/// Bobe data directory name relative to `$HOME`. The daemon writes
+/// memory.md, conversation DB, voice models, etc. under here; the Swift
+/// app constructs the same path to find/launch the daemon binary and to
+/// expose the location to the user. Match `BoBeMacUI/BoBe/App/Constants.
+/// swift::BobePaths.dataDirName`.
+pub(crate) const BOBE_DATA_DIR_NAME: &str = ".bobe";
+
 /// Tool-call SSE status discriminator strings. Emitted by
 /// `util::sse::factories::{tool_call_start_event, tool_call_complete_event}`;
 /// consumed by Swift `Stores::ToolExecutionController` via the payload

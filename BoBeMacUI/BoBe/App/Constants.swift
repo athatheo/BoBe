@@ -31,6 +31,15 @@ enum EngineKind {
 /// is the on-disk path Settings → Voice → Models displays as the user's
 /// model location. The persona default is the fallback voice id when
 /// Settings haven't been touched yet.
+/// BoBe data directory name relative to `$HOME`. Match Rust
+/// `constants::BOBE_DATA_DIR_NAME`. The daemon's `paths::bobe_data_dir`
+/// allows `$BOBE_DATA_DIR` to override; Swift mirrors only the relative
+/// name since BackendService respects the same env var via the spawned
+/// daemon's env.
+enum BobePaths {
+    static let dataDirName = ".bobe"
+}
+
 /// Tool-call SSE status strings emitted by the daemon's
 /// `util::sse::factories::tool_call_*_event`. Match Rust
 /// `constants::tool_call_status::*`.

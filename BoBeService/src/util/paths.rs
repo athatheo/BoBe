@@ -16,5 +16,5 @@ pub(crate) fn bobe_data_dir() -> PathBuf {
     }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".bobe")
+        .join(crate::constants::BOBE_DATA_DIR_NAME)
 }

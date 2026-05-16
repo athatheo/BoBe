@@ -50,7 +50,7 @@ actor BackendService {
         var cont: AsyncStream<ServiceState>.Continuation?
         self.stateStream = AsyncStream { cont = $0 }
         self.stateContinuation = cont
-        self.dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bobe")
+        self.dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(BobePaths.dataDirName)
         self.pidFilePath = self.dataDir.appendingPathComponent("bobe-service.pid")
     }
 

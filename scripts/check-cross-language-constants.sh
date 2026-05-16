@@ -81,6 +81,11 @@ rust_tc_complete=$(grep -E 'pub\(crate\) const COMPLETE: &str =' "$RUST" | sed -
 swift_tc_complete=$(grep -E 'static let complete = "[^"]+"' "$SWIFT_CONST" | head -n 1 | sed -E 's/.*= "([^"]+)".*/\1/')
 expect_match "tool_call_status::COMPLETE" "$rust_tc_complete" "$swift_tc_complete"
 
+# BOBE_DATA_DIR_NAME
+rust_data_dir=$(grep -E 'BOBE_DATA_DIR_NAME: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
+swift_data_dir=$(grep -E 'static let dataDirName = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
+expect_match "BOBE_DATA_DIR_NAME" "$rust_data_dir" "$swift_data_dir"
+
 if [[ $fail -eq 0 ]]; then
     echo "cross-language constants ok"
 fi
