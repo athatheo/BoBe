@@ -235,6 +235,10 @@ struct UserProfilesEditor: View {
 
     private func saveProfile() {
         guard let id = self.editorState.selectedId else { return }
+        if let message = Validations.validateUserProfileContent(self.editorContent) {
+            self.editorState.setError(UserProfileValidationError(message: message))
+            return
+        }
         self.editorState.setSaving(true)
         Task {
             defer { self.editorState.setSaving(false) }
@@ -285,4 +289,9 @@ struct UserProfilesEditor: View {
             self.editorState.setDirty(false)
         }
     }
+}
+
+private struct UserProfileValidationError: LocalizedError {
+    let message: String
+    var errorDescription: String? { self.message }
 }

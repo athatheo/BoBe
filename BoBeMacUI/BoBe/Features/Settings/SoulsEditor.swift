@@ -234,6 +234,10 @@ struct SoulsEditor: View {
 
     private func saveSoul() {
         guard let id = self.editorState.selectedId else { return }
+        if let message = Validations.validateSoulContent(self.editorContent) {
+            self.editorState.setError(SoulValidationError(message: message))
+            return
+        }
         self.editorState.setSaving(true)
         Task {
             defer { self.editorState.setSaving(false) }
@@ -284,4 +288,9 @@ struct SoulsEditor: View {
             self.editorState.setDirty(false)
         }
     }
+}
+
+private struct SoulValidationError: LocalizedError {
+    let message: String
+    var errorDescription: String? { self.message }
 }

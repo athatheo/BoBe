@@ -209,6 +209,8 @@
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ enabled";
 "settings.shared.toggle.enabled" = "Enabled";
+"settings.shared.validation.content_min_length_format" = "Content must be at least %d characters";
+"settings.shared.validation.priority_range_format" = "Priority must be between %d and %d";
 
 "settings.souls.delete.accessibility" = "Delete soul";
 "settings.souls.empty.description" = "Create one to define BoBe's personality";
