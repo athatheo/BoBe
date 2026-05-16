@@ -84,6 +84,21 @@ impl CaptureTrigger {
         }
     }
 
+    /// Reset vision-breaker state after a successful capture and surface
+    /// the SSE recovery notice if we were previously paused. Idempotent.
+    fn announce_vision_recovered(&mut self) {
+        self.vision_failure_count = 0;
+        self.vision_breaker_tripped_at = None;
+        if self.vision_pause_announced {
+            self.vision_pause_announced = false;
+            self.event_queue.push(trigger_error_event(
+                "vision",
+                "Screen awareness restored.",
+                true,
+            ));
+        }
+    }
+
     /// CAS the shared in-flight flag; returns a guard that releases on drop.
     /// `None` means another turn is already running — caller should skip.
     fn try_acquire_in_flight(&self) -> Option<InFlightGuard> {
@@ -209,31 +224,13 @@ impl CaptureTrigger {
         match result {
             Ok(description) if !description.is_empty() => {
                 self.context_count += 1;
-                self.vision_failure_count = 0;
-                self.vision_breaker_tripped_at = None;
-                if self.vision_pause_announced {
-                    self.vision_pause_announced = false;
-                    self.event_queue.push(trigger_error_event(
-                        "vision",
-                        "Screen awareness restored.",
-                        true,
-                    ));
-                }
+                self.announce_vision_recovered();
                 debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
                 Some(description)
             }
             Ok(_) => {
                 // Empty description = uninformative screen, not a failure.
-                self.vision_failure_count = 0;
-                self.vision_breaker_tripped_at = None;
-                if self.vision_pause_announced {
-                    self.vision_pause_announced = false;
-                    self.event_queue.push(trigger_error_event(
-                        "vision",
-                        "Screen awareness restored.",
-                        true,
-                    ));
-                }
+                self.announce_vision_recovered();
                 debug!(cycle = cycle_num, "capture_trigger.empty_description");
                 None
             }
