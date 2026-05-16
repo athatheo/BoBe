@@ -74,11 +74,7 @@ fn spawn_keepalive(out_tx: mpsc::Sender<Message>) -> tokio::task::JoinHandle<()>
         ticker.tick().await; // skip the immediate first tick
         loop {
             ticker.tick().await;
-            if out_tx
-                .send(Message::Ping(Vec::new().into()))
-                .await
-                .is_err()
-            {
+            if out_tx.send(Message::Ping(Vec::new().into())).await.is_err() {
                 break;
             }
         }
