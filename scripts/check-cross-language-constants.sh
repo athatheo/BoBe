@@ -68,6 +68,10 @@ rust_persona=$(grep -E 'DEFAULT_PERSONA: &str =' "$RUST" | sed -E 's/.*= "([^"]+
 swift_persona=$(grep -E 'static let defaultPersona = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
 expect_match "voice default persona" "$rust_persona" "$swift_persona"
 
+rust_kind_tts=$(grep -E 'MODEL_KIND_TTS: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
+swift_kind_tts=$(grep -E 'static let modelKindTts = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
+expect_match "voice model kind TTS" "$rust_kind_tts" "$swift_kind_tts"
+
 if [[ $fail -eq 0 ]]; then
     echo "cross-language constants ok"
 fi

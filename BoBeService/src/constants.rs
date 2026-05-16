@@ -49,4 +49,8 @@ pub(crate) mod voice_wire {
     pub(crate) const TTS_OUTPUT_SAMPLE_RATE: u32 = 24_000;
     pub(crate) const KOKORO_MODEL_DIR: &str = "kokoro-multi-lang-v1_0";
     pub(crate) const DEFAULT_PERSONA: &str = "af_bella";
+    /// Wire value for the TTS install model kind. Match the
+    /// `#[serde(rename_all = "snake_case")]`-serialized variant of
+    /// `voice::install_artifacts::VoiceModelKind::Tts`.
+    pub(crate) const MODEL_KIND_TTS: &str = "tts";
 }

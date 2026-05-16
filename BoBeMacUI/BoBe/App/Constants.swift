@@ -35,6 +35,11 @@ enum VoiceWire {
     static let ttsOutputSampleRate = 24_000
     static let kokoroModelDir = "kokoro-multi-lang-v1_0"
     static let defaultPersona = "af_bella"
+    /// Wire value for the TTS install model kind (matches Rust
+    /// `voice_wire::MODEL_KIND_TTS`). `installStatus.models` from the
+    /// daemon arrives as untyped String; Settings → Voice filters by
+    /// this value.
+    static let modelKindTts = "tts"
 }
 
 /// Wire-format MCP server status strings emitted by the daemon's

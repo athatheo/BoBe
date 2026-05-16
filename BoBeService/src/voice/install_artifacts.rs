@@ -20,7 +20,7 @@ pub(crate) enum VoiceModelKind {
 impl VoiceModelKind {
     pub(super) const fn label(self) -> &'static str {
         match self {
-            Self::Tts => "tts",
+            Self::Tts => crate::constants::voice_wire::MODEL_KIND_TTS,
         }
     }
 

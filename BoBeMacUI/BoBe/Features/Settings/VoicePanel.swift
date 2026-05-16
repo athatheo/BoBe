@@ -192,7 +192,7 @@ struct VoicePanel: View {
                     sizeHint: "~340 MB",
                     location: "~/.bobe/models/kokoro-multi-lang-v1_0/",
                     status: self.kokoroStatus,
-                    daemonProgress: self.installStatus?.models.first(where: { $0.kind == "tts" })
+                    daemonProgress: self.installStatus?.models.first(where: { $0.kind == VoiceWire.modelKindTts })
                 )
 
                 // Client-side STT — English (FluidAudio Parakeet EOU).
@@ -242,7 +242,7 @@ struct VoicePanel: View {
     }
 
     private var kokoroStatus: VoiceModelCard.Status {
-        guard let progress = self.installStatus?.models.first(where: { $0.kind == "tts" }) else {
+        guard let progress = self.installStatus?.models.first(where: { $0.kind == VoiceWire.modelKindTts }) else {
             return .unknown
         }
         if self.installStatus?.installed.tts == true {
