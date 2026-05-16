@@ -609,10 +609,16 @@ public final class VoicePipeline {
         // (Qwen3) so we don't need to pre-convert. Mute gates the feed too
         // so we don't transcribe during user-requested silence.
         guard !self.muted else { return }
+        // Deep-copy the buffer before the async hop. Apple's docs say tap
+        // buffer storage may be reused after the installTap block returns;
+        // capturing the buffer across `Task { ... await }` would let the
+        // realtime queue clobber the bytes under heavy CPU load before
+        // FluidAudio reads them. The copy is cheap (≤512 frames × 4 B).
+        guard let copy = self.copyPcmBuffer(buffer) else { return }
         let engine = self.activeStt
-        Task { [buffer] in
+        Task { [copy] in
             do {
-                try await engine.acceptAudio(buffer)
+                try await engine.acceptAudio(copy)
             } catch {
                 // FluidAudio errors during a streaming pass are non-fatal —
                 // most likely a transient model state issue. Log and keep
@@ -621,6 +627,29 @@ public final class VoicePipeline {
                 logger.warning("stt.acceptAudio failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Deep-copy the tap buffer's float channel data into a fresh
+    /// AVAudioPCMBuffer that's safe to send across `Task` hops. Returns
+    /// nil if buffer allocation fails or the source isn't Float32 (which
+    /// shouldn't happen for our VPIO tap; logged for diagnosis).
+    private func copyPcmBuffer(_ src: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: src.format, frameCapacity: src.frameCapacity)
+        else {
+            logger.warning("stt.buffer_copy_alloc_failed")
+            return nil
+        }
+        copy.frameLength = src.frameLength
+        guard let srcChannels = src.floatChannelData, let dstChannels = copy.floatChannelData else {
+            logger.warning("stt.buffer_copy_unexpected_format")
+            return nil
+        }
+        let frameCount = Int(src.frameLength)
+        let bytes = frameCount * MemoryLayout<Float>.size
+        for ch in 0 ..< Int(src.format.channelCount) {
+            memcpy(dstChannels[ch], srcChannels[ch], bytes)
+        }
+        return copy
     }
 
     /// Client-requested mute — gates FluidAudio feeding so we don't
