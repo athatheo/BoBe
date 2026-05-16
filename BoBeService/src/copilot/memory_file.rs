@@ -74,11 +74,10 @@ impl MemoryFile {
         commit(&self.path, &new_body).await
     }
 
-    /// For consolidation requiring lock across read+write, see [`acquire_writer`].
-    #[allow(
-        dead_code,
-        reason = "Phase 2: consumed by the consolidation worker added in Phase 4"
-    )]
+    /// Wholesale overwrite. Used by the `PUT /memory` handler when the user
+    /// edits memory.md directly via the Settings UI. The consolidation
+    /// trigger uses `acquire_writer().replace_all()` instead so it can read
+    /// + write under one lock.
     pub(crate) async fn replace_all(&self, body: String) -> Result<(), AppError> {
         let _guard = self.write_lock.lock().await;
         commit(&self.path, &body).await
@@ -194,11 +193,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_all_overwrites() {
+    async fn writer_guard_replace_all_overwrites() {
         let dir = tempdir();
         let mem = MemoryFile::new(dir.join("memory.md"));
         mem.append_under("Recent", "first").await.unwrap();
-        mem.replace_all("# fresh\n".to_string()).await.unwrap();
+        let writer = mem.acquire_writer().await;
+        writer.replace_all("# fresh\n".to_string()).await.unwrap();
+        drop(writer);
         assert_eq!(mem.read().await.unwrap(), "# fresh\n");
     }
 

@@ -142,7 +142,7 @@ fn spawn_background_tasks(
     };
 
     let consolidation = {
-        let trigger = copilot::consolidation::ConsolidationTrigger::new(
+        let trigger = runtime::triggers::ConsolidationTrigger::new(
             std::sync::Arc::clone(&state.workers),
             std::sync::Arc::clone(&state.memory_file),
         );

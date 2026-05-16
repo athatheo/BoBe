@@ -541,25 +541,4 @@ struct EnginePanel: View {
     }
 }
 
-/// Terminal.app handoff for the bundled CLI's device-flow prompt (can't replicate in Swift).
-enum CopilotSignIn {
-    static func openLogin(cliPath: String?) {
-        let command: String
-        if let cliPath {
-            let escaped = cliPath.replacingOccurrences(of: "'", with: "'\\''")
-            command = "'\(escaped)'"
-        } else {
-            command = "copilot"
-        }
-        let script = """
-        tell application "Terminal"
-            activate
-            do script "\(command)"
-        end tell
-        """
-        let process = Process()
-        process.launchPath = "/usr/bin/osascript"
-        process.arguments = ["-e", script]
-        try? process.run()
-    }
-}
+// CopilotSignIn lives in `Services/CopilotSignIn.swift`.

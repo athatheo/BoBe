@@ -8,11 +8,10 @@ use serde_json::json;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::copilot::memory_file::{MemoryFile, TARGET_MAX_BYTES};
+use crate::copilot::registry::WorkerRegistry;
+use crate::copilot::types::JobInput;
 use crate::error::AppError;
-
-use super::memory_file::{MemoryFile, TARGET_MAX_BYTES};
-use super::registry::WorkerRegistry;
-use super::types::JobInput;
 
 const DEFAULT_FIRE_AT: (u32, u32) = (3, 0);
 

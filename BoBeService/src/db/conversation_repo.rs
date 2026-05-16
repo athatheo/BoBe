@@ -135,7 +135,7 @@ impl ConversationRepository for SqliteConversationRepo {
                     turn.conversation_id
                 )));
             }
-            Some((state,)) if state == "closed" => {
+            Some((state,)) if state == ConversationState::Closed.as_str() => {
                 warn!(conversation_id = %turn.conversation_id, role = %turn.role, "conversation_repo.add_turn_closed");
                 return Err(AppError::Validation(format!(
                     "Cannot add turn to closed conversation {}",

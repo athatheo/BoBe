@@ -1,5 +1,4 @@
 pub(crate) mod client;
-pub(crate) mod consolidation;
 pub(crate) mod error;
 pub(crate) mod handler;
 pub(crate) mod hooks;
