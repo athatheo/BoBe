@@ -48,6 +48,20 @@ enum ToolCallStatusWire {
     static let complete = "complete"
 }
 
+/// Install-progress status emitted by both `/voice/install/status` and
+/// `/local-runtime/status`. Mirrors Rust `voice::install_artifacts::
+/// InstallStatus` (serde rename_all = "snake_case") and the manual
+/// mapping in `api::handlers::local_runtime::InstallSnapshotDto`. Both
+/// daemon-side enums emit the same 5 strings; if they diverge in the
+/// future, split this into two Swift enums.
+enum InstallStatusWire: String, Codable, Sendable, Equatable {
+    case idle
+    case running
+    case complete
+    case canceled
+    case failed
+}
+
 enum VoiceWire {
     static let ttsOutputSampleRate = 24_000
     static let kokoroModelDir = "kokoro-multi-lang-v1_0"

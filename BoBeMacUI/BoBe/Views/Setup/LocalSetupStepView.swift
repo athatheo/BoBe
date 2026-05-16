@@ -130,18 +130,18 @@ struct LocalSetupStepView: View {
 
     @ViewBuilder
     private var actionRow: some View {
-        let status = self.snapshot?.status ?? "running"
+        let status = self.snapshot?.status ?? .running
         switch status {
-        case "complete":
+        case .complete:
             Button(L10n.tr("setup.welcome.continue"), action: self.onContinue)
                 .bobeButton(.primary, size: .regular)
                 .keyboardShortcut(.defaultAction)
-        case "canceled":
+        case .canceled:
             Button(L10n.tr("setup.local.retry")) {
                 Task { await self.startInstall() }
             }
             .bobeButton(.primary, size: .regular)
-        case "failed":
+        case .failed:
             VStack(spacing: 8) {
                 if let error = self.snapshot?.error {
                     Text(error)
@@ -154,7 +154,7 @@ struct LocalSetupStepView: View {
                 }
                 .bobeButton(.primary, size: .regular)
             }
-        default:
+        case .idle, .running:
             Button(L10n.tr("setup.local.cancel"), action: self.cancelInstall)
                 .bobeButton(.secondary, size: .small)
         }

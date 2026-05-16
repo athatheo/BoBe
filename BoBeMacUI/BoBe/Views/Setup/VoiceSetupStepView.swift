@@ -257,12 +257,12 @@ struct VoiceSetupStepView: View {
                 return
             }
             switch s.status {
-            case "failed":
+            case .failed:
                 self.errorMessage = L10n.tr("setup.voice.poll_failure")
                 self.phase = .failed; return
-            case "canceled":
+            case .canceled:
                 self.phase = .idle; return
-            default:
+            case .idle, .running, .complete:
                 // Daemon may already be complete while FluidAudio is
                 // still downloading; keep polling until both finish.
                 continue

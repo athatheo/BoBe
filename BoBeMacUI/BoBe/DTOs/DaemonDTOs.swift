@@ -86,7 +86,7 @@ struct LocalRuntimeMessageResponse: Codable, Sendable {
 }
 
 struct LocalRuntimeSnapshot: Codable, Sendable {
-    let status: String
+    let status: InstallStatusWire
     let error: String?
     let runtime: LocalRuntimeDownload
     let chatModel: LocalRuntimePull
@@ -132,17 +132,17 @@ struct LocalRuntimePull: Codable, Sendable {
 // MARK: - Voice install DTOs
 
 struct VoiceInstallSnapshot: Codable, Sendable {
-    let status: String
+    let status: InstallStatusWire
     let error: String?
     let models: [VoiceModelProgress]
     let installed: VoiceInstallPresence
 
     /// True when the daemon reports an active install. Matches the Rust
     /// `InstallStatus::Running` variant's wire form.
-    var isRunning: Bool { self.status == "running" }
+    var isRunning: Bool { self.status == .running }
     /// Convenience for the wizard step's continue button.
-    var isComplete: Bool { self.status == "complete" }
-    var isTerminal: Bool { ["complete", "canceled", "failed", "idle"].contains(self.status) }
+    var isComplete: Bool { self.status == .complete }
+    var isTerminal: Bool { [.complete, .canceled, .failed, .idle].contains(self.status) }
 }
 
 struct VoiceModelProgress: Codable, Sendable, Identifiable {

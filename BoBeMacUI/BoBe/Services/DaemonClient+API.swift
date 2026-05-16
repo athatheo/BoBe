@@ -89,7 +89,7 @@ extension DaemonClient {
             do {
                 let snapshot = try decoder.decode(LocalRuntimeSnapshot.self, from: data)
                 onSnapshot(snapshot)
-                if ["complete", "canceled", "failed"].contains(snapshot.status) {
+                if [.complete, .canceled, .failed].contains(snapshot.status) {
                     break
                 }
             } catch {
