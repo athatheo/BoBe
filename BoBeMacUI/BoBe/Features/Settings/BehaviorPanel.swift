@@ -8,8 +8,7 @@ struct BehaviorPanel: View {
     @State private var error: String?
     @State private var savedMessage: String?
     @State private var newCheckinTime = ""
-    @State private var saveTask: Task<Void, Never>?
-    @State private var savedToastTask: Task<Void, Never>?
+    @State private var debouncer = SettingsDebouncer()
     @State private var restartFields: Set<String> = []
     @State private var bannerDismissed = false
     @Environment(\.theme) private var theme
@@ -201,14 +200,11 @@ struct BehaviorPanel: View {
     }
 
     private func debounceSave(touched: String? = nil) {
-        self.saveTask?.cancel()
         self.isSaving = true
         let currentSettings = self.settings
         let touchedFields = self.collectTouchedFields(initial: touched)
-
-        self.saveTask = Task {
-            try? await Task.sleep(for: .seconds(0.6))
-            guard !Task.isCancelled, let currentSettings else {
+        self.debouncer.debounce {
+            guard let currentSettings else {
                 self.isSaving = false
                 return
             }
@@ -244,12 +240,7 @@ struct BehaviorPanel: View {
     }
 
     private func scheduleSavedToastDismiss() {
-        self.savedToastTask?.cancel()
-        self.savedToastTask = Task {
-            try? await Task.sleep(for: .seconds(2.4))
-            guard !Task.isCancelled else { return }
-            self.savedMessage = nil
-        }
+        self.debouncer.scheduleToastClear { self.savedMessage = nil }
     }
 
     private func collectTouchedFields(initial: String?) -> Set<String> {

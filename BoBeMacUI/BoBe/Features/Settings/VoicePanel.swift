@@ -13,8 +13,7 @@ struct VoicePanel: View {
     @State private var isReinstalling = false
     @State private var error: String?
     @State private var savedMessage: String?
-    @State private var saveTask: Task<Void, Never>?
-    @State private var savedToastTask: Task<Void, Never>?
+    @State private var debouncer = SettingsDebouncer()
     @State private var statusPollTask: Task<Void, Never>?
     /// Tick that increments every 500ms while a FluidAudio download is in
     /// flight, forcing the parakeet card to recompute its observed-percent.
@@ -80,10 +79,9 @@ struct VoicePanel: View {
         .onDisappear {
             self.statusPollTask?.cancel()
             self.sttProgressTask?.cancel()
-            // Don't cancel saveTask — let any pending PATCH complete in the
-            // background even after the panel closes, otherwise rapid edits
-            // followed by closing Settings would silently lose changes.
-            self.savedToastTask?.cancel()
+            // Let any in-flight persist drain in the background — closing
+            // Settings mid-edit must not silently drop the last keystroke.
+            self.debouncer.cancelToast()
         }
         .onChange(of: self.pipeline.sttStatus) { _, newValue in
             self.startSttProgressTickerIfNeeded(for: newValue)
@@ -437,12 +435,7 @@ struct VoicePanel: View {
     }
 
     private func debounceSave() {
-        self.saveTask?.cancel()
-        self.saveTask = Task {
-            try? await Task.sleep(for: .seconds(0.6))
-            guard !Task.isCancelled else { return }
-            await self.persist()
-        }
+        self.debouncer.debounce { await self.persist() }
     }
 
     private func persist() async {
@@ -480,12 +473,7 @@ struct VoicePanel: View {
     }
 
     private func scheduleSavedToastDismiss() {
-        self.savedToastTask?.cancel()
-        self.savedToastTask = Task {
-            try? await Task.sleep(for: .seconds(2.4))
-            guard !Task.isCancelled else { return }
-            self.savedMessage = nil
-        }
+        self.debouncer.scheduleToastClear { self.savedMessage = nil }
     }
 }
 

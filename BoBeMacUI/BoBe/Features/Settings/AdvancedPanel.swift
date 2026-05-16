@@ -5,8 +5,7 @@ struct AdvancedPanel: View {
     @State private var isLoading = false
     @State private var error: String?
     @State private var savedMessage: String?
-    @State private var saveTask: Task<Void, Never>?
-    @State private var savedToastTask: Task<Void, Never>?
+    @State private var debouncer = SettingsDebouncer()
     @State private var restartFields: Set<String> = []
     @State private var bannerDismissed = false
     @Environment(\.theme) private var theme
@@ -176,12 +175,9 @@ struct AdvancedPanel: View {
     }
 
     private func debounceSave(touched: String? = nil) {
-        self.saveTask?.cancel()
         let touchedFields: Set<String> = touched.map { [$0] } ?? []
-
-        self.saveTask = Task {
-            try? await Task.sleep(for: .seconds(0.6))
-            guard !Task.isCancelled, let settings else { return }
+        self.debouncer.debounce {
+            guard let settings else { return }
             do {
                 var req = SettingsUpdateRequest()
                 req.goalCheckIntervalSeconds = settings.goalCheckIntervalSeconds
@@ -209,12 +205,7 @@ struct AdvancedPanel: View {
     }
 
     private func scheduleSavedToastDismiss() {
-        self.savedToastTask?.cancel()
-        self.savedToastTask = Task {
-            try? await Task.sleep(for: .seconds(2.4))
-            guard !Task.isCancelled else { return }
-            self.savedMessage = nil
-        }
+        self.debouncer.scheduleToastClear { self.savedMessage = nil }
     }
 
     private func applyRestartFields(touched: Set<String>, response: SettingsUpdateResponse) {

@@ -9,8 +9,7 @@ struct EnginePanel: View {
     @State var isLoading = false
     @State var error: String?
     @State var savedMessage: String?
-    @State var saveTask: Task<Void, Never>?
-    @State var savedToastTask: Task<Void, Never>?
+    @State var debouncer = SettingsDebouncer()
     @Environment(\.theme) var theme
 
     var body: some View {
@@ -291,19 +290,14 @@ struct EnginePanel: View {
         self.settings = current
         Task {
             // Skip debounce: user-initiated flip, registry should rebuild now.
-            self.saveTask?.cancel()
+            self.debouncer.cancelPendingSave()
             await self.persist()
         }
         Task { await self.loadModels() }
     }
 
     func debounceSave() {
-        self.saveTask?.cancel()
-        self.saveTask = Task {
-            try? await Task.sleep(for: .seconds(0.6))
-            guard !Task.isCancelled else { return }
-            await self.persist()
-        }
+        self.debouncer.debounce { await self.persist() }
     }
 
     private func persist() async {
@@ -335,12 +329,7 @@ struct EnginePanel: View {
     }
 
     private func scheduleSavedToastDismiss() {
-        self.savedToastTask?.cancel()
-        self.savedToastTask = Task {
-            try? await Task.sleep(for: .seconds(2.4))
-            guard !Task.isCancelled else { return }
-            self.savedMessage = nil
-        }
+        self.debouncer.scheduleToastClear { self.savedMessage = nil }
     }
 
     private func loadAll() async {
