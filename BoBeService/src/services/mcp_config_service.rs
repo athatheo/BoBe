@@ -307,15 +307,18 @@ mod mcp_live {
 
     impl ServerEntry {
         pub(super) fn from_sdk(server: McpServer) -> Self {
+            use crate::constants::mcp_status::{
+                CONNECTED, DISABLED, FAILED, NEEDS_AUTH, NOT_CONFIGURED, PENDING, UNKNOWN,
+            };
             let connected = matches!(server.status, McpServerStatus::Connected);
             let status = match server.status {
-                McpServerStatus::Connected => "connected",
-                McpServerStatus::Failed => "failed",
-                McpServerStatus::NeedsAuth => "needs-auth",
-                McpServerStatus::Pending => "pending",
-                McpServerStatus::Disabled => "disabled",
-                McpServerStatus::NotConfigured => "not-configured",
-                McpServerStatus::Unknown => "unknown",
+                McpServerStatus::Connected => CONNECTED,
+                McpServerStatus::Failed => FAILED,
+                McpServerStatus::NeedsAuth => NEEDS_AUTH,
+                McpServerStatus::Pending => PENDING,
+                McpServerStatus::Disabled => DISABLED,
+                McpServerStatus::NotConfigured => NOT_CONFIGURED,
+                McpServerStatus::Unknown => UNKNOWN,
             }
             .to_string();
             Self {

@@ -23,3 +23,17 @@ pub(crate) mod engine_kind {
     pub(crate) const COPILOT_CLOUD: &str = "copilot_cloud";
     pub(crate) const LOCAL: &str = "local";
 }
+
+/// Wire-format MCP server status strings. Emitted by
+/// `services::mcp_config_service::build_server_summary`; consumed by the
+/// Swift `MCPServersPanel.statusBadge` switch. Match the values in
+/// `BoBeMacUI/BoBe/Models/BobeTypes.swift::McpServerStatusWire`.
+pub(crate) mod mcp_status {
+    pub(crate) const CONNECTED: &str = "connected";
+    pub(crate) const FAILED: &str = "failed";
+    pub(crate) const NEEDS_AUTH: &str = "needs-auth";
+    pub(crate) const PENDING: &str = "pending";
+    pub(crate) const DISABLED: &str = "disabled";
+    pub(crate) const NOT_CONFIGURED: &str = "not-configured";
+    pub(crate) const UNKNOWN: &str = "unknown";
+}

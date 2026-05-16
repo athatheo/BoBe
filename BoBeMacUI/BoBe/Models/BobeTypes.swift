@@ -157,6 +157,21 @@ enum EngineKind {
     static let local = "local"
 }
 
+/// Wire-format MCP server status strings emitted by the daemon's
+/// `services::mcp_config_service`. Match the Rust `constants::mcp_status`
+/// consts. A typed `Codable` enum would be the next-level fix; the
+/// `MCPServersPanel.statusBadge` switch wants a `.default` fallback so
+/// unknown future statuses still render a generic badge.
+enum McpServerStatusWire {
+    static let connected = "connected"
+    static let failed = "failed"
+    static let needsAuth = "needs-auth"
+    static let pending = "pending"
+    static let disabled = "disabled"
+    static let notConfigured = "not-configured"
+    static let unknown = "unknown"
+}
+
 enum WindowSizes {
     static let widthCollapsed: CGFloat = 184
     static let widthExpanded: CGFloat = 540

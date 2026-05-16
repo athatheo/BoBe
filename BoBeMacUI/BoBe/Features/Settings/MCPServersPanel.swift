@@ -172,19 +172,19 @@ struct MCPServersPanel: View {
     private func statusBadge(for server: MCPServer) -> some View {
         if let status = server.status {
             switch status {
-            case "connected":
+            case McpServerStatusWire.connected:
                 self.badge(text: L10n.tr("settings.mcp.runtime.connected"),
                            color: self.theme.colors.secondary)
-            case "failed":
+            case McpServerStatusWire.failed:
                 self.badge(text: L10n.tr("settings.mcp.runtime.failed"),
                            color: self.theme.colors.primary)
-            case "needs-auth":
+            case McpServerStatusWire.needsAuth:
                 self.badge(text: L10n.tr("settings.mcp.runtime.needs_auth"),
                            color: self.theme.colors.tertiary)
-            case "pending":
+            case McpServerStatusWire.pending:
                 self.badge(text: L10n.tr("settings.mcp.runtime.pending"),
                            color: self.theme.colors.textMuted)
-            case "disabled", "not-configured":
+            case McpServerStatusWire.disabled, McpServerStatusWire.notConfigured:
                 EmptyView()
             default:
                 self.badge(text: status, color: self.theme.colors.textMuted)
