@@ -56,6 +56,14 @@ pub(crate) async fn handle_control_text(
             let voice_pack = cfg.voice_id.clone();
             let s = VoiceSession::new(session_id, cfg, language);
             let initial_turn = format!("voice_{}", Uuid::new_v4().simple());
+            // Rehello: a second Hello on the same WS replaces the session.
+            // Abort the previous in-flight turn first — otherwise the
+            // spawned task keeps running (JoinHandle::drop does NOT abort)
+            // and orphans hold the Kokoro mutex + emit TTS frames the new
+            // session can't reach for barge-in.
+            if let Some(prev) = session.as_mut() {
+                abort_active_turn(prev, ctx, 0, "rehello").await;
+            }
             *session = Some(s);
             send_json(
                 out_tx,
