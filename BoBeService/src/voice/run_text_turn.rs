@@ -23,6 +23,7 @@ use crate::speech::TtsEngine;
 use crate::speech::protocol::{
     FLAG_FILLER, FLAG_FIRST_OF_TURN, ServerMessage, VoicePhase, encode_tts_frame,
 };
+use crate::voice::abort_on_drop::AbortOnDrop;
 use crate::voice::context::VoiceContext;
 use crate::voice::filler_library::FillerKind;
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
@@ -100,6 +101,10 @@ pub(crate) async fn run_text_turn(
     send_state(out_tx, VoicePhase::Speaking, turn_id).await;
     let speaking_start = Instant::now();
     let first_audio_emitted = Arc::new(AtomicBool::new(false));
+    // Wrap children in AbortOnDrop so a parent abort (barge-in / disconnect
+    // / cancel-phrase / rehello) cascades. Without this the kokoro task
+    // keeps holding `Mutex<OfflineTts>` for 1-3s after the parent unwinds,
+    // blocking the next turn's first synth.
     let filler_task = spawn_filler_watchdog(
         engines
             .fillers
@@ -108,15 +113,16 @@ pub(crate) async fn run_text_turn(
         engines.tts.sample_rate(),
         Arc::clone(&first_audio_emitted),
         out_tx.clone(),
-    );
+    )
+    .map(AbortOnDrop::new);
     let (sentence_tx, sentence_rx) = mpsc::channel::<String>(SENTENCE_CHANNEL_CAPACITY);
-    let kokoro_task = spawn_kokoro_task(
+    let kokoro_task = AbortOnDrop::new(spawn_kokoro_task(
         Arc::clone(&engines.tts),
         sentence_rx,
         out_tx.clone(),
         Arc::clone(&first_audio_emitted),
         voice_cfg.clone(),
-    );
+    ));
 
     let pipeline = Arc::new(std::sync::Mutex::new(SentencePipeline::new(
         sentence_tx.clone(),
@@ -137,7 +143,10 @@ pub(crate) async fn run_text_turn(
     }
     drop(pipeline);
     drop(sentence_tx);
-    match kokoro_task.await {
+    // Strip the AbortOnDrop wrappers on the natural-completion path so
+    // .await + .abort() run instead of the wrapper's Drop firing first.
+    let kokoro_handle = kokoro_task.into_inner();
+    match kokoro_handle.await {
         Ok(()) => {}
         Err(e) if e.is_panic() => {
             error!(error = %e, "voice.kokoro_task_panic");
@@ -148,7 +157,8 @@ pub(crate) async fn run_text_turn(
         Err(e) => warn!(error = %e, "voice.kokoro_task_join_failed"),
     }
 
-    if let Some(handle) = filler_task {
+    if let Some(filler) = filler_task {
+        let handle = filler.into_inner();
         handle.abort();
         drop(handle.await);
     }

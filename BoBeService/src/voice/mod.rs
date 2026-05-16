@@ -3,6 +3,7 @@
 //! loop: per-WS session state, per-turn convergence body, pre-rendered
 //! filler library, sink registry, telemetry counters.
 
+pub(crate) mod abort_on_drop;
 pub(crate) mod cancel_phrases;
 pub(crate) mod context;
 pub(crate) mod control;
