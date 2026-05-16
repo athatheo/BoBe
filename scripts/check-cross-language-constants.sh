@@ -86,6 +86,25 @@ rust_data_dir=$(grep -E 'BOBE_DATA_DIR_NAME: &str =' "$RUST" | sed -E 's/.*= "([
 swift_data_dir=$(grep -E 'static let dataDirName = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
 expect_match "BOBE_DATA_DIR_NAME" "$rust_data_dir" "$swift_data_dir"
 
+# TTS binary frame header: 8B BE u64 chunk_id + 1B flags + N opus.
+# Rust speech/protocol.rs defines the three; Swift Voice/VoiceProtocol.swift
+# mirrors them. If either side adds a header byte or shifts a flag bit
+# without the other, every TTS chunk silently misaligns at runtime.
+RUST_PROTO="$ROOT/BoBeService/src/speech/protocol.rs"
+SWIFT_PROTO="$ROOT/BoBeMacUI/BoBe/Voice/VoiceProtocol.swift"
+
+rust_header_len=$(grep -E 'TTS_FRAME_HEADER_LEN: usize =' "$RUST_PROTO" | sed -E 's/.*= ([0-9]+);.*/\1/')
+swift_header_len=$(grep -E 'static let length = ' "$SWIFT_PROTO" | sed -E 's/.*= ([0-9]+).*/\1/')
+expect_match "tts header length" "$rust_header_len" "$swift_header_len"
+
+rust_flag_filler=$(grep -E 'FLAG_FILLER: u8 =' "$RUST_PROTO" | sed -E 's/.*= ([0-9b_]+);.*/\1/')
+swift_flag_filler=$(grep -E 'static let flagFiller: UInt8 = ' "$SWIFT_PROTO" | sed -E 's/.*= ([0-9b_]+).*/\1/')
+expect_match "tts FLAG_FILLER" "$rust_flag_filler" "$swift_flag_filler"
+
+rust_flag_first=$(grep -E 'FLAG_FIRST_OF_TURN: u8 =' "$RUST_PROTO" | sed -E 's/.*= ([0-9b_]+);.*/\1/')
+swift_flag_first=$(grep -E 'static let flagFirstOfTurn: UInt8 = ' "$SWIFT_PROTO" | sed -E 's/.*= ([0-9b_]+).*/\1/')
+expect_match "tts FLAG_FIRST_OF_TURN" "$rust_flag_first" "$swift_flag_first"
+
 if [[ $fail -eq 0 ]]; then
     echo "cross-language constants ok"
 fi

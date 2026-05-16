@@ -176,12 +176,17 @@ enum ServerVoiceMessage: Decodable {
 }
 
 /// Binary frame header for `tts.chunk` / `filler.chunk` (daemon→client):
-/// 8 bytes BE u64 chunk_id, then 1 byte flags, then Opus packet.
+/// 8 bytes BE u64 chunk_id, then 1 byte flags, then Opus packet. Match
+/// Rust `speech::protocol::{TTS_FRAME_HEADER_LEN, FLAG_FILLER,
+/// FLAG_FIRST_OF_TURN, encode_tts_frame}`. The drift script asserts the
+/// three constants stay in lockstep.
 struct TtsFrameHeader {
     let chunkId: UInt64
     let flags: UInt8
 
     static let length = 9
+    static let flagFiller: UInt8 = 0b0000_0001
+    static let flagFirstOfTurn: UInt8 = 0b0000_0010
 
     static func parse(_ data: Data) -> (header: TtsFrameHeader, payload: Data)? {
         guard data.count >= length else { return nil }
@@ -194,6 +199,6 @@ struct TtsFrameHeader {
         return (TtsFrameHeader(chunkId: chunkId, flags: flags), payload)
     }
 
-    var isFiller: Bool { flags & 0b0000_0001 != 0 }
-    var isFirstOfTurn: Bool { flags & 0b0000_0010 != 0 }
+    var isFiller: Bool { flags & Self.flagFiller != 0 }
+    var isFirstOfTurn: Bool { flags & Self.flagFirstOfTurn != 0 }
 }
