@@ -141,20 +141,11 @@ impl RuntimeSession {
                 self.log_heartbeat(loop_counter).await;
             }
 
-            match tokio::time::timeout(std::time::Duration::from_mins(1), async {
+            run_trigger("checkin", std::time::Duration::from_mins(1), async {
                 let mut checkin = self.checkin_trigger.lock().await;
                 checkin.fire().await
             })
-            .await
-            {
-                Ok(Decision::Engage) => {
-                    info!(trigger = "checkin", "runtime_session.reach_out");
-                }
-                Ok(_) => {}
-                Err(_) => {
-                    warn!("runtime_session.checkin_trigger_timeout");
-                }
-            }
+            .await;
 
             if let Err(e) = self.close_stale_conversation_if_needed().await {
                 warn!(error = %e, "runtime_session.stale_check_failed");
@@ -162,20 +153,7 @@ impl RuntimeSession {
 
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
             if time_since_goal >= cfg.goals.check_interval_seconds {
-                match tokio::time::timeout(
-                    std::time::Duration::from_mins(5),
-                    self.goal_trigger.fire(),
-                )
-                .await
-                {
-                    Ok(Decision::Engage) => {
-                        info!(trigger = "goal", "runtime_session.reach_out");
-                    }
-                    Ok(_) => {}
-                    Err(_) => {
-                        warn!("runtime_session.goal_trigger_timeout");
-                    }
-                }
+                run_trigger("goal", std::time::Duration::from_mins(5), self.goal_trigger.fire()).await;
                 last_goal_check = Instant::now();
             }
 
@@ -185,20 +163,17 @@ impl RuntimeSession {
             {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
                 if time_since_capture >= cfg.capture.interval_seconds {
-                    match tokio::time::timeout(std::time::Duration::from_mins(5), async {
-                        let mut ct = self.capture_trigger.lock().await;
-                        ct.fire().await
-                    })
-                    .await
-                    {
-                        Ok(Decision::Engage) => {
-                            info!(trigger = "capture", "runtime_session.reach_out");
-                        }
-                        Ok(_) => {}
-                        Err(_) => {
-                            warn!("runtime_session.capture_trigger_timeout");
-                            self.push_error_event("capture_trigger", "Capture trigger timed out");
-                        }
+                    let timed_out = run_trigger(
+                        "capture",
+                        std::time::Duration::from_mins(5),
+                        async {
+                            let mut ct = self.capture_trigger.lock().await;
+                            ct.fire().await
+                        },
+                    )
+                    .await;
+                    if timed_out {
+                        self.push_error_event("capture_trigger", "Capture trigger timed out");
                     }
                     last_capture_time = Instant::now();
                 }
@@ -314,5 +289,28 @@ impl RuntimeSession {
             .push(crate::util::sse::factories::trigger_error_event(
                 trigger, message, true,
             ));
+    }
+}
+
+/// Race the trigger future against a timeout and emit the standard reach_out
+/// / timeout log lines. Returns `true` if the timeout fired (caller may
+/// surface an extra trigger_error_event). Replaces three near-identical
+/// `tokio::time::timeout + match Ok(Decision::Engage)/Ok(_)/Err(_)` blocks
+/// in `RuntimeSession::run`.
+async fn run_trigger(
+    name: &'static str,
+    timeout: std::time::Duration,
+    fut: impl std::future::Future<Output = Decision>,
+) -> bool {
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(Decision::Engage) => {
+            info!(trigger = name, "runtime_session.reach_out");
+            false
+        }
+        Ok(_) => false,
+        Err(_) => {
+            warn!(trigger = name, "runtime_session.trigger_timeout");
+            true
+        }
     }
 }
