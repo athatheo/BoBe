@@ -1,3 +1,9 @@
+//! MCP config service. Stateless free-fns over a per-call
+//! `McpConfigDeps` borrow-bundle, intentionally NOT a struct: nothing
+//! here owns state across calls, so an `Arc<McpConfigService>` would be
+//! decoration. If this module ever needs cached parsing or a per-instance
+//! file watcher, lift `McpConfigDeps` into a struct then.
+
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
