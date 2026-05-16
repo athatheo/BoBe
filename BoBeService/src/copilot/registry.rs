@@ -191,10 +191,11 @@ impl WorkerRegistry {
         Ok(worker)
     }
 
-    /// Forgets session IDs because `ResumeSessionConfig` cannot override `model` — forces fresh-create.
-    pub(crate) async fn reload(&self) {
-        let _reload_guard = self.reload_lock.lock().await;
-
+    /// Tear down every worker + the SDK client. Used by both `reload()`
+    /// (engine config changed — caller follows up with `forget_session_ids`)
+    /// and `shutdown_all()` (graceful daemon stop — preserves session IDs
+    /// on disk so next boot can resume).
+    async fn shutdown_workers(&self) {
         if let Some(w) = self.goals.lock().await.take() {
             log_shutdown("goals", w.shutdown().await);
         }
@@ -211,7 +212,9 @@ impl WorkerRegistry {
             log_shutdown("chat", dated.worker.shutdown().await);
         }
         self.client.stop().await;
+    }
 
+    async fn forget_session_ids(&self) {
         let now = Local::now();
         for class in [
             WorkerClass::Goals,
@@ -221,10 +224,18 @@ impl WorkerRegistry {
             WorkerClass::Chat,
         ] {
             if let Err(e) = self.session_store.forget(class, now).await {
-                tracing::warn!(class = %class.name(), err = %e, "registry.reload.forget_failed");
+                tracing::warn!(class = %class.name(), err = %e, "registry.forget_session_id_failed");
             }
         }
+    }
 
+    /// Engine-config reload: tear down workers AND forget session IDs.
+    /// `ResumeSessionConfig` cannot override `model` so on next access the
+    /// workers must fresh-create against the new engine config.
+    pub(crate) async fn reload(&self) {
+        let _reload_guard = self.reload_lock.lock().await;
+        self.shutdown_workers().await;
+        self.forget_session_ids().await;
         tracing::info!("registry.reload_complete");
     }
 
@@ -238,8 +249,15 @@ impl WorkerRegistry {
         self.reload().await;
     }
 
+    /// Graceful daemon stop. Tears down workers + client but PRESERVES the
+    /// on-disk session IDs so the next boot's `create_or_resume` finds them
+    /// and resumes the chat thread. Without this distinction (i.e. before:
+    /// `shutdown_all() = reload()`) every clean `ctrl_c` wiped chat history
+    /// and only SIGKILL preserved it.
     pub(crate) async fn shutdown_all(&self) {
-        self.reload().await;
+        let _reload_guard = self.reload_lock.lock().await;
+        self.shutdown_workers().await;
+        tracing::info!("registry.shutdown_complete");
     }
 
     async fn create_or_resume(&self, class: WorkerClass) -> Result<Arc<Session>, AppError> {
