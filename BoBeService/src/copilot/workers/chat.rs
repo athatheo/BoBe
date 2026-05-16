@@ -106,24 +106,28 @@ impl ChatWorker for CopilotChatWorker {
             // mode sends).
             if let Some(model_name) = model.as_deref() {
                 let want_effort: &'static str = if voice_mode { "low" } else { "medium" };
-                let needs_update = {
-                    let mut slot = last_effort.lock().await;
-                    if slot.as_deref() == Some(want_effort) {
-                        false
-                    } else {
-                        *slot = Some(want_effort);
-                        true
-                    }
-                };
+                // Read-only check first; only mark the slot updated AFTER
+                // set_model succeeds. Caching the effort BEFORE the await
+                // strands the worker on the wrong effort if set_model
+                // returns Err — next same-effort send would skip the RPC
+                // and inherit the SDK's actual (stale) reasoning level.
+                // submit_lock above serializes calls into this scope so
+                // the lock-twice pattern is safe.
+                let needs_update = last_effort.lock().await.as_deref() != Some(want_effort);
                 if needs_update {
                     let opts = SetModelOptions::default().with_reasoning_effort(want_effort);
-                    if let Err(e) = session.set_model(model_name, Some(opts)).await {
-                        tracing::warn!(
-                            err = %e,
-                            voice_mode,
-                            effort = want_effort,
-                            "chat.set_model_failed_continuing"
-                        );
+                    match session.set_model(model_name, Some(opts)).await {
+                        Ok(()) => {
+                            *last_effort.lock().await = Some(want_effort);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                err = %e,
+                                voice_mode,
+                                effort = want_effort,
+                                "chat.set_model_failed_continuing"
+                            );
+                        }
                     }
                 }
             }
