@@ -52,10 +52,7 @@ pub(crate) async fn dispatch_from_control(
     );
 
     let join: JoinHandle<()> = spawn_text_turn(text, turn_id.clone(), ctx, s);
-    s.current_turn = Some(TurnInFlight {
-        turn_id,
-        join,
-    });
+    s.current_turn = Some(TurnInFlight { turn_id, join });
 }
 
 /// Spawn the per-turn task. Disconnect cleanup + barge-in abort plumbing

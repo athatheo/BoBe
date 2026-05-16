@@ -88,7 +88,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
                     match kind {
                         crate::config_manager::EngineChangeKind::Hard => registry.reload().await,
                         crate::config_manager::EngineChangeKind::Soft => {
-                            registry.reload_soft().await
+                            registry.reload_soft().await;
                         }
                     }
                 });
@@ -219,7 +219,9 @@ fn cleanup_legacy_mode_a_files() {
         };
         match result {
             Ok(()) => info!(path = %path.display(), "voice.legacy_mode_a_file_removed"),
-            Err(e) => warn!(path = %path.display(), error = %e, "voice.legacy_mode_a_remove_failed"),
+            Err(e) => {
+                warn!(path = %path.display(), error = %e, "voice.legacy_mode_a_remove_failed");
+            }
         }
     }
 }

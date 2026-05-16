@@ -44,14 +44,12 @@ pub(super) struct ModelArtifact {
     pub(super) target_subpath: &'static str,
 }
 
-pub(super) const ARTIFACTS: &[ModelArtifact] = &[
-    ModelArtifact {
-        kind: VoiceModelKind::Tts,
-        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
-        is_tarball: true,
-        target_subpath: "kokoro-multi-lang-v1_0",
-    },
-];
+pub(super) const ARTIFACTS: &[ModelArtifact] = &[ModelArtifact {
+    kind: VoiceModelKind::Tts,
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
+    is_tarball: true,
+    target_subpath: "kokoro-multi-lang-v1_0",
+}];
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub(crate) struct VoiceInstallSnapshot {

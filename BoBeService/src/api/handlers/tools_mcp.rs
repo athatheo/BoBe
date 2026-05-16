@@ -35,7 +35,9 @@ pub(crate) async fn save_mcp_config(
     State(state): State<Arc<AppState>>,
     Json(body): Json<McpConfigMutationRequest>,
 ) -> Result<Json<mcp_svc::McpConfigSaveResponse>, AppError> {
-    Ok(Json(mcp_svc::save_document(&deps_from(&state), body).await?))
+    Ok(Json(
+        mcp_svc::save_document(&deps_from(&state), body).await?,
+    ))
 }
 
 pub(crate) async fn reset_mcp_config(

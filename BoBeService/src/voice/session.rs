@@ -87,11 +87,7 @@ pub(crate) struct TurnInFlight {
 }
 
 impl VoiceSession {
-    pub(crate) fn new(
-        session_id: String,
-        voice_cfg: SessionVoiceConfig,
-        language: String,
-    ) -> Self {
+    pub(crate) fn new(session_id: String, voice_cfg: SessionVoiceConfig, language: String) -> Self {
         Self {
             session_id,
             current_turn: None,

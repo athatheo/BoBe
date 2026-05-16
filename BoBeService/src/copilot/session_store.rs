@@ -85,7 +85,6 @@ impl SessionStore {
             Err(e) => Err(AppError::Io(e)),
         }
     }
-
 }
 
 #[cfg(test)]
@@ -154,5 +153,4 @@ mod tests {
         store.forget(WorkerClass::Goals, now).await.unwrap();
         assert!(store.load(WorkerClass::Goals, now).await.unwrap().is_none());
     }
-
 }

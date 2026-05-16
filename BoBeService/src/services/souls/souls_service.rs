@@ -132,7 +132,10 @@ impl SoulsService {
         id: SoulId,
         enabled: bool,
     ) -> Result<Option<Soul>, AppError> {
-        let updated = self.repo.update(id, None, Some(enabled), None, None).await?;
+        let updated = self
+            .repo
+            .update(id, None, Some(enabled), None, None)
+            .await?;
         if updated.is_some() {
             if enabled {
                 info!(soul_id = %id, "souls_service.enabled");
