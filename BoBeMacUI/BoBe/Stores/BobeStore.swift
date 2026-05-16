@@ -4,7 +4,7 @@ import Foundation
 import Observation
 import OSLog
 
-private let logger = Logger(subsystem: "com.bobe.app", category: "BobeStore")
+let bobeStoreLogger = Logger(subsystem: "com.bobe.app", category: "BobeStore")
 
 @Observable @MainActor
 final class BobeStore {
@@ -13,9 +13,9 @@ final class BobeStore {
     // MARK: - State
 
     private(set) var context = BobeContext()
-    private(set) var isReconnecting = false
-    private(set) var isBackendFatal = false
-    private var hasConnectedOnce = false
+    var isReconnecting = false
+    var isBackendFatal = false
+    var hasConnectedOnce = false
 
     // MARK: - Locale (client-side only)
 
@@ -114,22 +114,22 @@ final class BobeStore {
         return nil
     }
 
-    // MARK: - Private
+    // MARK: - Private storage shared with extensions
 
-    private let client = DaemonClient.shared
-    private var streamingMessage = ""
-    private var streamingMessageId: String?
-    private var lastMessageTimer: Task<Void, Never>?
-    private var conversationClearTask: Task<Void, Never>?
-    private var textDeltaFlushTask: Task<Void, Never>?
-    private var captureStartupTask: Task<Void, Never>?
+    let client = DaemonClient.shared
+    var streamingMessage = ""
+    var streamingMessageId: String?
+    var lastMessageTimer: Task<Void, Never>?
+    var conversationClearTask: Task<Void, Never>?
+    var textDeltaFlushTask: Task<Void, Never>?
+    var captureStartupTask: Task<Void, Never>?
     private var appNapActivity: NSObjectProtocol?
     private var backendObserverTask: Task<Void, Never>?
     private var sleepWakeObservers: [NSObjectProtocol] = []
     @ObservationIgnored
-    private var reconnectStatusTask: Task<Void, Never>?
+    var reconnectStatusTask: Task<Void, Never>?
     @ObservationIgnored
-    private lazy var toolExecutionController = ToolExecutionController { [weak self] mutation in
+    lazy var toolExecutionController = ToolExecutionController { [weak self] mutation in
         self?.updateState(mutation)
     }
 
@@ -176,7 +176,7 @@ final class BobeStore {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, !self.isBackendFatal else { return }
-                logger.info("System woke — reconnecting SSE")
+                bobeStoreLogger.info("System woke — reconnecting SSE")
                 await self.client.disconnectSSE()
                 self.connect()
             }
@@ -284,7 +284,7 @@ final class BobeStore {
             }
             return newState
         } catch {
-            logger.error("toggleCapture failed: \(error.localizedDescription)")
+            bobeStoreLogger.error("toggleCapture failed: \(error.localizedDescription)")
             if newState, !CGPreflightScreenCaptureAccess() {
                 CGRequestScreenCaptureAccess()
                 self.updateState { $0.capturePermissionMissing = true }
@@ -335,7 +335,7 @@ final class BobeStore {
         } catch {
             // 409 = daemon busy; retry banner suffices, skip red banner.
             let isBusy409 = Self.isBusy409(error)
-            logger.error("sendMessage failed: \(error.localizedDescription)")
+            bobeStoreLogger.error("sendMessage failed: \(error.localizedDescription)")
             self.updateState { ctx in
                 Self.removeMessage(userMessage.id, messages: &ctx.messages)
                 ctx.failedSendRecoveries.append(
@@ -386,333 +386,19 @@ final class BobeStore {
         self.streamingMessageId = nil
     }
 
-    // MARK: - SSE Event Processing
-
-    private func processBundle(_ bundle: StreamBundle) {
-        switch bundle.type {
-        case .indicator:
-            if let payload = try? bundle.payload.decode(as: IndicatorPayload.self) {
-                self.handleIndicator(payload)
-            }
-        case .textDelta:
-            // `done: true` is the end-of-turn marker.
-            if let payload = try? bundle.payload.decode(as: TextDeltaPayload.self) {
-                self.handleTextDelta(payload, messageId: bundle.messageId)
-            }
-        case .toolCallStart, .toolCallComplete:
-            self.handleToolCall(bundle.payload)
-        case .conversationClosed:
-            if let payload = try? bundle.payload.decode(as: ConversationClosedPayload.self) {
-                self.handleConversationClosed(payload)
-            }
-        case .error:
-            if let payload = try? bundle.payload.decode(as: ErrorPayload.self) {
-                self.handleErrorPayload(payload)
-            }
-        case .heartbeat, .unknown:
-            break
-        }
-    }
-
-    private func handleIndicator(_ payload: IndicatorPayload) {
-        let indicator = payload.indicator
-
-        if indicator == .idle, !self.context.currentMessage.isEmpty {
-            self.finalizeStreamingMessage()
-            return
-        }
-
-        let activeIndicator: IndicatorType? = (indicator == .thinking) ? .thinking : nil
-
-        self.updateState { ctx in
-            switch indicator {
-            case .idle:
-                ctx.captureInProgress = false
-                ctx.thinking = false
-                ctx.speaking = false
-                ctx.acceptingUserMessages = true
-            case .screenCapture:
-                ctx.captureInProgress = true
-                ctx.thinking = false
-                ctx.speaking = false
-                ctx.acceptingUserMessages = false
-            case .thinking:
-                ctx.captureInProgress = false
-                ctx.thinking = true
-                ctx.speaking = false
-                ctx.acceptingUserMessages = false
-            case .streaming:
-                ctx.captureInProgress = false
-                let hasVisibleText = self.hasVisibleGlyphs(self.streamingMessage) || self.hasVisibleGlyphs(ctx.currentMessage)
-                ctx.thinking = !hasVisibleText
-                ctx.speaking = hasVisibleText
-                ctx.acceptingUserMessages = false
-            case .unknown:
-                break
-            }
-            ctx.activeIndicator = activeIndicator
-            ctx.indicatorMessage = payload.message
-            if indicator != .unknown {
-                ctx.errorMessage = nil
-                ctx.daemonError = false
-            }
-        }
-    }
-
-    /// Recoverable trigger errors → soft warning; chat → no-op; fatal → red banner.
-    private func handleErrorPayload(_ payload: ErrorPayload) {
-        if payload.recoverable {
-            if payload.isTriggerError {
-                logger.warning("Trigger soft warning [\(payload.sourceLabel)]: \(payload.message)")
-                self.updateState { $0.softWarning = payload.message }
-            } else {
-                logger.warning("Recoverable chat error [\(payload.sourceLabel)]: \(payload.message)")
-            }
-            return
-        }
-        logger.error("Daemon error [\(payload.sourceLabel)]: \(payload.message)")
-        self.updateState { ctx in
-            ctx.errorMessage = payload.message
-            ctx.daemonError = true
-        }
-    }
-
-    private func handleTextDelta(_ payload: TextDeltaPayload, messageId: String) {
-        self.cancelConversationClear()
-        if self.streamingMessageId != messageId {
-            self.streamingMessage = ""
-            self.streamingMessageId = messageId
-            self.textDeltaFlushTask?.cancel()
-            self.textDeltaFlushTask = nil
-        }
-
-        self.streamingMessage += payload.delta
-
-        if payload.done {
-            self.flushStreamingToUI(messageId: messageId)
-            self.finalizeStreamingMessage()
-            return
-        }
-
-        // Task existence is the dirty flag — accumulated deltas flush on timer.
-        if self.textDeltaFlushTask == nil {
-            self.textDeltaFlushTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(StoreTiming.textDeltaFlushMilliseconds))
-                guard let self, !Task.isCancelled else { return }
-                self.flushStreamingToUI(messageId: messageId)
-            }
-        }
-    }
-
-    private func flushStreamingToUI(messageId: String) {
-        self.textDeltaFlushTask?.cancel()
-        self.textDeltaFlushTask = nil
-
-        self.updateState { ctx in
-            let updated = Self.updateMessage(messageId, messages: &ctx.messages) { message in
-                message.content = self.streamingMessage
-                message.isStreaming = true
-            }
-            if !updated {
-                ctx.messages.append(
-                    ChatMessage(
-                        id: messageId, sender: .bobe, content: self.streamingMessage,
-                        isStreaming: true
-                    )
-                )
-            }
-
-            ctx.currentMessage = self.streamingMessage
-            let hasVisibleText = self.hasVisibleGlyphs(self.streamingMessage)
-            ctx.thinking = !hasVisibleText
-            ctx.speaking = hasVisibleText
-        }
-    }
-
-    private func finalizeStreamingMessage() {
-        self.textDeltaFlushTask?.cancel()
-        self.textDeltaFlushTask = nil
-
-        guard let msgId = streamingMessageId else { return }
-
-        self.updateState { ctx in
-            Self.updateMessage(msgId, messages: &ctx.messages) { message in
-                message.content = self.streamingMessage
-                message.isStreaming = false
-                message.isPending = false
-            }
-
-            ctx.lastMessage = self.streamingMessage
-            ctx.currentMessage = ""
-            ctx.thinking = false
-            ctx.speaking = false
-            ctx.activeIndicator = nil
-        }
-
-        self.streamingMessage = ""
-        self.streamingMessageId = nil
-
-        self.lastMessageTimer?.cancel()
-        self.lastMessageTimer = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(StoreTiming.lastMessageClearSeconds))
-            if !Task.isCancelled {
-                self?.updateState { $0.lastMessage = nil }
-            }
-        }
-    }
-
-    private func handleToolCall(_ payload: AnyCodablePayload) {
-        self.toolExecutionController.process(payload)
-    }
-
-    private func handleConversationClosed(_ payload: ConversationClosedPayload) {
-        logger.info("Conversation closed: \(payload.conversationId) (\(payload.reason), \(payload.turnCount) turns)")
-        self.updateState {
-            $0.thinking = false
-            $0.speaking = false
-            $0.activeIndicator = nil
-            $0.toolExecutions = []
-            $0.conversationEnding = true
-        }
-        self.scheduleConversationClear()
-    }
-
-    private func synchronizeCaptureStartup() {
-        self.captureStartupTask?.cancel()
-        self.captureStartupTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let settings = try await client.getSettings()
-
-                guard settings.captureEnabled else {
-                    self.updateState { ctx in
-                        ctx.capturing = false
-                        ctx.captureInProgress = false
-                    }
-                    return
-                }
-
-                var captureActive = false
-                for attempt in 0 ..< 3 where !Task.isCancelled {
-                    do {
-                        try await self.client.startCapture()
-                        captureActive = true
-                        break
-                    } catch let DaemonError.httpError(statusCode, message)
-                        where statusCode == 409 || message.localizedCaseInsensitiveContains("already") {
-                        captureActive = true
-                        break
-                    } catch {
-                        logger.warning("Capture startup sync attempt \(attempt + 1) failed: \(error.localizedDescription)")
-                        if attempt < 2 {
-                            try? await Task.sleep(for: .milliseconds(StoreTiming.captureRetryBaseMilliseconds * (attempt + 1)))
-                        }
-                    }
-                }
-
-                if !captureActive, !CGPreflightScreenCaptureAccess() {
-                    CGRequestScreenCaptureAccess()
-                    self.updateState { $0.capturePermissionMissing = true }
-                    logger.warning("Screen capture permission not granted")
-                } else {
-                    self.updateState { $0.capturePermissionMissing = false }
-                }
-                self.updateState { ctx in
-                    ctx.capturing = captureActive
-                    ctx.captureInProgress = false
-                }
-            } catch {
-                logger.warning("Capture startup sync skipped: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func handleConnectionChange(_ connected: Bool) {
-        self.updateState { ctx in
-            ctx.daemonConnected = connected
-            if connected { ctx.daemonError = false }
-        }
-
-        if connected {
-            self.cancelReconnectStatusTransition()
-            self.isReconnecting = false
-            self.hasConnectedOnce = true
-            self.synchronizeCaptureStartup()
-            self.synchronizeStatus()
-            return
-        }
-
-        guard self.hasConnectedOnce else { return }
-        self.scheduleReconnectStatusTransition()
-    }
-
-    /// Without this, mid-turn SSE reconnects let the composer re-enable too early and 409.
-    private func synchronizeStatus() {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let status = try await self.client.getStatus()
-                self.updateState { ctx in
-                    ctx.acceptingUserMessages = status.acceptingUserMessages
-                    let indicator = status.indicatorType
-                    ctx.thinking = indicator == .thinking
-                    ctx.speaking = indicator == .streaming
-                    ctx.captureInProgress = indicator == .screenCapture
-                }
-            } catch {
-                logger.warning("Status sync skipped: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func scheduleReconnectStatusTransition() {
-        self.reconnectStatusTask?.cancel()
-        self.reconnectStatusTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(StoreTiming.reconnectStatusDelayMilliseconds))
-            guard let self, !Task.isCancelled, !self.context.daemonConnected else { return }
-            self.isReconnecting = true
-        }
-    }
-
-    private func cancelReconnectStatusTransition() {
-        self.reconnectStatusTask?.cancel()
-        self.reconnectStatusTask = nil
-    }
-
-    private func hasVisibleGlyphs(_ text: String) -> Bool {
-        text.unicodeScalars.contains(where: {
-            !$0.properties.isWhitespace && !CharacterSet.controlCharacters.contains($0)
-        })
-    }
-
-    private func scheduleConversationClear() {
-        self.cancelConversationClear()
-        self.conversationClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(StoreTiming.conversationClearSeconds))
-            guard let self, !Task.isCancelled else { return }
-            self.clearMessages()
-            self.updateState { $0.conversationEnding = false }
-        }
-    }
-
-    private func cancelConversationClear() {
-        self.conversationClearTask?.cancel()
-        self.conversationClearTask = nil
-    }
-
-    private static func markMessageSent(_ messageId: String, messages: inout [ChatMessage]) {
+    static func markMessageSent(_ messageId: String, messages: inout [ChatMessage]) {
         Self.updateMessage(messageId, messages: &messages) { message in
             message.isStreaming = false
             message.isPending = false
         }
     }
 
-    private static func removeMessage(_ messageId: String, messages: inout [ChatMessage]) {
+    static func removeMessage(_ messageId: String, messages: inout [ChatMessage]) {
         messages.removeAll { $0.id == messageId }
     }
 
     @discardableResult
-    private static func updateMessage(
+    static func updateMessage(
         _ messageId: String,
         messages: inout [ChatMessage],
         mutate: (inout ChatMessage) -> Void
@@ -725,7 +411,7 @@ final class BobeStore {
         return true
     }
 
-    private func updateState(_ block: (inout BobeContext) -> Void) {
+    func updateState(_ block: (inout BobeContext) -> Void) {
         let oldCapturing = self.context.capturing
         var ctx = self.context
         block(&ctx)
