@@ -1,13 +1,27 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use tracing::warn;
 
-use crate::app_state::AppState;
+use crate::config::Config;
+use crate::copilot::registry::WorkerRegistry;
 use crate::error::AppError;
 use crate::mcp::config::{self as mcp_config, McpConfigFile, McpServerEntry};
 use crate::mcp::security::{validate_mcp_command_with_args, validate_mcp_env};
+
+/// Deps the MCP config service needs. Bundled so each public function
+/// can stay short instead of drilling three Arcs through every signature.
+/// Constructed once per request from `AppState` in the route handlers
+/// (see `api/handlers/tools_mcp.rs`).
+pub(crate) struct McpConfigDeps<'a> {
+    pub(crate) config: &'a ArcSwap<Config>,
+    pub(crate) mcp_config_lock: &'a Mutex<()>,
+    pub(crate) workers: &'a Arc<WorkerRegistry>,
+}
 
 #[derive(Debug, Serialize)]
 pub(crate) struct McpToolMetadata {
@@ -74,11 +88,13 @@ pub(crate) struct McpConfigResetResponse {
     pub(crate) count: usize,
 }
 
-pub(crate) async fn get_document(state: &AppState) -> Result<McpConfigDocumentResponse, AppError> {
-    let (_path, file) = load_mcp_file(state)?;
+pub(crate) async fn get_document(
+    deps: &McpConfigDeps<'_>,
+) -> Result<McpConfigDocumentResponse, AppError> {
+    let (_path, file) = load_mcp_file(deps)?;
     let raw_json = redacted_json(&file)?;
 
-    let servers = build_runtime_summaries(state, &file).await;
+    let servers = build_runtime_summaries(deps.workers, &file).await;
     let count = servers.len();
     let connected_count = servers.iter().filter(|s| s.connected).count();
 
@@ -91,10 +107,10 @@ pub(crate) async fn get_document(state: &AppState) -> Result<McpConfigDocumentRe
 }
 
 pub(crate) fn validate_document(
-    state: &AppState,
+    deps: &McpConfigDeps<'_>,
     body: &McpConfigMutationRequest,
 ) -> Result<McpConfigValidateResponse, AppError> {
-    let (blocked_cmds, dangerous_keys) = blocked_and_dangerous(state);
+    let (blocked_cmds, dangerous_keys) = blocked_and_dangerous(deps);
 
     match parse_and_validate(&body.raw_json, &blocked_cmds, &dangerous_keys) {
         Ok(file) => {
@@ -117,15 +133,15 @@ pub(crate) fn validate_document(
 }
 
 pub(crate) async fn save_document(
-    state: &AppState,
+    deps: &McpConfigDeps<'_>,
     body: McpConfigMutationRequest,
 ) -> Result<McpConfigSaveResponse, AppError> {
-    let (blocked_cmds, dangerous_keys) = blocked_and_dangerous(state);
+    let (blocked_cmds, dangerous_keys) = blocked_and_dangerous(deps);
     let file = parse_and_validate(&body.raw_json, &blocked_cmds, &dangerous_keys)?;
     let file = normalize_secrets(file, &body.secret_keys, true)?;
 
-    let guard = state.mcp_config_lock.lock().await;
-    let path = resolve_config_path(state)?;
+    let guard = deps.mcp_config_lock.lock().await;
+    let path = resolve_config_path(deps)?;
     let previous = mcp_config::load_mcp_config_file(&path).ok();
 
     mcp_config::save_mcp_config_file(&path, &file)?;
@@ -136,7 +152,7 @@ pub(crate) async fn save_document(
 
     drop(guard);
 
-    let servers = build_runtime_summaries(state, &file).await;
+    let servers = build_runtime_summaries(deps.workers, &file).await;
     let count = servers.len();
     let connected_count = servers.iter().filter(|s| s.connected).count();
 
@@ -149,9 +165,11 @@ pub(crate) async fn save_document(
     })
 }
 
-pub(crate) async fn reset_document(state: &AppState) -> Result<McpConfigResetResponse, AppError> {
-    let _guard = state.mcp_config_lock.lock().await;
-    let path = resolve_config_path(state)?;
+pub(crate) async fn reset_document(
+    deps: &McpConfigDeps<'_>,
+) -> Result<McpConfigResetResponse, AppError> {
+    let _guard = deps.mcp_config_lock.lock().await;
+    let path = resolve_config_path(deps)?;
     let previous = mcp_config::load_mcp_config_file(&path).ok();
 
     let empty = McpConfigFile {
@@ -244,11 +262,14 @@ fn build_env_with_refs(
     Ok(out)
 }
 
-async fn build_runtime_summaries(state: &AppState, file: &McpConfigFile) -> Vec<McpServerSummary> {
+async fn build_runtime_summaries(
+    workers: &Arc<WorkerRegistry>,
+    file: &McpConfigFile,
+) -> Vec<McpServerSummary> {
     let mut entries: Vec<(&String, &McpServerEntry)> = file.mcp_servers.iter().collect();
     entries.sort_by_key(|(name, _)| *name);
 
-    let live = state.workers.live_mcp_servers().await;
+    let live = workers.live_mcp_servers().await;
     let live_map: HashMap<String, mcp_live::ServerEntry> = live
         .map(|servers| {
             servers
@@ -330,19 +351,19 @@ mod mcp_live {
     }
 }
 
-fn load_mcp_file(state: &AppState) -> Result<(PathBuf, McpConfigFile), AppError> {
-    let path = resolve_config_path(state)?;
+fn load_mcp_file(deps: &McpConfigDeps<'_>) -> Result<(PathBuf, McpConfigFile), AppError> {
+    let path = resolve_config_path(deps)?;
     let file = mcp_config::load_mcp_config_file(&path)?;
     Ok((path, file))
 }
 
-fn resolve_config_path(state: &AppState) -> Result<PathBuf, AppError> {
-    let cfg = state.config();
+fn resolve_config_path(deps: &McpConfigDeps<'_>) -> Result<PathBuf, AppError> {
+    let cfg = deps.config.load();
     mcp_config::ensure_mcp_config_exists(cfg.mcp.config_file.as_deref())
 }
 
-fn blocked_and_dangerous(state: &AppState) -> (Vec<String>, Vec<String>) {
-    let cfg = state.config();
+fn blocked_and_dangerous(deps: &McpConfigDeps<'_>) -> (Vec<String>, Vec<String>) {
+    let cfg = deps.config.load();
     (
         cfg.mcp_blocked_commands_vec().to_vec(),
         cfg.mcp_dangerous_env_keys_vec().to_vec(),
