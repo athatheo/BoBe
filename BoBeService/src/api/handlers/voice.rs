@@ -27,6 +27,7 @@ use crate::voice::control::handle_control_text;
 use crate::voice::engines::VoiceEngines;
 use crate::voice::protocol_helpers::close_with_error;
 use crate::voice::session::{VoiceDefaults, VoiceSession};
+use crate::voice::sinks::SinkGuard;
 
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
 /// Server-initiated Ping cadence. The WS layer auto-responds to Pings with
@@ -44,6 +45,98 @@ struct VoiceWsPermit(Arc<AtomicBool>);
 impl Drop for VoiceWsPermit {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);
+    }
+}
+
+/// CAS the single-flight slot. On success returns the socket back to the
+/// caller along with the RAII guard; on failure closes the socket with a
+/// `voice_busy` error and returns `None` so handle_socket can just `return`.
+async fn acquire_permit(
+    socket: WebSocket,
+    state: &AppState,
+) -> Option<(WebSocket, VoiceWsPermit)> {
+    if state
+        .voice_ws_active
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        warn!("voice.ws_concurrent_rejected");
+        close_with_error(socket, "voice_busy", "another voice session is already active").await;
+        return None;
+    }
+    Some((socket, VoiceWsPermit(Arc::clone(&state.voice_ws_active))))
+}
+
+/// Per-session bag handed to `teardown_session`. Owns every resource
+/// the session created so the cleanup can drop them in the right order
+/// without 8 positional args.
+struct SessionTeardown {
+    keepalive: tokio::task::JoinHandle<()>,
+    session: Option<VoiceSession>,
+    writer: tokio::task::JoinHandle<()>,
+    sink_guard: SinkGuard,
+    ctx: VoiceContext,
+    out_tx: mpsc::Sender<Message>,
+}
+
+/// Bounded writer drain on session end. Per-turn sub-tasks (kokoro_task,
+/// filler_task) hold cloned out_tx senders; if the WS disconnected
+/// mid-TTS those tasks may still be running (kokoro inside
+/// spawn_blocking isn't cancellation-aware until synthesis returns).
+/// Without a timeout the writer.await would hold the function open for
+/// 5-15s, leaking the ws_permit and voice_busy-rejecting subsequent
+/// connections in that window. Clean disconnects (no in-flight turn)
+/// drain in <10ms.
+const WRITER_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
+
+async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
+    let SessionTeardown {
+        keepalive,
+        mut session,
+        writer,
+        sink_guard,
+        ctx,
+        out_tx,
+    } = td;
+
+    // Stop the keepalive task; it'd exit naturally when out_tx drops
+    // below, but aborting first avoids one stray Ping post-disconnect.
+    keepalive.abort();
+
+    if let Some(s) = session.as_mut() {
+        if let Some(turn) = s.current_turn.take() {
+            info!(turn_id = %turn.turn_id, "voice.disconnect_aborting_turn");
+            turn.join.abort();
+            drop(turn.join.await);
+        }
+        info!(session = %s.session_id, "voice.disconnect");
+    }
+
+    // Synchronously clear the sink slot so writer.await sees all senders
+    // dropped. The Drop on sink_guard at function end is a panic-unwind
+    // fallback only — without this explicit await the spawned-task clear
+    // races with handle_socket return and the writer hangs.
+    state
+        .voice_sink
+        .uninstall_if_current(sink_guard.generation)
+        .await;
+    drop(sink_guard);
+
+    // VoiceContext holds an out_tx clone. Drop it BEFORE the explicit
+    // out_tx drop below — otherwise out_rx would still have a sender
+    // (via ctx.out_tx) and the writer task would hang forever, leaking
+    // the _ws_permit and locking the single-flight slot.
+    drop(ctx);
+    drop(out_tx);
+
+    match tokio::time::timeout(WRITER_DRAIN_TIMEOUT, writer).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) if e.is_panic() => {
+            error!(error = %e, "voice.ws_writer_panic");
+        }
+        Ok(Err(e)) if e.is_cancelled() => {}
+        Ok(Err(e)) => warn!(error = %e, "voice.ws_writer_join_failed"),
+        Err(_) => warn!("voice.ws_writer_drain_timeout_abandoning"),
     }
 }
 
@@ -110,36 +203,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         return;
     }
 
-    let (ws_tx, mut rx) = socket.split();
-    let (out_tx, mut out_rx) = mpsc::channel::<Message>(OUTBOUND_CHANNEL_CAPACITY);
-
-    // Single-flight: voice engines (Silero VAD, streaming Zipformer STT)
-    // are Arc-shared globally and not safe for concurrent feed. CAS
-    // false→true to acquire; reject with conflict if another connection
-    // owns the slot. Cleared via RAII guard on drop.
-    if state
-        .voice_ws_active
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        warn!("voice.ws_concurrent_rejected");
-        let err = crate::speech::protocol::ServerMessage::Error {
-            code: "voice_busy".into(),
-            message: "another voice session is already active".into(),
-        };
-        if let Ok(json) = serde_json::to_string(&err) {
-            drop(out_tx.send(Message::Text(json.into())).await);
-        }
-        // Drain so writer task exits.
-        drop(out_tx);
-        let mut ws_tx = ws_tx;
-        while let Some(msg) = out_rx.recv().await {
-            drop(ws_tx.send(msg).await);
-        }
-        drop(ws_tx.close().await);
+    let Some((socket, _ws_permit)) = acquire_permit(socket, &state).await else {
         return;
-    }
-    let _ws_permit = VoiceWsPermit(Arc::clone(&state.voice_ws_active));
+    };
+
+    let (ws_tx, mut rx) = socket.split();
+    let (out_tx, out_rx) = mpsc::channel::<Message>(OUTBOUND_CHANNEL_CAPACITY);
 
     let writer = spawn_writer(ws_tx, out_rx);
     let keepalive = spawn_keepalive(out_tx.clone());
@@ -229,50 +298,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    // Stop the keepalive task; it'll exit naturally when out_tx is dropped
-    // below, but aborting first avoids one stray Ping post-disconnect.
-    keepalive.abort();
-
-    // Clean up any in-flight turn before tearing down the socket.
-    if let Some(mut s) = session {
-        if let Some(turn) = s.current_turn.take() {
-            info!(turn_id = %turn.turn_id, "voice.disconnect_aborting_turn");
-            turn.join.abort();
-            drop(turn.join.await);
-        }
-        info!(session = %s.session_id, "voice.disconnect");
-    }
-    // Synchronously clear the sink slot so writer.await sees all senders
-    // dropped. The Drop on sink_guard at function end is a panic-unwind
-    // fallback only — without this explicit await the spawned-task clear
-    // races with handle_socket return and the writer hangs.
-    state
-        .voice_sink
-        .uninstall_if_current(sink_guard.generation)
-        .await;
-    drop(sink_guard);
-    // VoiceContext holds an out_tx clone. Drop it BEFORE the explicit
-    // out_tx drop below — otherwise out_rx would still have a sender
-    // (via ctx.out_tx) and the writer task would hang forever, leaking
-    // the _ws_permit and locking the single-flight slot.
-    drop(ctx);
-    drop(out_tx);
-    // Bound the writer drain. Per-turn sub-tasks (kokoro_task, filler_task)
-    // hold cloned out_tx senders; if the WS disconnected mid-TTS, those
-    // tasks may still be running (kokoro inside spawn_blocking is not
-    // cancellation-aware until synthesis returns). Without a timeout the
-    // writer.await would hold the function open for 5-15s, leaking the
-    // ws_permit and voice_busy-rejecting subsequent connections in that
-    // window. The 2s bound is a backstop — clean disconnects (no in-flight
-    // turn) drain in <10ms.
-    const WRITER_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
-    match tokio::time::timeout(WRITER_DRAIN_TIMEOUT, writer).await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) if e.is_panic() => {
-            error!(error = %e, "voice.ws_writer_panic");
-        }
-        Ok(Err(e)) if e.is_cancelled() => {}
-        Ok(Err(e)) => warn!(error = %e, "voice.ws_writer_join_failed"),
-        Err(_) => warn!("voice.ws_writer_drain_timeout_abandoning"),
-    }
+    teardown_session(
+        &state,
+        SessionTeardown {
+            keepalive,
+            session,
+            writer,
+            sink_guard,
+            ctx,
+            out_tx,
+        },
+    )
+    .await;
 }
