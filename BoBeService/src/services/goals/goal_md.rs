@@ -99,18 +99,12 @@ pub(crate) fn to_md(doc: &GoalDoc) -> String {
         doc.updated_at.format("%Y-%m-%dT%H:%M:%SZ")
     );
 
-    for (name, body) in canonical_sections(doc) {
-        out.push('\n');
-        let _ = writeln!(out, "## {name}");
-        let trimmed = body.trim();
-        if !trimmed.is_empty() {
-            out.push('\n');
-            out.push_str(trimmed);
-            out.push('\n');
-        }
-    }
-
-    for (name, body) in &doc.extra_sections {
+    let canonical = canonical_sections(doc);
+    let extras = doc
+        .extra_sections
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_str()));
+    for (name, body) in canonical.iter().copied().chain(extras) {
         out.push('\n');
         let _ = writeln!(out, "## {name}");
         let trimmed = body.trim();
