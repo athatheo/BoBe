@@ -10,14 +10,19 @@ import OSLog
 @available(macOS 15, iOS 18, *)
 actor FluidAudioQwen3Stt: VoiceSttEngine {
     private let logger = Logger(subsystem: "com.bobe.app", category: "FluidAudioQwen3Stt")
-    private let language: Qwen3AsrConfig.Language
-    private let streamingConfig: Qwen3StreamingConfig
+    private var language: Qwen3AsrConfig.Language
+    private var streamingConfig: Qwen3StreamingConfig
     private var eouDelayMs: Int
 
     private var asrManager: Qwen3AsrManager?
     private var streaming: Qwen3StreamingManager?
     private var vadManager: VadManager?
     private var vadState: VadStreamState = .initial()
+    /// Wraps the raw partial stream with punctuation-aware commit logic
+    /// (FluidAudio 0.13.5+). Produces a `totalText` we surface as the
+    /// live caption — sentences are punctuated as the user speaks
+    /// rather than waiting for EOU to add a period.
+    private let commitLayer = PunctuationCommitLayer()
 
     private var onPartial: (@Sendable (String) -> Void)?
     private var onEou: (@Sendable (String) -> Void)?
@@ -58,6 +63,24 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
     /// the user.
     func setEouDelayMs(_ value: Int) {
         self.eouDelayMs = max(100, min(5_000, value))
+    }
+
+    /// Switch Qwen3's streaming language for the next session. Qwen3 is a
+    /// multilingual checkpoint, so the model itself doesn't reload — only
+    /// the streaming config swaps. If already loaded, the active streaming
+    /// manager is reconfigured in place via `configure(_:)`.
+    func setLanguage(_ language: Qwen3AsrConfig.Language) {
+        if self.language == language { return }
+        self.language = language
+        self.streamingConfig = Qwen3StreamingConfig(
+            minAudioSeconds: 1.0,
+            chunkSeconds: 1.0,
+            maxAudioSeconds: 30.0,
+            language: language
+        )
+        Task { [weak self] in
+            await self?.streaming?.configure(self?.streamingConfig ?? .default)
+        }
     }
 
     func loadModels(
@@ -121,9 +144,12 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
         }
 
         // Qwen3 — emits a partial when its internal accumulator decides
-        // enough audio has come in for a re-transcribe pass.
+        // enough audio has come in for a re-transcribe pass. Run the raw
+        // partial through PunctuationCommitLayer so the caption surfaces
+        // sentence-punctuated text rather than a punctuation-free run.
         if let result = try await stream.addAudio(samples), !result.transcript.isEmpty {
-            self.onPartial?(result.transcript)
+            let update = await self.commitLayer.processPartialText(result.transcript)
+            self.onPartial?(update.totalText)
         }
     }
 
@@ -152,7 +178,11 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
         guard let stream = self.streaming else { return }
         do {
             let result = try await stream.finish()
-            self.onEou?(result.transcript)
+            let update = await self.commitLayer.processEOU()
+            // Prefer the commit-layer's punctuated text when it produced
+            // anything; fall back to the raw Qwen3 transcript otherwise.
+            let final = update.committedText.isEmpty ? result.transcript : update.committedText
+            self.onEou?(final)
         } catch {
             self.logger.error("Qwen3 finish failed: \(error.localizedDescription)")
             self.onEou?("")
@@ -171,6 +201,7 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
         self.eouTimer?.cancel()
         self.eouTimer = nil
         await self.streaming?.reset()
+        await self.commitLayer.reset()
         if let vad = self.vadManager {
             self.vadState = await vad.makeStreamState()
         }

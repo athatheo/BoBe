@@ -132,12 +132,11 @@ public final class VoicePipeline {
     private var sttLoaded: Bool {
         self.loadedLanguages.contains(self.effectiveLanguage)
     }
-    /// Turn_id minted on the first partial of an utterance; reused on the
-    /// EOU final and cleared after sending. Each utterance gets a fresh id.
+    /// Turn_id minted on first partial; reused on EOU; cleared after send.
     private var pendingTurnId: String?
 
-    // Engine-selection helpers (`effectiveLanguage`, `activeStt`,
-    // `activeModelIsInstalled`) live in VoiceReadiness.swift.
+    // Engine helpers (`effectiveLanguage`, `activeStt`, `activeModelIsInstalled`)
+    // live in VoiceReadiness.swift.
 
     // TTS playback state. Internal so the extension in `TtsPlayback.swift`
     // can drive scheduling + truncation. ScheduledTtsChunk + the methods
@@ -350,6 +349,12 @@ public final class VoicePipeline {
         // the engine under live audio.
         self.sessionSttLanguage = self.activeSttLanguage
         let language = self.activeSttLanguage
+        // Qwen3 is multilingual — push the BCP-47 code so the streaming
+        // config matches the user's pick.
+        if language != "en",
+           let qwen3Lang = Qwen3AsrConfig.Language(rawValue: language) {
+            Task { [weak self] in await self?.qwen3Stt.setLanguage(qwen3Lang) }
+        }
 
         self.state = .connecting
         // Advertise `bobe.voice.v1` so a future v2 daemon can route on the

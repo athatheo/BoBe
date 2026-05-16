@@ -21,6 +21,10 @@ actor FluidAudioStt: VoiceSttEngine {
     /// view-appear + user-tap firing prewarm twice) await the same task
     /// instead of triggering N parallel downloads.
     private var loadTask: Task<Void, Error>?
+    /// Wraps the raw partial stream with punctuation-aware commit logic
+    /// (FluidAudio 0.13.5+). Caption surfaces punctuated text rather
+    /// than a punctuation-free run; EOU's final transcript benefits too.
+    private let commitLayer = PunctuationCommitLayer()
 
     /// Variant tuning — `.ms320` is the balanced default. The 160ms variant
     /// is lowest-latency; 1280ms is highest-throughput.
@@ -90,8 +94,24 @@ actor FluidAudioStt: VoiceSttEngine {
             chunkSize: chunkSize,
             eouDebounceMs: debounceMs
         )
-        await mgr.setPartialCallback(onPartial)
-        await mgr.setEouCallback(onEou)
+        // Route FluidAudio's raw callbacks through PunctuationCommitLayer
+        // before forwarding to the caller. commitLayer is itself an
+        // actor; we hop into it from FluidAudio's executor and only call
+        // back into onPartial/onEou with the punctuated result.
+        let commit = self.commitLayer
+        await mgr.setPartialCallback { text in
+            Task {
+                let update = await commit.processPartialText(text)
+                onPartial(update.totalText)
+            }
+        }
+        await mgr.setEouCallback { text in
+            Task {
+                let update = await commit.processEOU()
+                let final = update.committedText.isEmpty ? text : update.committedText
+                onEou(final)
+            }
+        }
         try await mgr.loadModels()
         self.manager = mgr
         self.loaded = true
@@ -123,6 +143,7 @@ actor FluidAudioStt: VoiceSttEngine {
     func reset() async throws {
         guard let mgr = self.manager else { return }
         await mgr.reset()
+        await self.commitLayer.reset()
     }
 
     /// Tear down — release model memory. Cannot be reused without a fresh
