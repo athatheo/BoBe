@@ -16,25 +16,15 @@ use crate::speech::TtsEngine;
 /// Discrete filler intents the voice handler can emit. Lookups go through
 /// `FillerLibrary::get`. Adding a variant requires a phrase entry below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(
-    dead_code,
-    reason = "ListenResume/LookupBridge/Tool*/Error wired in C1/C4/B5+"
-)]
 pub(crate) enum FillerKind {
     /// 800ms TTFT watchdog — "Hmm, let me think."
     Thinking,
-    /// Post-barge-in recovery — "Sorry, go ahead."
-    ListenResume,
-    /// Generic "looking that up" pre-tool bridge.
-    LookupBridge,
     /// Per-tool: web_search.
     ToolWebSearch,
     /// Per-tool: read_file / file inspection.
     ToolReadFile,
     /// Per-tool: generic (default) when name doesn't match a more specific kind.
     ToolGeneric,
-    /// Backoff / connection trouble.
-    ErrorReconnecting,
 }
 
 impl FillerKind {
@@ -44,12 +34,9 @@ impl FillerKind {
     const fn phrase(self) -> &'static str {
         match self {
             Self::Thinking => "Hmm, let me think.",
-            Self::ListenResume => "Sure, go ahead.",
-            Self::LookupBridge => "Let me check that for you.",
             Self::ToolWebSearch => "Let me search the web.",
             Self::ToolReadFile => "One sec, looking at that.",
             Self::ToolGeneric => "Looking into that.",
-            Self::ErrorReconnecting => "I'm having trouble connecting.",
         }
     }
 
@@ -57,12 +44,9 @@ impl FillerKind {
     fn all() -> &'static [FillerKind] {
         &[
             Self::Thinking,
-            Self::ListenResume,
-            Self::LookupBridge,
             Self::ToolWebSearch,
             Self::ToolReadFile,
             Self::ToolGeneric,
-            Self::ErrorReconnecting,
         ]
     }
 }
