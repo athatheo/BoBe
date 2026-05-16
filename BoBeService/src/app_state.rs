@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use tokio::sync::Mutex;
 
 use crate::config::Config;
-use crate::config_manager::ConfigManager;
+use crate::config::manager::ConfigManager;
 use crate::copilot::memory_file::MemoryFile;
 use crate::copilot::registry::WorkerRegistry;
 use crate::runtime::session::RuntimeSession;

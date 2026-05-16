@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::config::Config;
-use crate::config_manager::ConfigManager;
+use crate::config::manager::ConfigManager;
 use crate::runtime::capture_learner::CaptureLearner;
 use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::decision_engine::DecisionEngine;

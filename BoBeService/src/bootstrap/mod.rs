@@ -94,8 +94,8 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
                 tokio::spawn(async move {
                     wait_for_voice_idle(&voice_active).await;
                     match kind {
-                        crate::config_manager::EngineChangeKind::Hard => registry.reload().await,
-                        crate::config_manager::EngineChangeKind::Soft => {
+                        crate::config::manager::EngineChangeKind::Hard => registry.reload().await,
+                        crate::config::manager::EngineChangeKind::Soft => {
                             registry.reload_soft().await;
                         }
                     }

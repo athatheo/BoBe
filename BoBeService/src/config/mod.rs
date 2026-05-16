@@ -6,6 +6,9 @@
 //! types so consumers continue to import `crate::config::Foo` unchanged.
 
 mod engine;
+pub(crate) mod manager;
+mod manager_fields;
+mod manager_persistence;
 mod mcp;
 mod runtime;
 mod server;

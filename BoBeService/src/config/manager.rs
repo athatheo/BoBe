@@ -1,5 +1,5 @@
-mod fields;
-pub(crate) mod persistence;
+use super::manager_fields as fields;
+use super::manager_persistence as persistence;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;

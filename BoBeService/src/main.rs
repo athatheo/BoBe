@@ -5,7 +5,6 @@ mod app_state;
 mod binary_manager;
 mod bootstrap;
 mod config;
-mod config_manager;
 mod constants;
 mod copilot;
 mod db;
