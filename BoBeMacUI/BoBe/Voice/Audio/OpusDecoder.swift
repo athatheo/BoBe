@@ -64,8 +64,11 @@ final class OpusDecoder {
             mDataByteSize: UInt32(byteCount)
         )
 
-        final class Fed: @unchecked Sendable { var done = false }
-        let fed = Fed()
+        // AVAudioConverter's input block is @Sendable in Swift 6, so the
+        // once-flag has to live in a reference type. Matches the pattern
+        // in VoicePipeline.swift's tap-side converter.
+        final class FedState: @unchecked Sendable { var done = false }
+        let fed = FedState()
         var convErr: NSError?
         let status = self.converter.convert(to: buffer, error: &convErr) { _, statusPtr in
             if fed.done {

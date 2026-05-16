@@ -25,6 +25,10 @@ actor FluidAudioStt: VoiceSttEngine {
     /// (FluidAudio 0.13.5+). Caption surfaces punctuated text rather
     /// than a punctuation-free run; EOU's final transcript benefits too.
     private let commitLayer = PunctuationCommitLayer()
+    /// Hoisted so the FluidAudio callbacks (which fire on FluidAudio's
+    /// executor) can bounce into our actor and forward in order.
+    private var savedOnPartial: (@Sendable (String) -> Void)?
+    private var savedOnEou: (@Sendable (String) -> Void)?
 
     /// Variant tuning — `.ms320` is the balanced default. The 160ms variant
     /// is lowest-latency; 1280ms is highest-throughput.
@@ -46,6 +50,22 @@ actor FluidAudioStt: VoiceSttEngine {
         if let mgr = self.manager {
             await mgr.updateEouDebounceMs(self.eouDebounceMs)
         }
+    }
+
+    /// Routes one FluidAudio partial through PunctuationCommitLayer and
+    /// forwards the punctuated text. Actor-isolated, so concurrent
+    /// callback fires from FluidAudio's executor land in arrival order.
+    private func handleRawPartial(_ text: String) async {
+        let update = await self.commitLayer.processPartialText(text)
+        self.savedOnPartial?(update.totalText)
+    }
+
+    /// EOU equivalent — flushes the commit layer; prefers its committed
+    /// text when non-empty (more reliable punctuation than the raw end).
+    private func handleRawEou(_ text: String) async {
+        let update = await self.commitLayer.processEOU()
+        let final = update.committedText.isEmpty ? text : update.committedText
+        self.savedOnEou?(final)
     }
 
     /// Load the model (downloads from HuggingFace on first run, then caches
@@ -94,23 +114,17 @@ actor FluidAudioStt: VoiceSttEngine {
             chunkSize: chunkSize,
             eouDebounceMs: debounceMs
         )
-        // Route FluidAudio's raw callbacks through PunctuationCommitLayer
-        // before forwarding to the caller. commitLayer is itself an
-        // actor; we hop into it from FluidAudio's executor and only call
-        // back into onPartial/onEou with the punctuated result.
-        let commit = self.commitLayer
-        await mgr.setPartialCallback { text in
-            Task {
-                let update = await commit.processPartialText(text)
-                onPartial(update.totalText)
-            }
+        // Route FluidAudio's raw callbacks through OUR actor first so the
+        // commit-layer hops stay serialized. Spawning detached Tasks
+        // directly in the FluidAudio callback risks Task-scheduling
+        // reordering partials → out-of-order commit-layer state.
+        self.savedOnPartial = onPartial
+        self.savedOnEou = onEou
+        await mgr.setPartialCallback { [weak self] text in
+            Task { await self?.handleRawPartial(text) }
         }
-        await mgr.setEouCallback { text in
-            Task {
-                let update = await commit.processEOU()
-                let final = update.committedText.isEmpty ? text : update.committedText
-                onEou(final)
-            }
+        await mgr.setEouCallback { [weak self] text in
+            Task { await self?.handleRawEou(text) }
         }
         try await mgr.loadModels()
         self.manager = mgr
