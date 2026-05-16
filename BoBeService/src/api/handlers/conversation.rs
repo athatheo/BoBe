@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::Json;
 use axum::extract::State;
@@ -6,6 +7,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::error::AppError;
+
+/// RAII counter guard. Increments on construction; decrements on drop
+/// (including panic-unwind). Used to track in-flight text-turn tasks so
+/// the graceful-shutdown path can wait for them before closing the DB
+/// pool — otherwise the spawned task panics mid-sqlx call.
+struct InFlightCounter(Arc<AtomicUsize>);
+
+impl InFlightCounter {
+    fn new(counter: Arc<AtomicUsize>) -> Self {
+        counter.fetch_add(1, Ordering::AcqRel);
+        Self(counter)
+    }
+}
+
+impl Drop for InFlightCounter {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ConversationMessageRequest {
@@ -33,9 +53,11 @@ pub(crate) async fn send_message(
 
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
     let msg_id = message_id.clone();
+    let in_flight = InFlightCounter::new(Arc::clone(&state.in_flight_text_turns));
 
     tokio::spawn(async move {
         let _user_message_guard = user_message_guard;
+        let _in_flight = in_flight;
         session.handle_user_message(&content, &msg_id).await;
     });
 

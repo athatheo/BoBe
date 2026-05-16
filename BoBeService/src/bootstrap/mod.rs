@@ -174,6 +174,8 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let secret_store: Arc<dyn crate::secrets::SecretStore> =
         Arc::new(crate::secrets::KeychainSecretStore);
 
+    let in_flight_text_turns = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     let state = Arc::new(AppState {
         db: pool,
         config: Arc::clone(&infra.config_arc),
@@ -195,6 +197,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         voice_turn_active,
         voice_ws_active,
         voice_sink,
+        in_flight_text_turns,
         metrics_handle,
     });
 

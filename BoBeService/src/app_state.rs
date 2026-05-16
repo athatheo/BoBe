@@ -1,7 +1,7 @@
 use arc_swap::ArcSwap;
 use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use tokio::sync::Mutex;
 
 use crate::config::Config;
@@ -66,6 +66,14 @@ pub(crate) struct AppState {
     /// Single-slot voice sink that hooks (PreToolUse, ErrorOccurred) read
     /// to push cached filler PCM directly to the active client.
     pub(crate) voice_sink: Arc<VoiceSink>,
+    /// In-flight text-turn task counter. The `send_message` handler spawns
+    /// detached Tokio tasks to run the LLM stream; without this counter
+    /// the graceful-shutdown path closed the DB pool while those tasks
+    /// were still mid-`handle_user_message`, panicking sqlx and losing
+    /// the assistant turn. Shutdown waits up to 10s for this to reach 0
+    /// after aborting the SDK (which makes the in-flight LLM streams
+    /// fail fast so tasks complete quickly).
+    pub(crate) in_flight_text_turns: Arc<AtomicUsize>,
     /// Prometheus exposition handle. The `/metrics` route calls `.render()`
     /// on each request to produce the text-format snapshot.
     pub(crate) metrics_handle: PrometheusHandle,

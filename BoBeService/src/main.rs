@@ -184,6 +184,24 @@ async fn drain_background_tasks(handles: BackgroundHandles) {
     await_with_timeout(handles.consolidation, "consolidation", DRAIN_TIMEOUT).await;
 }
 
+async fn drain_in_flight_text_turns(counter: &std::sync::atomic::AtomicUsize) {
+    use std::sync::atomic::Ordering;
+    const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+    const DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+    let start = tokio::time::Instant::now();
+    loop {
+        let n = counter.load(Ordering::Acquire);
+        if n == 0 {
+            return;
+        }
+        if start.elapsed() >= DEADLINE {
+            tracing::warn!(in_flight = n, "text_turn_drain_timeout");
+            return;
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
+}
+
 async fn run_graceful_shutdown(
     state: &std::sync::Arc<app_state::AppState>,
     _config: &config::Config,
@@ -207,6 +225,11 @@ async fn run_graceful_shutdown(
 
     tracing::info!("Stopping Copilot workers...");
     state.workers.shutdown_all().await;
+
+    // Wait for in-flight text-turn tasks to finish. The SDK abort above
+    // makes their LLM streams fail fast, so they should drop within ms.
+    // 10s deadline backstops a misbehaving stream.
+    drain_in_flight_text_turns(&state.in_flight_text_turns).await;
 
     tracing::info!("Closing database pool...");
     state.db.close().await;
