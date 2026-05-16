@@ -191,6 +191,14 @@ async fn run_graceful_shutdown(
     tracing::info!("Stopping mDNS...");
     state.mdns_announcer.stop().await;
 
+    // Fire the SSE on_disconnect callback so RuntimeSession::on_disconnection
+    // runs (stops capture). Writers polling `is_active_connection` see
+    // connected=false on their next iteration and exit. Passing None skips
+    // the stale-id guard so this works regardless of which connection is
+    // current.
+    tracing::info!("Signaling SSE clients to disconnect...");
+    state.connection_manager.disconnect(None).await;
+
     // Cancel + drain any in-flight install jobs so they don't outlive
     // the resources they depend on (db, http client, file system handles).
     tracing::info!("Cancelling in-flight installs...");
