@@ -69,7 +69,25 @@ fn build_file_writer(log_file: Option<&str>) -> Option<NonBlocking> {
         return None;
     }
 
-    let appender = tracing_appender::rolling::never(dir, file_name);
+    // Daily-rolling log files (`bobe.log.YYYY-MM-DD`) plus a
+    // `bobe.log` symlink to the current day, so `tail -f` and the
+    // Swift overlay log viewer have a stable path regardless of date.
+    let appender = match tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix(&file_name)
+        .filename_suffix("log")
+        .latest_symlink(&file_name)
+        .build(&dir)
+    {
+        Ok(appender) => appender,
+        Err(err) => {
+            eprintln!(
+                "Failed to build rolling log appender at '{}': {err}; using stdout logging.",
+                dir.display()
+            );
+            return None;
+        }
+    };
     let (writer, guard) = tracing_appender::non_blocking(appender);
     if LOG_GUARD.set(guard).is_err() {
         eprintln!("Tracing worker guard was already initialized.");

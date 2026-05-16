@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v15)
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.1"),
         // Pinned by revision — alta/swift-opus has no tagged releases (last
         // release v0.0.2 Feb 2022, no git tag). Anchor by SHA for reproducible
         // builds; bump intentionally when re-evaluated. Used for daemon→client
@@ -20,7 +20,7 @@ let package = Package(
         .package(url: "https://github.com/gonzalezreal/textual", from: "0.3.1"),
         // FluidAudio — Apple Silicon ANE Parakeet/Qwen3 ASR + Silero VAD.
         // Mode B client-side speech recognition.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.0"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.14.5"),
     ],
     targets: [
         .executableTarget(
