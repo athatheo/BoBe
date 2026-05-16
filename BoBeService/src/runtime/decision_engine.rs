@@ -15,6 +15,13 @@ use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::util::text::truncate_str;
 
+/// Caps on context strings included in the decide prompt JSON. The Decide
+/// SDK call is per-trigger, so these bound payload size; longer text is
+/// truncated to a stable prefix.
+const CAPTURE_CONTEXT_CHARS: usize = 600;
+const AI_MSG_PREVIEW_CHARS: usize = 200;
+const REASONING_LOG_CHARS: usize = 150;
+
 pub(crate) struct DecisionEngine {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
@@ -56,10 +63,10 @@ impl DecisionEngine {
 
         let input = json!({
             "trigger_kind": "capture",
-            "current_activity": truncate_str(current_text, 600),
+            "current_activity": truncate_str(current_text, CAPTURE_CONTEXT_CHARS),
             "recent_ai_messages": recent_ai_messages
                 .iter()
-                .map(|m| truncate_str(m, 200).to_string())
+                .map(|m| truncate_str(m, AI_MSG_PREVIEW_CHARS).to_string())
                 .collect::<Vec<_>>(),
             "current_time": Local::now().format("%Y-%m-%d %H:%M:%S %z").to_string(),
         });
@@ -74,7 +81,7 @@ impl DecisionEngine {
 
         let input = json!({
             "trigger_kind": "goal",
-            "current_activity": truncate_str(goal_content, 600),
+            "current_activity": truncate_str(goal_content, CAPTURE_CONTEXT_CHARS),
             "recent_ai_messages": Vec::<String>::new(),
             "current_time": Local::now().format("%Y-%m-%d %H:%M:%S %z").to_string(),
         });
@@ -147,7 +154,7 @@ fn parse_decision(output: &Value) -> Decision {
         .unwrap_or("");
     debug!(
         decision = %decision,
-        reasoning = truncate_str(reasoning, 150),
+        reasoning = truncate_str(reasoning, REASONING_LOG_CHARS),
         "decision_engine.parsed"
     );
     match decision {

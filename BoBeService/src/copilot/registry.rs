@@ -115,45 +115,50 @@ impl WorkerRegistry {
     }
 
     pub(crate) async fn goals(&self) -> Result<Arc<BatchWorker>, AppError> {
-        let mut guard = self.goals.lock().await;
-        if let Some(w) = guard.as_ref() {
-            return Ok(Arc::clone(w));
-        }
-        let session = self.create_or_resume(WorkerClass::Goals).await?;
-        let worker = BatchWorker::new(WorkerClass::Goals, session);
-        *guard = Some(Arc::clone(&worker));
-        Ok(worker)
+        self.get_or_create_worker(&self.goals, WorkerClass::Goals, |s| {
+            BatchWorker::new(WorkerClass::Goals, s)
+        })
+        .await
     }
 
     pub(crate) async fn consolidate(&self) -> Result<Arc<BatchWorker>, AppError> {
-        let mut guard = self.consolidate.lock().await;
-        if let Some(w) = guard.as_ref() {
-            return Ok(Arc::clone(w));
-        }
-        let session = self.create_or_resume(WorkerClass::Consolidate).await?;
-        let worker = BatchWorker::new(WorkerClass::Consolidate, session);
-        *guard = Some(Arc::clone(&worker));
-        Ok(worker)
+        self.get_or_create_worker(&self.consolidate, WorkerClass::Consolidate, |s| {
+            BatchWorker::new(WorkerClass::Consolidate, s)
+        })
+        .await
     }
 
     pub(crate) async fn decide(&self) -> Result<Arc<BatchWorker>, AppError> {
-        let mut guard = self.decide.lock().await;
-        if let Some(w) = guard.as_ref() {
-            return Ok(Arc::clone(w));
-        }
-        let session = self.create_or_resume(WorkerClass::Decide).await?;
-        let worker = BatchWorker::new(WorkerClass::Decide, session);
-        *guard = Some(Arc::clone(&worker));
-        Ok(worker)
+        self.get_or_create_worker(&self.decide, WorkerClass::Decide, |s| {
+            BatchWorker::new(WorkerClass::Decide, s)
+        })
+        .await
     }
 
     pub(crate) async fn vision(&self) -> Result<Arc<VisionWorker>, AppError> {
-        let mut guard = self.vision.lock().await;
+        self.get_or_create_worker(&self.vision, WorkerClass::Vision, VisionWorker::new)
+            .await
+    }
+
+    /// Lazy-init pattern shared by goals/consolidate/decide/vision. Locks
+    /// the slot, returns the cached `Arc<W>` if present, otherwise calls
+    /// `create_or_resume` for the right class and constructs via `build`.
+    /// Chat is special-cased (date-rotated cache) so it has its own method.
+    async fn get_or_create_worker<W, F>(
+        &self,
+        slot: &Mutex<Option<Arc<W>>>,
+        class: WorkerClass,
+        build: F,
+    ) -> Result<Arc<W>, AppError>
+    where
+        F: FnOnce(Arc<Session>) -> Arc<W>,
+    {
+        let mut guard = slot.lock().await;
         if let Some(w) = guard.as_ref() {
             return Ok(Arc::clone(w));
         }
-        let session = self.create_or_resume(WorkerClass::Vision).await?;
-        let worker = VisionWorker::new(session);
+        let session = self.create_or_resume(class).await?;
+        let worker = build(session);
         *guard = Some(Arc::clone(&worker));
         Ok(worker)
     }

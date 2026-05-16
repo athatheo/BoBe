@@ -15,7 +15,7 @@ use github_copilot_sdk::types::{
 use tokio::sync::Mutex;
 
 use crate::copilot::error::WorkerError;
-use crate::copilot::types::{ChatAttachment, ChatDelta, ChatPrompt, WorkerClass};
+use crate::copilot::types::{ChatAttachment, ChatDelta, ChatPrompt};
 
 use super::ChatWorker;
 
@@ -132,7 +132,7 @@ impl ChatWorker for CopilotChatWorker {
                 }
             }
 
-            let opts = match build_message_options(prompt, WorkerClass::Chat) {
+            let opts = match build_message_options(prompt) {
                 Ok(o) => o,
                 Err(e) => {
                     completed.store(true, Ordering::Release);
@@ -179,16 +179,12 @@ impl ChatWorker for CopilotChatWorker {
     }
 }
 
-fn build_message_options(
-    prompt: ChatPrompt,
-    class: WorkerClass,
-) -> Result<MessageOptions, std::io::Error> {
+fn build_message_options(prompt: ChatPrompt) -> Result<MessageOptions, std::io::Error> {
     let mut attachments = Vec::with_capacity(prompt.attachments.len());
     for att in prompt.attachments {
         attachments.push(to_sdk_attachment(att)?);
     }
 
-    let _ = class;
     let mut opts = MessageOptions::new(prompt.text);
     if !attachments.is_empty() {
         opts = opts.with_attachments(attachments);
@@ -398,7 +394,7 @@ mod tests {
             }],
             ..ChatPrompt::default()
         };
-        let opts = build_message_options(prompt, WorkerClass::Vision).unwrap();
+        let opts = build_message_options(prompt).unwrap();
         let attachments = opts.attachments.unwrap();
         assert_eq!(attachments.len(), 1);
         match &attachments[0] {
@@ -415,14 +411,14 @@ mod tests {
     #[test]
     fn voice_prompt_sets_immediate_delivery() {
         let prompt = ChatPrompt::voice("hello there");
-        let opts = build_message_options(prompt, WorkerClass::Chat).unwrap();
+        let opts = build_message_options(prompt).unwrap();
         assert_eq!(opts.mode, Some(DeliveryMode::Immediate));
     }
 
     #[test]
     fn text_prompt_leaves_default_delivery() {
         let prompt = ChatPrompt::text("hello there");
-        let opts = build_message_options(prompt, WorkerClass::Chat).unwrap();
+        let opts = build_message_options(prompt).unwrap();
         assert_eq!(opts.mode, None);
     }
 }
