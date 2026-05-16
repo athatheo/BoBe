@@ -12,6 +12,7 @@ use crate::voice::context::VoiceContext;
 use crate::voice::modes::transcript_in;
 use crate::voice::protocol_helpers::{send_error, send_json, send_state};
 use crate::voice::session::{SessionVoiceConfig, TTS_OUTPUT_SAMPLE_RATE, VoiceSession};
+use crate::voice::telemetry::CTR_CANCEL_PHRASE;
 use crate::voice::turn_flow::{abort_active_turn, handle_barge_in};
 
 /// Default language when the client doesn't specify one at Hello.
@@ -156,6 +157,7 @@ async fn handle_transcript_partial(
             partial = %s.last_partial_text,
             "voice.cancel_phrase_detected"
         );
+        metrics::counter!(CTR_CANCEL_PHRASE).increment(1);
         let keep_ms = s.last_acked_played_ms;
         abort_active_turn(s, ctx, keep_ms, "cancel_phrase").await;
     }
