@@ -59,4 +59,9 @@ pub(crate) mod voice_wire {
     pub(crate) const DEFAULT_PERSONA: &str = "af_bella";
     /// Matches the snake_case serde rename of `VoiceModelKind::Tts`.
     pub(crate) const MODEL_KIND_TTS: &str = "tts";
+    /// WebSocket subprotocol advertised by the Swift client and accepted
+    /// by the daemon on `/voice/stream`. Adds a clean rev hook for a
+    /// future `bobe.voice.v2` wire format: the daemon can support both
+    /// in parallel and pick per connection.
+    pub(crate) const SUBPROTOCOL_V1: &str = "bobe.voice.v1";
 }

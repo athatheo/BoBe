@@ -56,6 +56,9 @@ enum VoiceWire {
     static let kokoroModelDir = "kokoro-multi-lang-v1_0"
     static let defaultPersona = "af_bella"
     static let modelKindTts = "tts"
+    /// WS subprotocol — advertised in the client's Sec-WebSocket-Protocol
+    /// header, echoed by the daemon. Reserves the rev hook for a future v2.
+    static let subprotocolV1 = "bobe.voice.v1"
 }
 
 /// Mirror: Rust `mcp_status::*`. MCPServersPanel.statusBadge has a

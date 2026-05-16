@@ -352,7 +352,13 @@ public final class VoicePipeline {
         let language = self.activeSttLanguage
 
         self.state = .connecting
-        let newTask = self.urlSession.webSocketTask(with: wsURL)
+        // Advertise `bobe.voice.v1` so a future v2 daemon can route on the
+        // subprotocol. Daemon also accepts unversioned upgrades, so this is
+        // forward-only — old daemons just ignore the offered protocol.
+        let newTask = self.urlSession.webSocketTask(
+            with: wsURL,
+            protocols: [VoiceWire.subprotocolV1]
+        )
         self.task = newTask
         newTask.resume()
         self.receiveLoop()

@@ -72,6 +72,10 @@ rust_kind_tts=$(grep -E 'MODEL_KIND_TTS: &str =' "$RUST" | sed -E 's/.*= "([^"]+
 swift_kind_tts=$(grep -E 'static let modelKindTts = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
 expect_match "voice model kind TTS" "$rust_kind_tts" "$swift_kind_tts"
 
+rust_subprotocol=$(grep -E 'SUBPROTOCOL_V1: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
+swift_subprotocol=$(grep -E 'static let subprotocolV1 = ' "$SWIFT_CONST" | sed -E 's/.*= "([^"]+)".*/\1/')
+expect_match "voice WS subprotocol v1" "$rust_subprotocol" "$swift_subprotocol"
+
 # tool_call_status::*
 rust_tc_start=$(grep -E 'pub\(crate\) const START: &str =' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
 swift_tc_start=$(grep -E 'static let start = "[^"]+"' "$SWIFT_CONST" | head -n 1 | sed -E 's/.*= "([^"]+)".*/\1/')

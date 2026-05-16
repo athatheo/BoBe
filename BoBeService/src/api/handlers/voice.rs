@@ -170,9 +170,20 @@ fn spawn_keepalive(out_tx: mpsc::Sender<Message>) -> tokio::task::JoinHandle<()>
 }
 
 pub(crate) async fn voice_stream(
-    ws: WebSocketUpgrade,
+    mut ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    // Pick `bobe.voice.v1` if the client advertised it. Daemon happily
+    // accepts an unversioned connection too — older clients keep working
+    // unchanged. Echoing the chosen subprotocol back is mandatory per
+    // RFC 6455 and is what reserves the v2 hook.
+    let selected = ws
+        .requested_protocols()
+        .find(|p| p.as_bytes() == crate::constants::voice_wire::SUBPROTOCOL_V1.as_bytes())
+        .cloned();
+    if let Some(p) = selected {
+        ws.set_selected_protocol(p);
+    }
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
