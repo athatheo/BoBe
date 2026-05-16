@@ -47,6 +47,44 @@ impl Drop for VoiceWsPermit {
     }
 }
 
+/// Dedicated WS writer task — sole owner of `ws_tx`. Recv loop, per-turn
+/// tasks, and the Kokoro task all post via cloned `out_tx` senders.
+/// Returns when all senders drop (writer drain on session end).
+fn spawn_writer(
+    mut ws_tx: futures::stream::SplitSink<WebSocket, Message>,
+    mut out_rx: mpsc::Receiver<Message>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(msg) = out_rx.recv().await {
+            if ws_tx.send(msg).await.is_err() {
+                break;
+            }
+        }
+        drop(ws_tx.close().await);
+    })
+}
+
+/// Keepalive: send WS Ping on a 25s cadence. The WS layer auto-responds
+/// with Pong, so this doubles as the client's freshness signal. Recv-side
+/// `KEEPALIVE_STALE_TIMEOUT` catches dead connections via the Pong absence.
+fn spawn_keepalive(out_tx: mpsc::Sender<Message>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(KEEPALIVE_PING_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        ticker.tick().await; // skip the immediate first tick
+        loop {
+            ticker.tick().await;
+            if out_tx
+                .send(Message::Ping(Vec::new().into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    })
+}
+
 pub(crate) async fn voice_stream(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
@@ -107,37 +145,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
     let _ws_permit = VoiceWsPermit(Arc::clone(&state.voice_ws_active));
 
-    // Dedicated WS writer task — sole owner of ws_tx. Main loop, per-turn
-    // tasks, and the Kokoro task all post via cloned out_tx senders.
-    let writer = tokio::spawn(async move {
-        let mut ws_tx = ws_tx;
-        while let Some(msg) = out_rx.recv().await {
-            if ws_tx.send(msg).await.is_err() {
-                break;
-            }
-        }
-        drop(ws_tx.close().await);
-    });
-
-    // Keepalive: pings on a 25s cadence. The WS layer auto-responds with
-    // Pong, so even a silent (muted) client refreshes the recv-timeout
-    // window. Recv timeout below catches the dead-connection case.
-    let out_tx_for_ping = out_tx.clone();
-    let keepalive = tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(KEEPALIVE_PING_INTERVAL);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        ticker.tick().await; // skip the immediate first tick
-        loop {
-            ticker.tick().await;
-            if out_tx_for_ping
-                .send(Message::Ping(Vec::new().into()))
-                .await
-                .is_err()
-            {
-                break;
-            }
-        }
-    });
+    let writer = spawn_writer(ws_tx, out_rx);
+    let keepalive = spawn_keepalive(out_tx.clone());
 
     let mut session: Option<VoiceSession> = None;
     let runtime_session = Arc::clone(&state.runtime_session);
