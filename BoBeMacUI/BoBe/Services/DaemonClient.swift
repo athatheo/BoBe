@@ -156,11 +156,15 @@ actor DaemonClient {
 
     // MARK: - HTTP Helpers
 
-    func fetch<T: Decodable>(
+    /// Send the request, validate `2xx`, return raw bytes. Single point
+    /// of HTTP plumbing (URL build, method, content-type, body, network
+    /// error, status-code check) — `fetch<T>` and `fetchVoid` are thin
+    /// wrappers that decide whether to decode the body.
+    private func send(
         _ path: String,
-        method: String = "GET",
-        body: (any Encodable)? = nil
-    ) async throws -> T {
+        method: String,
+        body: (any Encodable)?
+    ) async throws -> Data {
         let url = self.endpointURL(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -188,6 +192,15 @@ actor DaemonClient {
             logger.error("\(method) \(path) failed: HTTP \(httpResponse.statusCode) — \(message)")
             throw DaemonError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
+        return data
+    }
+
+    func fetch<T: Decodable>(
+        _ path: String,
+        method: String = "GET",
+        body: (any Encodable)? = nil
+    ) async throws -> T {
+        let data = try await self.send(path, method: method, body: body)
         do {
             return try self.decoder.decode(T.self, from: data)
         } catch {
@@ -201,33 +214,7 @@ actor DaemonClient {
         method: String = "POST",
         body: (any Encodable)? = nil
     ) async throws {
-        let url = self.endpointURL(path)
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.timeoutInterval = self.fetchTimeout
-
-        if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try self.encoder.encode(AnyEncodable(body))
-        }
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await self.session.data(for: request)
-        } catch {
-            logger.error("\(method) \(path): network error — \(error.localizedDescription)")
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse else {
-            logger.error("\(method) \(path): invalid response (not HTTP)")
-            throw DaemonError.invalidResponse
-        }
-        guard (200 ... 299).contains(httpResponse.statusCode) else {
-            let message = self.errorMessage(from: data)
-            logger.error("\(method) \(path) failed: HTTP \(httpResponse.statusCode) — \(message)")
-            throw DaemonError.httpError(statusCode: httpResponse.statusCode, message: message)
-        }
+        _ = try await self.send(path, method: method, body: body)
     }
 
     private func errorMessage(from data: Data) -> String {
