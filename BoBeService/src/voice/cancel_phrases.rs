@@ -1,14 +1,7 @@
-//! Cancel-phrase detection on streaming-STT partials.
-//!
-//! When the user says "stop" / "nevermind" / "cancel that" during BoBe's
-//! TTS playback, we abort the in-flight turn WITHOUT round-tripping the
-//! LLM. The phrase wasn't a question; it was a barge-in marker. Acting on
-//! it locally trims ~500-2000ms vs sending it to Copilot and waiting for
-//! the LLM to figure out it should stop.
-//!
-//! Pattern list is intentionally short — false positives ("stop signs",
-//! "cancel my subscription tomorrow") are worse than missing one
-//! interrupt. Lower-case match after stripping non-alphanumeric.
+//! Cancel-phrase regex on STT partials. Matching "stop"/"nevermind"/etc.
+//! during TTS aborts the in-flight turn locally — saves the LLM round-trip
+//! (~500-2000ms). Pattern list is short on purpose: false positives are
+//! worse than a missed interrupt. Lowercased, non-alphanumeric stripped.
 
 use std::sync::LazyLock;
 

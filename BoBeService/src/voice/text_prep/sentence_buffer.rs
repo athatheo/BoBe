@@ -1,14 +1,7 @@
-//! Streaming sentence buffer for TTS. Port of LiveKit's `_basic_sent.split_sentences`.
-//!
-//! Pushes text deltas in, emits complete-sentence strings out (in order).
-//! Semantics: a sentence is "complete" the moment we see a `.`, `!`, or `?`
-//! followed by whitespace + an uppercase character (or end of buffer). Text
-//! still being typed after the most recent terminator stays in the buffer
-//! until either a subsequent terminator promotes it OR `flush()` is called
-//! at end-of-stream.
-//!
-//! Handles common English abbreviations (`Dr.`, `Mr.`, `U.S.A.`, `e.g.`, `etc.`)
-//! and bare decimals like `3.14` so they don't trigger false splits.
+//! Streaming sentence buffer (port of LiveKit `_basic_sent.split_sentences`).
+//! Sentence emitted when `.!?` is followed by whitespace + uppercase or
+//! EOF. Skips common abbreviations + bare decimals to avoid false splits.
+//! `flush()` drains the tail at end-of-stream.
 
 const ABBREVIATIONS: &[&str] = &[
     "mr.", "mrs.", "ms.", "dr.", "st.", "jr.", "sr.", "inc.", "ltd.", "co.", "ph.d.", "m.d.",

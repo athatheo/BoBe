@@ -104,21 +104,10 @@ extension VoicePipeline {
 
     // MARK: - Truncation (barge-in)
 
-    /// Sample-accurate playback truncation. Keeps the head of in-flight audio
-    /// up to `keepMs` and drops the tail. The daemon emits `truncate{keep_ms}`
-    /// after a barge-in, where `keep_ms` is what the user actually heard
-    /// (max of client RMS-detect playback position and last `PlaybackAck`).
-    /// Implementation:
-    ///   1. Capture frames-played-this-turn BEFORE `stop()` (which resets
-    ///      the player's clock).
-    ///   2. `stop()` to wipe the pending queue.
-    ///   3. Re-schedule slices of retained `AVAudioPCMBuffer`s covering the
-    ///      half-open range [played, target). Earlier audio has already
-    ///      reached the speakers; nothing to do for it. Track the slices in
-    ///      `scheduledChunks` so a second truncate within the same turn
-    ///      remains sample-accurate.
-    ///   4. `play()` and bump `turnFrameBase` so future render-clock reads
-    ///      stay in turn-relative space.
+    /// Post-barge-in: keep first `keepMs` of audio, drop the tail.
+    /// Capture played-frames before `stop()` (resets player clock), wipe
+    /// queue, re-schedule slices of retained chunks covering [played,
+    /// target), bump `turnFrameBase` so render-clock stays turn-relative.
     func truncatePlayback(keepMs: UInt64) {
         let target = AVAudioFramePosition(Double(keepMs) * self.playbackSampleRate / 1_000.0)
         let played = self.playedFramesThisTurn()

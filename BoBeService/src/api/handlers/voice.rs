@@ -1,14 +1,7 @@
-//! WS endpoint `/voice/stream` (Mode B only).
-//!
-//! Lifecycle per session:
-//!   - WS upgrade + Hello handshake (playback_rate validation)
-//!   - Client streams `transcript_partial` / `transcript_final` over JSON.
-//!     `transcript_final` admits a turn (single-flight) and spawns the
-//!     convergence pipeline (`voice/run_text_turn`).
-//!   - Daemon streams TTS Opus binary back to the client.
-//!   - Barge-in (RMS-detected client-side, sent as `barge_in` control)
-//!     or cancel-phrase (regex on echoed partials) → abort the active turn.
-//!   - Disconnect → abort any in-flight turn before tearing down.
+//! WS endpoint `/voice/stream` (Mode B). Hello handshake → client streams
+//! `transcript_partial`/`transcript_final` JSON → daemon admits single-
+//! flight + spawns `run_text_turn` → streams TTS Opus binary back.
+//! Barge-in or cancel-phrase aborts the active turn; disconnect tears down.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -51,17 +44,19 @@ impl Drop for VoiceWsPermit {
 /// CAS the single-flight slot. On success returns the socket back to the
 /// caller along with the RAII guard; on failure closes the socket with a
 /// `voice_busy` error and returns `None` so handle_socket can just `return`.
-async fn acquire_permit(
-    socket: WebSocket,
-    state: &AppState,
-) -> Option<(WebSocket, VoiceWsPermit)> {
+async fn acquire_permit(socket: WebSocket, state: &AppState) -> Option<(WebSocket, VoiceWsPermit)> {
     if state
         .voice_ws_active
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
     {
         warn!("voice.ws_concurrent_rejected");
-        close_with_error(socket, "voice_busy", "another voice session is already active").await;
+        close_with_error(
+            socket,
+            "voice_busy",
+            "another voice session is already active",
+        )
+        .await;
         return None;
     }
     Some((socket, VoiceWsPermit(Arc::clone(&state.voice_ws_active))))

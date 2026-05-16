@@ -1,69 +1,47 @@
 import Foundation
 
+// Cross-language pairs are locked by check-cross-language-constants.sh.
+
 enum DaemonConfig {
     static let host = "127.0.0.1"
-    /// Must match Rust `constants::DEFAULT_DAEMON_PORT`. If you change one,
-    /// change the other — a CI assertion will eventually catch this drift.
+    /// Mirror: Rust `DEFAULT_DAEMON_PORT`.
     static let port = 8766
     static let baseURL = "http://\(host):\(port)"
 }
 
-/// Defaults shared with the Rust daemon's `constants` module.
 enum OllamaDefaults {
-    /// Native Ollama API root (no `/v1`). For `/api/tags`, `/api/pull`.
     static let baseURL = "http://127.0.0.1:11434"
-    /// OpenAI-compat root (with `/v1`). For chat completions when
-    /// `engine == EngineKind.local`.
     static let v1URL = "http://127.0.0.1:11434/v1"
 }
 
-/// Wire-format engine kinds. Settings round-trip strings; both sides must
-/// agree. Matches the Rust `constants::engine_kind::*` consts.
+/// Mirror: Rust `engine_kind::*`.
 enum EngineKind {
     static let copilotCloud = "copilot_cloud"
     static let local = "local"
 }
 
-/// Voice-pipeline wire/disk constants shared with the daemon. Match
-/// Rust `constants::voice_wire::*`. The TTS sample rate is the
-/// `AVAudioPlayerNode` playback rate AND the Hello-handshake claim sent
-/// to the daemon (mismatch → rate_mismatch close). The Kokoro dir name
-/// is the on-disk path Settings → Voice → Models displays as the user's
-/// model location. The persona default is the fallback voice id when
-/// Settings haven't been touched yet.
-/// BoBe data directory name relative to `$HOME`. Match Rust
-/// `constants::BOBE_DATA_DIR_NAME`. The daemon's `paths::bobe_data_dir`
-/// allows `$BOBE_DATA_DIR` to override; Swift mirrors only the relative
-/// name since BackendService respects the same env var via the spawned
-/// daemon's env.
+/// `~/$HOME` subdir. Mirror: Rust `BOBE_DATA_DIR_NAME`. `$BOBE_DATA_DIR`
+/// env override on the Rust side; Swift mirrors only the relative name.
 enum BobePaths {
     static let dataDirName = ".bobe"
 }
 
-/// Tool-call SSE status strings emitted by the daemon's
-/// `util::sse::factories::tool_call_*_event`. Match Rust
-/// `constants::tool_call_status::*`.
+/// Mirror: Rust `tool_call_status::*`.
 enum ToolCallStatusWire {
     static let start = "start"
     static let complete = "complete"
 }
 
-/// EOU debounce mapping for the daemon's `voice.pause_sensitivity`
-/// string. Mirrors Rust `constants::pause_sensitivity_ms::*`. Drift
-/// script asserts each value matches; bumping a number on one side
-/// without the other will silently miscalibrate end-of-turn detection.
+/// EOU debounce ms per `voice.pause_sensitivity`. Mirror: Rust
+/// `pause_sensitivity_ms::*`.
 enum PauseSensitivityMs {
     static let tight: Int = 600
     static let balanced: Int = 1280
     static let patient: Int = 2000
 }
 
-/// Install-progress status emitted by both `/voice/install/status` and
-/// `/local-runtime/status`. Mirrors Rust `voice::install_artifacts::
-/// InstallStatus` (serde rename_all = "snake_case") and the manual
-/// mapping in `api::handlers::local_runtime::InstallSnapshotDto`. Both
-/// daemon-side enums emit the same 5 strings; if they diverge in the
-/// future, split this into two Swift enums.
+/// Wire form for both `/voice/install/status` and `/local-runtime/status`.
+/// Mirror: Rust `InstallStatus` (serde snake_case).
 enum InstallStatusWire: String, Codable, Sendable, Equatable {
     case idle
     case running
@@ -72,22 +50,16 @@ enum InstallStatusWire: String, Codable, Sendable, Equatable {
     case failed
 }
 
+/// Mirror: Rust `voice_wire::*`.
 enum VoiceWire {
     static let ttsOutputSampleRate = 24_000
     static let kokoroModelDir = "kokoro-multi-lang-v1_0"
     static let defaultPersona = "af_bella"
-    /// Wire value for the TTS install model kind (matches Rust
-    /// `voice_wire::MODEL_KIND_TTS`). `installStatus.models` from the
-    /// daemon arrives as untyped String; Settings → Voice filters by
-    /// this value.
     static let modelKindTts = "tts"
 }
 
-/// Wire-format MCP server status strings emitted by the daemon's
-/// `services::mcp_config_service`. Match the Rust `constants::mcp_status`
-/// consts. A typed `Codable` enum would be the next-level fix; the
-/// `MCPServersPanel.statusBadge` switch wants a `.default` fallback so
-/// unknown future statuses still render a generic badge.
+/// Mirror: Rust `mcp_status::*`. MCPServersPanel.statusBadge has a
+/// `.default` fallback for unknown future statuses.
 enum McpServerStatusWire {
     static let connected = "connected"
     static let failed = "failed"

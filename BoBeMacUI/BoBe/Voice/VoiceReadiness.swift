@@ -1,19 +1,9 @@
 import AVFoundation
 import Foundation
 
-/// Aggregated voice readiness — the single signal consumers (MicButton,
-/// wizard-reprompt logic, future banners) should switch on instead of
-/// reading four separate inputs (`sttStatus` + `permission` +
-/// `installSnapshot` + `voiceEnabled`).
-///
-/// Priority order, highest first — earlier cases short-circuit later checks:
-///   1. voice disabled in settings → `.disabledByUser`
-///   2. mic permission denied/restricted → `.permissionMissing`
-///   3. no daemon snapshot or settings fetch yet → `.preparing`
-///   4. STT load failed → `.failed`
-///   5. either side actively downloading → `.installing`
-///   6. either side missing on disk → `.modelsMissing`
-///   7. all four green → `.ready`
+/// Aggregated voice readiness — single signal for MicButton / wizard /
+/// banners. Priority: disabledByUser > permissionMissing > preparing >
+/// failed > installing > modelsMissing > ready. Earlier short-circuits.
 public enum VoiceReadiness: Equatable {
     case preparing
     case disabledByUser

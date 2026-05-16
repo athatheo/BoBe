@@ -1,14 +1,7 @@
-//! Shared convergence helper for the voice turn lifecycle.
-//!
-//! `voice/modes/transcript_in.rs` receives a `transcript.final` from the
-//! WS and calls `run_text_turn` directly. (Daemon-side ASR was removed in
-//! the M6.B Mode-B-only pivot; this used to be one of two entry points.)
-//!
-//! The function owns single-flight admission, Thinking/Speaking/Listening
-//! state emission, the per-turn TTS pipeline (filler + Kokoro), and the
-//! LLM observer that feeds `SentencePipeline`. The convergence point —
-//! `RuntimeSession::handle_user_message_with_observer` — lives at line ~80
-//! below; nothing about how the text arrived is visible from there down.
+//! Voice turn convergence helper. `transcript_in` calls this on a final
+//! transcript; it owns single-flight admission, state emission
+//! (Thinking → Speaking → Listening), filler + Kokoro task spawn, and
+//! the LLM observer feeding `SentencePipeline`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

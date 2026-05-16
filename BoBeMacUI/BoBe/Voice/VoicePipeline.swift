@@ -7,21 +7,10 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "VoicePipeline")
 
-/// Production voice pipeline (client side, Mode B).
-///
-/// The Swift client owns ASR via FluidAudio (Parakeet EOU on Apple Neural
-/// Engine). This layer captures mic audio, feeds it to FluidAudio, and ships
-/// the resulting transcripts (partial + final on end-of-utterance) over the
-/// WS to the daemon. The daemon runs LLM + TTS only; TTS Opus frames stream
-/// back and play through `AVAudioPlayerNode`. State follows the daemon's
-/// `state{phase,turn_id}` messages.
-///
-/// Lifecycle:
-///   1. `prewarm()` — once mic permission is granted; settles VPIO AGC so the
-///       first second of speech isn't attenuated. Idempotent.
-///   2. `toggle(daemonBaseURL:)` — connects WS, sends `hello`, starts streaming.
-///       Daemon decides when speech starts/ends via Silero.
-///   3. `disconnect()` — sends `control{action:abort}`, cancels WS task.
+/// Mode B voice pipeline: client owns ASR (FluidAudio on ANE), ships
+/// transcripts over WS, plays back daemon TTS via AVAudioPlayerNode.
+/// Lifecycle: `prewarm()` (settles VPIO AGC) → `toggle()` (connects WS) →
+/// `disconnect()` (sends abort, cancels task). State mirrors daemon `state`.
 @MainActor
 @Observable
 public final class VoicePipeline {

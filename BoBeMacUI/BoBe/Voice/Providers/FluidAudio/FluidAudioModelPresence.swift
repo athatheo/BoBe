@@ -1,16 +1,9 @@
 import Foundation
 
-/// Filesystem-level presence check for the FluidAudio Parakeet EOU streaming
-/// model. Used at boot to decide whether voice is `.ready` without paying
-/// the ~2s cost of calling `FluidAudioStt.loadModels()` (which re-validates
-/// + warms the ANE every time). Calling code should still trigger a lazy
-/// background `loadModels` after a positive presence check so the very
-/// first mic tap is instant.
-///
-/// The model directory contains 23 files at Parakeet EOU 320ms variant.
-/// We require a small sentinel set whose absence is a clear signal that
-/// the install is incomplete — checking all 23 is overkill and would
-/// regress as upstream variants ship new file layouts.
+/// Cheap filesystem probe for the Parakeet EOU 320ms model. Avoids the
+/// ~2s `loadModels()` ANE warm-up on boot decision; the real load happens
+/// lazily in the background after a positive check. Three sentinel
+/// `.mlmodelc` packages — checking all 23 files is overkill.
 enum FluidAudioModelPresence {
     /// Default FluidAudio cache root (matches the SDK's `ModelRegistry`
     /// default). We don't override `ModelRegistry.baseURL` so other apps

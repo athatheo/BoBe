@@ -1,17 +1,8 @@
-//! Voice-model installer service. Replaces the standalone
-//! `scripts/install-voice-models.sh` — voice setup is a first-class app
-//! capability, driven by the daemon and surfaced through the welcome
-//! wizard + Settings panel.
-//!
-//! Mirrors `OllamaInstallService`'s shape: one install at a time gated by
-//! a Mutex, progress streamed via `watch::Sender<VoiceInstallSnapshot>`,
-//! cancel via a side `watch<bool>`. Models are downloaded sequentially
-//! into `~/.bobe/models/`; on completion the daemon's voice engines need
-//! a reload (the `on_complete` callback hot-swaps the AppState ArcSwap).
-//!
-//! The artifact catalog lives in `install_artifacts.rs`; tarball
-//! extraction helpers live in `install_extract.rs`. This module is the
-//! orchestrator only.
+//! Voice-model installer orchestrator. Mirrors `OllamaInstallService`:
+//! single-flight Mutex, progress via `watch<VoiceInstallSnapshot>`,
+//! cancel via side `watch<bool>`. Models download into `~/.bobe/models/`;
+//! `on_complete` hot-swaps the AppState ArcSwap. Catalog in
+//! `install_artifacts.rs`, extraction in `install_extract.rs`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

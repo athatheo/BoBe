@@ -3,27 +3,10 @@ import FluidAudio
 import Foundation
 import OSLog
 
-/// FluidAudio Qwen3-ASR streaming wrapper for non-English languages
-/// (Mandarin in v1; Spanish/Greek/Korean/Japanese on the same engine
-/// later — Qwen3 is multilingual). Unlike Parakeet, Qwen3 doesn't ship a
-/// built-in end-of-utterance detector, so this actor pairs the
-/// `Qwen3StreamingManager` with FluidAudio's `VadManager` (Silero v6) and
-/// runs a pauseSensitivity-tuned silence timer to fire EOU.
-///
-/// Pipeline per `acceptAudio(_:)` call:
-///   1. Convert input buffer to 16kHz mono Float32 samples.
-///   2. Feed VAD → emits speechStart / speechEnd events.
-///      - speechStart cancels any pending EOU timer.
-///      - speechEnd schedules an EOU timer (`eouDelayMs` after the last
-///        speech frame). If a new speechStart arrives before the timer
-///        fires, the timer is cancelled.
-///   3. Feed Qwen3 → returns a partial transcript whenever enough audio has
-///      accumulated for re-transcription (sliding window).
-///   4. When the EOU timer fires, call `streaming.finish()` and emit the
-///      transcript via the stored `onEou` callback.
-///
-/// Concurrency: actor; callbacks fire from the actor's executor and the
-/// caller hops to `@MainActor` at the UI boundary.
+/// Qwen3-ASR streaming wrapper for non-English languages. Pairs
+/// `Qwen3StreamingManager` with FluidAudio's Silero VadManager; speechEnd
+/// schedules an `eouDelayMs` timer that fires EOU unless speechStart
+/// arrives first. Callbacks hop to @MainActor at the UI boundary.
 @available(macOS 15, iOS 18, *)
 actor FluidAudioQwen3Stt: VoiceSttEngine {
     private let logger = Logger(subsystem: "com.bobe.app", category: "FluidAudioQwen3Stt")

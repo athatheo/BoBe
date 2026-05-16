@@ -1,18 +1,9 @@
-//! Single-slot voice sink shared by AppState. The voice WS handler stashes
-//! its outbound sender here on connect; BobeHooks reads it from the SDK
-//! hook context to push cached PCM (per-tool fillers, error recovery)
-//! directly to the active client.
-//!
-//! Single-slot is correct: `UserMessageGuard` single-flights voice turns,
-//! so only one client receives a filler at a time. If multi-client voice
-//! coexistence ever lands, this expands to a session-keyed registry
-//! without changing hook callers.
-//!
-//! ### Generation-tagged drop
-//! Each `install` returns a `SinkGuard` carrying the generation it wrote.
-//! On drop, the guard's async clear only fires if the slot still holds
-//! its generation — so a newer connection that already overwrote the
-//! slot is safe from being clobbered by an older guard's late drop.
+//! Single-slot voice sink on AppState. The WS handler stashes its
+//! outbound sender on connect; BobeHooks pushes cached PCM (fillers) to
+//! it from the SDK hook context. Single-slot suffices because
+//! UserMessageGuard single-flights voice turns. Each `install` stamps a
+//! generation; the returned guard's drop only clears when its generation
+//! still matches, so a newer connection that overwrote the slot is safe.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};

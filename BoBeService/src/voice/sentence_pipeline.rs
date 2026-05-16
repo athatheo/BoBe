@@ -1,15 +1,7 @@
-//! Streaming text → sentence pipeline used by the voice WS turn task.
-//!
-//! Wraps two stateful streaming filters into one push interface:
-//!   1. `MarkdownStripper` — removes markdown syntax from running LLM
-//!      tokens so Kokoro doesn't speak literal asterisks.
-//!   2. `SentenceBuffer` — emits whole sentences once their terminator is
-//!      confirmed (handles abbreviations, decimals, etc.).
-//!
-//! Confirmed sentences are pushed onto an `mpsc::Sender<String>` that the
-//! Kokoro task drains. A full channel surfaces as a warn log + drop —
-//! sentences are independent and back-pressuring the LLM stream upstream
-//! would only stall the whole turn for marginal benefit.
+//! Streaming text → sentence pipeline. `MarkdownStripper` + `SentenceBuffer`
+//! chained: removes markdown, emits whole sentences on confirmed
+//! terminator, pushes to the Kokoro `mpsc<String>`. Full channel → warn
+//! + drop (sentences are independent; don't back-pressure the LLM).
 
 use tokio::sync::mpsc;
 use tracing::warn;

@@ -1,15 +1,8 @@
 import SwiftUI
 
-/// Shows what BoBe is hearing in near-real-time. Bound to
-/// `VoicePipeline.partialTranscript` which is set on every partial callback
-/// from the local FluidAudio Parakeet streaming ASR (Mode B) and cleared
-/// at end-of-utterance.
-///
-/// Renders nothing while empty so it doesn't take layout space when the user
-/// isn't speaking. Fades in/out so the appearance feels like dictation rather
-/// than a blocking modal. Honors `pipeline.showPartialCaption` so the user
-/// can disable the live caption in Settings → Voice without changing
-/// anything else about how voice works.
+/// Live caption bound to `VoicePipeline.partialTranscript`. Empty → no
+/// layout space; fades in/out. Gated by `showPartialCaption` so Settings
+/// → Voice can hide it without affecting voice itself.
 struct VoicePartialCaption: View {
     @State private var pipeline = VoicePipeline.shared
     @Environment(\.theme) private var theme

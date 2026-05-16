@@ -1,38 +1,26 @@
 import AVFoundation
 import Foundation
 
-/// A swappable speech-to-text engine on the Swift client side. `VoicePipeline`
-/// owns one active engine per WS session, resolved from the user's chosen
-/// language (`settings.voiceSttLanguage`).
-///
-/// Existing impls:
-///   - `FluidAudioStt` — FluidAudio Parakeet EOU 120M (English; built-in EOU)
-///   - `FluidAudioQwen3Stt` — FluidAudio Qwen3-ASR streaming + VadManager
-///     (Mandarin; VAD-driven EOU)
-///
-/// Both impls are actors. The protocol's `async` requirements line up with
-/// the actors' implicit `async` boundary from outside.
+/// Swappable client-side STT engine. VoicePipeline picks one per WS based
+/// on `settings.voiceSttLanguage`. Impls: `FluidAudioStt` (Parakeet,
+/// English) and `FluidAudioQwen3Stt` (Qwen3 + VAD, Mandarin).
 protocol VoiceSttEngine: Sendable {
-    /// Load the model (downloads from HuggingFace on first run, then caches
-    /// to `~/Library/Application Support/FluidAudio/Models/`). Idempotent
-    /// and concurrent-safe — N callers cause one download.
+    /// Idempotent + concurrent-safe; N callers → one HuggingFace download
+    /// into `~/Library/Application Support/FluidAudio/Models/`.
     func loadModels(
         onPartial: @escaping @Sendable (String) -> Void,
         onEou: @escaping @Sendable (String) -> Void
     ) async throws
 
-    /// Feed one PCM buffer. Engine handles its own format conversion
-    /// internally — callers pass whatever the audio tap produces.
-    /// `sending` lets a non-Sendable `AVAudioPCMBuffer` cross the actor
-    /// boundary safely (caller transfers ownership).
+    /// Feed one PCM buffer. `sending` transfers ownership across the actor
+    /// boundary; engine does its own format conversion.
     func acceptAudio(_ buffer: sending AVAudioPCMBuffer) async throws
 
-    /// Flush buffered audio and return the final transcript. Used when the
-    /// user explicitly stops the mic, not on natural EOU (which fires the
-    /// `onEou` callback supplied at load time).
+    /// Flush + return transcript. For explicit mic-stop; natural EOU goes
+    /// through the `onEou` callback supplied at load time.
     func finish() async throws -> String
 
-    /// Reset the decoder/buffer between turns. Keeps models loaded.
+    /// Reset decoder/buffer between turns; keeps models loaded.
     func reset() async throws
 
     /// Tear down model memory. Requires fresh `loadModels()` to reuse.

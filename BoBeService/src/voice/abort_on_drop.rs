@@ -1,21 +1,7 @@
-//! RAII wrapper that cascades `JoinHandle::abort()` when the parent task's
-//! frame unwinds.
-//!
-//! Background: dropping a `tokio::task::JoinHandle` does NOT abort the
-//! underlying task — the spawned future keeps running detached. For the
-//! voice turn flow that means: when the parent `run_text_turn` task is
-//! aborted via `TurnInFlight::join.abort()` (barge-in / disconnect /
-//! cancel-phrase), its locally-spawned children (`kokoro_task`,
-//! `filler_task`) survive the abort and continue holding shared resources
-//! (`LocalKokoroTts::tts: Mutex<OfflineTts>`) for the rest of their
-//! `spawn_blocking` synthesis call — 1-3 seconds of audible dead-time on
-//! the next turn's first synth.
-//!
-//! Wrap the child `JoinHandle` in `AbortOnDrop` at spawn time. On natural
-//! completion call `into_inner()` to consume the wrapper without aborting
-//! and await/abort the handle yourself. If the parent task is aborted
-//! before that point, the stack unwind runs this `Drop` and cancels the
-//! child too.
+//! Cascade `JoinHandle::abort()` on Drop. Vanilla JoinHandle drop leaves
+//! the task running; for voice children (kokoro_task, filler_task) that
+//! means 1-3s of dead-time holding `OfflineTts` Mutex after a parent
+//! abort. Natural-completion paths call `into_inner()` to defuse.
 
 use tokio::task::JoinHandle;
 

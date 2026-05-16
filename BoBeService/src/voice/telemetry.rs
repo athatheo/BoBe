@@ -1,14 +1,7 @@
-//! Voice SLO telemetry — Prometheus exposition served at `GET /metrics`.
-//!
-//! Histograms cover the per-stage latency budgets from `docs/voice-plan.md`
-//! D10: capture, VAD, STT first partial, smart-turn inference, set_model
-//! RPC, LLM TTFT, sentence emission, TTS TTFB, opus encode, e2e. Counters
-//! cover discrete events: barge-in success/false, filler triggers,
-//! segment-drop backpressure, cancel-phrase matches, ask_user gates.
-//!
-//! Records flow through the `metrics` facade (`metrics::histogram!`,
-//! `metrics::counter!`), which the installed `PrometheusBuilder` recorder
-//! turns into a static text exposition via `PrometheusHandle::render`.
+//! Voice SLO telemetry — Prometheus at `GET /metrics`. Histograms = per-
+//! stage latencies (docs/voice-plan.md D10); counters = discrete events
+//! (barge-in, fillers, cancel-phrase, ask_user). Uses the `metrics`
+//! facade → `PrometheusBuilder` recorder → `PrometheusHandle::render`.
 
 use metrics::{Unit, describe_counter, describe_histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
