@@ -194,13 +194,17 @@ voice/
 Voice/
 ├── MicButton.swift              # Mic icon stays a mic; switches on VoicePipeline.readiness
 ├── StopButton.swift             # Cancel-current-turn affordance
+├── TtsPlayback.swift            # Extension: Opus decode + AVAudioPlayerNode scheduling + truncate
 ├── VoiceModelCard.swift         # Rich per-model card used in Settings → Voice → Models
 ├── VoiceModelRow.swift          # Minimal model row used in the wizard
 ├── VoicePartialCaption.swift    # Live partial transcript display
 ├── VoicePipeline.swift          # Orchestrator (audio capture, WS, FluidAudio drive, state)
+├── VoicePipelineSupport.swift   # Free functions: withVoiceLoadTimeout, voiceWsEndpoint, describe, error types
 ├── VoiceProtocol.swift          # Wire DTOs mirroring speech/protocol.rs
 ├── VoiceReadiness.swift         # VoiceReadiness enum + readiness + refreshDaemonState / updatePermission
 ├── VoiceSttEngine.swift         # Protocol: loadModels / acceptAudio / finish / reset / cleanup
+├── WakeWord/
+│   └── WakeWordTap.swift        # Protocol + NoOp impl; livekit-wakeword wiring planned (see file header)
 └── Providers/
     └── FluidAudio/
         ├── FluidAudioModelPresence.swift       # Parakeet FS presence check + observed-bytes progress
@@ -208,6 +212,21 @@ Voice/
         ├── FluidAudioStt.swift                 # Actor: StreamingEouAsrManager (Parakeet EOU, English)
         └── FluidAudioQwen3Stt.swift            # Actor: Qwen3StreamingManager + VadManager (multilingual)
 ```
+
+## Wake-word (planned)
+
+Hands-free trigger via a continuously-running classifier. Design captured
+in `BoBe/Voice/WakeWord/WakeWordTap.swift` as a `WakeWordTap` protocol +
+`NoOpWakeWordTap` default. Engine pick (per May 2026 audit):
+**livekit-wakeword** (Apache-2.0, conv-attention head, custom-trainable
+`.onnx`, ANE via Microsoft `onnxruntime-swift-package-manager`).
+
+Blocker: LiveKit ships its Swift code at `swift/Package.swift` inside a
+Python-primary repo. SPM doesn't fetch sub-directory packages from a
+remote URL. Two resolutions queued — see the `WakeWordTap.swift` file
+header. Once landed, `LiveKitWakeWordTap` wraps `WakeWordModel` +
+`WakeWordListener.detections()`; `VoicePipeline` consumes detections and
+fires `connect(daemonBaseURL:)` from the existing `.idle` state.
 
 ### Swift settings + wizard
 
