@@ -5,7 +5,7 @@ use crate::error::AppError;
 use crate::models::ids::SoulId;
 use crate::models::soul::Soul;
 use crate::services::DeleteOutcome;
-use crate::services::souls::souls_service::SoulsService;
+use crate::services::souls_service::SoulsService;
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;

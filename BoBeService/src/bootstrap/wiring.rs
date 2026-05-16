@@ -4,9 +4,9 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::config_manager::ConfigManager;
+use crate::runtime::capture_learner::CaptureLearner;
 use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::learners::CaptureLearner;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
@@ -14,8 +14,8 @@ use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
 use crate::services::goals::file_store::GoalFileStore;
 use crate::services::goals::goals_service::GoalsService;
-use crate::services::souls::souls_service::SoulsService;
-use crate::services::user_profile::user_profile_service::UserProfileService;
+use crate::services::souls_service::SoulsService;
+use crate::services::user_profile_service::UserProfileService;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::connection_manager::SseConnectionManager;
 

@@ -153,7 +153,12 @@ impl RuntimeSession {
 
             let time_since_goal = last_goal_check.elapsed().as_secs_f64();
             if time_since_goal >= cfg.goals.check_interval_seconds {
-                run_trigger("goal", std::time::Duration::from_mins(5), self.goal_trigger.fire()).await;
+                run_trigger(
+                    "goal",
+                    std::time::Duration::from_mins(5),
+                    self.goal_trigger.fire(),
+                )
+                .await;
                 last_goal_check = Instant::now();
             }
 
@@ -163,15 +168,12 @@ impl RuntimeSession {
             {
                 let time_since_capture = last_capture_time.elapsed().as_secs();
                 if time_since_capture >= cfg.capture.interval_seconds {
-                    let timed_out = run_trigger(
-                        "capture",
-                        std::time::Duration::from_mins(5),
-                        async {
+                    let timed_out =
+                        run_trigger("capture", std::time::Duration::from_mins(5), async {
                             let mut ct = self.capture_trigger.lock().await;
                             ct.fire().await
-                        },
-                    )
-                    .await;
+                        })
+                        .await;
                     if timed_out {
                         self.push_error_event("capture_trigger", "Capture trigger timed out");
                     }

@@ -11,8 +11,8 @@ const VISION_FAILURE_COOLDOWN: Duration = Duration::from_mins(3);
 
 use crate::config::Config;
 use crate::db::CooldownRepository;
+use crate::runtime::capture_learner::CaptureLearner;
 use crate::runtime::decision_engine::DecisionEngine;
-use crate::runtime::learners::CaptureLearner;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
 use crate::util::capture::ScreenCapture;

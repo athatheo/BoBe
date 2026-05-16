@@ -9,10 +9,10 @@ use uuid::Uuid;
 use crate::speech::protocol::{ClientMessage, ControlAction, ServerMessage, VoicePhase};
 use crate::voice::cancel_phrases::is_cancel_phrase;
 use crate::voice::context::VoiceContext;
-use crate::voice::modes::transcript_in;
 use crate::voice::protocol_helpers::{send_error, send_json, send_state};
 use crate::voice::session::{SessionVoiceConfig, TTS_OUTPUT_SAMPLE_RATE, VoiceSession};
 use crate::voice::telemetry::CTR_CANCEL_PHRASE;
+use crate::voice::transcript_in;
 use crate::voice::turn_flow::{abort_active_turn, handle_barge_in};
 
 /// Default language when the client doesn't specify one at Hello.
