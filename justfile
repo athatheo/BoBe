@@ -276,7 +276,7 @@ format-swift:
 check-swift-format:
     cd BoBeMacUI && swiftformat --lint BoBe
 
-# fmt + clippy + test + deny + machete + swiftlint + swift build
+# fmt + clippy + test + deny + machete + swiftlint + swift build + cross-language drift
 check:
     cd BoBeService && cargo fmt --check
     cd BoBeService && cargo clippy -q
@@ -285,6 +285,7 @@ check:
     cd BoBeService && cargo machete
     cd BoBeMacUI && swiftlint lint --quiet
     cd BoBeMacUI && swift build -c debug
+    scripts/check-cross-language-constants.sh
 
 # CI: deterministic Rust + Swift validation
 check-ci:
@@ -295,6 +296,7 @@ check-ci:
     cd BoBeService && cargo machete
     cd BoBeMacUI && swiftlint lint --quiet
     cd BoBeMacUI && swift build -c debug
+    scripts/check-cross-language-constants.sh
 
 # Alias for check (muscle memory)
 test: check
