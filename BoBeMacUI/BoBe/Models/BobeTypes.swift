@@ -146,8 +146,15 @@ enum OllamaDefaults {
     /// Native Ollama API root (no `/v1`). For `/api/tags`, `/api/pull`.
     static let baseURL = "http://127.0.0.1:11434"
     /// OpenAI-compat root (with `/v1`). For chat completions when
-    /// `engine == "local"`.
+    /// `engine == EngineKind.local`.
     static let v1URL = "http://127.0.0.1:11434/v1"
+}
+
+/// Wire-format engine kinds. Settings round-trip strings; both sides must
+/// agree. Matches the Rust `constants::engine_kind::*` consts.
+enum EngineKind {
+    static let copilotCloud = "copilot_cloud"
+    static let local = "local"
 }
 
 enum WindowSizes {

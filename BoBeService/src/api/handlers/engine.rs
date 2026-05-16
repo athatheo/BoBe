@@ -87,18 +87,19 @@ pub(crate) async fn list_models(
     let cfg = state.config();
     let engine = q.engine.as_deref().unwrap_or(cfg.engine.engine.as_str());
 
+    use crate::constants::engine_kind::{COPILOT_CLOUD, LOCAL};
     match engine {
-        "local" => list_local_models(cfg.engine.provider_base_url.as_deref())
+        LOCAL => list_local_models(cfg.engine.provider_base_url.as_deref())
             .await
             .map(|models| {
                 Json(ListModelsResponse {
-                    engine: "local".to_string(),
+                    engine: LOCAL.to_string(),
                     models,
                 })
             }),
         _ => list_cloud_models(&state).await.map(|models| {
             Json(ListModelsResponse {
-                engine: "copilot_cloud".to_string(),
+                engine: COPILOT_CLOUD.to_string(),
                 models,
             })
         }),

@@ -34,7 +34,7 @@ struct EnginePanel: View {
 
                 if self.settings != nil {
                     self.engineToggleSection
-                    if self.currentEngine == "copilot_cloud" {
+                    if self.currentEngine == EngineKind.copilotCloud {
                         self.cloudAuthSection
                     } else {
                         self.localProviderSection
@@ -66,8 +66,8 @@ struct EnginePanel: View {
             description: L10n.tr("settings.engine.mode.description")
         ) {
             VStack(alignment: .leading, spacing: 8) {
-                self.modeRow(value: "copilot_cloud", title: L10n.tr("settings.engine.mode.cloud"))
-                self.modeRow(value: "local", title: L10n.tr("settings.engine.mode.local"))
+                self.modeRow(value: EngineKind.copilotCloud, title: L10n.tr("settings.engine.mode.cloud"))
+                self.modeRow(value: EngineKind.local, title: L10n.tr("settings.engine.mode.local"))
             }
         }
     }
@@ -342,7 +342,7 @@ struct EnginePanel: View {
     // MARK: - Helpers
 
     private var currentEngine: String {
-        self.settings?.engine ?? "copilot_cloud"
+        self.settings?.engine ?? EngineKind.copilotCloud
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -491,14 +491,14 @@ struct EnginePanel: View {
                 let resp = try await DaemonClient.shared.listModels(engine: self.currentEngine)
                 self.availableModels = resp.models
                 if resp.models.isEmpty {
-                    self.modelsHint = self.currentEngine == "local"
+                    self.modelsHint = self.currentEngine == EngineKind.local
                         ? L10n.tr("settings.engine.models.local_empty")
                         : L10n.tr("settings.engine.models.cloud_empty")
                 }
                 return
             } catch let DaemonError.httpError(statusCode, _) where statusCode == 503 {
                 // 503: backend reachable but reports unavailable — don't keep retrying.
-                self.modelsHint = self.currentEngine == "local"
+                self.modelsHint = self.currentEngine == EngineKind.local
                     ? L10n.tr("settings.engine.models.local_unavailable")
                     : L10n.tr("settings.engine.models.cloud_unavailable")
                 return

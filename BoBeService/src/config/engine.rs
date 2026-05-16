@@ -47,7 +47,7 @@ where
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            engine: "copilot_cloud".into(),
+            engine: crate::constants::engine_kind::COPILOT_CLOUD.into(),
             provider_base_url: None,
             provider_chat_model: None,
             provider_batch_model: None,
