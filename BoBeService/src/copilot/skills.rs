@@ -13,6 +13,13 @@ const SHIPPED_SKILLS: &[(WorkerClass, &str)] = &[
 ];
 
 /// Idempotent: never overwrites existing SKILL.md so users can edit in place.
+///
+/// The shipped path `<data_dir>/skills/<class>/SKILL.md` mirrors what
+/// `copilot::registry::skill_dir` hands the Copilot SDK as
+/// `SessionConfig::skill_directories`. The SDK does not auto-discover from
+/// a separate "Copilot data path" — `skill_directories` is the only input —
+/// so writer and reader stay aligned by both deriving from
+/// `paths::bobe_data_dir()` at bootstrap.
 pub(crate) async fn ensure_skills(data_dir: &Path) {
     for &(class, content) in SHIPPED_SKILLS {
         let dir = data_dir.join("skills").join(class.name());
