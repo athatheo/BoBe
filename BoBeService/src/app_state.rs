@@ -8,11 +8,11 @@ use crate::config::Config;
 use crate::config_manager::ConfigManager;
 use crate::copilot::memory_file::MemoryFile;
 use crate::copilot::registry::WorkerRegistry;
-use crate::db::SoulRepository;
-use crate::db::UserProfileRepository;
 use crate::runtime::session::RuntimeSession;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::ollama_install_service::OllamaInstallService;
+use crate::services::souls::souls_service::SoulsService;
+use crate::services::user_profile::user_profile_service::UserProfileService;
 use crate::util::network::MdnsAnnouncer;
 use crate::util::sse::connection_manager::SseConnectionManager;
 use crate::util::sse::event_queue::EventQueue;
@@ -26,8 +26,8 @@ pub(crate) struct AppState {
     pub(crate) config: Arc<ArcSwap<Config>>,
     pub(crate) event_queue: Arc<EventQueue>,
     pub(crate) connection_manager: Arc<SseConnectionManager>,
-    pub(crate) soul_repo: Arc<dyn SoulRepository>,
-    pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
+    pub(crate) souls_service: Arc<SoulsService>,
+    pub(crate) user_profile_service: Arc<UserProfileService>,
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) config_manager: Arc<ConfigManager>,

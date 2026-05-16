@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use crate::app_state::AppState;
-use crate::db::SoulRepository;
 use crate::error::AppError;
 use crate::models::ids::SoulId;
 use crate::models::soul::Soul;
+use crate::services::souls::souls_service::{DeleteOutcome, SoulsService};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -69,21 +69,15 @@ fn soul_to_response(soul: &Soul) -> SoulResponse {
     }
 }
 
-async fn set_soul_enabled(
-    soul_repo: &Arc<dyn SoulRepository>,
+async fn set_enabled(
+    service: &SoulsService,
     soul_id: SoulId,
     enabled: bool,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    let soul = soul_repo
-        .update(soul_id, None, Some(enabled), None, None)
+    let soul = service
+        .set_enabled(soul_id, enabled)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-
-    if enabled {
-        tracing::info!(soul_id = %soul_id, "soul.enabled");
-    } else {
-        tracing::info!(soul_id = %soul_id, "soul.disabled");
-    }
 
     Ok(Json(SoulActionResponse {
         id: soul_id.to_string(),
@@ -101,18 +95,11 @@ pub(crate) async fn list_souls(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SoulListQuery>,
 ) -> Result<Json<SoulListResponse>, AppError> {
-    let souls = if params.enabled_only {
-        state.soul_repo.find_enabled().await?
-    } else {
-        state.soul_repo.get_all().await?
-    };
-
-    let enabled_count = souls.iter().filter(|s| s.enabled).count();
-
+    let summary = state.souls_service.list(params.enabled_only).await?;
     Ok(Json(SoulListResponse {
-        count: souls.len(),
-        enabled_count,
-        souls: souls.iter().map(soul_to_response).collect(),
+        count: summary.souls.len(),
+        enabled_count: summary.enabled_count,
+        souls: summary.souls.iter().map(soul_to_response).collect(),
     }))
 }
 
@@ -121,11 +108,10 @@ pub(crate) async fn get_soul(
     Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulResponse>, AppError> {
     let soul = state
-        .soul_repo
-        .get_by_id(soul_id)
+        .souls_service
+        .get(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-
     Ok(Json(soul_to_response(&soul)))
 }
 
@@ -133,89 +119,23 @@ pub(crate) async fn create_soul(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SoulCreateRequest>,
 ) -> Result<(StatusCode, Json<SoulResponse>), AppError> {
-    if body.name.is_empty() {
-        return Err(AppError::Validation("name must not be empty".into()));
-    }
-    if body.content.len() < 10 {
-        return Err(AppError::Validation(
-            "content must be at least 10 characters".into(),
-        ));
-    }
-
-    if state.soul_repo.get_by_name(&body.name).await?.is_some() {
-        return Err(AppError::Validation(format!(
-            "Soul with name '{}' already exists",
-            body.name
-        )));
-    }
-
-    let mut soul = Soul::new(body.name, body.content, false);
-    soul.enabled = body.enabled;
-    let saved = state.soul_repo.save(&soul).await?;
-
-    tracing::info!(soul_id = %saved.id, name = %saved.name, "soul.created");
-
+    let saved = state
+        .souls_service
+        .create(body.name, body.content, body.enabled)
+        .await?;
     Ok((StatusCode::CREATED, Json(soul_to_response(&saved))))
 }
 
-/// Copy-on-write: editing a default soul preserves the original as a disabled copy.
 pub(crate) async fn update_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,
     Json(body): Json<SoulUpdateRequest>,
 ) -> Result<Json<SoulResponse>, AppError> {
-    let soul = state
-        .soul_repo
-        .get_by_id(soul_id)
+    let updated = state
+        .souls_service
+        .update(soul_id, body.content, body.enabled)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-
-    let is_content_edit_of_default = body.content.is_some() && soul.is_default;
-
-    let updated = if is_content_edit_of_default {
-        let original_name = soul.name.clone();
-        let original_content = soul.content.clone();
-        let edited_name = format!("{original_name} (edited)");
-
-        let updated = state
-            .soul_repo
-            .update(
-                soul_id,
-                body.content.as_deref(),
-                body.enabled,
-                Some(false),
-                Some(&edited_name),
-            )
-            .await?;
-
-        let default_copy = Soul {
-            id: SoulId::new(),
-            name: original_name,
-            content: original_content,
-            enabled: false,
-            is_default: true,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        state.soul_repo.save(&default_copy).await?;
-
-        tracing::info!(
-            soul_id = %soul_id,
-            edited_name = %edited_name,
-            "soul.copy_on_write",
-        );
-
-        updated
-    } else {
-        state
-            .soul_repo
-            .update(soul_id, body.content.as_deref(), body.enabled, None, None)
-            .await?
-    };
-
-    let updated = updated.ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-
-    tracing::info!(soul_id = %soul_id, "soul.updated");
     Ok(Json(soul_to_response(&updated)))
 }
 
@@ -223,37 +143,22 @@ pub(crate) async fn enable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    set_soul_enabled(&state.soul_repo, soul_id, true).await
+    set_enabled(&state.souls_service, soul_id, true).await
 }
 
 pub(crate) async fn disable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    set_soul_enabled(&state.soul_repo, soul_id, false).await
+    set_enabled(&state.souls_service, soul_id, false).await
 }
 
 pub(crate) async fn delete_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,
 ) -> Result<StatusCode, AppError> {
-    let soul = state
-        .soul_repo
-        .get_by_id(soul_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-
-    if soul.is_default {
-        return Err(AppError::Validation(
-            "Cannot delete default soul. Disable it instead.".into(),
-        ));
+    match state.souls_service.delete(soul_id).await? {
+        DeleteOutcome::Deleted => Ok(StatusCode::NO_CONTENT),
+        DeleteOutcome::NotFound => Err(AppError::NotFound(format!("Soul {soul_id} not found"))),
     }
-
-    if !state.soul_repo.delete(soul_id).await? {
-        return Err(AppError::NotFound(format!("Soul {soul_id} not found")));
-    }
-
-    tracing::info!(soul_id = %soul_id, name = %soul.name, "soul.deleted");
-
-    Ok(StatusCode::NO_CONTENT)
 }

@@ -14,6 +14,8 @@ use crate::runtime::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
 use crate::services::conversation_service::ConversationService;
 use crate::services::goals::file_store::GoalFileStore;
 use crate::services::goals::goals_service::GoalsService;
+use crate::services::souls::souls_service::SoulsService;
+use crate::services::user_profile::user_profile_service::UserProfileService;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::connection_manager::SseConnectionManager;
 
@@ -21,6 +23,8 @@ use super::infra::Infrastructure;
 use super::repos::Repositories;
 
 pub(crate) struct Wired {
+    pub(crate) souls_service: Arc<SoulsService>,
+    pub(crate) user_profile_service: Arc<UserProfileService>,
     pub(crate) goals_service: Arc<GoalsService>,
     pub(crate) runtime_session: Arc<RuntimeSession>,
     pub(crate) config_manager: Arc<ConfigManager>,
@@ -61,6 +65,11 @@ pub(crate) async fn wire(
 
     let goal_file_store = GoalFileStore::new(crate::util::paths::bobe_data_dir().join("goals"));
     let goals_service = Arc::new(GoalsService::new(Arc::clone(&goal_file_store)));
+
+    let souls_service = Arc::new(SoulsService::new(Arc::clone(&repos.soul_repo)));
+    let user_profile_service = Arc::new(UserProfileService::new(Arc::clone(
+        &repos.user_profile_repo,
+    )));
 
     let capture_learner = Arc::new(CaptureLearner::new(
         Arc::clone(&workers),
@@ -133,6 +142,8 @@ pub(crate) async fn wire(
     let config_manager = Arc::new(ConfigManager::new(Arc::clone(config_arc)));
 
     Wired {
+        souls_service,
+        user_profile_service,
         goals_service,
         runtime_session,
         config_manager,
