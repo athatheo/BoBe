@@ -78,13 +78,21 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // Engine config changes: hard reload only when the SDK process itself needs new env
     // (engine type, provider URL, offline). Model/reasoning changes use a soft reload that
     // preserves the chat session so the user doesn't lose context.
+    //
+    // Reload defers up to 30s while a voice turn is in flight. Without this
+    // gate a mid-turn `PATCH /settings` calls `client.stop()` underneath the
+    // LLM stream, aborting it; the RAII guards drop cleanly but the user
+    // hears half a sentence and silence.
     {
         let registry_for_listener = Arc::clone(&workers);
+        let voice_turn_active_for_listener = Arc::clone(&voice_turn_active);
         wired
             .config_manager
             .set_engine_change_listener(move |kind| {
                 let registry = Arc::clone(&registry_for_listener);
+                let voice_active = Arc::clone(&voice_turn_active_for_listener);
                 tokio::spawn(async move {
+                    wait_for_voice_idle(&voice_active).await;
                     match kind {
                         crate::config_manager::EngineChangeKind::Hard => registry.reload().await,
                         crate::config_manager::EngineChangeKind::Soft => {
@@ -223,6 +231,25 @@ fn cleanup_legacy_mode_a_files() {
                 warn!(path = %path.display(), error = %e, "voice.legacy_mode_a_remove_failed");
             }
         }
+    }
+}
+
+/// Poll-wait until the voice turn flag clears, capped so a wedged turn
+/// doesn't pin engine-config reloads forever. 30s is well past the longest
+/// expected LLM-stream-to-TTS-end span (Copilot SDK chat hard-times out
+/// earlier than that anyway), so reaching the deadline means the in-flight
+/// turn is misbehaving — log it and reload anyway.
+async fn wait_for_voice_idle(voice_turn_active: &std::sync::atomic::AtomicBool) {
+    use std::sync::atomic::Ordering;
+    const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+    const DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+    let start = tokio::time::Instant::now();
+    while voice_turn_active.load(Ordering::Acquire) {
+        if start.elapsed() >= DEADLINE {
+            warn!("config.engine_reload_voice_idle_timeout");
+            return;
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
     }
 }
 
