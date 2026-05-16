@@ -176,6 +176,13 @@ public final class VoicePipeline {
     private var task: URLSessionWebSocketTask?
     private var sessionId: String = ""
     private var keepaliveTask: Task<Void, Never>?
+    /// Retained `NSObjectProtocol` tokens for the NotificationCenter
+    /// observers added at init time. NotificationCenter holds its own
+    /// strong refs to the closures, so failing to retain these doesn't
+    /// silently disable the observer — but it makes `removeObserver` and
+    /// any future reinstantiation safe. Singleton lifetime today makes
+    /// this defensive rather than load-bearing.
+    private var notificationObservers: [NSObjectProtocol] = []
     /// Mirror of the daemon's 25s keepalive cadence. Pongs from our pings
     /// keep the daemon's recv-timeout window fresh; symmetric client-side
     /// pings cover the case where the daemon stalls.
@@ -215,7 +222,7 @@ public final class VoicePipeline {
         // Consumers used to do this themselves with parallel observers; the
         // centralized refresh keeps the four underlying signals coherent.
         for name in [Notification.Name.bobeWelcomeCompleted, .bobeVoiceConfigChanged] {
-            NotificationCenter.default.addObserver(
+            let token = NotificationCenter.default.addObserver(
                 forName: name,
                 object: nil,
                 queue: .main
@@ -224,6 +231,7 @@ public final class VoicePipeline {
                     await self?.refreshDaemonState()
                 }
             }
+            self.notificationObservers.append(token)
         }
     }
 
