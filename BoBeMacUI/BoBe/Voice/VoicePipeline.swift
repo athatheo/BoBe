@@ -330,6 +330,15 @@ public final class VoicePipeline {
     private func handleSttEou(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Guard against EOU timers firing after disconnect tore down the
+        // WS. The onEou closure trampolines onto MainActor; by the time
+        // we run here disconnect() may have set self.task = nil. Without
+        // this gate the closure would generate a fresh turn_id and try
+        // to push transcript_final on a closed task.
+        guard self.task != nil else {
+            logger.debug("voice.eou_after_disconnect_ignored")
+            return
+        }
         let turnId = self.pendingTurnId ?? "voice_\(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: ""))"
         self.pendingTurnId = nil
         self.partialTranscript = ""
