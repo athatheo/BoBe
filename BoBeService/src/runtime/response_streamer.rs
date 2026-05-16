@@ -28,6 +28,18 @@ pub(crate) struct StreamResult {
     pub(crate) first_token_ms: Option<f64>,
 }
 
+impl StreamResult {
+    /// Chunks-per-second for completion logs; `0.0` when duration is zero
+    /// (an empty stream — the divide-by-zero guard).
+    pub(crate) fn chunks_per_sec(&self) -> f64 {
+        if self.duration_ms > 0.0 {
+            self.chunk_count as f64 / (self.duration_ms / MILLIS_PER_SECOND)
+        } else {
+            0.0
+        }
+    }
+}
+
 struct StreamAccumulator {
     msg_id: String,
     start_time: Instant,

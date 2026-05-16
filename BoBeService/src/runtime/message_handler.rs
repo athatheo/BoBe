@@ -174,15 +174,10 @@ impl MessageHandler {
                 {
                     error!(error = %e, "message_handler.persist_failed");
                 } else {
-                    let chunks_per_sec = if result.duration_ms > 0.0 {
-                        result.chunk_count as f64 / (result.duration_ms / 1000.0)
-                    } else {
-                        0.0
-                    };
                     info!(
                         chunks = result.chunk_count,
                         ms = result.duration_ms as u64,
-                        cps = format!("{chunks_per_sec:.1}"),
+                        cps = format!("{:.1}", result.chunks_per_sec()),
                         "message_handler.response_complete"
                     );
                 }

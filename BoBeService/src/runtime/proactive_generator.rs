@@ -195,12 +195,6 @@ impl ProactiveGenerator {
         result: &crate::runtime::response_streamer::StreamResult,
         target: &Conversation,
     ) {
-        let chunks_per_sec = if result.duration_ms > 0.0 {
-            result.chunk_count as f64 / (result.duration_ms / 1000.0)
-        } else {
-            0.0
-        };
-
         match self
             .conversation
             .finalize_proactive_stream(target.id, &result.full_response)
@@ -210,7 +204,7 @@ impl ProactiveGenerator {
                 info!(
                     chunks = result.chunk_count,
                     ms = result.duration_ms as u64,
-                    cps = format!("{chunks_per_sec:.1}"),
+                    cps = format!("{:.1}", result.chunks_per_sec()),
                     first_token_ms = ?result.first_token_ms.map(|v| v as u64),
                     "proactive_generator.complete"
                 );
