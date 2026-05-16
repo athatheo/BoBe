@@ -24,12 +24,17 @@ pub(crate) enum IndicatorType {
 }
 
 impl IndicatorType {
+    /// Wire-format string. Must match the `#[serde(rename_all =
+    /// "SCREAMING_SNAKE_CASE")]` attr on the enum so the manual JSON
+    /// callers (`runtime/session.rs::get_status`, SSE
+    /// `StreamBundle.description`) agree with what serde emits and what
+    /// `BoBeMacUI/BoBe/Models/AppState.swift::IndicatorType` decodes.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::Idle => "Idle",
-            Self::ScreenCapture => "ScreenCapture",
-            Self::Thinking => "Thinking",
-            Self::Streaming => "Streaming",
+            Self::Idle => "IDLE",
+            Self::ScreenCapture => "SCREEN_CAPTURE",
+            Self::Thinking => "THINKING",
+            Self::Streaming => "STREAMING",
         }
     }
 }
