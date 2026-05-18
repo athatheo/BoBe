@@ -28,6 +28,18 @@ struct RestartRequiredBanner: View {
 
             Spacer(minLength: 8)
 
+            // Restart Now is the high-leverage action — without it the user
+            // has to quit-and-relaunch BoBe from the tray to apply changes
+            // they were just told would need a restart. Surfacing the action
+            // here closes that loop in one click.
+            Button(L10n.tr("settings.shared.restart_banner.restart_now")) {
+                Task {
+                    try? await BackendService.shared.userRestart()
+                    self.onDismiss()
+                }
+            }
+            .bobeButton(.primary, size: .mini)
+
             Button(L10n.tr("settings.shared.restart_banner.dismiss"), action: self.onDismiss)
                 .bobeButton(.ghost, size: .mini)
         }
@@ -45,13 +57,13 @@ struct RestartRequiredBanner: View {
 }
 
 #if !SPM_BUILD
-#Preview("RestartRequiredBanner") {
-    RestartRequiredBanner(
-        fields: ["checkin_enabled", "checkin_times"],
-        onDismiss: {}
-    )
-    .environment(\.theme, allThemes[0])
-    .padding()
-    .frame(width: 480)
-}
+    #Preview("RestartRequiredBanner") {
+        RestartRequiredBanner(
+            fields: ["checkin_enabled", "checkin_times"],
+            onDismiss: {}
+        )
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .frame(width: 480)
+    }
 #endif

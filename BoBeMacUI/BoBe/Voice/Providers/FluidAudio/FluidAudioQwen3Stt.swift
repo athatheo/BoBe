@@ -126,7 +126,7 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
         self.vadState = initialVadState
         self.loaded = true
         self.loadTask = nil
-        self.logger.info("FluidAudioQwen3Stt loaded for language \(self.language.rawValue)")
+        self.logger.info("FluidAudioQwen3Stt loaded for language \(self.language.rawValue, privacy: .public)")
     }
 
     func acceptAudio(_ buffer: sending AVAudioPCMBuffer) async throws {
@@ -167,7 +167,7 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
         self.eouTimer?.cancel()
         let delayMs = self.eouDelayMs
         self.eouTimer = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+            try? await Task.sleep(for: .milliseconds(delayMs))
             guard !Task.isCancelled else { return }
             await self?.fireEou()
         }
@@ -184,7 +184,7 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
             let final = update.committedText.isEmpty ? result.transcript : update.committedText
             self.onEou?(final)
         } catch {
-            self.logger.error("Qwen3 finish failed: \(error.localizedDescription)")
+            self.logger.error("Qwen3 finish failed: \(error.localizedDescription, privacy: .public)")
             self.onEou?("")
         }
     }
@@ -241,7 +241,8 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
                 sampleRate: 16_000,
                 channels: 1,
                 interleaved: false
-            ) else {
+            )
+            else {
                 throw FluidAudioQwen3SttError.audioConversionFailed
             }
             self.targetFormat = fmt
@@ -269,18 +270,7 @@ actor FluidAudioQwen3Stt: VoiceSttEngine {
             throw FluidAudioQwen3SttError.audioConversionFailed
         }
 
-        final class FedState: @unchecked Sendable { var fed = false }
-        let fedState = FedState()
-        var err: NSError?
-        let status = conv.convert(to: outBuf, error: &err) { _, status in
-            if fedState.fed {
-                status.pointee = .noDataNow
-                return nil
-            }
-            fedState.fed = true
-            status.pointee = .haveData
-            return buffer
-        }
+        let (status, err) = convertSingleBuffer(conv, source: buffer, into: outBuf)
         if status == .error || err != nil {
             throw FluidAudioQwen3SttError.audioConversionFailed
         }

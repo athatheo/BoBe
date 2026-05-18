@@ -4,15 +4,17 @@ import SwiftUI
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "App")
 
-extension Notification.Name {
-    static let bobeCaptureStateChanged = Notification.Name("bobe.captureStateChanged")
-}
-
 @main
 struct BoBeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
+        // The persistent menu-bar item lives as a declarative SwiftUI scene
+        // now (`BobeMenuBarScene`) — replaces the previous TrayManager +
+        // NSStatusItem duo. Sees locale overrides, state changes, and the
+        // overlay-visibility flag through @Observable singletons.
+        BobeMenuBarScene()
+
         Settings {
             EmptyView()
         }
@@ -23,6 +25,34 @@ struct BoBeApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+            // View menu — overlay visibility is the only window-level toggle
+            // the app exposes (no document windows). Sits next to the system
+            // View menu items rather than under our own custom CommandMenu so
+            // it appears in the conventional location for window-visibility
+            // commands.
+            CommandGroup(after: .toolbar) {
+                Button(L10n.tr("menu.view.toggle_overlay")) {
+                    OverlayWindowManager.shared.toggle()
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+            }
+            // Voice menu — Toggle Mic and Stop Speaking. Stop Speaking uses
+            // Cmd+. (the macOS-conventional cancel shortcut) so it works even
+            // when the chat input has focus.
+            CommandMenu(L10n.tr("menu.voice.title")) {
+                Button(L10n.tr("menu.voice.toggle_mic")) {
+                    Task { @MainActor in
+                        guard let url = URL(string: DaemonConfig.baseURL) else { return }
+                        await VoicePipeline.shared.toggle(daemonBaseURL: url)
+                    }
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+
+                Button(L10n.tr("menu.voice.stop_speaking")) {
+                    VoicePipeline.shared.interrupt()
+                }
+                .keyboardShortcut(".", modifiers: .command)
+            }
         }
     }
 }
@@ -30,14 +60,11 @@ struct BoBeApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store: BobeStore
-    private let trayManager: TrayManager
     private var isQuitting = false
     private var isStartingUp = true
 
     override init() {
-        let store = BobeStore.shared
-        self.store = store
-        self.trayManager = TrayManager(store: store)
+        self.store = BobeStore.shared
         super.init()
     }
 
@@ -75,13 +102,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.setDockIcon()
         }
 
-        self.trayManager.setup()
+        // Tray is now a declarative `MenuBarExtra` scene
+        // (`BobeMenuBarScene`) registered in the App body — no AppDelegate
+        // setup call required. The scene's lifecycle is automatic.
         UpdaterManager.shared.setup()
         SystemPowerObserver.shared.start()
 
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleWelcomeCompleted),
+            selector: #selector(self.handleWelcomeCompleted),
             name: .bobeWelcomeCompleted,
             object: nil
         )
@@ -159,15 +188,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !isDev {
             var serviceStarted = false
             var attempt = 0
+            // Number of times the user clicked "Retry" after the first
+            // round of 3 backend startup failures. After the second round
+            // we surface a different copy that suggests reinstalling rather
+            // than retrying forever.
+            var retryRounds = 0
             while !serviceStarted {
                 attempt += 1
                 do {
                     try await BackendService.shared.start()
                     serviceStarted = true
+                    // Clear the round counter on success — otherwise a later
+                    // failure would render "keeps failing" copy on the first
+                    // dialog of the new outage instead of "let's try again".
+                    retryRounds = 0
                 } catch {
-                    logger.error("Backend start attempt \(attempt) failed: \(error.localizedDescription)")
+                    logger.error("Backend start attempt \(attempt) failed: \(error.localizedDescription, privacy: .public)")
                     if attempt >= 3 {
-                        let shouldRetry = await showServiceErrorDialog(error: error)
+                        retryRounds += 1
+                        let shouldRetry = await showServiceErrorDialog(
+                            error: error,
+                            retryRounds: retryRounds
+                        )
                         guard shouldRetry else {
                             NSApp.terminate(nil)
                             return
@@ -213,7 +255,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pipeline.bootstrapSttPresence()
         switch pipeline.readiness {
         case .modelsMissing, .failed:
-            logger.warning("voice models missing post-onboarding — re-opening setup wizard (readiness=\(String(describing: pipeline.readiness)))")
+            let readinessDesc = String(describing: pipeline.readiness)
+            logger.warning(
+                "voice models missing post-onboarding — re-opening setup wizard (readiness=\(readinessDesc, privacy: .public))"
+            )
             SetupWindowManager.shared.show()
         case .ready, .preparing, .installing, .disabledByUser, .permissionMissing:
             return
@@ -230,19 +275,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    private func showServiceErrorDialog(error: Error) async -> Bool {
-        var detail =
-            L10n.tr("app.service_error.detail_prefix")
-                + "\(error.localizedDescription)\n\n"
+    private func showServiceErrorDialog(error: Error, retryRounds: Int) async -> Bool {
+        // Build a human summary first; relegate raw stderr to a disclosure-
+        // style "details" footer that Expert users (or anyone curious) can
+        // copy out. Most users only need the summary + a clear next action.
+        let isPersistent = retryRounds >= 2
+        let summary = isPersistent
+            ? L10n.tr("app.service_error.persistent_summary")
+            : L10n.tr("app.service_error.summary")
+
+        var details = L10n.tr("app.service_error.detail_prefix")
+            + error.localizedDescription
         if let stderr = await BackendService.shared.lastError {
-            detail += L10n.tr("app.service_error.backend_output_prefix") + "\(stderr)\n\n"
+            details += "\n\n" + L10n.tr("app.service_error.backend_output_prefix") + stderr
         }
-        detail += L10n.tr("app.service_error.logs_hint")
+        details += "\n\n" + L10n.tr("app.service_error.logs_hint")
 
         let alert = NSAlert()
         alert.messageText = L10n.tr("app.service_error.title")
-        alert.informativeText = detail
+        alert.informativeText = summary + "\n\n" + details
         alert.alertStyle = .critical
+        // After the second round of retries we drop the optimistic "Retry"
+        // CTA in favor of a clearer "Try again" that pairs with a "Quit"
+        // suggesting reinstall via the logs hint above.
         alert.addButton(withTitle: L10n.tr("app.common.retry"))
         alert.addButton(withTitle: L10n.tr("app.common.quit"))
         return alert.runModal() == .alertFirstButtonReturn

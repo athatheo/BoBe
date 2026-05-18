@@ -52,4 +52,38 @@ final class SettingsDebouncer {
         self.saveTask?.cancel()
         self.saveTask = nil
     }
+
+    /// Standard settings-PATCH flow shared across every panel:
+    ///   1. Build a partial `SettingsUpdateRequest` via the `build` closure.
+    ///   2. PATCH `/settings`.
+    ///   3. On `persistFailed`, route to `setError`. On success, surface
+    ///      `resp.message` via `setSaved` and schedule its auto-clear.
+    ///   4. On thrown error, surface the localized description.
+    ///   5. Fire optional `onSuccess` for panel-specific side-effects
+    ///      (VoicePanel uses it to refresh the pipeline + post the config
+    ///      change notification).
+    func runPersist(
+        setError: @escaping (String?) -> Void,
+        setSaved: @escaping (String?) -> Void,
+        onSuccess: (() async -> Void)? = nil,
+        build: (inout SettingsUpdateRequest) -> Void
+    ) async {
+        var req = SettingsUpdateRequest()
+        build(&req)
+        do {
+            let resp = try await DaemonClient.shared.updateSettings(req)
+            if resp.persistFailed == true {
+                setError(L10n.tr("settings.shared.action.persist_failed"))
+                setSaved(nil)
+            } else {
+                setError(nil)
+                setSaved(resp.message)
+                self.scheduleToastClear { setSaved(nil) }
+                if let onSuccess { await onSuccess() }
+            }
+        } catch {
+            setError(error.localizedDescription)
+            setSaved(nil)
+        }
+    }
 }

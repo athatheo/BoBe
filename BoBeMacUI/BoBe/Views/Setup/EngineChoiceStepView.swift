@@ -5,10 +5,17 @@ struct EngineChoiceStepView: View {
     let onContinue: () -> Void
 
     @Environment(\.theme) private var theme
+    @FocusState private var focused: EngineChoice?
 
     var body: some View {
         VStack(spacing: 18) {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
+                Text(L10n.tr("setup.engine.hello"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(2.2)
+                    .textCase(.uppercase)
+                    .foregroundStyle(self.theme.colors.textMuted)
+
                 Text(L10n.tr("setup.engine.title"))
                     .bobeTextStyle(.setupTitle)
                     .foregroundStyle(self.theme.colors.text)
@@ -24,19 +31,33 @@ struct EngineChoiceStepView: View {
                     icon: "cloud.fill",
                     title: L10n.tr("setup.engine.copilot.title"),
                     subtitle: L10n.tr("setup.engine.copilot.subtitle"),
+                    bestFor: L10n.tr("setup.engine.copilot.best_for"),
                     isSelected: self.selection == .copilot
                 ) {
                     self.selection = .copilot
                 }
+                .focused(self.$focused, equals: .copilot)
 
                 EngineChoiceCard(
                     icon: "macbook",
                     title: L10n.tr("setup.engine.local.title"),
                     subtitle: L10n.tr("setup.engine.local.subtitle"),
+                    bestFor: L10n.tr("setup.engine.local.best_for"),
                     isSelected: self.selection == .local
                 ) {
                     self.selection = .local
                 }
+                .focused(self.$focused, equals: .local)
+            }
+            .onKeyPress(.upArrow) {
+                self.selection = .copilot
+                self.focused = .copilot
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                self.selection = .local
+                self.focused = .local
+                return .handled
             }
 
             Text(L10n.tr("setup.engine.footer"))
@@ -58,6 +79,7 @@ private struct EngineChoiceCard: View {
     let icon: String
     let title: String
     let subtitle: String
+    let bestFor: String
     let isSelected: Bool
     let onTap: () -> Void
 
@@ -72,7 +94,7 @@ private struct EngineChoiceCard: View {
                     .foregroundStyle(self.isSelected ? self.theme.colors.primary : self.theme.colors.textMuted)
                     .frame(width: 36, height: 36)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(self.title)
                         .bobeTextStyle(.setupHeading)
                         .foregroundStyle(self.theme.colors.text)
@@ -81,6 +103,15 @@ private struct EngineChoiceCard: View {
                         .foregroundStyle(self.theme.colors.textMuted)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkle")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(self.theme.colors.primary)
+                        Text(self.bestFor)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(self.theme.colors.primary)
+                    }
+                    .padding(.top, 2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 

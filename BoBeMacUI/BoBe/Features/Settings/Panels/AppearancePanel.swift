@@ -107,7 +107,9 @@ struct ThemeCard: View {
                 Text(self.themeConfig.description)
                     .font(.system(size: 10))
                     .foregroundStyle(self.themeConfig.colors.textMuted)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, minHeight: 152, alignment: .topLeading)
             .padding(14)
@@ -144,18 +146,18 @@ private struct ClosedEyeArc: View {
 }
 
 #if !SPM_BUILD
-#Preview("Appearance Panel") {
-    AppearancePanel()
-        .environment(\.theme, allThemes[0])
-        .frame(width: 600, height: 500)
-}
-
-#Preview("Theme Card") {
-    HStack(spacing: 16) {
-        ThemeCard(themeConfig: allThemes[0], isSelected: true, onSelect: {})
-        ThemeCard(themeConfig: allThemes[1], isSelected: false, onSelect: {})
+    #Preview("Appearance Panel") {
+        AppearancePanel()
+            .environment(\.theme, allThemes[0])
+            .frame(width: 600, height: 500)
     }
-    .padding()
-    .frame(width: 500)
-}
+
+    #Preview("Theme Card") {
+        HStack(spacing: 16) {
+            ThemeCard(themeConfig: allThemes[0], isSelected: true, onSelect: {})
+            ThemeCard(themeConfig: allThemes[1], isSelected: false, onSelect: {})
+        }
+        .padding()
+        .frame(width: 500)
+    }
 #endif

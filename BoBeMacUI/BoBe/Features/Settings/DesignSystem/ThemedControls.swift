@@ -87,6 +87,10 @@ struct BobeSpinner: View {
 struct BobeLinearProgressBar: View {
     let progress: Double
     var height: CGFloat = 7
+    /// Optional solid fill. When provided, replaces the default left-to-right
+    /// gradient — use this for value-coded gauges (e.g. memory usage) where a
+    /// positional gradient would imply meaning the chart doesn't have.
+    var tint: Color?
 
     @Environment(\.theme) private var theme
 
@@ -98,19 +102,28 @@ struct BobeLinearProgressBar: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(self.theme.colors.border.opacity(0.55))
+                    .fill(self.theme.colors.textMuted.opacity(0.18))
                 Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [self.theme.colors.primary, self.theme.colors.secondary],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(self.fillStyle)
                     .frame(width: max(4, geo.size.width * self.clampedProgress))
             }
         }
         .frame(height: self.height)
+        .animation(.easeInOut(duration: 0.25), value: self.clampedProgress)
+    }
+
+    private var fillStyle: AnyShapeStyle {
+        if let tint = self.tint {
+            AnyShapeStyle(tint)
+        } else {
+            AnyShapeStyle(
+                LinearGradient(
+                    colors: [self.theme.colors.primary, self.theme.colors.secondary],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+        }
     }
 }
 

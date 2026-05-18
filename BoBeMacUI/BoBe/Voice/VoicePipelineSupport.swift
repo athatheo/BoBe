@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 
 /// Thrown when `VoicePipeline.ensureSttLoaded` exceeds its deadline.
@@ -23,7 +23,7 @@ func withVoiceLoadTimeout(
     try await withThrowingTaskGroup(of: Void.self) { group in
         group.addTask { try await operation() }
         group.addTask {
-            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            try await Task.sleep(for: .seconds(seconds))
             throw VoiceLoadTimeout()
         }
         // First task to finish wins; cancel the other.
@@ -78,4 +78,65 @@ func describe(_ format: AVAudioFormat) -> String {
     }
     return "\(Int(format.sampleRate))Hz \(format.channelCount)ch \(fmtName)"
         + (format.isInterleaved ? "" : " (planar)")
+}
+
+/// Run `AVAudioConverter.convert(to:error:withInputFrom:)` with the
+/// "feed this buffer exactly once" pattern used by every call site
+/// (Opus decode, Parakeet input resample, Qwen3 input resample). The
+/// converter's input block runs in a loop until `.noDataNow` is
+/// returned, so the once-flag lives in a reference type so the
+/// `@Sendable` closure can mutate it.
+///
+/// Safety: `FedState` is `@unchecked Sendable` by convention, not by
+/// synchronization. `AVAudioConverter.convert(to:error:withInputFrom:)`
+/// invokes its input closure synchronously on the calling thread for
+/// the duration of one `convert` call — there is no cross-thread
+/// access, so the `var fed` read/write happens on a single thread.
+/// The `@unchecked` is documentation of this convention so the
+/// `@Sendable` input-closure signature compiles.
+func convertSingleBuffer(
+    _ converter: AVAudioConverter,
+    source: AVAudioBuffer,
+    into output: AVAudioPCMBuffer
+) -> (status: AVAudioConverterOutputStatus, error: NSError?) {
+    final class FedState: @unchecked Sendable { var fed = false }
+    let state = FedState()
+    var err: NSError?
+    let status = converter.convert(to: output, error: &err) { _, statusPtr in
+        if state.fed {
+            statusPtr.pointee = .noDataNow
+            return nil
+        }
+        state.fed = true
+        statusPtr.pointee = .haveData
+        return source
+    }
+    return (status, err)
+}
+
+/// Realtime-safe RMS computation for the TTS playerNode tap. Supports the
+/// two formats AVAudioMixerNode is likely to surface here: Float32 (the
+/// audio engine's canonical mixer format) and Int16 (the format we ask
+/// for at connect time). No allocations, no main-actor hop — meant to run
+/// straight from the realtime audio dispatch queue.
+func computePlaybackRms(_ buffer: AVAudioPCMBuffer) -> Float {
+    let frames = Int(buffer.frameLength)
+    guard frames > 0 else { return 0 }
+    var sumSq: Double = 0
+    if let f32 = buffer.floatChannelData {
+        let samples = f32[0]
+        for i in 0 ..< frames {
+            let s = Double(samples[i])
+            sumSq += s * s
+        }
+    } else if let i16 = buffer.int16ChannelData {
+        let samples = i16[0]
+        for i in 0 ..< frames {
+            let s = Double(samples[i]) / 32_768.0
+            sumSq += s * s
+        }
+    } else {
+        return 0
+    }
+    return Float(sqrt(sumSq / Double(frames)))
 }

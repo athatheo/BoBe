@@ -10,24 +10,11 @@ import Foundation
 /// v6.0.0.mlmodelc` that lives in a sibling directory because FluidAudio's
 /// `VadManager` caches it under its own repo folder.
 enum FluidAudioQwen3ModelPresence {
-    /// Default FluidAudio cache root (matches the SDK's `ModelRegistry`).
-    /// Identical to `FluidAudioModelPresence.cacheRoot` — we don't override
-    /// `ModelRegistry.baseURL` so cross-app sharing keeps working.
-    static var cacheRoot: URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.homeDirectoryForCurrentUser
-        return appSupport
-            .appendingPathComponent("FluidAudio", isDirectory: true)
-            .appendingPathComponent("Models", isDirectory: true)
-    }
-
     /// Qwen3 cache layout: `qwen3-asr-0.6b-coreml/f32/`. We pin to the f32
     /// (full-precision) variant — int8 is half the size but worse quality
     /// and the user expects English-Parakeet parity for accuracy.
     static var qwen3F32Directory: URL {
-        cacheRoot
+        FluidAudioCache.root
             .appendingPathComponent("qwen3-asr-0.6b-coreml", isDirectory: true)
             .appendingPathComponent("f32", isDirectory: true)
     }
@@ -36,7 +23,7 @@ enum FluidAudioQwen3ModelPresence {
     /// Lives in a sibling directory because FluidAudio's `VadManager` caches
     /// independently from ASR models.
     static var sileroVadDirectory: URL {
-        cacheRoot
+        FluidAudioCache.root
             .appendingPathComponent("silero-vad-coreml", isDirectory: true)
     }
 
@@ -57,11 +44,11 @@ enum FluidAudioQwen3ModelPresence {
     /// True if both Qwen3 + Silero VAD are on disk.
     static func isInstalled() -> Bool {
         let fm = FileManager.default
-        for sentinel in qwen3SentinelFiles {
-            let path = qwen3F32Directory.appendingPathComponent(sentinel).path
+        for sentinel in self.qwen3SentinelFiles {
+            let path = self.qwen3F32Directory.appendingPathComponent(sentinel).path
             if !fm.fileExists(atPath: path) { return false }
         }
-        let vadPath = sileroVadDirectory.appendingPathComponent(vadSentinelFile).path
+        let vadPath = self.sileroVadDirectory.appendingPathComponent(self.vadSentinelFile).path
         return fm.fileExists(atPath: vadPath)
     }
 
@@ -73,37 +60,9 @@ enum FluidAudioQwen3ModelPresence {
     /// Best-effort progress bytes observed via filesystem polling — counts
     /// every file under both cache subtrees. Returns 0 when neither exists.
     static func observedBytes() -> UInt64 {
-        let qwen3Root = cacheRoot
+        let qwen3Root = FluidAudioCache.root
             .appendingPathComponent("qwen3-asr-0.6b-coreml", isDirectory: true)
-        return Self.directorySizeBytes(at: qwen3Root)
-            + Self.directorySizeBytes(at: sileroVadDirectory)
-    }
-
-    /// 0...100 — rough percent based on `observedBytes / approximateTotalBytes`.
-    /// Caps at 99 until `isInstalled()` is true so the UI never claims 100%
-    /// before the sentinel files actually land.
-    static func observedPercent() -> Int {
-        if isInstalled() { return 100 }
-        let pct = Int(Double(observedBytes()) / Double(approximateTotalBytes) * 100.0)
-        return max(0, min(99, pct))
-    }
-
-    private static func directorySizeBytes(at root: URL) -> UInt64 {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey, .totalFileAllocatedSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return 0
-        }
-        var total: UInt64 = 0
-        for case let url as URL in enumerator {
-            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .totalFileAllocatedSizeKey])
-            if values?.isRegularFile == true, let size = values?.totalFileAllocatedSize {
-                total += UInt64(size)
-            }
-        }
-        return total
+        return FluidAudioCache.directorySizeBytes(at: qwen3Root)
+            + FluidAudioCache.directorySizeBytes(at: self.sileroVadDirectory)
     }
 }

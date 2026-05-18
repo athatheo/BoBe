@@ -9,7 +9,19 @@ struct MCPServersPanel: View {
     @State private var status: String?
     @State private var error: String?
     @State private var lastValidSecretMap: [String: [String]]?
+    @State private var expertMode = ExpertMode.shared
+    @State private var store = SettingsStore.shared
+    @State private var restartBannerDismissed = false
     @Environment(\.theme) private var theme
+
+    /// Daemon claims hot-apply but the MCP map is captured at boot — force a
+    /// restart banner locally so users know the toggle takes effect on the
+    /// next launch, not mid-session.
+    private static let deferToRestartFields: Set = ["mcp_enabled"]
+
+    private var visibleRestartFields: Set<String> {
+        self.restartBannerDismissed ? [] : self.store.restartFields
+    }
 
     private var isJsonEmpty: Bool {
         self.rawJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -26,70 +38,102 @@ struct MCPServersPanel: View {
                     .font(.system(size: 12))
                     .foregroundStyle(self.theme.colors.textMuted)
 
-                CodeEditor(text: self.$rawJson, theme: self.theme, fontSize: 12)
-                    .frame(height: 260)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(self.theme.colors.surface)
-                            .stroke(self.theme.colors.border, lineWidth: 1)
+                if !self.visibleRestartFields.isEmpty {
+                    RestartRequiredBanner(
+                        fields: self.visibleRestartFields,
+                        onDismiss: { self.restartBannerDismissed = true }
                     )
+                }
 
-                HStack(spacing: 8) {
-                    Button(L10n.tr("settings.mcp.action.reload")) { self.reloadConfig() }
+                // Settings-side errors (mcp_enabled toggle PATCH failures)
+                // surface here. JSON-editor errors render inline below the
+                // editor — they're conceptually different surfaces. Showing
+                // both at their natural locations is clearer than collapsing
+                // them into one banner that hides the cause.
+                if let storeError = self.store.error {
+                    SettingsErrorBanner(message: storeError)
+                }
+                if let savedMessage = self.store.savedMessage {
+                    SettingsSavedToast(message: savedMessage)
+                }
+
+                self.enableToggleRow
+
+                if !self.expertMode.isEnabled {
+                    Text(L10n.tr("settings.mcp.novice.lede"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(self.theme.colors.textMuted)
+                        .padding(.bottom, 4)
+                }
+
+                if self.expertMode.isEnabled {
+                    CodeEditor(text: self.$rawJson, theme: self.theme, fontSize: 12)
+                        .frame(height: 260)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(self.theme.colors.surface)
+                                .stroke(self.theme.colors.border, lineWidth: 1)
+                        )
+
+                    HStack(spacing: 8) {
+                        Button(L10n.tr("settings.mcp.action.reload")) { self.reloadConfig() }
+                            .bobeButton(.secondary, size: .small)
+                            .disabled(self.isLoading || self.isValidating || self.isSaving)
+
+                        Button {
+                            self.validateConfig()
+                        } label: {
+                            HStack(spacing: 4) {
+                                if self.isValidating {
+                                    BobeSpinner(size: 12)
+                                }
+                                Text(
+                                    self.isValidating
+                                        ? L10n.tr("settings.mcp.action.validating")
+                                        : L10n.tr("settings.mcp.action.validate")
+                                )
+                            }
+                        }
                         .bobeButton(.secondary, size: .small)
-                        .disabled(self.isLoading || self.isValidating || self.isSaving)
+                        .disabled(self.isLoading || self.isValidating || self.isSaving || self.isJsonEmpty)
 
-                    Button {
-                        self.validateConfig()
-                    } label: {
-                        HStack(spacing: 4) {
-                            if self.isValidating {
-                                BobeSpinner(size: 12)
+                        Button {
+                            self.saveConfig()
+                        } label: {
+                            HStack(spacing: 4) {
+                                if self.isSaving {
+                                    BobeSpinner(size: 12)
+                                }
+                                Text(
+                                    self.isSaving
+                                        ? L10n.tr("settings.shared.action.saving")
+                                        : L10n.tr("settings.shared.action.save")
+                                )
                             }
-                            Text(
-                                self.isValidating
-                                    ? L10n.tr("settings.mcp.action.validating")
-                                    : L10n.tr("settings.mcp.action.validate")
-                            )
                         }
+                        .bobeButton(.primary, size: .small)
+                        .disabled(self.isLoading || self.isValidating || self.isSaving || self.isJsonEmpty)
+
+                        Spacer()
+
+                        Button(L10n.tr("settings.mcp.action.reset")) { self.resetConfig() }
+                            .bobeButton(.destructive, size: .small)
+                            .disabled(self.isLoading || self.isValidating || self.isSaving)
                     }
-                    .bobeButton(.secondary, size: .small)
-                    .disabled(self.isLoading || self.isValidating || self.isSaving || self.isJsonEmpty)
 
-                    Button {
-                        self.saveConfig()
-                    } label: {
-                        HStack(spacing: 4) {
-                            if self.isSaving {
-                                BobeSpinner(size: 12)
-                            }
-                            Text(
-                                self.isSaving
-                                    ? L10n.tr("settings.shared.action.saving")
-                                    : L10n.tr("settings.shared.action.save")
-                            )
-                        }
+                    if let status {
+                        Text(status)
+                            .font(.system(size: 12))
+                            .foregroundStyle(self.theme.colors.secondary)
                     }
-                    .bobeButton(.primary, size: .small)
-                    .disabled(self.isLoading || self.isValidating || self.isSaving || self.isJsonEmpty)
 
-                    Spacer()
-
-                    Button(L10n.tr("settings.mcp.action.reset")) { self.resetConfig() }
-                        .bobeButton(.destructive, size: .small)
-                        .disabled(self.isLoading || self.isValidating || self.isSaving)
-                }
-
-                if let status {
-                    Text(status)
-                        .font(.system(size: 12))
-                        .foregroundStyle(self.theme.colors.secondary)
-                }
-
-                if let error {
-                    Text(error)
-                        .font(.system(size: 12))
-                        .foregroundStyle(self.theme.colors.primary)
+                    if let error {
+                        Text(error)
+                            .font(.system(size: 12))
+                            .foregroundStyle(self.theme.colors.primary)
+                    }
+                } else {
+                    self.noviceEditorHidden
                 }
 
                 Divider()
@@ -100,10 +144,59 @@ struct MCPServersPanel: View {
             .padding(.top, 12)
             .padding(.bottom, 16)
         }
-        .task { await self.loadConfig() }
+        .task {
+            await self.loadConfig()
+            await self.store.loadIfNeeded()
+        }
+        .onDisappear { self.store.cancelToast() }
     }
 
-    @ViewBuilder
+    /// Top-of-panel switch for MCP at the daemon level. Lives here (rather
+    /// than its old home in Advanced) so the toggle that gates everything
+    /// below it is the first control the user sees.
+    private var enableToggleRow: some View {
+        SettingsRow(
+            label: L10n.tr("settings.mcp.enable"),
+            description: L10n.tr("settings.mcp.enable.description")
+        ) {
+            BobeToggle(isOn: self.mcpEnabledBinding)
+        }
+    }
+
+    private var mcpEnabledBinding: Binding<Bool> {
+        // Routes through SettingsStore so the toggle change syncs with other
+        // panels and the restart-required banner state. The store also
+        // tracks `mcp_enabled` in its `deferToRestartFields` so the banner
+        // fires immediately on touch.
+        self.store.binding(\.mcpEnabled, fallback: false, touched: "mcp_enabled")
+    }
+
+    /// Shown when Expert mode is off. Explains that there's a powerful
+    /// raw-JSON editor available and points the user at the toggle so they
+    /// know the door isn't locked, just hidden.
+    private var noviceEditorHidden: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "wrench.and.screwdriver")
+                    .font(.system(size: 12))
+                    .foregroundStyle(self.theme.colors.textMuted)
+                Text(L10n.tr("settings.mcp.novice.editor_hidden"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(self.theme.colors.textMuted)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(self.theme.colors.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(self.theme.colors.border.opacity(0.6), lineWidth: 1)
+                )
+        )
+    }
+
     private var discoverySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L10n.tr("settings.mcp.discovery.title"))
@@ -133,8 +226,8 @@ struct MCPServersPanel: View {
                                         ? L10n.tr("settings.mcp.discovery.status.enabled")
                                         : L10n.tr("settings.mcp.discovery.status.disabled")
                                 )
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(server.enabled ? self.theme.colors.secondary : self.theme.colors.textMuted)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(server.enabled ? self.theme.colors.secondary : self.theme.colors.textMuted)
                                 self.statusBadge(for: server)
                             }
                             .foregroundStyle(self.theme.colors.text)
@@ -173,17 +266,25 @@ struct MCPServersPanel: View {
         if let status = server.status {
             switch status {
             case McpServerStatusWire.connected:
-                self.badge(text: L10n.tr("settings.mcp.runtime.connected"),
-                           color: self.theme.colors.secondary)
+                self.badge(
+                    text: L10n.tr("settings.mcp.runtime.connected"),
+                    color: self.theme.colors.secondary
+                )
             case McpServerStatusWire.failed:
-                self.badge(text: L10n.tr("settings.mcp.runtime.failed"),
-                           color: self.theme.colors.primary)
+                self.badge(
+                    text: L10n.tr("settings.mcp.runtime.failed"),
+                    color: self.theme.colors.primary
+                )
             case McpServerStatusWire.needsAuth:
-                self.badge(text: L10n.tr("settings.mcp.runtime.needs_auth"),
-                           color: self.theme.colors.tertiary)
+                self.badge(
+                    text: L10n.tr("settings.mcp.runtime.needs_auth"),
+                    color: self.theme.colors.tertiary
+                )
             case McpServerStatusWire.pending:
-                self.badge(text: L10n.tr("settings.mcp.runtime.pending"),
-                           color: self.theme.colors.textMuted)
+                self.badge(
+                    text: L10n.tr("settings.mcp.runtime.pending"),
+                    color: self.theme.colors.textMuted
+                )
             case McpServerStatusWire.disabled, McpServerStatusWire.notConfigured:
                 EmptyView()
             default:

@@ -27,8 +27,8 @@ extension VoicePipeline {
     /// → Parakeet; everything else → Qwen3 (which is multilingual).
     var activeStt: any VoiceSttEngine {
         switch self.effectiveLanguage {
-        case "en": return self.parakeetStt
-        default: return self.qwen3Stt
+        case "en": self.parakeetStt
+        default: self.qwen3Stt
         }
     }
 
@@ -37,8 +37,8 @@ extension VoicePipeline {
     /// `ensureSttLoaded()` will load.
     var activeModelIsInstalled: Bool {
         switch self.effectiveLanguage {
-        case "en": return FluidAudioModelPresence.isInstalled()
-        default: return FluidAudioQwen3ModelPresence.isInstalled()
+        case "en": FluidAudioModelPresence.isInstalled()
+        default: FluidAudioQwen3ModelPresence.isInstalled()
         }
     }
 
@@ -61,7 +61,7 @@ extension VoicePipeline {
         let clientSttDownloading = self.sttStatus == .downloading
         let clientSttReady = self.sttStatus == .ready
         if daemonTtsDownloading || clientSttDownloading { return .installing }
-        if daemonTtsReady && clientSttReady { return .ready }
+        if daemonTtsReady, clientSttReady { return .ready }
         return .modelsMissing
     }
 
@@ -108,15 +108,18 @@ extension VoicePipeline {
 
     /// Map the daemon's `voice.pause_sensitivity` string to an EOU debounce
     /// (ms). Same value flows to both engines: Parakeet's built-in EOU
-    /// debounce, and the Qwen3 wrapper's VAD-driven silence timer. The
-    /// 1280ms balanced default matches the Parakeet EOU model's published
-    /// debounce. Concrete values live in `Constants.PauseSensitivityMs` so
-    /// the drift script can lock them to Rust `constants::pause_sensitivity_ms::*`.
+    /// debounce, and the Qwen3 wrapper's VAD-driven silence timer.
+    /// Concrete values live in `Constants.PauseSensitivityMs` so the drift
+    /// script can lock them to Rust `constants::pause_sensitivity_ms::*`.
+    /// The 800ms balanced default trims ~480ms vs. Parakeet's published
+    /// 1280ms reference — the model's linguistic EOU prediction is good
+    /// enough that we don't need a full second of trailing silence to be
+    /// confident the user is done.
     static func eouDelayMs(for sensitivity: String) -> Int {
         switch sensitivity.lowercased() {
-        case "tight": return PauseSensitivityMs.tight
-        case "patient": return PauseSensitivityMs.patient
-        default: return PauseSensitivityMs.balanced
+        case "tight": PauseSensitivityMs.tight
+        case "patient": PauseSensitivityMs.patient
+        default: PauseSensitivityMs.balanced
         }
     }
 

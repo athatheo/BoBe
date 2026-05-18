@@ -55,10 +55,9 @@ struct DoneStepView: View {
     }
 
     private func applyEngineSettings() async {
-        let request: SettingsUpdateRequest
-        switch self.engineChoice {
+        let request = switch self.engineChoice {
         case .local:
-            request = SettingsUpdateRequest(
+            SettingsUpdateRequest(
                 engine: EngineKind.local,
                 providerBaseUrl: OllamaDefaults.v1URL,
                 providerChatModel: "qwen2.5:7b-instruct",
@@ -67,7 +66,7 @@ struct DoneStepView: View {
                 providerOffline: true
             )
         case .copilot, .none:
-            request = SettingsUpdateRequest(engine: EngineKind.copilotCloud, providerOffline: false)
+            SettingsUpdateRequest(engine: EngineKind.copilotCloud, providerOffline: false)
         }
         do {
             _ = try await DaemonClient.shared.updateSettings(request)

@@ -35,8 +35,6 @@ extension BobeStore {
             return
         }
 
-        let activeIndicator: IndicatorType? = (indicator == .thinking) ? .thinking : nil
-
         self.updateState { ctx in
             switch indicator {
             case .idle:
@@ -63,7 +61,6 @@ extension BobeStore {
             case .unknown:
                 break
             }
-            ctx.activeIndicator = activeIndicator
             ctx.indicatorMessage = payload.message
             if indicator != .unknown {
                 ctx.errorMessage = nil
@@ -159,7 +156,6 @@ extension BobeStore {
             ctx.currentMessage = ""
             ctx.thinking = false
             ctx.speaking = false
-            ctx.activeIndicator = nil
         }
 
         self.streamingMessage = ""
@@ -183,7 +179,6 @@ extension BobeStore {
         self.updateState {
             $0.thinking = false
             $0.speaking = false
-            $0.activeIndicator = nil
             $0.toolExecutions = []
             $0.conversationEnding = true
         }

@@ -89,13 +89,18 @@ private struct ThemedPopUpButton<Option: Hashable>: NSViewRepresentable {
         }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
 
     final class Coordinator: NSObject {
         var parent: ThemedPopUpButton
-        init(_ parent: ThemedPopUpButton) { self.parent = parent }
+        init(_ parent: ThemedPopUpButton) {
+            self.parent = parent
+        }
 
-        @MainActor @objc func changed(_ sender: NSPopUpButton) {
+        @MainActor @objc
+        func changed(_ sender: NSPopUpButton) {
             let idx = sender.indexOfSelectedItem
             guard idx >= 0, idx < self.parent.options.count else { return }
             self.parent.selection = self.parent.options[idx]

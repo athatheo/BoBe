@@ -15,10 +15,10 @@ enum Validations {
 
     static func validateSoulContent(_ content: String) -> String? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count < soulContentMinLength {
+        if trimmed.count < self.soulContentMinLength {
             return String(
                 format: L10n.tr("settings.shared.validation.content_min_length_format"),
-                soulContentMinLength
+                self.soulContentMinLength
             )
         }
         return nil
@@ -26,10 +26,10 @@ enum Validations {
 
     static func validateUserProfileContent(_ content: String) -> String? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count < userProfileContentMinLength {
+        if trimmed.count < self.userProfileContentMinLength {
             return String(
                 format: L10n.tr("settings.shared.validation.content_min_length_format"),
-                userProfileContentMinLength
+                self.userProfileContentMinLength
             )
         }
         return nil

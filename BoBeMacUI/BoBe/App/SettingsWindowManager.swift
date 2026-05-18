@@ -7,13 +7,13 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
 
-    private override init() {}
+    override private init() {}
 
     func show(initialCategory: SettingsCategory? = nil) {
         if let window {
             window.title = L10n.tr("settings.window.title")
             window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
             // Re-host the view so the initial category takes effect even when
             // the window already exists.
             if let initialCategory {
@@ -25,8 +25,13 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
         }
 
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let width = min(max(screen.width * 0.72, 900), 1400)
-        let height = min(max(screen.height * 0.78, 600), 1000)
+        // Honest initial floors so the window never opens too small to show
+        // a panel's content (especially Engine and Goals, which are dense).
+        // Bumped a second time after user feedback that 1020x680 still felt
+        // cramped — descriptions and pickers were still colliding when
+        // resized down.
+        let width = min(max(screen.width * 0.72, 1200), 1500)
+        let height = min(max(screen.height * 0.78, 800), 1100)
 
         let window = BobeWindowFactory.make(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
@@ -34,10 +39,12 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
             title: L10n.tr("settings.window.title"),
             rootView: SettingsWindow(initialCategory: initialCategory)
         )
-        window.minSize = NSSize(width: 800, height: 550)
+        // Floor picked so descriptions never wrap into pickers and the right
+        // pane (Goals/Memories/Souls editors) still renders at full width.
+        window.minSize = NSSize(width: 1100, height: 720)
         window.delegate = self
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         self.window = window
     }
 

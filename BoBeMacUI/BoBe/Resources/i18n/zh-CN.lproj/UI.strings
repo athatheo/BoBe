@@ -1,4 +1,3 @@
-"app.brand_name" = "BoBe";
 "app.common.quit" = "退出";
 "app.common.retry" = "重试";
 "app.move_to_applications.cancel" = "稍后再说";
@@ -25,7 +24,7 @@
 "overlay.chat.action.collapse" = "收起";
 "overlay.chat.action.read_more" = "更多…";
 "overlay.chat.hidden_messages_format" = "+%d 条隐藏消息";
-"overlay.chat.pending_suffix" = " - 发送中...";
+"overlay.chat.pending_suffix" = " · 发送中…";
 "overlay.chat.sender.bobe" = "BoBe";
 "overlay.chat.sender.you" = "你";
 "overlay.chat_toggle.hide.accessibility" = "隐藏聊天";
@@ -34,7 +33,6 @@
 "overlay.connection.disconnected" = "已断开";
 "overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "关闭聊天输入";
-"overlay.input.placeholder.default" = "说点什么…";
 "overlay.input.send.accessibility" = "发送消息";
 "overlay.input.waiting_for_capturing" = "请等待 BoBe 完成感知。";
 "overlay.input.waiting_for_reconnecting" = "请等待 BoBe 完成重新连接。";
@@ -53,22 +51,15 @@
 "overlay.status.thinking" = "思考中";
 "overlay.status.using_tool_format" = "正在使用 %@...";
 "overlay.status.wants_to_speak" = "嘿";
-"overlay.tool_badge.accessibility_format" = "%d tool(s) running";
 
-"settings.advanced.conversation.description" = "高级对话时间设置";
-"settings.advanced.conversation.inactivity_timeout" = "空闲超时";
-"settings.advanced.conversation.inactivity_timeout.description" = "再次主动联系前需等待的秒数";
-"settings.advanced.conversation.title" = "对话";
-"settings.advanced.goals.check_interval" = "检查间隔";
-"settings.advanced.goals.check_interval.description" = "检查目标相关性的时间间隔（秒）";
-"settings.advanced.goals.description" = "目标跟踪时间间隔";
-"settings.advanced.goals.title" = "目标";
-"settings.advanced.loading" = "正在加载守护进程设置...";
-"settings.advanced.mcp.description" = "Model Context Protocol 服务器连接";
-"settings.advanced.mcp.enable" = "启用 MCP";
-"settings.advanced.mcp.enable.description" = "连接 MCP 服务器来扩展 BoBe 的能力";
-"settings.advanced.mcp.title" = "MCP 协议";
-"settings.advanced.title" = "极客模式";
+"settings.behavior.conversation.inactivity_timeout" = "空闲超时";
+"settings.behavior.conversation.inactivity_timeout.description" = "再次主动联系前需等待的秒数";
+"settings.behavior.goals.check_interval" = "检查间隔";
+"settings.behavior.goals.check_interval.description" = "检查目标相关性的时间间隔（秒）";
+"settings.behavior.goals.description" = "目标跟踪时间间隔";
+"settings.behavior.goals.title" = "目标";
+"settings.mcp.enable" = "启用 MCP";
+"settings.mcp.enable.description" = "连接 MCP 服务器来扩展 BoBe 的能力";
 "settings.appearance.theme.accessibility_format" = "%@ 主题";
 "settings.appearance.theme.description" = "为 BoBe 选择颜色主题。这会影响头像和所有界面元素。";
 "settings.appearance.theme.title" = "主题";
@@ -87,7 +78,6 @@
 "settings.behavior.conversation.description" = "对话管理方式";
 "settings.behavior.conversation.title" = "对话";
 "settings.behavior.loading" = "正在加载行为设置...";
-"settings.category.advanced" = "极客模式";
 "settings.category.appearance" = "外观";
 "settings.category.behavior" = "行为";
 "settings.category.goals" = "目标";
@@ -138,7 +128,6 @@
 "settings.goals.status.completed" = "已完成";
 "settings.goals.status.paused" = "已暂停";
 "settings.goals.title" = "目标";
-"settings.group.advanced" = "高级";
 "settings.group.context" = "上下文";
 "settings.group.integrations" = "集成";
 "settings.group.preferences" = "偏好";
@@ -213,15 +202,6 @@
 "settings.user_profiles.title" = "用户档案";
 "settings.user_profiles.toggle.enable_accessibility" = "启用档案";
 "settings.window.check_updates" = "检查更新...";
-"settings.window.overview.card.remembers.body" = "管理记忆、对话历史，以及 BoBe 如何从互动中学习。";
-"settings.window.overview.card.remembers.heading" = "BoBe 会记住什么";
-"settings.window.overview.card.sees.body" = "控制屏幕感知、上下文窗口，以及 BoBe 可获取的信息。";
-"settings.window.overview.card.sees.heading" = "BoBe 能看到什么";
-"settings.window.overview.card.sounds.body" = "选择并自定义人格模板，塑造 BoBe 的沟通风格。";
-"settings.window.overview.card.sounds.heading" = "BoBe 的说话风格";
-"settings.window.overview.card.speaks.body" = "设置问候频率、主动消息和通知偏好。";
-"settings.window.overview.card.speaks.heading" = "BoBe 何时发声";
-"settings.window.overview.description" = "BoBe 结合人格（Soul）、你的目标以及它积累的记忆，在合适的时机主动帮你。你可以在这里自定义各项体验。";
 "settings.window.overview.footer" = "使用侧边栏探索全部设置。一切都在你的 Mac 本地运行。";
 "settings.window.overview.title" = "调整 BoBe";
 "settings.window.sidebar_title" = "BOBE TUNING";
@@ -242,11 +222,13 @@
 "setup.permissions.open_settings" = "Open System Settings";
 "setup.permissions.skip" = "Skip — set up later";
 "setup.permissions.title" = "Screen Recording";
-"setup.welcome.body" = "BoBe is a private, local-first companion. It glances at your screen to help, takes notes in ~/.bobe/memory.md, and learns the goals you care about over time.";
 "setup.welcome.continue" = "Let's get set up";
-"setup.welcome.title" = "欢迎使用 BoBe";
 "setup.window.title" = "BoBe 设置";
 
+"menu.view.toggle_overlay" = "切换悬浮窗";
+"menu.voice.title" = "语音";
+"menu.voice.toggle_mic" = "切换麦克风";
+"menu.voice.stop_speaking" = "停止说话";
 "tray.about" = "关于 BoBe";
 "tray.capture.disable" = "停用屏幕感知";
 "tray.capture.enable" = "启用屏幕感知";
@@ -265,7 +247,6 @@
 "tray.state.speaking" = "正在说话";
 "tray.state.thinking" = "思考中...";
 "tray.state.wants_to_speak" = "有话想说";
-"tray.status_format" = "状态：%@";
 "setup.cloud_auth.title" = "Sign in to GitHub";
 "setup.cloud_auth.body" = "BoBe uses your GitHub Copilot subscription. We can check if you're already signed in.";
 "setup.cloud_auth.checking" = "Checking sign-in status…";
@@ -312,16 +293,61 @@
 "settings.engine.models.vision" = "Vision";
 "settings.engine.models.vision.description" = "Used to look at your screen. Must be a vision-capable model.";
 "settings.engine.models.use_default" = "Use default";
-"settings.engine.offline.title" = "Offline mode";
-"settings.engine.offline.description" = "Skip all telemetry and metadata calls to GitHub.";
-"settings.engine.offline.toggle" = "Strict offline";
-"settings.engine.offline.toggle.description" = "Even in local mode, the bundled CLI normally pings GitHub for sign-in info. Strict offline turns that off.";
+
+"settings.engine.privacy.cloud.title" = "Privacy";
+"settings.engine.privacy.cloud.description" = "GitHub-hosted models require cloud calls. These settings turn off everything else.";
+"settings.engine.privacy.cloud.toggle" = "No telemetry";
+"settings.engine.privacy.cloud.toggle.description" = "Don't send usage data or non-essential metadata to GitHub. Model calls still go to the cloud (required).";
+"settings.engine.privacy.local.title" = "Offline mode";
+"settings.engine.privacy.local.description" = "You're on a local model — nothing has to leave your Mac.";
+"settings.engine.privacy.local.toggle" = "Strict offline";
+"settings.engine.privacy.local.toggle.description" = "Stay fully offline. BoBe won't contact GitHub at all.";
 "settings.engine.models.local_empty" = "No local models installed yet. Pull one via `ollama pull <name>` or run setup from the welcome screen.";
 "settings.engine.models.cloud_empty" = "Your subscription doesn't have any models available right now.";
-"settings.engine.models.local_unavailable" = "Ollama isn't running. Start it, or pick cloud mode above.";
-"settings.engine.models.cloud_unavailable" = "GitHub Copilot is unreachable. Check your sign-in or network.";
 "settings.engine.models.error_format" = "Couldn't load models: %@";
 "settings.mcp.runtime.connected" = "connected";
 "settings.mcp.runtime.failed" = "failed";
 "settings.mcp.runtime.needs_auth" = "needs auth";
 "settings.mcp.runtime.pending" = "pending";
+
+/* English fallback; non-EN locales have spotty coverage per CLAUDE.md. */
+"settings.window.overview.eyebrow" = "WELCOME";
+"settings.window.overview.lede" = "BoBe blends a personality (Soul), the goals you set, and what it remembers about you. Open any sidebar entry to shape it.";
+"settings.window.overview.row.goals.known_one" = "BoBe is watching for one thing you care about.";
+"settings.window.overview.row.goals.known_many_format" = "BoBe is watching for %d things you care about.";
+"settings.window.overview.row.goals.empty" = "BoBe doesn't know what to watch for yet.";
+"settings.window.overview.row.goals.action" = "Goals";
+"settings.window.overview.row.souls.known_one" = "One custom personality is ready when you summon it.";
+"settings.window.overview.row.souls.known_many_format" = "%d custom personalities are ready when you summon them.";
+"settings.window.overview.row.souls.empty" = "Only the default personality is loaded.";
+"settings.window.overview.row.souls.action" = "Souls";
+"settings.window.overview.row.profiles.known" = "BoBe has notes on who you are.";
+"settings.window.overview.row.profiles.empty" = "BoBe doesn't know who you are yet.";
+"settings.window.overview.row.profiles.action" = "User profile";
+"settings.window.overview.row.behavior.label" = "Tune when BoBe glances at your screen and when it speaks up.";
+"settings.window.overview.row.behavior.action" = "Behavior";
+"setup.engine.hello" = "Welcome to BoBe. Let's pick how BoBe thinks for you.";
+"setup.wizard.back" = "Back";
+"setup.wizard.back.accessibility" = "Go to the previous step";
+
+/* === NEW STRINGS pending translation (back-filled with English) === */
+/* TODO translate */ "overlay.voice.presence_ring.accessibility" = "BoBe is listening to you.";
+/* TODO translate */ "overlay.voice.presence_ring.tooltip" = "BoBe is hearing you. The ring follows your voice.";
+/* TODO translate */ "overlay.voice.coachmark.title" = "BoBe is listening";
+/* TODO translate */ "overlay.voice.coachmark.body" = "The ring shows BoBe hearing you. Her mouth moves when she speaks.";
+/* TODO translate */ "setup.cloud_auth.sheet.error_details" = "Show error details";
+/* TODO translate */ "setup.cloud_auth.sheet.error.expired" = "The sign-in code expired before you finished. Get a new one and try again.";
+/* TODO translate */ "setup.cloud_auth.sheet.error.denied" = "GitHub said you declined the sign-in. Try again whenever you're ready.";
+/* TODO translate */ "setup.cloud_auth.sheet.error.slow_down" = "GitHub asked BoBe to wait a moment. Try again in a few seconds.";
+/* TODO translate */ "setup.cloud_auth.sheet.error.network" = "BoBe couldn't reach GitHub. Check your connection and try again.";
+/* TODO translate */ "setup.cloud_auth.sheet.error.handshake" = "Something went wrong while talking to GitHub. Try again, and if it keeps failing, sign in from Terminal.";
+/* TODO translate */ "setup.cloud_auth.sheet.error.generic" = "Sign-in didn't finish. Try again, or use Terminal sign-in if it keeps failing.";
+/* TODO translate */ "setup.cloud_auth.error.timeout" = "BoBe couldn't reach the sign-in service in time. Check your connection and try again.";
+/* TODO translate */ "setup.cloud_auth.error.generic" = "BoBe couldn't check your sign-in. Try again in a moment.";
+/* TODO translate */ "app.service_error.summary" = "BoBe couldn't start her backend. This is usually a temporary glitch.";
+/* TODO translate */ "app.service_error.persistent_summary" = "BoBe's backend keeps failing to start. If retrying doesn't help, try reinstalling BoBe from the original DMG.";
+/* TODO translate */ "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
+/* TODO translate */ "settings.window.search.enable_expert" = "Enable Expert mode";
+/* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
+/* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";
+/* TODO translate */ "tray.status.accessibility" = "BoBe status";

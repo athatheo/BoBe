@@ -30,7 +30,14 @@ struct VoicePartialCaption: View {
                     )
             )
             .transition(.opacity.combined(with: .move(edge: .bottom)))
-            .animation(.easeOut(duration: 0.15), value: self.pipeline.partialTranscript)
+            // Animate the *appearance* of the caption, not its content.
+            // Keying on `.isEmpty` means the 150ms ease fires when the
+            // caption shows/hides — content updates (40-80 partials/sec
+            // during speech) flow through without retriggering the curve.
+            // Prior version animated on `partialTranscript` itself, which
+            // restarted the easeOut on every partial and produced visible
+            // jitter as new words arrived.
+            .animation(.easeOut(duration: 0.15), value: self.pipeline.partialTranscript.isEmpty)
         }
     }
 }

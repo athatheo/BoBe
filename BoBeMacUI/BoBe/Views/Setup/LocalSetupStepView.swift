@@ -81,7 +81,6 @@ struct LocalSetupStepView: View {
         }
     }
 
-    @ViewBuilder
     private func progressRow(
         title: String,
         progress: LocalRuntimeDownload?,
@@ -96,7 +95,7 @@ struct LocalSetupStepView: View {
                     .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
-            BobeLinearProgressBar(progress: Double(progress?.percent ?? 0) / 100.0)
+            BobeLinearProgressBar(progress: Double(progress?.percent ?? 0) / 100.0, tint: self.theme.colors.secondary)
             if let status {
                 Text(status)
                     .bobeTextStyle(.helper)
@@ -105,7 +104,6 @@ struct LocalSetupStepView: View {
         }
     }
 
-    @ViewBuilder
     private func modelRow(
         title: String,
         pull: LocalRuntimePull?
@@ -119,7 +117,7 @@ struct LocalSetupStepView: View {
                     .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
-            BobeLinearProgressBar(progress: Double(pull?.percent ?? 0) / 100.0)
+            BobeLinearProgressBar(progress: Double(pull?.percent ?? 0) / 100.0, tint: self.theme.colors.secondary)
             if let status = pull?.status, !status.isEmpty {
                 Text(status)
                     .bobeTextStyle(.helper)

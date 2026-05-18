@@ -11,6 +11,17 @@ extension OverlayView {
             self.errorBannerSection
             self.avatarSection
         }
+        .onHover { hovering in
+            // Keep the chat open while the cursor is inside the overlay
+            // bounds — otherwise the inactivity timer dismisses a long
+            // message while the user is still reading it.
+            if self.isChatVisible {
+                self.isPointerOverChat = hovering
+                if hovering {
+                    self.lastMessageActivity = .now
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -114,7 +125,11 @@ extension OverlayView {
                     )
                     .layoutPriority(1)
                     StopButton()
-                    MicButton()
+                    // MicButton intentionally NOT here — there is exactly
+                    // ONE mic in the UI, anchored to the avatar's lower-left
+                    // circumference, present whether the chat is open or
+                    // closed. Having a second mic in the composer made the
+                    // affordance appear to "teleport" when the chat opened.
                 }
             }
             .padding(.horizontal, 12)
@@ -126,14 +141,15 @@ extension OverlayView {
     @ViewBuilder
     var errorBannerSection: some View {
         if self.store.context.daemonError {
+            let bannerColor = self.themeStore.currentTheme.colors.background
             HStack(spacing: 8) {
                 Image(systemName: "bolt.slash.fill")
                     .font(.system(size: 11))
-                Text("Daemon disconnected")
+                Text(L10n.tr("overlay.error.daemon_disconnected"))
                     .bobeTextStyle(.overlayStatus)
                     .lineLimit(1)
                 Spacer()
-                Button("Restart") {
+                Button(L10n.tr("overlay.error.daemon_restart")) {
                     Task {
                         try? await BackendService.shared.userRestart()
                     }
@@ -143,17 +159,18 @@ extension OverlayView {
                 .padding(.vertical, 3)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(.white.opacity(0.2))
+                        .fill(bannerColor.opacity(0.2))
                 )
-                .accessibilityLabel("Restart daemon")
+                .accessibilityLabel(L10n.tr("overlay.error.daemon_restart.accessibility"))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(bannerColor)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
             .padding(.horizontal, 12)
             .transition(self.overlaySectionTransition)
         } else if let error = self.store.errorMessage {
+            let bannerColor = self.themeStore.currentTheme.colors.background
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10))
@@ -170,7 +187,7 @@ extension OverlayView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(bannerColor)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
@@ -179,63 +196,124 @@ extension OverlayView {
         }
     }
 
-    @ViewBuilder
     var avatarSection: some View {
-        HStack(spacing: 12) {
-            Spacer()
+        // Vertical stack: bubble slot ABOVE the avatar so it has full
+        // horizontal room to grow. Anchored bottom-right of the overlay.
+        // .onHover on the whole stack drives the satellite reveal — the
+        // mic and chat toggle stay hidden at rest, fade in when the
+        // cursor enters the avatar area. .contentShape forces hit-testing
+        // across the whole frame, including transparent gaps between
+        // bubble and avatar.
+        VStack(alignment: .trailing, spacing: 2) {
+            self.satelliteSlot
+                .frame(maxWidth: 340, alignment: .trailing)
 
-            ZStack(alignment: .topLeading) {
-                ChatToggleButton(isActive: self.isChatVisible, action: self.toggleChatFromBubble)
-                    .padding(.leading, 11)
-                    .padding(.top, 23)
-                    .zIndex(4)
-
-                AvatarView(
-                    stateType: self.avatarStateType,
-                    isCapturing: self.store.isCapturing,
-                    isConnected: self.store.isConnected,
-                    hasMessage: self.hasUnreadMessages,
-                    showInput: self.isChatVisible,
-                    statusOverride: self.statusTextOverride,
-                    isAvatarActionEnabled: self.canAvatarToggleChat,
-                    onClick: self.avatarClickAction,
-                    onToggleCapture: self.handleCaptureToggle
-                )
-                .padding(.top, 18)
-                .padding(.leading, 16)
-
-                if !self.store.runningTools.isEmpty {
-                    self.toolExecutionBadge
-                        .padding(.top, 14)
-                        .padding(.leading, 90)
-                        .zIndex(5)
-                }
-            }
-            .frame(width: 148, height: 164, alignment: .topLeading)
+            self.avatarCluster
         }
         .padding(.trailing, 12)
         .padding(.bottom, 8)
         .padding(.top, 0)
+        .contentShape(Rectangle())
+        .onHover { isHovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                self.avatarAreaHovered = isHovering
+            }
+        }
+        // Single .animation keyed off a composite token instead of three
+        // stacked `.animation(value:)` modifiers. With the stack, only the
+        // last modifier wins on any single render pass — when two source
+        // values changed in the same pass (e.g. silence toggle dismisses
+        // the floating bubble), the bubble id change effectively got the
+        // wrong animation. Composite-token keying lets one transaction
+        // cover all three transitions.
+        .animation(.easeOut(duration: 0.2), value: self.avatarAnimationToken)
         .zIndex(3)
     }
 
-    var toolExecutionBadge: some View {
-        let theme = self.themeStore.currentTheme
-        let count = self.store.runningTools.count
-        return HStack(spacing: 3) {
-            Image(systemName: "wrench.fill")
-                .font(.system(size: 9, weight: .bold))
-            if count > 1 {
-                Text("\(count)")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-            }
+    /// Composite identity for the avatar section's animation modifier.
+    /// Any change to one of the three drivers re-evaluates the string and
+    /// triggers the animation exactly once for that frame.
+    private var avatarAnimationToken: String {
+        let bubbleId = self.floatingBubbleMessage?.id ?? "·"
+        return "\(bubbleId)|\(self.store.proactiveSilenced)|\(self.isChatVisible)"
+    }
+
+    /// Content above the avatar. Hosts either the voice coachmark (a
+    /// one-shot teaching moment) or the consolidated AvatarStatusBubble
+    /// — never both simultaneously. The bubble itself enforces priority
+    /// across its sub-modes (BoBe message / user STT / status / silenced)
+    /// so this slot only needs the coachmark/bubble choice.
+    @ViewBuilder
+    var satelliteSlot: some View {
+        if self.voiceCoachmarkVisible, !self.isChatVisible {
+            VoiceCoachmark(isVisible: self.$voiceCoachmarkVisible)
+        } else {
+            AvatarStatusBubble(
+                mode: self.bubbleMode,
+                onOpenChat: { self.openChatManually() },
+                onToggleSilence: { self.toggleProactiveSilence() },
+                onDismiss: { self.dismissFloatingBubble() },
+                isSilenced: self.store.proactiveSilenced,
+                isTtsAudible: self.isTtsAudible
+            )
         }
-        .foregroundStyle(theme.colors.background)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(theme.colors.primary))
-        .overlay(Capsule().stroke(theme.colors.background, lineWidth: 1.5))
-        .accessibilityLabel(L10n.tr("overlay.tool_badge.accessibility_format", count))
+    }
+
+    /// The avatar + its satellites (chat toggle, mic). Satellites are
+    /// owned by `AvatarView` itself via the `cardSatellites:` parameter,
+    /// so their positions are expressed in the card's local coordinate
+    /// space (0..cardSize) — they CAN'T drift when outer layout
+    /// constants (column size, padding, BobeLabel offset) change.
+    ///
+    /// The chat toggle and mic are hover-gated — at rest the avatar
+    /// reads as a single clean circle; on hover the satellites fade in.
+    /// The chat toggle stays visible while chat is open so the user
+    /// never loses the close affordance.
+    var avatarCluster: some View {
+        // 32pt diameter satellite buttons. Chat toggle at 10:30, mic
+        // at 7:30 (clockwise from 12 = 315° and 225°). The math runs
+        // entirely on `AvatarMetrics.cardSize` — no column dependencies.
+        let satSize: CGFloat = 32
+        let chatOffset = AvatarMetrics.rimOffset(angleFrom12: 315, satelliteSize: satSize)
+        let micOffset = AvatarMetrics.rimOffset(angleFrom12: 225, satelliteSize: satSize)
+
+        // Chat-open: leave headroom for the StatusLabel above the
+        // avatar head. Chat-closed: bubble owns status — drop the
+        // headroom so the bubble nestles tight against the avatar.
+        let topInset: CGFloat = self.isChatVisible ? 18 : 4
+        let leadingPad: CGFloat = 16
+        let clusterHeight: CGFloat = self.isChatVisible ? 164 : 148
+
+        return AvatarView(
+            stateType: self.avatarStateType,
+            isConnected: self.store.isConnected,
+            hasMessage: self.hasUnreadMessages,
+            showInput: self.isChatVisible,
+            statusOverride: self.statusTextOverride,
+            showStatusLabel: self.isChatVisible,
+            bubbleShowingMessage: !self.isChatVisible && self.floatingBubbleMessage != nil,
+            isAvatarActionEnabled: self.canAvatarToggleChat,
+            onClick: self.avatarClickAction,
+            onToggleCapture: self.handleCaptureToggle,
+            cardSatellites: {
+                if self.showChatToggleSatellite {
+                    ChatToggleButton(isActive: self.isChatVisible, action: self.toggleChatFromBubble)
+                        .offset(chatOffset)
+                        .transition(.opacity)
+                }
+                if self.showMicSatellite {
+                    MicButton()
+                        .offset(micOffset)
+                        .transition(.opacity)
+                }
+            }
+        )
+        .padding(.top, topInset)
+        .padding(.leading, leadingPad)
+        .frame(width: 148, height: clusterHeight, alignment: .topLeading)
+        .animation(.easeOut(duration: 0.15), value: self.showChatToggleSatellite)
+        .animation(.easeOut(duration: 0.15), value: self.showMicSatellite)
+        .animation(.easeOut(duration: 0.2), value: self.isChatVisible)
     }
 }
 

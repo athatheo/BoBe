@@ -9,6 +9,9 @@ private struct DaemonErrorEnvelope: Decodable {
 
 private struct DaemonErrorBody: Decodable {
     let message: String
+    /// Stable machine-readable code from the daemon (e.g. `AUTH_REQUIRED`,
+    /// `NO_ENTITLEMENTS`). Optional because most error variants don't supply one.
+    let code: String?
 }
 
 actor DaemonClient {
@@ -26,6 +29,13 @@ actor DaemonClient {
     }()
 
     let session: URLSession
+    /// Dedicated session for the SSE long-poll. Keeping it separate from
+    /// `session` lets SSE inherit URLSession's default 7-day
+    /// `timeoutIntervalForResource` while normal HTTP keeps a 300s cap.
+    /// Without this split, the shared 300s resource cap killed the SSE
+    /// stream every 5 minutes — causing periodic `connection_manager.replacing_connection`
+    /// churn on the daemon and a visible "Reconnecting…" flicker.
+    private let sseSession: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     let fetchTimeout: TimeInterval = 10
@@ -34,7 +44,6 @@ actor DaemonClient {
     private var eventHandler: ((StreamBundle) -> Void)?
     private var connectionHandler: ((Bool) -> Void)?
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 10
     private var isReconnecting = false
 
     func endpointURL(_ path: String) -> URL {
@@ -61,6 +70,16 @@ actor DaemonClient {
         config.timeoutIntervalForRequest = 10
         config.timeoutIntervalForResource = 300
         self.session = URLSession(configuration: config)
+
+        // SSE config: keep request idle timeout generous (heartbeats arrive
+        // every 15s from the daemon), and let `timeoutIntervalForResource`
+        // stay at the URLSession default of 7 days so the long-poll isn't
+        // forcibly torn down mid-session.
+        let sseConfig = URLSessionConfiguration.default
+        sseConfig.timeoutIntervalForRequest = 60
+        sseConfig.shouldUseExtendedBackgroundIdleMode = true
+        self.sseSession = URLSession(configuration: sseConfig)
+
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
     }
@@ -96,10 +115,14 @@ actor DaemonClient {
         let url = self.endpointURL("events")
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 0
+        // Set explicitly large rather than 0 (which inherits the session
+        // default request timeout). The session default of 60s would be
+        // fine on its own thanks to heartbeats, but a large explicit value
+        // documents intent and is robust to future session-config changes.
+        request.timeoutInterval = TimeInterval(7 * 24 * 60 * 60)
 
         do {
-            let (bytes, response) = try await session.bytes(for: request)
+            let (bytes, response) = try await sseSession.bytes(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200
             else {
@@ -121,12 +144,12 @@ actor DaemonClient {
                     let bundle = try decoder.decode(StreamBundle.self, from: data)
                     self.eventHandler?(bundle)
                 } catch {
-                    logger.error("Failed to decode SSE event: \(error.localizedDescription)")
+                    logger.error("Failed to decode SSE event: \(error.localizedDescription, privacy: .public)")
                 }
             }
         } catch {
             if !Task.isCancelled {
-                logger.warning("SSE stream error: \(error.localizedDescription)")
+                logger.warning("SSE stream error: \(error.localizedDescription, privacy: .public)")
             }
         }
 
@@ -142,13 +165,19 @@ actor DaemonClient {
 
         self.connectionHandler?(false)
         self.reconnectAttempts += 1
-        guard self.reconnectAttempts <= self.maxReconnectAttempts else {
-            logger.error("Max SSE reconnect attempts reached")
-            return
+
+        // First attempt is immediate so transient drops are invisible.
+        // Subsequent attempts back off 0.5s, 1s, 2s, 4s, … capped at 15s.
+        // No hard cap on attempt count — daemon may come back hours later.
+        let delay: Double = if self.reconnectAttempts == 1 {
+            0
+        } else {
+            min(pow(2.0, Double(self.reconnectAttempts - 2)) * 0.5, 15.0)
         }
-        let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 30.0)
-        logger.info("SSE reconnecting in \(delay)s (attempt \(self.reconnectAttempts))")
-        try? await Task.sleep(for: .seconds(delay))
+        if delay > 0 {
+            logger.info("SSE reconnecting in \(delay, privacy: .public)s (attempt \(self.reconnectAttempts))")
+            try? await Task.sleep(for: .seconds(delay))
+        }
         if !Task.isCancelled {
             self.startSSE()
         }
@@ -180,17 +209,22 @@ actor DaemonClient {
         do {
             (data, response) = try await self.session.data(for: request)
         } catch {
-            logger.error("\(method) \(path): network error — \(error.localizedDescription)")
+            logger.error("\(method, privacy: .public) \(path, privacy: .public): network error — \(error.localizedDescription, privacy: .public)")
             throw error
         }
         guard let httpResponse = response as? HTTPURLResponse else {
-            logger.error("\(method) \(path): invalid response (not HTTP)")
+            logger.error("\(method, privacy: .public) \(path, privacy: .public): invalid response (not HTTP)")
             throw DaemonError.invalidResponse
         }
         guard (200 ... 299).contains(httpResponse.statusCode) else {
-            let message = self.errorMessage(from: data)
-            logger.error("\(method) \(path) failed: HTTP \(httpResponse.statusCode) — \(message)")
-            throw DaemonError.httpError(statusCode: httpResponse.statusCode, message: message)
+            let (message, code) = self.errorMessage(from: data)
+            let codeLabel = code ?? "no-code"
+            let statusCode = httpResponse.statusCode
+            logger.error(
+                // swiftlint:disable:next line_length
+                "\(method, privacy: .public) \(path, privacy: .public) failed: HTTP \(statusCode) — \(message, privacy: .public) [\(codeLabel, privacy: .public)]"
+            )
+            throw DaemonError.httpError(statusCode: statusCode, message: message, code: code)
         }
         return data
     }
@@ -204,7 +238,7 @@ actor DaemonClient {
         do {
             return try self.decoder.decode(T.self, from: data)
         } catch {
-            logger.error("\(method) \(path): decode error — \(error.localizedDescription)")
+            logger.error("\(method, privacy: .public) \(path, privacy: .public): decode error — \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
@@ -217,11 +251,11 @@ actor DaemonClient {
         _ = try await self.send(path, method: method, body: body)
     }
 
-    private func errorMessage(from data: Data) -> String {
+    private func errorMessage(from data: Data) -> (message: String, code: String?) {
         if let envelope = try? self.decoder.decode(DaemonErrorEnvelope.self, from: data) {
-            return envelope.error.message
+            return (envelope.error.message, envelope.error.code)
         }
-        return String(data: data, encoding: .utf8) ?? "Unknown error"
+        return (String(data: data, encoding: .utf8) ?? "Unknown error", nil)
     }
 
     // MARK: - Health & Status

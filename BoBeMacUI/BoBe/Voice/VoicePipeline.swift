@@ -1,3 +1,4 @@
+@preconcurrency import AudioToolbox
 @preconcurrency import AVFoundation
 import FluidAudio
 import Foundation
@@ -28,44 +29,44 @@ public final class VoicePipeline {
 
     public static let shared = VoicePipeline()
 
-    public private(set) var state: State = .idle
-    /// Last surfaced error message. Also logged via `logger.error` at every
-    /// write site so engineers can see it in Console.app. `internal(set)`
-    /// lets the TTS playback chain in `TtsPlayback.swift` surface decode /
-    /// queue errors without needing a wrapper method.
+    /// `internal(set)` so the `+WebSocket` extension can drive phase
+    /// transitions via `applyPhase(_:)`. External callers (views) remain
+    /// read-only.
+    public internal(set) var state: State = .idle
+    /// Last surfaced error message. Logged via `logger.error` at write sites.
+    /// `internal(set)` lets `TtsPlayback.swift` surface decode/queue errors.
     public internal(set) var lastError: String?
-    /// Readiness of the local FluidAudio STT model. Drives UI affordances
-    /// so the user sees "Downloading voice model…" instead of an
-    /// unresponsive mic icon when the ~600MB Parakeet model is fetching.
+    /// Readiness of the local FluidAudio STT model. Surfaces in UI so the
+    /// user sees "Downloading…" instead of an unresponsive mic.
     public enum SttStatus: Equatable {
         case notLoaded
         case downloading
         case ready
         case failed(String)
     }
+
     public private(set) var sttStatus: SttStatus = .notLoaded
 
     // MARK: - Readiness inputs (see VoiceReadiness.swift for the aggregator
+
     // + refreshDaemonState/updatePermission methods that mutate these).
 
     /// Mirrors `AVCaptureDevice.authorizationStatus(for: .audio)`. Owned here
     /// so `readiness` can fold it in; `MicButton` writes back via
-    /// `updatePermission(_:)` after the system grant/deny dialog.
+    /// `updatePermission(_:)`.
     var permission: AVAuthorizationStatus =
         AVCaptureDevice.authorizationStatus(for: .audio)
 
-    /// Latest daemon-side install snapshot (Kokoro presence + per-model
-    /// progress). `nil` until the first `refreshDaemonState()` call lands.
+    /// Latest daemon-side install snapshot. `nil` until first refresh.
     var installSnapshot: VoiceInstallSnapshot?
 
-    /// Mirror of `DaemonSettings.voiceEnabled`. `nil` until first fetch lands;
-    /// `false` flips the mic button into a hidden / disabled state.
+    /// Mirror of `DaemonSettings.voiceEnabled`. `nil` until first fetch; `false`
+    /// hides the mic button.
     var voiceEnabled: Bool?
 
     /// Mirrors of `DaemonSettings.{voiceShowPartialCaption, voicePersona,
-    /// voiceSpeed}` — populated by `refreshDaemonState`. Caption drives
-    /// `VoicePartialCaption` visibility; persona + speed get sent in every
-    /// Hello so the daemon doesn't fall back to its config default.
+    /// voiceSpeed}`. Persona + speed are sent in every Hello so the daemon
+    /// doesn't fall back to its config default.
     var showPartialCaption: Bool = true
     var voicePersona: String?
     var voiceSpeed: Float?
@@ -78,49 +79,91 @@ public final class VoicePipeline {
     /// frame's RMS dBFS (-60 dBFS → 0, 0 dBFS → 1). Drives the MicButton's
     /// pulsing ring so the user sees their voice is getting through before
     /// the daemon's VAD has decided whether it's a speech segment.
-    public private(set) var inputLevel: Float = 0
-    /// Streaming partial transcript from the local FluidAudio Parakeet
-    /// streaming ASR (Mode B). Updated on every partial callback; cleared
-    /// at end-of-utterance. Surfaces in `VoicePartialCaption` and the
-    /// MicButton tooltip so the user gets immediate feedback that
-    /// "I heard you say X" while they speak.
-    public private(set) var partialTranscript: String = ""
+    /// `internal(set)` so `+Audio.publishInputLevel` can publish smoothed
+    /// values. External callers remain read-only.
+    public internal(set) var inputLevel: Float = 0
+    /// Normalized TTS output level (0...1), driven by TtsPlayback. Drives
+    /// the avatar's mouth in `SpeakingEyes`. Decays via `ttsLevelDecayTask`.
+    ///
+    /// **Don't read this for structural state decisions.** It mutates at ~50 Hz
+    /// during speech, which causes any observer in a wide-scope view (e.g.
+    /// `OverlayView.body`) to re-evaluate at the same cadence. Use
+    /// `isTtsAudible` instead — that is a hysteresis-latched boolean that
+    /// only flips a few times per turn.
+    public internal(set) var ttsOutputLevel: Float = 0
+    /// Hysteresis-latched audibility flag. Flips ON when `ttsOutputLevel`
+    /// climbs over `audibleOnThreshold` for the first time, flips OFF only
+    /// after it stays below `audibleOffThreshold` for `audibleHangoverMs`.
+    /// Designed so that views reading this signal (avatar state, floating-
+    /// bubble dismiss timer) re-evaluate a handful of times per turn rather
+    /// than at the RMS sample rate.
+    ///
+    /// `internal(set)` because the latching logic lives in `TtsPlayback`'s
+    /// extension; only the pipeline file should be writing this.
+    public internal(set) var isTtsAudible: Bool = false
+
+    /// Audibility hysteresis tuning. Asymmetric on purpose: rise quickly
+    /// (so the avatar reacts to the first phoneme), fall slowly so consonants
+    /// dipping briefly below the rise threshold don't flap the latch.
+    /// `internal` so the extension in `TtsPlayback` can read them.
+    let audibleOnThreshold: Float = 0.04
+    let audibleOffThreshold: Float = 0.01
+    /// Trailing-silence window the level must stay under `audibleOffThreshold`
+    /// for before `isTtsAudible` flips false. Picked to roughly bridge the
+    /// longest consonant gap in normal speech (~250-400 ms).
+    let audibleHangoverMs: Int = 350
+    /// Started fresh each time RMS drops below the off threshold.
+    /// `internal` so `TtsPlayback.updateAudibilityLatch` + `stopTtsLevelDecay`
+    /// can manage its lifetime.
+    var audibleHangoverTask: Task<Void, Never>?
+
+    /// Streaming partial transcript from FluidAudio (Mode B). Cleared at
+    /// end-of-utterance. Surfaces in `VoicePartialCaption` + MicButton tooltip.
+    /// `internal(set)` so the `+WebSocket` extension can clear it on
+    /// `tts_end`. External callers remain read-only.
+    public internal(set) var partialTranscript: String = ""
 
     /// 16kHz mono — Parakeet + Silero native. Used by the int16 converter
     /// only for RMS/barge-in detection; FluidAudio resamples internally.
-    private let captureSampleRate: Double = 16_000
+    /// `internal` for the `+Audio` extension's converter setup.
+    let captureSampleRate: Double = 16_000
     /// 20ms slice at 16kHz — RMS + barge-in cadence (not a wire frame size
     /// in Mode B, since the client never sends audio).
-    private let rmsFrameSamples: Int = 320
+    /// `internal` so the `+Audio` extension can use it in its slice loop.
+    let rmsFrameSamples: Int = 320
     /// 24kHz mono — Kokoro native. Internal so the TTS playback chain in
     /// `TtsPlayback.swift` can use it for buffer sizing + truncation math.
     let playbackSampleRate: Double = Double(VoiceWire.ttsOutputSampleRate)
 
-    private let audioEngine = AVAudioEngine()
-    // Internal so the TTS playback chain in `TtsPlayback.swift` can drive it.
+    /// Reusable PCM format for Kokoro TTS output. Constructed once in `init`
+    /// and shared across engine.connect, decoder init, and per-frame buffer
+    /// alloc — the allocator was hot at ~50 Hz during TTS.
+    let ttsOutputFormat: AVAudioFormat?
+
+    /// Shared JSON encoder/decoder for WS control messages. `sendClient` fires
+    /// on every transcript partial (~20-80/sec) — fresh encoders per call
+    /// were measurable in instruments.
+    static let jsonEncoder = JSONEncoder()
+    static let jsonDecoder = JSONDecoder()
+
+    /// `internal` for the `+Audio` extension's engine configure / teardown.
+    let audioEngine = AVAudioEngine()
+    /// Internal so the TTS playback chain in `TtsPlayback.swift` can drive it.
     let playerNode = AVAudioPlayerNode()
 
-    /// FluidAudio Parakeet EOU streaming ASR (English; built-in EOU).
-    /// Loaded lazily on first `prewarm()` when the active language is
-    /// English; reused across reconnects. (Internal so the engine-selection
-    /// helpers in `VoiceReadiness.swift` can resolve it.)
+    /// FluidAudio Parakeet streaming ASR (English; built-in EOU). Loaded
+    /// lazily on first `prewarm()` for English.
     let parakeetStt = FluidAudioStt()
-    /// FluidAudio Qwen3 ASR + VAD-driven EOU (Mandarin, plus future
-    /// Spanish / Greek / Korean / Japanese — Qwen3 is multilingual).
-    /// Loaded lazily when the active language is non-English.
+    /// FluidAudio Qwen3 ASR + VAD (Mandarin + multilingual). Loaded lazily
+    /// for non-English.
     let qwen3Stt = FluidAudioQwen3Stt()
-    /// Latest user-selected language from daemon settings. Refreshed by
-    /// `refreshDaemonState()` so presence checks + readiness reflect the
-    /// current pick. Used to resolve `activeStt` BEFORE a WS session opens.
-    /// Once `connect()` runs, `sessionSttLanguage` takes over so a settings
-    /// change mid-session doesn't swap the engine under live audio.
+    /// Latest user-selected language from daemon settings. Used to resolve
+    /// `activeStt` before a WS session opens; `sessionSttLanguage` locks for
+    /// the session after `connect()`.
     var activeSttLanguage: String = "en"
 
-    /// Language captured at `connect()` time and held until `disconnect()`.
-    /// `activeStt` reads this when set; otherwise falls back to
-    /// `activeSttLanguage`. Locks the engine to one for the WS session.
-    /// (Internal so the engine-selection helpers in VoiceReadiness.swift
-    /// can read it.)
+    /// Language captured at `connect()` time and held until `disconnect()`,
+    /// so a mid-session settings change doesn't swap engines under live audio.
     var sessionSttLanguage: String?
 
     /// Per-language "have I successfully called loadModels on this engine"
@@ -128,11 +171,15 @@ public final class VoicePipeline {
     /// actor hop on every prewarm + lets a language switch correctly
     /// re-trigger a load for the new engine.
     private var loadedLanguages: Set<String> = []
-    private var sttLoaded: Bool {
+    /// `internal` so the `+Audio` extension can gate FluidAudio feeding
+    /// on STT model readiness.
+    var sttLoaded: Bool {
         self.loadedLanguages.contains(self.effectiveLanguage)
     }
+
     /// Turn_id minted on first partial; reused on EOU; cleared after send.
-    private var pendingTurnId: String?
+    /// `internal` so `+Audio.tearDownAudio` can clear it on engine rebuild.
+    var pendingTurnId: String?
 
     // Engine helpers (`effectiveLanguage`, `activeStt`, `activeModelIsInstalled`)
     // live in VoiceReadiness.swift.
@@ -152,13 +199,33 @@ public final class VoicePipeline {
     /// `stop()` + `play()` (which resets the player's clock).
     var turnFrameBase: AVAudioFramePosition = 0
 
-    private var converter: AVAudioConverter?
-    private var pcmAccumulator: [Int16] = []
+    /// `internal` so the `+Audio` extension can rebuild this on engine
+    /// configure / tear down.
+    var converter: AVAudioConverter?
+    /// `internal` so the `+Audio` extension can walk the int16 buffer
+    /// accumulator from the tap callback.
+    var pcmAccumulator: [Int16] = []
+    /// Client-requested mute — gates FluidAudio feeding so we don't
+    /// transcribe during silence the user is enforcing. Toggled by the
+    /// daemon's mute/unmute Control messages echoed locally.
+    /// `internal` so the `+Audio` extension's input handler can read it.
+    var muted: Bool = false
 
     private let urlSession = URLSession(configuration: .default)
-    private var task: URLSessionWebSocketTask?
+    /// `internal` so the WebSocket extension can read/write through it.
+    var task: URLSessionWebSocketTask?
     private var sessionId: String = ""
-    private var keepaliveTask: Task<Void, Never>?
+    /// `internal` so the WebSocket extension owns its lifecycle.
+    var keepaliveTask: Task<Void, Never>?
+    /// Decay loop for `ttsOutputLevel` between decoded chunks; owned at
+    /// pipeline scope so disconnect/teardown cancels it. See TtsPlayback.
+    var ttsLevelDecayTask: Task<Void, Never>?
+    /// Monotonic timestamp (CACurrentMediaTime / Date.timeIntervalSince1970)
+    /// of the last RMS sample handed in by the playback tap. The decay
+    /// loop reads this to skip its tick when the tap is actively driving
+    /// the envelope — otherwise decay would fight RMS at every frame and
+    /// produce a visible sawtooth in the mouth animation.
+    var lastTtsRmsAt: TimeInterval = 0
     /// Retained `NSObjectProtocol` tokens for the NotificationCenter
     /// observers added at init time. NotificationCenter holds its own
     /// strong refs to the closures, so failing to retain these doesn't
@@ -169,69 +236,95 @@ public final class VoicePipeline {
     /// Mirror of the daemon's 25s keepalive cadence. Pongs from our pings
     /// keep the daemon's recv-timeout window fresh; symmetric client-side
     /// pings cover the case where the daemon stalls.
-    private let keepalivePingIntervalNs: UInt64 = 25_000_000_000
+    /// `internal` so the WebSocket extension's keepalive loop can read it.
+    let keepalivePingIntervalNs: UInt64 = 25_000_000_000
 
-    private var isWarm = false
+    /// `internal` so the audio-device hot-swap extension can re-set this
+    /// after a teardown/rebuild cycle.
+    var isWarm = false
+
+    /// Tracks whether we've registered the CoreAudio default-input listener.
+    /// One-shot for the process lifetime — the singleton pipeline never
+    /// tears this down. `internal` so the dedicated audio-device extension
+    /// can read it (kept here so isWarm + this flag live next to each other).
+    var inputDeviceListenerRegistered = false
+    /// Mirror flag for the default-OUTPUT device listener.
+    var outputDeviceListenerRegistered = false
+    /// Debounce + dedup for the device-change reconfigure. Multiple HAL
+    /// callbacks fire per plug/unplug event (driver init + format change +
+    /// stream-restart). We coalesce them into a single rebuild.
+    var deviceChangeReconfigureTask: Task<Void, Never>?
+    /// `true` when an output-device change arrived during active TTS
+    /// playback and we deferred the rebuild to avoid cutting audio mid-
+    /// syllable. Drained by the next `applyPhase(.listening)` transition.
+    var pendingOutputDeviceRebuild = false
 
     /// Barge-in detection tuning. During `.speaking`, sustained mic energy
     /// above `bargeInRmsDbfs` for `bargeInFramesNeeded` consecutive 20ms
     /// frames (= 60ms) sends a `barge_in` message. VPIO AEC removes most of
     /// BoBe's own voice from the mic; the higher dBFS floor (vs. normal
     /// speech detection at -45) avoids residual-echo false positives.
-    private let bargeInRmsDbfs: Float = -40
-    private let bargeInFramesNeeded: Int = 3
+    /// `internal` — used by `+Audio.checkBargeIn`.
+    let bargeInRmsDbfs: Float = -40
+    let bargeInFramesNeeded: Int = 3
     // Internal so `TtsPlayback.truncatePlayback` can reset them on barge-in.
     var bargeInCount: Int = 0
     var bargeInSent: Bool = false
 
     private init() {
-        self.audioEngine.attach(self.playerNode)
-        // Kokoro native format → mainMixer → outputNode; VPIO needs the
-        // reference signal at the output node for AEC.
-        if let format = AVAudioFormat(
+        self.ttsOutputFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: self.playbackSampleRate,
             channels: 1,
             interleaved: false
-        ) {
+        )
+        self.audioEngine.attach(self.playerNode)
+        // Kokoro native format → mainMixer → outputNode; VPIO needs the
+        // reference signal at the output node for AEC.
+        if let format = self.ttsOutputFormat {
             self.audioEngine.connect(
                 self.playerNode,
                 to: self.audioEngine.mainMixerNode,
                 format: format
             )
         }
-        // Centralized refresh so the four readiness signals don't drift
-        // after wizard or settings mutations.
-        for name in [Notification.Name.bobeWelcomeCompleted, .bobeVoiceConfigChanged] {
-            let token = NotificationCenter.default.addObserver(
-                forName: name,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    await self?.refreshDaemonState()
-                }
+        // Wizard completion is a genuine cross-module broadcast (SetupWindow
+        // → pipeline + BoBeApp.handleWelcomeCompleted both listen). Voice
+        // settings mutations go direct via `refreshDaemonState()` from the
+        // VoicePanel call sites — no NC round-trip needed there.
+        let token = NotificationCenter.default.addObserver(
+            forName: .bobeWelcomeCompleted,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refreshDaemonState()
             }
-            self.notificationObservers.append(token)
         }
+        self.notificationObservers.append(token)
     }
 
     // MARK: - Lifecycle
 
     /// Pre-warm VPIO/AGC so the first ~300ms-1s of speech isn't attenuated.
-    /// STT model loading is now decoupled — call `bootstrapSttPresence()`
-    /// once at boot to set readiness based on filesystem, then
-    /// `ensureSttLoaded()` lazily in the background. Idempotent.
+    /// Also kicks off STT model loading. Called from `connect()` — i.e.
+    /// the user has explicitly toggled the mic on, so activating
+    /// `setVoiceProcessingEnabled(true)` (which triggers macOS's
+    /// system-wide audio ducking via VPIO) is appropriate.
+    ///
+    /// **Not** called eagerly at overlay-appear anymore — see
+    /// `prewarmSttOnly()`. Eager VPIO startup ducked all other audio for
+    /// the entire app lifetime, which the user reasonably interpreted as
+    /// "BoBe is hijacking my speakers." Idempotent.
     public func prewarm() async {
         // If the model is on disk, set ready immediately so the mic isn't
         // gated on FluidAudio's ANE warm-up. The actor's `loadModels`
         // still has to run before the first audio buffer reaches it — kick
         // it off in the background, but don't block.
         self.bootstrapSttPresence()
-        if self.sttStatus != .ready {
-            // No presence yet — caller (wizard or settings) needs to drive
-            // an explicit `ensureSttLoaded()`. Don't auto-download here.
-        } else if !self.sttLoaded {
+        // When the model isn't on disk we never auto-download here —
+        // wizard/settings drive an explicit ensureSttLoaded().
+        if self.sttStatus == .ready, !self.sttLoaded {
             Task { [weak self] in await self?.ensureSttLoaded() }
         }
         guard !self.isWarm else { return }
@@ -240,7 +333,27 @@ public final class VoicePipeline {
             self.isWarm = true
         } catch {
             self.lastError = "voice prewarm: \(error.localizedDescription)"
-            logger.error("prewarm failed: \(error.localizedDescription)")
+            logger.error("prewarm failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// STT-only warmup. Loads the speech model into memory so the first
+    /// audio frame after `toggle()` has STT ready, but **does NOT** start
+    /// the audio engine.
+    ///
+    /// Why this matters: `configureEngine()` calls
+    /// `setVoiceProcessingEnabled(true)` on the input + output nodes,
+    /// which activates macOS's VPIO AudioUnit. VPIO automatically ducks
+    /// every other app's audio system-wide for as long as the engine is
+    /// running — and BoBe's engine used to be eagerly prewarmed on every
+    /// overlay appear, so other apps stayed quiet until BoBe was quit.
+    /// Now we keep VPIO off until the user actually toggles the mic.
+    /// First-phoneme attenuation (~300ms-1s) is the cost; getting the
+    /// user's music back is the benefit.
+    public func prewarmSttOnly() async {
+        self.bootstrapSttPresence()
+        if self.sttStatus == .ready, !self.sttLoaded {
+            Task { [weak self] in await self?.ensureSttLoaded() }
         }
     }
 
@@ -284,25 +397,31 @@ public final class VoicePipeline {
             }
             self.loadedLanguages.insert(language)
             self.sttStatus = .ready
-            logger.info("FluidAudio STT loaded (language=\(language))")
+            logger.info("FluidAudio STT loaded (language=\(language, privacy: .public))")
         } catch is VoiceLoadTimeout {
             let msg = "STT load timed out after \(Int(timeoutSeconds))s"
             self.lastError = msg
             self.sttStatus = .failed(msg)
-            logger.error("FluidAudio STT load timed out (language=\(language))")
+            logger.error("FluidAudio STT load timed out (language=\(language, privacy: .public))")
         } catch {
             let msg = error.localizedDescription
             self.lastError = "STT load: \(msg)"
             self.sttStatus = .failed(msg)
-            logger.error("FluidAudio STT load failed (language=\(language)): \(msg)")
+            logger.error("FluidAudio STT load failed (language=\(language, privacy: .public)): \(msg, privacy: .public)")
         }
+    }
+
+    /// Generate a hyphen-stripped lowercase UUID-backed turn id. Shape
+    /// expected by the daemon for transcript_partial / transcript_final.
+    private static func mintTurnId() -> String {
+        "voice_\(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: ""))"
     }
 
     /// Daemon needs the partial for cancel-phrase + MinWords gating.
     private func handleSttPartial(_ text: String) {
         guard !text.isEmpty else { return }
         if self.pendingTurnId == nil {
-            self.pendingTurnId = "voice_\(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: ""))"
+            self.pendingTurnId = Self.mintTurnId()
         }
         let turnId = self.pendingTurnId ?? ""
         self.partialTranscript = text
@@ -323,7 +442,7 @@ public final class VoicePipeline {
             logger.debug("voice.eou_after_disconnect_ignored")
             return
         }
-        let turnId = self.pendingTurnId ?? "voice_\(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: ""))"
+        let turnId = self.pendingTurnId ?? Self.mintTurnId()
         self.pendingTurnId = nil
         self.partialTranscript = ""
         let engine = self.activeStt
@@ -368,7 +487,7 @@ public final class VoicePipeline {
         self.receiveLoop()
         self.startKeepalive()
 
-        self.sessionId = "voice-\(Int(Date().timeIntervalSince1970))"
+        self.sessionId = "voice-\(Int(Date.now.timeIntervalSince1970))"
         let sid = self.sessionId
         // Per-WS voice prefs sourced from the daemon settings mirror that
         // `refreshDaemonState` keeps current. Sending them explicitly in
@@ -407,7 +526,7 @@ public final class VoicePipeline {
         Task {
             if let oldTask {
                 let abort = ClientVoiceMessage.control(action: .abort)
-                if let data = try? JSONEncoder().encode(abort),
+                if let data = try? Self.jsonEncoder.encode(abort),
                    let text = String(data: data, encoding: .utf8) {
                     try? await oldTask.send(.string(text))
                 }
@@ -423,22 +542,9 @@ public final class VoicePipeline {
         self.sessionSttLanguage = nil
     }
 
-    /// Reverses `configureEngine`. Idempotent — safe to call when not warm.
-    private func tearDownAudio() {
-        guard self.isWarm else { return }
-        self.audioEngine.inputNode.removeTap(onBus: 0)
-        self.playerNode.stop()
-        self.audioEngine.stop()
-        self.converter = nil
-        self.pcmAccumulator.removeAll(keepingCapacity: false)
-        self.pendingTurnId = nil
-        // STT model itself stays loaded across reconnects; just clear state.
-        let engine = self.activeStt
-        Task { try? await engine.reset() }
-        self.bargeInCount = 0
-        self.bargeInSent = false
-        self.isWarm = false
-    }
+    // `tearDownAudio()` lives in `VoicePipeline+Audio.swift` alongside
+    // `configureEngine()` — both touch the same internal state and the
+    // pairing is clearer when they sit next to each other.
 
     public func toggle(daemonBaseURL: URL) async {
         switch self.state {
@@ -446,7 +552,7 @@ public final class VoicePipeline {
             self.connect(daemonBaseURL: daemonBaseURL)
             var waited = 0.0
             while self.state == .connecting, waited < 2.0 {
-                try? await Task.sleep(nanoseconds: 100_000_000)
+                try? await Task.sleep(for: .milliseconds(100))
                 waited += 0.1
             }
             if self.state == .connecting {
@@ -479,8 +585,9 @@ public final class VoicePipeline {
             return
         }
         let abort = ClientVoiceMessage.control(action: .abort)
-        guard let data = try? JSONEncoder().encode(abort),
-              let text = String(data: data, encoding: .utf8) else { return }
+        guard let data = try? Self.jsonEncoder.encode(abort),
+              let text = String(data: data, encoding: .utf8)
+        else { return }
         Task { [weak self, weak task] in
             try? await task?.send(.string(text))
             await MainActor.run {
@@ -489,312 +596,11 @@ public final class VoicePipeline {
         }
     }
 
-    // MARK: - Audio engine
-
-    private func configureEngine() throws {
-        let inputNode = self.audioEngine.inputNode
-        try inputNode.setVoiceProcessingEnabled(true)
-        // VPIO on the output node too — gives Apple's AEC a reference signal
-        // for AEC during full-duplex (barge-in path). Required by
-        // the architecture doc; on macOS it's idempotent if already enabled.
-        try self.audioEngine.outputNode.setVoiceProcessingEnabled(true)
-
-        let inputFormat = inputNode.inputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0 else {
-            throw VoiceError.runtime("input sample rate is 0 — no mic device?")
-        }
-        guard let int16Format = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: self.captureSampleRate,
-            channels: 1,
-            interleaved: false
-        ) else {
-            throw VoiceError.runtime("could not create Int16 target format")
-        }
-        guard let converter = AVAudioConverter(from: inputFormat, to: int16Format) else {
-            throw VoiceError.runtime("could not create AVAudioConverter")
-        }
-        // VPIO on macOS delivers multichannel deinterleaved Float32. Channel 0
-        // is the AEC'd mic; channels 1+ are reference signals. Default downmix
-        // would sum them all and mask AEC. Force channel 0 only.
-        if inputFormat.channelCount > 1 {
-            converter.channelMap = [NSNumber(value: 0)]
-        }
-        self.converter = converter
-
-        // installTap's block runs on the realtime audio dispatch queue. Marked
-        // @Sendable so it doesn't inherit @MainActor isolation from the
-        // enclosing class — without this, Swift 6's runtime isolation check
-        // crashes the realtime queue the moment audio flows.
-        let tapBlock: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { [weak self] buffer, _ in
-            DispatchQueue.main.async {
-                self?.handleInputBuffer(buffer)
-            }
-        }
-        inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat, block: tapBlock)
-
-        self.audioEngine.prepare()
-        try self.audioEngine.start()
-        self.playerNode.play()
-        logger.info("voice engine configured; input \(describe(inputFormat))")
-    }
-
-    private func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard self.task != nil,
-              let converter = self.converter else { return }
-        switch self.state {
-        case .idle, .connecting, .failed:
-            return
-        case .listening, .capturing, .thinking, .speaking, .cancelling:
-            break
-        }
-
-        let outFormat = converter.outputFormat
-        let cap = AVAudioFrameCount(
-            Double(buffer.frameLength) * outFormat.sampleRate / buffer.format.sampleRate
-        ) + 16
-        guard let outBuf = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: cap) else { return }
-
-        final class FedState: @unchecked Sendable { var fed = false }
-        let fedState = FedState()
-        var err: NSError?
-        let status = converter.convert(to: outBuf, error: &err) { _, status in
-            if fedState.fed {
-                status.pointee = .noDataNow
-                return nil
-            }
-            fedState.fed = true
-            status.pointee = .haveData
-            return buffer
-        }
-        if status == .error || err != nil {
-            self.lastError = "convert: \(err?.localizedDescription ?? "?")"
-            logger.error("convert: \(err?.localizedDescription ?? "?")")
-            return
-        }
-        guard let int16Ptr = outBuf.int16ChannelData?[0] else { return }
-        let count = Int(outBuf.frameLength)
-        let samples = UnsafeBufferPointer(start: int16Ptr, count: count)
-        self.pcmAccumulator.append(contentsOf: samples)
-
-        while self.pcmAccumulator.count >= self.rmsFrameSamples {
-            let slice = Array(self.pcmAccumulator.prefix(self.rmsFrameSamples))
-            self.pcmAccumulator.removeFirst(self.rmsFrameSamples)
-            let frameRms = self.rmsDbfs(of: slice)
-            self.publishInputLevel(frameRms: frameRms)
-            self.checkBargeIn(frameRms: frameRms)
-        }
-
-        // Feed the ORIGINAL Float32 buffer to FluidAudio — each engine
-        // resamples internally (Parakeet) or via its own AVAudioConverter
-        // (Qwen3) so we don't need to pre-convert. Mute gates the feed too
-        // so we don't transcribe during user-requested silence.
-        guard !self.muted else { return }
-        // Deep-copy the buffer before the async hop. Apple's docs say tap
-        // buffer storage may be reused after the installTap block returns;
-        // capturing the buffer across `Task { ... await }` would let the
-        // realtime queue clobber the bytes under heavy CPU load before
-        // FluidAudio reads them. Helper lives in VoicePipelineSupport.
-        guard let copy = copyPcmFloatBuffer(buffer) else {
-            logger.warning("stt.buffer_copy_failed")
-            return
-        }
-        let engine = self.activeStt
-        Task { [copy] in
-            do {
-                try await engine.acceptAudio(copy)
-            } catch {
-                // FluidAudio errors during a streaming pass are non-fatal —
-                // most likely a transient model state issue. Log and keep
-                // capturing; the next chunk's processBufferedAudio will
-                // recover.
-                logger.warning("stt.acceptAudio failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// Client-requested mute — gates FluidAudio feeding so we don't
-    /// transcribe during silence the user is enforcing. Toggled by the
-    /// daemon's mute/unmute Control messages echoed locally.
-    private var muted: Bool = false
-
-    /// Map dBFS (-60..0) → 0...1 with a soft floor so quiet background hum
-    /// reads as ~0 and only deliberate speech moves the ring.
-    private func publishInputLevel(frameRms: Float) {
-        let floor: Float = -50
-        let normalized = max(0, min(1, (frameRms - floor) / -floor))
-        // Light EMA smoothing — 60Hz updates of raw RMS look jittery.
-        let smoothed = (self.inputLevel * 0.6) + (normalized * 0.4)
-        self.inputLevel = smoothed
-    }
-
-    private func rmsDbfs(of samples: [Int16]) -> Float {
-        guard !samples.isEmpty else { return -100 }
-        var sumSquares: Double = 0
-        for s in samples {
-            let f = Double(s) / 32_768.0
-            sumSquares += f * f
-        }
-        let rms = sqrt(sumSquares / Double(samples.count))
-        return rms > 1e-9 ? Float(20 * log10(rms)) : -100
-    }
-
-    /// Per-frame barge-in detector. Only fires during `.speaking`; resets in
-    /// every other state so we don't carry stale counts between turns. Sends
-    /// `barge_in` with the current playback position so the daemon can
-    /// truncate the persisted assistant turn to what the user actually heard.
-    private func checkBargeIn(frameRms: Float) {
-        guard self.state == .speaking else {
-            self.bargeInCount = 0
-            self.bargeInSent = false
-            return
-        }
-        if frameRms > self.bargeInRmsDbfs {
-            self.bargeInCount += 1
-            if self.bargeInCount >= self.bargeInFramesNeeded, !self.bargeInSent {
-                self.bargeInSent = true
-                let playedMs = self.currentPlaybackMs()
-                let tsMs = UInt64(Date().timeIntervalSince1970 * 1_000)
-                logger.info("voice.barge_in_sending playedMs=\(playedMs)")
-                Task { [weak self] in
-                    await self?.sendClient(.bargeIn(tsMs: tsMs, playbackMsPlayed: playedMs))
-                }
-            }
-        } else {
-            self.bargeInCount = 0
-        }
-    }
-
-    /// Best-effort current playback position in ms, derived from the player
-    /// node's render clock. ~100ms staleness is fine for truncation math.
-    private func currentPlaybackMs() -> UInt64 {
-        let frames = self.playedFramesThisTurn()
-        let ms = Double(frames) * 1_000.0 / self.playbackSampleRate
-        return UInt64(max(0, ms))
-    }
-
-    // MARK: - WS receive
-
-    private func receiveLoop() {
-        guard let currentTask = self.task else { return }
-        currentTask.receive { [weak self, weak currentTask] result in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                // Stale callback from an old WS task — discard.
-                guard self.task === currentTask else { return }
-                switch result {
-                case let .success(msg):
-                    self.handleIncoming(msg)
-                    self.receiveLoop()
-                case let .failure(err):
-                    self.lastError = "recv: \(err.localizedDescription)"
-                    logger.error("recv: \(err.localizedDescription)")
-                    self.state = .failed(err.localizedDescription)
-                }
-            }
-        }
-    }
-
-    private func handleIncoming(_ msg: URLSessionWebSocketTask.Message) {
-        switch msg {
-        case let .string(text):
-            self.handleControlJson(text)
-        case let .data(bytes):
-            self.handleAudioFrame(bytes)
-        @unknown default:
-            break
-        }
-    }
-
-    private func handleControlJson(_ text: String) {
-        guard let data = text.data(using: .utf8) else { return }
-        let decoded: ServerVoiceMessage
-        do {
-            decoded = try JSONDecoder().decode(ServerVoiceMessage.self, from: data)
-        } catch {
-            logger.warning("malformed control JSON: \(text)")
-            return
-        }
-        switch decoded {
-        case let .helloAck(voicePack, _):
-            logger.info("voice.hello_ack voicePack=\(voicePack)")
-        case let .state(phase, _):
-            self.applyPhase(phase)
-        case let .transcriptFinal(_, transcript):
-            if !transcript.isEmpty {
-                BobeStore.shared.appendUserVoiceMessage(transcript)
-            }
-        case .ttsEnd:
-            // Authoritative end-of-turn — daemon will follow with state(Listening).
-            self.partialTranscript = ""
-        case let .truncate(_, keepMs):
-            self.truncatePlayback(keepMs: keepMs)
-        case let .error(code, message):
-            self.lastError = "\(code): \(message)"
-            logger.error("server: \(code): \(message)")
-            // Errors during handshake should transition the mic UI to
-            // .failed immediately rather than waiting for the WS close
-            // to bounce us through receiveLoop's failure branch.
-            if self.state == .connecting {
-                self.state = .failed("\(code): \(message)")
-            }
-        case .unknown:
-            break
-        }
-    }
-
-    private func applyPhase(_ phase: VoicePhaseWire) {
-        switch phase {
-        case .idle: self.state = .idle
-        case .listening: self.state = .listening
-        case .thinking: self.state = .thinking
-        case .speaking:
-            // New turn — reset the per-turn schedule bookkeeping. Capture the
-            // current player sampleTime as the baseline so playedFramesThisTurn
-            // returns 0 right at turn start.
-            if self.state != .speaking {
-                self.scheduledChunks.removeAll(keepingCapacity: true)
-                self.nextScheduleFrame = 0
-                self.turnFrameBase = 0
-                self.sampleTimeBase = self.currentPlayerSampleTime()
-            }
-            self.state = .speaking
-            self.ensureDecoder()
-        }
-    }
-
-    // MARK: - Keepalive
-
-    private func startKeepalive() {
-        self.keepaliveTask?.cancel()
-        self.keepaliveTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: self?.keepalivePingIntervalNs ?? 25_000_000_000)
-                guard !Task.isCancelled else { return }
-                guard let self, let task = self.task else { return }
-                task.sendPing { error in
-                    if let error {
-                        logger.warning("voice keepalive ping failed: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
-    }
-
-    private func stopKeepalive() {
-        self.keepaliveTask?.cancel()
-        self.keepaliveTask = nil
-    }
-
-    private func sendClient(_ msg: ClientVoiceMessage) async {
-        guard let task = self.task else { return }
-        guard let data = try? JSONEncoder().encode(msg),
-              let text = String(data: data, encoding: .utf8) else { return }
-        do {
-            try await task.send(.string(text))
-        } catch {
-            self.lastError = "ws send text: \(error.localizedDescription)"
-            logger.error("ws send text: \(error.localizedDescription)")
-        }
-    }
+    // Audio engine setup + per-frame input handling lives in
+    // `VoicePipeline+Audio.swift`. The WS receive loop, control-message
+    // dispatch, applyPhase, keepalive helpers, and the canonical
+    // `sendClient(_:)` write path live in `VoicePipeline+WebSocket.swift`.
+    // CoreAudio default-input/output listeners live in
+    // `VoicePipeline+AudioDevice.swift`. Splits are purely organizational
+    // — the access surface is identical via the extensions.
 }

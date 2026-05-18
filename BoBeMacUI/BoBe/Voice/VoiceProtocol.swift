@@ -1,8 +1,3 @@
-// Wire-protocol Codable types for `/voice/stream`. Mirrors
-// BoBeService/src/speech/protocol.rs (snake_case JSON). Mode B only —
-// the client never sends audio; transcripts flow as JSON. Binary frames
-// are TTS audio from daemon → client (9-byte header + Opus packet).
-
 import Foundation
 
 enum VoiceControlAction: String, Codable {
@@ -131,31 +126,31 @@ enum ServerVoiceMessage: Decodable {
         let type = try c.decode(String.self, forKey: .type)
         switch type {
         case "hello_ack":
-            self = .helloAck(
-                voicePack: try c.decode(String.self, forKey: .voicePack),
-                playbackRate: try c.decode(UInt32.self, forKey: .playbackRate)
+            self = try .helloAck(
+                voicePack: c.decode(String.self, forKey: .voicePack),
+                playbackRate: c.decode(UInt32.self, forKey: .playbackRate)
             )
         case "state":
-            self = .state(
-                phase: try c.decode(VoicePhaseWire.self, forKey: .phase),
-                turnId: try c.decode(String.self, forKey: .turnId)
+            self = try .state(
+                phase: c.decode(VoicePhaseWire.self, forKey: .phase),
+                turnId: c.decode(String.self, forKey: .turnId)
             )
         case "transcript_final":
-            self = .transcriptFinal(
-                turnId: try c.decode(String.self, forKey: .turnId),
-                text: try c.decode(String.self, forKey: .text)
+            self = try .transcriptFinal(
+                turnId: c.decode(String.self, forKey: .turnId),
+                text: c.decode(String.self, forKey: .text)
             )
         case "tts_end":
-            self = .ttsEnd(turnId: try c.decode(String.self, forKey: .turnId))
+            self = try .ttsEnd(turnId: c.decode(String.self, forKey: .turnId))
         case "truncate":
-            self = .truncate(
-                turnId: try c.decode(String.self, forKey: .turnId),
-                keepMs: try c.decode(UInt64.self, forKey: .keepMs)
+            self = try .truncate(
+                turnId: c.decode(String.self, forKey: .turnId),
+                keepMs: c.decode(UInt64.self, forKey: .keepMs)
             )
         case "error":
-            self = .error(
-                code: try c.decode(String.self, forKey: .code),
-                message: try c.decode(String.self, forKey: .message)
+            self = try .error(
+                code: c.decode(String.self, forKey: .code),
+                message: c.decode(String.self, forKey: .message)
             )
         default:
             self = .unknown(type: type)
@@ -189,16 +184,21 @@ struct TtsFrameHeader {
     static let flagFirstOfTurn: UInt8 = 0b0000_0010
 
     static func parse(_ data: Data) -> (header: TtsFrameHeader, payload: Data)? {
-        guard data.count >= length else { return nil }
+        guard data.count >= self.length else { return nil }
         var chunkId: UInt64 = 0
-        for i in 0..<8 {
+        for i in 0 ..< 8 {
             chunkId = (chunkId << 8) | UInt64(data[data.startIndex + i])
         }
         let flags = data[data.startIndex + 8]
-        let payload = data.subdata(in: (data.startIndex + length)..<data.endIndex)
+        let payload = data.subdata(in: (data.startIndex + self.length) ..< data.endIndex)
         return (TtsFrameHeader(chunkId: chunkId, flags: flags), payload)
     }
 
-    var isFiller: Bool { flags & Self.flagFiller != 0 }
-    var isFirstOfTurn: Bool { flags & Self.flagFirstOfTurn != 0 }
+    var isFiller: Bool {
+        self.flags & Self.flagFiller != 0
+    }
+
+    var isFirstOfTurn: Bool {
+        self.flags & Self.flagFirstOfTurn != 0
+    }
 }

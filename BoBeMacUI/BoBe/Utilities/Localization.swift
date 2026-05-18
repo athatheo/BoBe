@@ -5,7 +5,7 @@ private let lock = OSAllocatedUnfairLock<Bundle?>(initialState: nil)
 
 enum L10n {
     static func setLocaleOverride(_ localeId: String?) {
-        let bundle = resolveBundle(for: localeId)
+        let bundle = self.resolveBundle(for: localeId)
         lock.withLock { $0 = bundle }
     }
 

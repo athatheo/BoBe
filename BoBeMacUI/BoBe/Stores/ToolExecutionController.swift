@@ -34,21 +34,22 @@ final class ToolExecutionController {
         let execution = ToolExecution(
             toolName: start.toolName,
             toolCallId: start.toolCallId,
-            status: .running,
-            startedAt: .now
+            status: .running
         )
         self.applyStateMutation { $0.toolExecutions.append(execution) }
     }
 
     private func handleComplete(_ complete: ToolCallCompletePayload) {
+        // The daemon sends `error`, `duration_ms`, and `completed_at` on
+        // every complete event, but the UI today only surfaces the
+        // `.running` filter — completion data is invisible. We parse the
+        // success/failure status to drop the entry from the running set;
+        // the rest of the payload is intentionally discarded.
         self.applyStateMutation { ctx in
             ctx.toolExecutions = ctx.toolExecutions.map { t in
                 guard t.toolCallId == complete.toolCallId else { return t }
                 var updated = t
                 updated.status = complete.success ? .success : .error
-                updated.error = complete.error
-                updated.durationMs = complete.durationMs
-                updated.completedAt = .now
                 return updated
             }
         }

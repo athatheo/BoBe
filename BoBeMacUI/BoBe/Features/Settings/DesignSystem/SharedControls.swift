@@ -20,6 +20,99 @@ struct BobeToggle: View {
     }
 }
 
+/// Top-aligned icon + title + description + indented body. Pattern used by
+/// every "flat" (non-collapsible) settings section so the engine flow
+/// doesn't look visually scrambled between Disclosure-style siblings.
+struct FlatSettingsSection<Content: View>: View {
+    let icon: String
+    let title: String
+    let description: String?
+    @ViewBuilder let content: Content
+    @Environment(\.theme) private var theme
+
+    init(
+        icon: String,
+        title: String,
+        description: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.icon = icon
+        self.title = title
+        self.description = description
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: self.icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(self.theme.colors.primary)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(self.title)
+                        .bobeTextStyle(.heading)
+                        .foregroundStyle(self.theme.colors.text)
+                    if let description = self.description {
+                        Text(description)
+                            .bobeTextStyle(.helper)
+                            .foregroundStyle(self.theme.colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                self.content
+            }
+            .padding(.leading, 30)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Red exclamation banner used at the top of every settings panel to
+/// surface a persist/load failure. Extracted from EnginePanel / VoicePanel /
+/// BehaviorPanel which had byte-identical inline copies.
+struct SettingsErrorBanner: View {
+    let message: String
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(self.theme.colors.primary)
+            Text(self.message)
+                .bobeTextStyle(.body)
+                .foregroundStyle(self.theme.colors.primary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.primary.opacity(0.08))
+        )
+    }
+}
+
+/// "Saved ✓" toast variant used by the same panels. Auto-dismiss timing
+/// lives on `SettingsDebouncer.scheduleToastClear` — this view is presentation only.
+struct SettingsSavedToast: View {
+    let message: String
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(self.theme.colors.secondary)
+            Text(self.message)
+                .bobeTextStyle(.helper)
+                .foregroundStyle(self.theme.colors.secondary)
+            Spacer()
+        }
+        .transition(.opacity)
+    }
+}
+
 struct AccentAddButton: View {
     var title = L10n.tr("settings.shared.action.add_new")
     let action: () -> Void
@@ -55,24 +148,56 @@ struct SettingsRow<Content: View>: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        // HStack restructure rationale:
+        //   Previously this row used a Grid where BOTH columns asked for
+        //   `.frame(maxWidth: .infinity)` — distribution was unpredictable
+        //   and greedy controls (BobeTextField with `width: nil`) could
+        //   squeeze the label to nothing, or long descriptions could push
+        //   the control out of view.
+        //
+        //   Today: label-column has `.frame(maxWidth: .infinity)` so it
+        //   absorbs remaining width; control-column has no `.infinity`
+        //   so it sits at its intrinsic size. The control wins width
+        //   negotiation by virtue of being non-flexible (intrinsic
+        //   always beats flexible at SwiftUI's layout pass when both are
+        //   in a non-flexible parent).
+        //
+        //   `.fixedSize(horizontal: false, vertical: true)` on the text
+        //   lets descriptions wrap freely within the label column's
+        //   allotted width. `alignment: .top` so a wrapped description
+        //   doesn't push the control row down vertically.
+        //
+        //   Callers that put a greedy control (TextField with no width)
+        //   into the content slot will still distort the row — they need
+        //   to pass an explicit width to BobeTextField. Most usages
+        //   already do; the few that didn't were fixed alongside this
+        //   restructure (e.g. EnginePanel.localProviderSection).
+        HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(self.label)
-                    .font(.system(size: 13, weight: .medium))
+                    .bobeTextStyle(.body)
+                    .fontWeight(.medium)
                     .foregroundStyle(self.theme.colors.text)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let description {
                     Text(description)
-                        .font(.system(size: 11))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer()
-            self.content
-            if let suffix {
-                Text(suffix)
-                    .font(.system(size: 11))
-                    .foregroundStyle(self.theme.colors.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(alignment: .center, spacing: 8) {
+                self.content
+                if let suffix {
+                    Text(suffix)
+                        .bobeTextStyle(.helper)
+                        .foregroundStyle(self.theme.colors.textMuted)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
     }
 }
@@ -243,49 +368,49 @@ struct CollapsibleSection<Content: View>: View {
 }
 
 #if !SPM_BUILD
-#Preview("BobeToggle") {
-    @Previewable @State var isOn = true
-    HStack(spacing: 20) {
-        BobeToggle(isOn: $isOn)
-        Text(isOn ? "On" : "Off")
-    }
-    .environment(\.theme, allThemes[0])
-    .padding()
-}
-
-#Preview("SettingsRow") {
-    @Previewable @State var toggle = true
-    VStack(spacing: 16) {
-        SettingsRow(label: "Enable Feature", description: "A helpful description") {
-            BobeToggle(isOn: $toggle)
+    #Preview("BobeToggle") {
+        @Previewable @State var isOn = true
+        HStack(spacing: 20) {
+            BobeToggle(isOn: $isOn)
+            Text(isOn ? "On" : "Off")
         }
-        SettingsRow(label: "Token Limit", suffix: "tokens") {
-            Text("4096")
-                .font(.system(size: 13, design: .monospaced))
+        .environment(\.theme, allThemes[0])
+        .padding()
+    }
+
+    #Preview("SettingsRow") {
+        @Previewable @State var toggle = true
+        VStack(spacing: 16) {
+            SettingsRow(label: "Enable Feature", description: "A helpful description") {
+                BobeToggle(isOn: $toggle)
+            }
+            SettingsRow(label: "Token Limit", suffix: "tokens") {
+                Text("4096")
+                    .font(.system(size: 13, design: .monospaced))
+            }
         }
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .frame(width: 400)
     }
-    .environment(\.theme, allThemes[0])
-    .padding()
-    .frame(width: 400)
-}
 
-#Preview("CollapsibleSection") {
-    @Previewable @State var toggle = true
-    CollapsibleSection(title: "Screen Capture", icon: "camera.fill", description: "Periodic screenshots", toggleBinding: $toggle) {
-        Text("Section content goes here")
+    #Preview("CollapsibleSection") {
+        @Previewable @State var toggle = true
+        CollapsibleSection(title: "Screen Capture", icon: "camera.fill", description: "Periodic screenshots", toggleBinding: $toggle) {
+            Text("Section content goes here")
+        }
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .frame(width: 400)
     }
-    .environment(\.theme, allThemes[0])
-    .padding()
-    .frame(width: 400)
-}
 
-#Preview("DebouncedNumberInput") {
-    @Previewable @State var value = 4096
-    SettingsRow(label: "Max Tokens") {
-        DebouncedNumberInput(value: $value, range: 1 ... 8192)
+    #Preview("DebouncedNumberInput") {
+        @Previewable @State var value = 4096
+        SettingsRow(label: "Max Tokens") {
+            DebouncedNumberInput(value: $value, range: 1 ... 8192)
+        }
+        .environment(\.theme, allThemes[0])
+        .padding()
+        .frame(width: 400)
     }
-    .environment(\.theme, allThemes[0])
-    .padding()
-    .frame(width: 400)
-}
 #endif

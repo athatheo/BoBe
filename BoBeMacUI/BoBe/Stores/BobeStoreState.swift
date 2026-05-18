@@ -40,7 +40,6 @@ struct ChatMessage: Identifiable, Sendable {
     let id: String
     let sender: MessageSender
     var content: String
-    let timestamp: Date
     var isStreaming: Bool
     var isPending: Bool
 
@@ -48,14 +47,12 @@ struct ChatMessage: Identifiable, Sendable {
         id: String = UUID().uuidString,
         sender: MessageSender,
         content: String,
-        timestamp: Date = .now,
         isStreaming: Bool = false,
         isPending: Bool = false
     ) {
         self.id = id
         self.sender = sender
         self.content = content
-        self.timestamp = timestamp
         self.isStreaming = isStreaming
         self.isPending = isPending
     }
@@ -69,10 +66,6 @@ struct ToolExecution: Identifiable, Sendable {
     let toolName: String
     let toolCallId: String
     var status: ToolExecutionStatus
-    var error: String?
-    var durationMs: Int?
-    let startedAt: Date
-    var completedAt: Date?
 }
 
 enum ToolExecutionStatus: String, Sendable {
@@ -109,8 +102,12 @@ struct BobeContext: Sendable {
     var conversationEnding = false
     var currentMessage = ""
     var messages: [ChatMessage] = []
+    /// Derived: `true` iff `messages.contains { $0.sender == .bobe }`.
+    /// Maintained inside `BobeStore.updateState` so callers (e.g. the
+    /// overlay's `chatViewportFloorHeight`) can read it in O(1) per body
+    /// eval instead of walking the array.
+    var hasBobeMessage: Bool = false
     var failedSendRecoveries: [FailedSendRecovery] = []
-    var activeIndicator: IndicatorType?
     var capturePermissionMissing = false
     var toolExecutions: [ToolExecution] = []
     var stateType: BobeStateType = .loading

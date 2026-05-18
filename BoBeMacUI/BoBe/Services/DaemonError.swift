@@ -4,17 +4,26 @@ import Foundation
 /// can distinguish "daemon not reachable" from "request was bad".
 enum DaemonError: Error, LocalizedError {
     case invalidResponse
-    case httpError(statusCode: Int, message: String)
+    case httpError(statusCode: Int, message: String, code: String? = nil)
     case connectionFailed
     case operationFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: "Invalid response from daemon"
-        case let .httpError(code, msg): "HTTP \(code): \(msg)"
+        case let .httpError(code, msg, _): "HTTP \(code): \(msg)"
         case .connectionFailed: "Failed to connect to daemon"
         case let .operationFailed(message): message
         }
+    }
+
+    /// Machine-readable error code from the daemon envelope (e.g.
+    /// `AUTH_REQUIRED`, `NO_ENTITLEMENTS`). `nil` for non-HTTP errors or
+    /// when the daemon didn't supply one. Callers branch on this to render
+    /// CTAs instead of raw status strings.
+    var daemonCode: String? {
+        if case let .httpError(_, _, code) = self { return code }
+        return nil
     }
 }
 

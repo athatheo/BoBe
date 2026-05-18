@@ -12,6 +12,8 @@ struct CloudAuthStepView: View {
 
     @State private var state: CloudAuthState = .checking
     @State private var pollTask: Task<Void, Never>?
+    @State private var showingSignInSheet = false
+    @State private var expertMode = ExpertMode.shared
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -37,6 +39,18 @@ struct CloudAuthStepView: View {
         }
         .task { await self.refresh() }
         .onDisappear { self.pollTask?.cancel() }
+        .sheet(isPresented: self.$showingSignInSheet) {
+            CopilotSignInSheet(
+                onSuccess: {
+                    self.showingSignInSheet = false
+                    Task { await self.refresh() }
+                },
+                onClose: {
+                    self.showingSignInSheet = false
+                    Task { await self.refresh() }
+                }
+            )
+        }
     }
 
     @ViewBuilder
@@ -118,12 +132,17 @@ struct CloudAuthStepView: View {
                 .keyboardShortcut(.defaultAction)
         case let .unauthenticated(_, cliPath):
             VStack(spacing: 8) {
-                Button(L10n.tr("setup.cloud_auth.open_terminal")) {
-                    CopilotSignIn.openLogin(cliPath: cliPath)
-                    // Auto-advance when Terminal sign-in finishes.
-                    self.startAuthPolling()
+                Button(L10n.tr("setup.cloud_auth.sheet.title")) {
+                    self.showingSignInSheet = true
                 }
                 .bobeButton(.primary, size: .regular)
+                if self.expertMode.isEnabled {
+                    Button(L10n.tr("setup.cloud_auth.open_terminal")) {
+                        CopilotSignIn.openLogin(cliPath: cliPath)
+                        self.startAuthPolling()
+                    }
+                    .bobeButton(.secondary, size: .small)
+                }
                 Button(L10n.tr("setup.cloud_auth.retry")) {
                     Task { await self.refresh() }
                 }
@@ -154,20 +173,66 @@ struct CloudAuthStepView: View {
 
     private func refresh() async {
         await MainActor.run { self.state = .checking }
-        do {
-            let resp = try await DaemonClient.shared.getAuthStatus()
+        // Hard ceiling on the initial fetch so a stuck daemon doesn't
+        // leave the user staring at a spinner forever. 30s is more than
+        // enough for /auth/status on a healthy install; longer than that
+        // means something is wrong and the user deserves to know.
+        let result = await Self.withTimeout(seconds: 30) {
+            try await DaemonClient.shared.getAuthStatus()
+        }
+        switch result {
+        case let .success(resp):
             await MainActor.run {
                 if resp.isAuthenticated {
                     self.pollTask?.cancel()
                     self.state = .authenticated(login: resp.login, authType: resp.authType)
                 } else {
-                    self.state = .unauthenticated(message: resp.statusMessage, cliPath: resp.cliPath)
+                    self.state = .unauthenticated(
+                        message: resp.statusMessage,
+                        cliPath: resp.cliPath
+                    )
                 }
             }
-        } catch {
+        case .timedOut:
             await MainActor.run {
-                self.state = .error(message: error.localizedDescription)
+                self.state = .error(message: L10n.tr("setup.cloud_auth.error.timeout"))
             }
+        case .failed:
+            await MainActor.run {
+                self.state = .error(message: L10n.tr("setup.cloud_auth.error.generic"))
+            }
+        }
+    }
+
+    /// Generic timeout wrapper. We don't surface the raw error to the UI
+    /// (it's almost always a daemon connection hiccup, not something the
+    /// user can act on), so we collapse into three discrete outcomes.
+    private enum TimedResult<T: Sendable> {
+        case success(T)
+        case timedOut
+        case failed
+    }
+
+    private static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async -> TimedResult<T> {
+        await withTaskGroup(of: TimedResult<T>.self) { group in
+            group.addTask {
+                do {
+                    let value = try await operation()
+                    return .success(value)
+                } catch {
+                    return .failed
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(seconds))
+                return .timedOut
+            }
+            let first = await group.next() ?? .failed
+            group.cancelAll()
+            return first
         }
     }
 

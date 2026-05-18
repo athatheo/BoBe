@@ -186,8 +186,8 @@ struct SettingsEditorSaveActions: View {
                     : L10n.tr("settings.shared.action.save"),
                 action: self.onSave
             )
-                .bobeButton(.primary, size: .small)
-                .disabled(!self.isDirty || self.isSaving)
+            .bobeButton(.primary, size: .small)
+            .disabled(!self.isDirty || self.isSaving)
         }
     }
 }

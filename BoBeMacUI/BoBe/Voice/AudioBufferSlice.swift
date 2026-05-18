@@ -15,7 +15,8 @@ func sliceInt16Buffer(
           offset + frames <= source.frameLength,
           let dst = AVAudioPCMBuffer(pcmFormat: source.format, frameCapacity: frames),
           let srcCh = source.int16ChannelData?[0],
-          let dstCh = dst.int16ChannelData?[0] else {
+          let dstCh = dst.int16ChannelData?[0]
+    else {
         return nil
     }
     dst.frameLength = frames

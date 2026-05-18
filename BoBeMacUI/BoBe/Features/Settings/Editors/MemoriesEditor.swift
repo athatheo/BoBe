@@ -93,11 +93,26 @@ struct MemoriesEditor: View {
 
     private var byteGauge: some View {
         HStack(spacing: 10) {
-            BobeLinearProgressBar(progress: self.byteProgress)
+            BobeLinearProgressBar(progress: self.byteProgress, tint: self.gaugeTint)
                 .frame(maxWidth: .infinity)
             Text(self.byteLabel)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(self.theme.colors.textMuted)
+        }
+    }
+
+    /// Value-coded health color for the memory size gauge. A positional
+    /// gradient would imply "more colorful = more memories", which has no
+    /// meaning — what the user cares about is whether they're approaching
+    /// the soft cap and should consolidate.
+    private var gaugeTint: Color {
+        switch self.byteProgress {
+        case ..<0.75:
+            self.theme.colors.secondary
+        case ..<0.92:
+            self.theme.colors.tertiary
+        default:
+            self.theme.colors.primary
         }
     }
 
@@ -120,10 +135,10 @@ struct MemoriesEditor: View {
             Button(self.isSaving
                 ? L10n.tr("settings.shared.action.saving")
                 : L10n.tr("settings.shared.action.save")) {
-                Task { await self.save() }
-            }
-            .bobeButton(.primary, size: .small)
-            .disabled(!self.isDirty || self.isSaving)
+                    Task { await self.save() }
+                }
+                .bobeButton(.primary, size: .small)
+                .disabled(!self.isDirty || self.isSaving)
         }
     }
 

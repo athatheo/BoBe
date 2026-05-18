@@ -147,14 +147,14 @@ final class FocusAwareTextView: NSTextView {
 }
 
 #if !SPM_BUILD
-#Preview("Code Editor") {
-    @Previewable @State var text = """
-    You are BoBe, a friendly AI companion.
-    Be helpful, proactive, and concise.
-    Observe the user's workflow and offer suggestions.
-    """
-    CodeEditor(text: $text, theme: allThemes[0])
-        .frame(width: 500, height: 300)
-        .padding()
-}
+    #Preview("Code Editor") {
+        @Previewable @State var text = """
+        You are BoBe, a friendly AI companion.
+        Be helpful, proactive, and concise.
+        Observe the user's workflow and offer suggestions.
+        """
+        CodeEditor(text: $text, theme: allThemes[0])
+            .frame(width: 500, height: 300)
+            .padding()
+    }
 #endif

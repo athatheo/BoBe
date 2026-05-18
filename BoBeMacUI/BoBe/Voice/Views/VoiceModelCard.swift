@@ -15,7 +15,17 @@ struct VoiceModelCard: View {
     /// Optional daemon-side progress (only daemon models surface this — the
     /// client-side FluidAudio path doesn't expose byte progress today).
     let daemonProgress: VoiceModelProgress?
+    /// Per-card install action. Nil = card has no install affordance (e.g.
+    /// during indeterminate "checking" state). Buttons render only when
+    /// status is `.missing` or `.failed` so installed models don't show a
+    /// redundant action.
+    var onInstall: (() async -> Void)?
+    /// Per-card uninstall action. Renders only when `.installed`. Doing
+    /// this from the card (instead of a hidden menu) makes it discoverable
+    /// — the user asked for it explicitly.
+    var onUninstall: (() async -> Void)?
 
+    @State private var isWorking = false
     @Environment(\.theme) private var theme
 
     enum Status: Equatable {
@@ -59,6 +69,7 @@ struct VoiceModelCard: View {
                 .foregroundStyle(self.theme.colors.textMuted)
                 .help(self.location)
                 Spacer()
+                self.actionButtons
             }
             if case let .downloading(_, _, percent) = self.status {
                 ProgressView(value: Double(percent ?? 0), total: 100)
@@ -81,6 +92,39 @@ struct VoiceModelCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(self.theme.colors.border.opacity(0.6), lineWidth: 1)
         )
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 6) {
+            switch self.status {
+            case .missing, .failed:
+                if let onInstall {
+                    Button(self.isWorking ? L10n.tr("settings.voice.model.installing") : L10n.tr("settings.voice.model.install")) {
+                        self.runAction(onInstall)
+                    }
+                    .bobeButton(.primary, size: .small)
+                    .disabled(self.isWorking)
+                }
+            case .installed:
+                if let onUninstall {
+                    Button(self.isWorking ? L10n.tr("settings.voice.model.uninstalling") : L10n.tr("settings.voice.model.uninstall")) {
+                        self.runAction(onUninstall)
+                    }
+                    .bobeButton(.ghost, size: .small)
+                    .disabled(self.isWorking)
+                }
+            case .downloading, .unknown:
+                EmptyView()
+            }
+        }
+    }
+
+    private func runAction(_ action: @escaping () async -> Void) {
+        self.isWorking = true
+        Task {
+            await action()
+            self.isWorking = false
+        }
     }
 
     private var statusIcon: some View {
@@ -123,8 +167,8 @@ struct VoiceModelCard: View {
     private var statusLabel: String {
         switch self.status {
         case .installed: return "Installed"
-        case .missing: return "Missing — install required"
-        case .downloading(let down, let total, let percent):
+        case .missing: return "Missing, install required"
+        case let .downloading(down, total, percent):
             if let percent { return "Downloading \(percent)%" }
             if let total { return "Downloading \(self.format(down)) / \(self.format(total))" }
             return "Downloading…"
@@ -135,18 +179,17 @@ struct VoiceModelCard: View {
 
     private var statusBadgeColor: Color {
         switch self.status {
-        case .installed: return self.theme.colors.secondary
-        case .missing, .failed: return self.theme.colors.primary
-        case .downloading: return self.theme.colors.primary
-        case .unknown: return self.theme.colors.textMuted
+        case .installed: self.theme.colors.secondary
+        case .missing, .failed: self.theme.colors.primary
+        case .downloading: self.theme.colors.primary
+        case .unknown: self.theme.colors.textMuted
         }
     }
 
     /// Tail of the path for compactness. Hover surfaces the full path.
     private var shortLocation: String {
-        let stripped = self.location
+        self.location
             .replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        return stripped
     }
 
     private func format(_ bytes: UInt64) -> String {

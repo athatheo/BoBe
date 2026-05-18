@@ -23,7 +23,7 @@ extension BobeStore {
                         try await self.client.startCapture()
                         captureActive = true
                         break
-                    } catch let DaemonError.httpError(statusCode, message)
+                    } catch let DaemonError.httpError(statusCode, message, _)
                         where statusCode == 409 || message.localizedCaseInsensitiveContains("already") {
                         captureActive = true
                         break

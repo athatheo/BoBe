@@ -3,10 +3,6 @@ import SwiftUI
 
 extension Notification.Name {
     static let bobeWelcomeCompleted = Notification.Name("bobe.welcomeCompleted")
-    /// Fires when the voice install / settings state changes — Settings →
-    /// Voice posts this after a successful reinstall or after PATCHing
-    /// voice fields. Observers (overlay MicButton) refresh their gate.
-    static let bobeVoiceConfigChanged = Notification.Name("bobe.voiceConfigChanged")
 }
 
 @MainActor
@@ -17,7 +13,7 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
 
-    private override init() {}
+    override private init() {}
 
     var isOnboardingCompleted: Bool {
         UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey)
@@ -30,7 +26,7 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
     func show() {
         if let window {
             window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
             return
         }
 
@@ -50,7 +46,7 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
         )
         window.delegate = self
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         self.window = window
     }
 

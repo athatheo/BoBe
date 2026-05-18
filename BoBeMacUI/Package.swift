@@ -32,6 +32,11 @@ let package = Package(
             swiftSettings: [
                 .define("SPM_BUILD")
             ]
+        ),
+        .testTarget(
+            name: "BoBeTests",
+            dependencies: ["BoBe"],
+            path: "Tests/BoBeTests"
         )
     ]
 )

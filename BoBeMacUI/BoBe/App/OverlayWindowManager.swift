@@ -86,6 +86,16 @@ final class OverlayWindowManager {
         self.panel?.isVisible ?? false
     }
 
+    /// Show if hidden, hide if visible. Used by the main-menu Toggle Overlay
+    /// command (Cmd+Shift+B) and the tray Show/Hide item.
+    func toggle() {
+        if self.isVisible {
+            self.hide()
+        } else {
+            self.show()
+        }
+    }
+
     func close() {
         self.panel?.close()
         self.panel = nil

@@ -32,12 +32,14 @@ actor FluidAudioStt: VoiceSttEngine {
 
     /// Variant tuning — `.ms320` is the balanced default. The 160ms variant
     /// is lowest-latency; 1280ms is highest-throughput.
-    /// `eouDebounceMs` defaults to Parakeet's documented "balanced" value;
-    /// callers update it via `setEouDebounceMs(_:)` to honor the user's
-    /// pause sensitivity preference.
+    /// `eouDebounceMs` defaults to the `PauseSensitivityMs.balanced` value
+    /// (800ms) so unconfigured callers match the user-facing "Balanced"
+    /// preset. The init default is rarely used in practice: `VoiceReadiness`
+    /// reads the daemon's `voice.pause_sensitivity` and calls
+    /// `setEouDebounceMs(_:)` at startup.
     init(
         chunkSize: StreamingChunkSize = .ms320,
-        eouDebounceMs: Int = 1280
+        eouDebounceMs: Int = PauseSensitivityMs.balanced
     ) {
         self.chunkSize = chunkSize
         self.eouDebounceMs = eouDebounceMs
@@ -178,8 +180,8 @@ enum FluidAudioSttError: Error {
 /// `eouDebounceMs` as a `public var` but no setter method, so writing it
 /// from outside the actor requires going through an isolated method on
 /// the actor — which extensions of actors get for free.
-extension StreamingEouAsrManager {
-    public func updateEouDebounceMs(_ value: Int) {
+public extension StreamingEouAsrManager {
+    func updateEouDebounceMs(_ value: Int) {
         self.eouDebounceMs = value
     }
 }

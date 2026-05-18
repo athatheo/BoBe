@@ -3,29 +3,67 @@ import Foundation
 // MARK: - Auth + models DTOs
 
 struct AuthStatusResponse: Codable, Sendable {
+    /// The daemon's `/auth/status` payload also includes `host` and
+    /// `cli_version`, neither of which is surfaced in the UI today, so
+    /// they're omitted from this Codable mirror. JSON decode silently
+    /// ignores unknown fields, so the wire shape can grow without
+    /// breaking this struct.
     let isAuthenticated: Bool
     let authType: String?
-    let host: String?
     let login: String?
     let statusMessage: String?
     /// `nil` if the bundled-CLI feature is disabled or not yet extracted.
     let cliPath: String?
-    let cliVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case isAuthenticated = "is_authenticated"
         case authType = "auth_type"
-        case host
         case login
         case statusMessage = "status_message"
         case cliPath = "cli_path"
-        case cliVersion = "cli_version"
     }
 }
 
 struct ListModelsResponse: Codable, Sendable {
     let engine: String
     let models: [ModelInfo]
+    /// `"upstream"` when the SDK / Ollama answered, `"fallback"` when the
+    /// daemon returned a static catalog because the upstream call failed.
+    /// Defaulted for backward compatibility with older daemons.
+    let source: String
+    /// Optional non-blocking notice about why the list might not reflect the
+    /// user's real entitlements (auth needed, plan empty, transport error).
+    /// The UI renders this as an inline banner above the picker; it never
+    /// blocks selection.
+    let notice: ModelsNotice?
+
+    enum CodingKeys: String, CodingKey {
+        case engine, models, source, notice
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.engine = try c.decode(String.self, forKey: .engine)
+        self.models = try c.decode([ModelInfo].self, forKey: .models)
+        self.source = try c.decodeIfPresent(String.self, forKey: .source) ?? "upstream"
+        self.notice = try c.decodeIfPresent(ModelsNotice.self, forKey: .notice)
+    }
+
+    init(engine: String, models: [ModelInfo], source: String = "upstream", notice: ModelsNotice? = nil) {
+        self.engine = engine
+        self.models = models
+        self.source = source
+        self.notice = notice
+    }
+}
+
+/// Structured non-blocking warning attached to a `/models` response. The
+/// `code` field is stable (`AUTH_REQUIRED` / `NO_ENTITLEMENTS` /
+/// `SDK_ERROR` / `UPSTREAM_UNREACHABLE`); the `message` is free-form daemon
+/// detail kept for forensics.
+struct ModelsNotice: Codable, Equatable {
+    let code: String
+    let message: String
 }
 
 struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
@@ -41,7 +79,9 @@ struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
     /// `"enabled"` / `"disabled"` / `"unconfigured"` — UI dims non-enabled entries.
     let policyState: String?
 
-    var supportsReasoningEffort: Bool { !self.supportedReasoningEfforts.isEmpty }
+    var supportsReasoningEffort: Bool {
+        !self.supportedReasoningEfforts.isEmpty
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -139,10 +179,18 @@ struct VoiceInstallSnapshot: Codable, Sendable {
 
     /// True when the daemon reports an active install. Matches the Rust
     /// `InstallStatus::Running` variant's wire form.
-    var isRunning: Bool { self.status == .running }
+    var isRunning: Bool {
+        self.status == .running
+    }
+
     /// Convenience for the wizard step's continue button.
-    var isComplete: Bool { self.status == .complete }
-    var isTerminal: Bool { [.complete, .canceled, .failed, .idle].contains(self.status) }
+    var isComplete: Bool {
+        self.status == .complete
+    }
+
+    var isTerminal: Bool {
+        [.complete, .canceled, .failed, .idle].contains(self.status)
+    }
 }
 
 struct VoiceModelProgress: Codable, Sendable, Identifiable {
@@ -153,7 +201,9 @@ struct VoiceModelProgress: Codable, Sendable, Identifiable {
     let bytesTotal: UInt64?
     let percent: Int?
 
-    var id: String { self.kind }
+    var id: String {
+        self.kind
+    }
 
     enum CodingKeys: String, CodingKey {
         case kind
@@ -174,5 +224,66 @@ struct VoiceInstallPresence: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case tts
         case allPresent = "all_present"
+    }
+}
+
+// MARK: - Copilot login DTOs
+
+/// Mirrors `LoginPhase` in BoBeService/src/copilot/login.rs. The Rust
+/// side uses `#[serde(tag = "phase")]` so each variant is a flat JSON
+/// object with a `phase` discriminator field.
+enum CopilotLoginPhase: Equatable {
+    case preparing
+    case awaitingUser(url: String, code: String)
+    case polling(url: String, code: String)
+    case completed
+    case failed(message: String)
+    case canceled
+
+    var isTerminal: Bool {
+        switch self {
+        case .completed, .failed, .canceled: true
+        default: false
+        }
+    }
+}
+
+extension CopilotLoginPhase: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case phase
+        case url
+        case code
+        case message
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let phase = try container.decode(String.self, forKey: .phase)
+        switch phase {
+        case "preparing":
+            self = .preparing
+        case "awaiting_user":
+            self = try .awaitingUser(
+                url: container.decode(String.self, forKey: .url),
+                code: container.decode(String.self, forKey: .code)
+            )
+        case "polling":
+            self = try .polling(
+                url: container.decode(String.self, forKey: .url),
+                code: container.decode(String.self, forKey: .code)
+            )
+        case "completed":
+            self = .completed
+        case "failed":
+            self = try .failed(message: container.decode(String.self, forKey: .message))
+        case "canceled":
+            self = .canceled
+        default:
+            throw DecodingError.dataCorruptedError(
+                forKey: .phase,
+                in: container,
+                debugDescription: "Unknown CopilotLoginPhase: \(phase)"
+            )
+        }
     }
 }

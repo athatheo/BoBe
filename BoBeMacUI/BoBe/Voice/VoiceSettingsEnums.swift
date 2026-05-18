@@ -38,24 +38,22 @@ enum KokoroVoices {
     }
 
     private static func languageLabel(forPrefix prefix: String) -> String {
-        let lang: String
-        switch prefix.first {
-        case "a": lang = "English"
-        case "b": lang = "British English"
-        case "e": lang = "Spanish"
-        case "f": lang = "French"
-        case "h": lang = "Hindi"
-        case "i": lang = "Italian"
-        case "j": lang = "Japanese"
-        case "p": lang = "Portuguese"
-        case "z": lang = "Mandarin"
-        default: lang = "?"
+        let lang = switch prefix.first {
+        case "a": "English"
+        case "b": "British English"
+        case "e": "Spanish"
+        case "f": "French"
+        case "h": "Hindi"
+        case "i": "Italian"
+        case "j": "Japanese"
+        case "p": "Portuguese"
+        case "z": "Mandarin"
+        default: "?"
         }
-        let gender: String
-        switch prefix.last {
-        case "f": gender = "♀"
-        case "m": gender = "♂"
-        default: gender = ""
+        let gender = switch prefix.last {
+        case "f": "♀"
+        case "m": "♂"
+        default: ""
         }
         return gender.isEmpty ? lang : "\(lang) \(gender)"
     }
@@ -72,18 +70,17 @@ enum VoiceLanguages {
 
     /// Languages that have a working STT engine wired up. Everything else
     /// falls through to "(coming soon)" in the picker.
-    static let shipping: Set<String> = ["en", "zh", "es", "el"]
+    static let shipping: Set = ["en", "zh", "es", "el"]
 
     static func displayName(for code: String) -> String {
-        let base: String
-        switch code {
-        case "en": base = "English"
-        case "zh": base = "Mandarin"
-        case "es": base = "Spanish"
-        case "el": base = "Greek"
-        case "ko": base = "Korean"
-        case "ja": base = "Japanese"
-        default: base = code
+        let base: String = switch code {
+        case "en": "English"
+        case "zh": "Mandarin"
+        case "es": "Spanish"
+        case "el": "Greek"
+        case "ko": "Korean"
+        case "ja": "Japanese"
+        default: code
         }
         return Self.shipping.contains(code) ? base : "\(base)  (coming soon)"
     }

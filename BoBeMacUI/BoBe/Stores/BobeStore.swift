@@ -17,6 +17,13 @@ final class BobeStore {
     var isBackendFatal = false
     var hasConnectedOnce = false
 
+    /// User opted to silence BoBe's proactive surfacing (floating bubble +
+    /// TTS) without quitting the app. Session-scoped so a fresh launch
+    /// always defaults to "BoBe is allowed to be proactive again." Voice
+    /// playback is interrupted on toggle-on; resumes on next BoBe message
+    /// when toggled off.
+    var proactiveSilenced = false
+
     // MARK: - Locale (client-side only)
 
     /// Empty string means "follow system locale".
@@ -37,6 +44,16 @@ final class BobeStore {
 
     var isCapturing: Bool {
         self.context.capturing
+    }
+
+    /// True ONLY while a screenshot is being taken THIS MOMENT (driven
+    /// by SSE `screenCapture` indicator). Different from `isCapturing`,
+    /// which is the persistent "capture system is enabled in settings"
+    /// flag. Use this for status surfaces that should reflect what
+    /// BoBe is doing right now (e.g. the avatar bubble "Capturing"
+    /// label); use `isCapturing` for menus that toggle the setting.
+    var isCaptureInProgress: Bool {
+        self.context.captureInProgress
     }
 
     var isThinking: Bool {
@@ -126,10 +143,8 @@ final class BobeStore {
     private var appNapActivity: NSObjectProtocol?
     private var backendObserverTask: Task<Void, Never>?
     private var sleepWakeObservers: [NSObjectProtocol] = []
-    @ObservationIgnored
-    var reconnectStatusTask: Task<Void, Never>?
-    @ObservationIgnored
-    lazy var toolExecutionController = ToolExecutionController { [weak self] mutation in
+    @ObservationIgnored var reconnectStatusTask: Task<Void, Never>?
+    @ObservationIgnored lazy var toolExecutionController = ToolExecutionController { [weak self] mutation in
         self?.updateState(mutation)
     }
 
@@ -262,6 +277,17 @@ final class BobeStore {
         self.updateState { $0.softWarning = nil }
     }
 
+    /// Toggles proactive surfacing. Setting to `true` interrupts any in-flight
+    /// TTS so BoBe goes quiet immediately; setting to `false` re-enables the
+    /// floating bubble for the next BoBe message but does not retroactively
+    /// re-speak the current one (that would feel surprising).
+    func toggleProactiveSilence() {
+        self.proactiveSilenced.toggle()
+        if self.proactiveSilenced {
+            VoicePipeline.shared.interrupt()
+        }
+    }
+
     func surfaceWarning(_ message: String) {
         self.updateState { ctx in
             ctx.errorMessage = message
@@ -299,7 +325,7 @@ final class BobeStore {
     func appendUserVoiceMessage(_ content: String) {
         self.cancelConversationClear()
         let userMessage = ChatMessage(
-            id: "voice-\(Int(Date().timeIntervalSince1970 * 1000))",
+            id: "voice-\(Int(Date.now.timeIntervalSince1970 * 1000))",
             sender: .user,
             content: content,
             isPending: false
@@ -314,7 +340,7 @@ final class BobeStore {
     func sendMessage(_ content: String) async {
         self.cancelConversationClear()
         let userMessage = ChatMessage(
-            id: "user-\(Int(Date().timeIntervalSince1970 * 1000))",
+            id: "user-\(Int(Date.now.timeIntervalSince1970 * 1000))",
             sender: .user,
             content: content,
             isPending: true
@@ -326,7 +352,7 @@ final class BobeStore {
         }
 
         do {
-            try await client.sendMessage(content)
+            try await self.client.sendMessage(content)
             self.updateState { ctx in
                 Self.markMessageSent(userMessage.id, messages: &ctx.messages)
                 // Optimistic lock — closes SSE-vs-daemon indicator race.
@@ -351,7 +377,7 @@ final class BobeStore {
     }
 
     private static func isBusy409(_ error: any Error) -> Bool {
-        if case let DaemonError.httpError(statusCode, _) = error {
+        if case let DaemonError.httpError(statusCode, _, _) = error {
             return statusCode == 409
         }
         return false
@@ -387,7 +413,7 @@ final class BobeStore {
     }
 
     static func markMessageSent(_ messageId: String, messages: inout [ChatMessage]) {
-        Self.updateMessage(messageId, messages: &messages) { message in
+        self.updateMessage(messageId, messages: &messages) { message in
             message.isStreaming = false
             message.isPending = false
         }
@@ -412,13 +438,13 @@ final class BobeStore {
     }
 
     func updateState(_ block: (inout BobeContext) -> Void) {
-        let oldCapturing = self.context.capturing
         var ctx = self.context
         block(&ctx)
         ctx.stateType = deriveStateType(from: ctx)
+        // Recompute the derived bobe-message flag once per mutation rather
+        // than walking the array on every body eval that reads it (the
+        // overlay's `chatViewportFloorHeight` is the hot path).
+        ctx.hasBobeMessage = ctx.messages.contains(where: { $0.sender == .bobe })
         self.context = ctx
-        if ctx.capturing != oldCapturing {
-            NotificationCenter.default.post(name: .bobeCaptureStateChanged, object: nil)
-        }
     }
 }

@@ -2,26 +2,24 @@ import CoreGraphics
 import SwiftUI
 
 struct BehaviorPanel: View {
-    @State private var settings: DaemonSettings?
-    @State private var isLoading = false
-    @State private var isSaving = false
-    @State private var error: String?
-    @State private var savedMessage: String?
-    @State private var newCheckinTime = ""
-    @State private var debouncer = SettingsDebouncer()
-    @State private var restartFields: Set<String> = []
+    @State private var store = SettingsStore.shared
+    @State private var newCheckinTime: Date = Calendar.current.date(
+        bySettingHour: 9, minute: 0, second: 0, of: .now
+    ) ?? .now
     @State private var bannerDismissed = false
     @Environment(\.theme) private var theme
 
-    /// CheckinScheduler captures these at boot and only re-reads on restart.
-    private static let deferToRestartFields: Set<String> = [
-        "checkin_enabled",
-        "checkin_times",
-        "checkin_jitter_minutes",
-    ]
+    /// Format check-in time as "HH:mm" for the daemon. Pinning to POSIX keeps
+    /// the wire format stable across locales (e.g., 24h vs 12h users).
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
 
     private var visibleRestartFields: Set<String> {
-        self.bannerDismissed ? [] : self.restartFields
+        self.bannerDismissed ? [] : self.store.restartFields
     }
 
     var body: some View {
@@ -30,44 +28,31 @@ struct BehaviorPanel: View {
                 if !self.visibleRestartFields.isEmpty {
                     RestartRequiredBanner(
                         fields: self.visibleRestartFields,
-                        onDismiss: { self.bannerDismissed = true }
+                        onDismiss: {
+                            self.bannerDismissed = true
+                            self.store.clearRestartFields()
+                        }
                     )
                 }
 
-                if let error {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(self.theme.colors.primary)
-                        Text(error)
-                            .font(.system(size: 12))
-                            .foregroundStyle(self.theme.colors.primary)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.primary.opacity(0.08)))
+                if let error = self.store.error {
+                    SettingsErrorBanner(message: error)
                 }
 
-                if let savedMessage {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(self.theme.colors.secondary)
-                        Text(savedMessage)
-                            .font(.system(size: 11))
-                            .foregroundStyle(self.theme.colors.secondary)
-                        Spacer()
-                    }
-                    .transition(.opacity)
+                if let savedMessage = self.store.savedMessage {
+                    SettingsSavedToast(message: savedMessage)
                 }
 
-                if self.settings != nil {
+                if self.store.settings != nil {
                     self.captureSection
                     self.checkinSection
                     self.conversationSection
-                } else if self.isLoading {
+                    self.goalsSection
+                } else if self.store.isLoading {
                     HStack(spacing: 8) {
                         BobeSpinner(size: 14)
                         Text(L10n.tr("settings.behavior.loading"))
-                            .font(.system(size: 13))
+                            .bobeTextStyle(.settingsBody)
                             .foregroundStyle(self.theme.colors.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -76,7 +61,8 @@ struct BehaviorPanel: View {
             }
             .padding(24)
         }
-        .task { await self.loadSettings() }
+        .task { await self.store.loadIfNeeded() }
+        .onDisappear { self.store.cancelToast() }
     }
 
     private var captureSection: some View {
@@ -84,10 +70,13 @@ struct BehaviorPanel: View {
             title: L10n.tr("settings.behavior.capture.title"),
             icon: "camera.fill",
             description: L10n.tr("settings.behavior.capture.description"),
-            toggleBinding: self.binding(\.captureEnabled, fallback: false)
+            toggleBinding: self.store.binding(\.captureEnabled, fallback: false, touched: "capture_enabled")
         ) {
             SettingsRow(label: L10n.tr("settings.behavior.capture.interval"), suffix: L10n.tr("settings.units.seconds")) {
-                DebouncedNumberInput(value: self.binding(\.captureIntervalSeconds, fallback: 60), range: 1 ... 600)
+                DebouncedNumberInput(
+                    value: self.store.binding(\.captureIntervalSeconds, fallback: 60, touched: "capture_interval_seconds"),
+                    range: 1 ... 600
+                )
             }
 
             if !CGPreflightScreenCaptureAccess() {
@@ -95,14 +84,15 @@ struct BehaviorPanel: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(self.theme.colors.tertiary)
                     Text(L10n.tr("settings.behavior.capture.permission_missing"))
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
                     Button(L10n.tr("setup.permissions.open_settings")) {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture") {
                             NSWorkspace.shared.open(url)
                         }
                     }
-                    .font(.system(size: 11))
                     .bobeButton(.secondary, size: .mini)
                 }
             }
@@ -114,13 +104,13 @@ struct BehaviorPanel: View {
             title: L10n.tr("settings.behavior.checkins.title"),
             icon: "clock.fill",
             description: L10n.tr("settings.behavior.checkins.description"),
-            toggleBinding: self.binding(\.checkinEnabled, fallback: false)
+            toggleBinding: self.store.binding(\.checkinEnabled, fallback: false, touched: "checkin_enabled")
         ) {
             SettingsRow(label: L10n.tr("settings.behavior.checkins.schedule")) {
                 EmptyView()
             }
             FlowLayout(spacing: 6) {
-                ForEach(self.settings?.checkinTimes ?? [], id: \.self) { time in
+                ForEach(self.store.settings?.checkinTimes ?? [], id: \.self) { time in
                     HStack(spacing: 4) {
                         Text(time)
                             .font(.system(size: 11, design: .monospaced))
@@ -140,16 +130,23 @@ struct BehaviorPanel: View {
             }
 
             HStack(spacing: 6) {
-                BobeTextField(placeholder: L10n.tr("settings.behavior.checkins.time_placeholder"), text: self.$newCheckinTime, width: 80) {
-                    self.addCheckinTime()
-                }
+                DatePicker(
+                    "",
+                    selection: self.$newCheckinTime,
+                    displayedComponents: .hourAndMinute
+                )
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .accessibilityLabel(L10n.tr("settings.behavior.checkins.time_placeholder"))
                 Button(L10n.tr("settings.behavior.checkins.action.add")) { self.addCheckinTime() }
                     .bobeButton(.secondary, size: .small)
-                    .disabled(self.newCheckinTime.isEmpty)
             }
 
             SettingsRow(label: L10n.tr("settings.behavior.checkins.jitter"), suffix: L10n.tr("settings.units.minutes")) {
-                DebouncedNumberInput(value: self.binding(\.checkinJitterMinutes, fallback: 0), range: 0 ... 30)
+                DebouncedNumberInput(
+                    value: self.store.binding(\.checkinJitterMinutes, fallback: 0, touched: "checkin_jitter_minutes"),
+                    range: 0 ... 30
+                )
             }
         }
     }
@@ -165,120 +162,61 @@ struct BehaviorPanel: View {
                 description: L10n.tr("settings.behavior.conversation.auto_close.description"),
                 suffix: L10n.tr("settings.units.minutes")
             ) {
-                DebouncedNumberInput(value: self.binding(\.conversationAutoCloseMinutes, fallback: 10), range: 1 ... 60)
+                DebouncedNumberInput(
+                    value: self.store.binding(\.conversationAutoCloseMinutes, fallback: 10),
+                    range: 1 ... 60
+                )
+            }
+
+            SettingsRow(
+                label: L10n.tr("settings.behavior.conversation.inactivity_timeout"),
+                description: L10n.tr("settings.behavior.conversation.inactivity_timeout.description"),
+                suffix: L10n.tr("settings.units.seconds")
+            ) {
+                DebouncedNumberInput(
+                    value: self.store.binding(\.conversationInactivityTimeoutSeconds, fallback: 300),
+                    range: 5 ... 600
+                )
             }
         }
     }
 
-    private func binding<V>(
-        _ keyPath: WritableKeyPath<DaemonSettings, V>,
-        fallback: @autoclosure @escaping () -> V
-    ) -> Binding<V> {
-        Binding(
-            get: {
-                settings?[keyPath: keyPath] ?? fallback()
-            },
-            set: { newValue in
-                guard var current = settings else { return }
-                current[keyPath: keyPath] = newValue
-                self.settings = current
-                self.debounceSave(touched: Self.fieldKey(for: keyPath))
+    /// Goal-loop cadence. Lives under Behavior because it's a knob that
+    /// shapes how often BoBe proactively re-evaluates goals — that's
+    /// behavioural, not "advanced." The former Advanced panel collapsed
+    /// into the panels its toggles actually belonged to.
+    private var goalsSection: some View {
+        CollapsibleSection(
+            title: L10n.tr("settings.behavior.goals.title"),
+            icon: "target",
+            description: L10n.tr("settings.behavior.goals.description")
+        ) {
+            SettingsRow(
+                label: L10n.tr("settings.behavior.goals.check_interval"),
+                description: L10n.tr("settings.behavior.goals.check_interval.description"),
+                suffix: L10n.tr("settings.units.seconds")
+            ) {
+                DebouncedNumberInput(
+                    value: self.store.intBinding(\.goalCheckIntervalSeconds, fallback: 300),
+                    range: 60 ... 7200
+                )
             }
-        )
-    }
-
-    private static func fieldKey<V>(for keyPath: WritableKeyPath<DaemonSettings, V>) -> String? {
-        switch keyPath {
-        case \DaemonSettings.captureEnabled: "capture_enabled"
-        case \DaemonSettings.captureIntervalSeconds: "capture_interval_seconds"
-        case \DaemonSettings.checkinEnabled: "checkin_enabled"
-        case \DaemonSettings.checkinTimes: "checkin_times"
-        case \DaemonSettings.checkinJitterMinutes: "checkin_jitter_minutes"
-        case \DaemonSettings.conversationAutoCloseMinutes: "conversation_auto_close_minutes"
-        default: nil
         }
-    }
-
-    private func debounceSave(touched: String? = nil) {
-        self.isSaving = true
-        let currentSettings = self.settings
-        let touchedFields = self.collectTouchedFields(initial: touched)
-        self.debouncer.debounce {
-            guard let currentSettings else {
-                self.isSaving = false
-                return
-            }
-            do {
-                var req = SettingsUpdateRequest()
-                req.captureEnabled = currentSettings.captureEnabled
-                req.captureIntervalSeconds = currentSettings.captureIntervalSeconds
-                req.checkinEnabled = currentSettings.checkinEnabled
-                req.checkinTimes = currentSettings.checkinTimes
-                req.checkinJitterMinutes = currentSettings.checkinJitterMinutes
-                req.conversationAutoCloseMinutes = currentSettings.conversationAutoCloseMinutes
-
-                let resp = try await DaemonClient.shared.updateSettings(req)
-                self.applySaveResponse(touched: touchedFields, response: resp)
-            } catch {
-                self.error = error.localizedDescription
-                self.savedMessage = nil
-            }
-            self.isSaving = false
-        }
-    }
-
-    private func applySaveResponse(touched: Set<String>, response: SettingsUpdateResponse) {
-        if response.persistFailed == true {
-            self.error = L10n.tr("settings.shared.action.persist_failed")
-            self.savedMessage = nil
-        } else {
-            self.error = nil
-            self.savedMessage = response.message
-            self.scheduleSavedToastDismiss()
-        }
-        self.applyRestartFields(touched: touched, response: response)
-    }
-
-    private func scheduleSavedToastDismiss() {
-        self.debouncer.scheduleToastClear { self.savedMessage = nil }
-    }
-
-    private func collectTouchedFields(initial: String?) -> Set<String> {
-        var fields: Set<String> = []
-        if let initial { fields.insert(initial) }
-        return fields
-    }
-
-    private func applyRestartFields(touched: Set<String>, response: SettingsUpdateResponse) {
-        let shadowed = touched.intersection(Self.deferToRestartFields)
-        let daemonReported = Set(response.restartRequiredFields)
-        let combined = shadowed.union(daemonReported)
-        if combined.isEmpty { return }
-        self.restartFields = self.restartFields.union(combined)
-        self.bannerDismissed = false
     }
 
     private func addCheckinTime() {
-        guard !self.newCheckinTime.isEmpty else { return }
-        let trimmed = self.newCheckinTime.trimmingCharacters(in: .whitespaces)
-        guard !(self.settings?.checkinTimes.contains(trimmed) ?? false) else { return }
-        self.settings?.checkinTimes.append(trimmed)
-        self.newCheckinTime = ""
-        self.debounceSave(touched: "checkin_times")
+        let formatted = Self.timeFormatter.string(from: self.newCheckinTime)
+        guard let settings = self.store.settings,
+              !settings.checkinTimes.contains(formatted)
+        else { return }
+        self.store.update(touched: "checkin_times") {
+            $0.checkinTimes.append(formatted)
+        }
     }
 
     private func removeCheckinTime(_ time: String) {
-        self.settings?.checkinTimes.removeAll { $0 == time }
-        self.debounceSave(touched: "checkin_times")
-    }
-
-    private func loadSettings() async {
-        self.isLoading = true
-        defer { isLoading = false }
-        do {
-            self.settings = try await DaemonClient.shared.getSettings()
-        } catch {
-            self.error = error.localizedDescription
+        self.store.update(touched: "checkin_times") {
+            $0.checkinTimes.removeAll { $0 == time }
         }
     }
 }

@@ -10,12 +10,12 @@ enum BobeWindowFactory {
     /// Build an NSWindow with Bobe's standard titlebar/background/hosting
     /// treatment. The caller still owns the window lifecycle (delegate
     /// assignment, ordering front, activation).
-    static func make<Content: View>(
+    static func make(
         contentRect: NSRect,
         styleMask: NSWindow.StyleMask,
         title: String,
         animationBehavior: NSWindow.AnimationBehavior = .none,
-        rootView: Content
+        rootView: some View
     ) -> NSWindow {
         let theme = ThemeStore.shared.currentTheme
 

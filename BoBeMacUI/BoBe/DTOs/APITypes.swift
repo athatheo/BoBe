@@ -19,29 +19,31 @@ enum EventType: String, Codable, Sendable {
     }
 }
 
+/// The daemon emits a `timestamp` string on every SSE event but the
+/// client never reads it. JSON decode silently ignores unknown fields,
+/// so dropping it from the Codable struct is safe.
 struct StreamBundle: Codable, Sendable {
     let type: EventType
     let payload: AnyCodablePayload
     let messageId: String
-    let timestamp: String
 
     enum CodingKeys: String, CodingKey {
         case type
         case payload
         case messageId = "message_id"
-        case timestamp
     }
 }
 
+/// `progress` is sent by the daemon but never displayed today.
 struct IndicatorPayload: Codable, Sendable {
     let indicator: IndicatorType
     let message: String?
-    let progress: Double?
 }
 
+/// `sequence` is sent for ordering but the client doesn't re-order
+/// (deltas already arrive in order on a single SSE stream).
 struct TextDeltaPayload: Codable, Sendable {
     let delta: String
-    let sequence: Int
     let done: Bool
 }
 
@@ -57,21 +59,20 @@ struct ToolCallStartPayload: Codable, Sendable {
     }
 }
 
+/// The daemon also sends `error` and `duration_ms` but the client only
+/// flips the visible `.running` indicator off — neither field is
+/// surfaced today, so they're omitted from this Codable mirror.
 struct ToolCallCompletePayload: Codable, Sendable {
     let status: String
     let toolName: String
     let toolCallId: String
     let success: Bool
-    let error: String?
-    let durationMs: Int?
 
     enum CodingKeys: String, CodingKey {
         case status
         case toolName = "tool_name"
         case toolCallId = "tool_call_id"
         case success
-        case error
-        case durationMs = "duration_ms"
     }
 }
 

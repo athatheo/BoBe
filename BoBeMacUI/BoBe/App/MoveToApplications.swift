@@ -20,7 +20,7 @@ func moveToApplicationsIfNeeded() {
             || bundlePath.hasPrefix("/private/tmp/")
     guard shouldPrompt else { return }
 
-    logger.info("App running from \(bundlePath) — prompting to move to Applications")
+    logger.info("App running from \(bundlePath, privacy: .public) — prompting to move to Applications")
 
     let alert = NSAlert()
     alert.messageText = L10n.tr("app.move_to_applications.title")
@@ -40,9 +40,9 @@ func moveToApplicationsIfNeeded() {
             try fm.removeItem(atPath: destPath)
         }
         try fm.copyItem(atPath: bundlePath, toPath: destPath)
-        logger.info("Copied app bundle to \(destPath)")
+        logger.info("Copied app bundle to \(destPath, privacy: .public)")
     } catch {
-        logger.error("Failed to copy app to Applications: \(error.localizedDescription)")
+        logger.error("Failed to copy app to Applications: \(error.localizedDescription, privacy: .public)")
         let errAlert = NSAlert()
         errAlert.messageText = L10n.tr("app.move_to_applications.error_title")
         errAlert.informativeText = error.localizedDescription
@@ -57,7 +57,7 @@ func moveToApplicationsIfNeeded() {
     config.createsNewApplicationInstance = true
     NSWorkspace.shared.openApplication(at: destURL, configuration: config) { _, error in
         if let error {
-            logger.error("Failed to relaunch from Applications: \(error.localizedDescription)")
+            logger.error("Failed to relaunch from Applications: \(error.localizedDescription, privacy: .public)")
         }
     }
     NSApp.terminate(nil)

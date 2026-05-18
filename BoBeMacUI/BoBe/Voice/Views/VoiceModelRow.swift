@@ -9,7 +9,7 @@ struct VoiceModelRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            VoiceModelStatusIcon(status: model.status)
+            VoiceModelStatusIcon(status: self.model.status)
                 .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(self.model.label.capitalized)

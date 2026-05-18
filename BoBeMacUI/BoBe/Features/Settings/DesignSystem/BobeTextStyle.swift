@@ -27,46 +27,61 @@ enum BobeTextStyle {
     case inputField
     case heading
 
+    /// 13pt regular — settings-panel descriptions and secondary labels.
+    /// Keeps `bobeTextStyle()` adoption consistent across the panels so
+    /// future typography tweaks happen in one place.
+    case settingsBody
+
+    /// Styles in this palette anchor to Dynamic Type semantic ramps whenever
+    /// the base size is ≥11pt — so System Settings → Accessibility → Display →
+    /// Text Size scales them. The handful of sub-11pt styles below (badges,
+    /// chat-sender labels, sectionLabel) stay on `.system(size:)` because
+    /// `.subheadline` (11pt on macOS) is already bigger than what they need.
     var font: Font {
         switch self {
+        // Scaling styles — Dynamic Type ramp
         case .windowTitle:
-            .system(size: 28, weight: .semibold)
+            .largeTitle.weight(.semibold)
+        case .setupTitle:
+            .largeTitle.bold()
+        case .setupSubtitle:
+            .title3
+        case .rowTitle:
+            .body.weight(.semibold)
+        case .setupHeading:
+            .body.weight(.semibold)
+        case .heading:
+            .body.weight(.semibold)
+        case .inputField:
+            .body
+        case .settingsBody:
+            .body
+        case .setupBody:
+            .body
+        case .body:
+            .callout
+        case .chatBody:
+            .callout
+        case .rowMeta:
+            .subheadline
+        case .helper:
+            .subheadline
+        case .brandLabel:
+            .subheadline.bold()
+        // Static styles — below the smallest Dynamic Type rung (11pt on
+        // macOS), or visually-fixed labels (sectionLabel small-caps).
         case .sectionLabel:
             .system(size: 10, weight: .semibold)
-        case .rowTitle:
-            .system(size: 13, weight: .semibold)
-        case .rowMeta:
-            .system(size: 11)
-        case .helper:
-            .system(size: 11)
-        case .body:
-            .system(size: 12)
-        case .badge:
-            .system(size: 9, weight: .medium)
         case .overlayStatus:
             .system(size: 10)
+        case .chatMeta:
+            .system(size: 10, weight: .medium)
+        case .badge:
+            .system(size: 9, weight: .medium)
         case .chatSender:
             .system(size: 9, weight: .semibold)
         case .chatPending:
             .system(size: 8)
-        case .chatBody:
-            .system(size: 12)
-        case .chatMeta:
-            .system(size: 10, weight: .medium)
-        case .brandLabel:
-            .system(size: 11, weight: .bold)
-        case .setupTitle:
-            .system(size: 26, weight: .bold)
-        case .setupSubtitle:
-            .system(size: 15)
-        case .setupBody:
-            .system(size: 14)
-        case .setupHeading:
-            .system(size: 14, weight: .semibold)
-        case .inputField:
-            .system(size: 13)
-        case .heading:
-            .system(size: 14, weight: .semibold)
         }
     }
 }

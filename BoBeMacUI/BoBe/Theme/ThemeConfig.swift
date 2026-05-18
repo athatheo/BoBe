@@ -177,15 +177,8 @@ func themeById(_ id: ThemeId) -> ThemeConfig {
     allThemes.first { $0.themeId == id } ?? allThemes[0]
 }
 
-private struct ThemeKey: EnvironmentKey {
-    static let defaultValue: ThemeConfig = allThemes[0]
-}
-
 extension EnvironmentValues {
-    var theme: ThemeConfig {
-        get { self[ThemeKey.self] }
-        set { self[ThemeKey.self] = newValue }
-    }
+    @Entry var theme: ThemeConfig = allThemes[0]
 }
 
 extension Color {

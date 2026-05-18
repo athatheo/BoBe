@@ -85,8 +85,8 @@ actor BackendService {
         logger.info("Stopping bobe backend (PID: \(proc.processIdentifier))")
         proc.terminate()
 
-        let deadline = Date().addingTimeInterval(terminateGraceSeconds)
-        while proc.isRunning, Date() < deadline {
+        let deadline = Date.now.addingTimeInterval(terminateGraceSeconds)
+        while proc.isRunning, Date.now < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }
 
@@ -123,7 +123,7 @@ actor BackendService {
             throw BackendServiceError.spawnFailed("bobe-daemon binary not found")
         }
 
-        logger.info("Starting bobe backend: \(binaryPath)")
+        logger.info("Starting bobe backend: \(binaryPath, privacy: .public)")
         self.lastError = nil
         self.startupWarning = nil
 
@@ -145,14 +145,14 @@ actor BackendService {
         let stderrBuf = StderrBuffer()
         outPipe.fileHandleForReading.readabilityHandler = { handle in
             if let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty {
-                logger.info("[bobe-service] \(line.trimmingCharacters(in: .newlines))")
+                logger.info("[bobe-service] \(line.trimmingCharacters(in: .newlines), privacy: .public)")
             }
         }
         errPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             if let line = String(data: data, encoding: .utf8), !line.isEmpty {
                 let trimmed = line.trimmingCharacters(in: .newlines)
-                logger.error("[bobe-service] \(trimmed)")
+                logger.error("[bobe-service] \(trimmed, privacy: .public)")
                 stderrBuf.append(trimmed)
             }
         }
@@ -190,7 +190,7 @@ actor BackendService {
             let captured = stderrBuf.text
             if !captured.isEmpty {
                 self.lastError = captured
-                logger.error("Backend stderr on failure: \(captured)")
+                logger.error("Backend stderr on failure: \(captured, privacy: .public)")
             }
             throw error
         }
@@ -210,7 +210,7 @@ actor BackendService {
             do {
                 let response = try await DaemonClient.shared.health()
                 if let services = response.services, services.database != "ok" {
-                    logger.warning("Backend database degraded: \(services.database)")
+                    logger.warning("Backend database degraded: \(services.database, privacy: .public)")
                     self.startupWarning = L10n.tr("app.service_warning.database_degraded")
                 }
                 return
@@ -247,7 +247,7 @@ actor BackendService {
             do {
                 try await self.spawnAndWaitHealthy()
             } catch {
-                logger.error("Restart failed: \(error.localizedDescription)")
+                logger.error("Restart failed: \(error.localizedDescription, privacy: .public)")
                 self.transition(to: .fatal)
             }
         }
@@ -270,16 +270,16 @@ actor BackendService {
         }
 
         switch self.inspectManagedProcess(pid: pid) {
-        case .verifiedDaemon(let path):
-            logger.info("Cleaning stale bobe daemon (PID: \(pid), path: \(path))")
+        case let .verifiedDaemon(path):
+            logger.info("Cleaning stale bobe daemon (PID: \(pid), path: \(path, privacy: .public))")
             kill(pid, SIGTERM)
             try? await Task.sleep(for: .seconds(2))
             if kill(pid, 0) == 0 {
                 kill(pid, SIGKILL)
             }
-        case .otherProcess(let path):
+        case let .otherProcess(path):
             logger.warning(
-                "PID file points to a different live process (PID: \(pid), path: \(path)); refusing to terminate it"
+                "PID file points to a different live process (PID: \(pid), path: \(path, privacy: .public)); refusing to terminate it"
             )
             if self.isPortInUse(DaemonConfig.port) {
                 logger.warning("Port \(DaemonConfig.port) remains in use by another process")
@@ -314,10 +314,9 @@ actor BackendService {
     }
 
     private func isManagedDaemonPath(_ path: String) -> Bool {
-        guard
-            let standardized = self.canonicalizedPath(path),
-            let binaryPath = self.findBinaryPath(),
-            let managedPath = self.canonicalizedPath(binaryPath)
+        guard let standardized = self.canonicalizedPath(path),
+              let binaryPath = self.findBinaryPath(),
+              let managedPath = self.canonicalizedPath(binaryPath)
         else {
             return false
         }

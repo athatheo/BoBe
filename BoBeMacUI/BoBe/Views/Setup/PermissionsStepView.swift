@@ -33,18 +33,18 @@ struct PermissionsStepView: View {
 
             HStack(spacing: 12) {
                 self.permissionCard(
-                    title: "Screen capture",
-                    subtitle: "So BoBe sees your context",
+                    title: L10n.tr("setup.permissions.card.screen.title"),
+                    subtitle: L10n.tr("setup.permissions.card.screen.subtitle"),
                     state: self.screenState,
-                    deniedHint: "Enable in System Settings → Privacy → Screen Recording.",
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+                    deniedHint: L10n.tr("setup.permissions.card.screen.denied"),
+                    settingsURL: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture"
                 )
                 self.permissionCard(
-                    title: "Microphone",
-                    subtitle: "So you can talk to BoBe",
+                    title: L10n.tr("setup.permissions.card.mic.title"),
+                    subtitle: L10n.tr("setup.permissions.card.mic.subtitle"),
                     state: self.micState,
-                    deniedHint: "Enable in System Settings → Privacy → Microphone.",
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+                    deniedHint: L10n.tr("setup.permissions.card.mic.denied"),
+                    settingsURL: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone"
                 )
             }
 
@@ -52,7 +52,15 @@ struct PermissionsStepView: View {
 
             self.actionRow
         }
-        .onAppear { self.refreshState() }
+        // Refresh on first appear AND every time the app comes back to
+        // the foreground. Users who tap "Open System Settings", flip the
+        // toggle, then Cmd-Tab back to BoBe should immediately see the
+        // updated state — without this, the cards stayed on their stale
+        // "denied" labels until the user navigated away and back.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            self.refreshState()
+        }
+        .task { self.refreshState() }
     }
 
     private func permissionCard(
@@ -99,7 +107,7 @@ struct PermissionsStepView: View {
     private func statusText(for state: PermissionState, subtitle: String, denied: String) -> String {
         switch state {
         case .unknown: subtitle
-        case .granted: "Allowed"
+        case .granted: L10n.tr("setup.permissions.card.status.allowed")
         case .denied: denied
         }
     }
@@ -167,11 +175,11 @@ struct PermissionsStepView: View {
 
     private func openSettings() {
         if self.screenState == .denied {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture") {
                 NSWorkspace.shared.open(url)
             }
         } else if self.micState == .denied {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone") {
                 NSWorkspace.shared.open(url)
             }
         }

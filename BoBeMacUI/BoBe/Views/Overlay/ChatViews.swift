@@ -159,7 +159,7 @@ private struct OverflowPill: View {
                         Capsule()
                             .strokeBorder(self.theme.colors.border.opacity(0.5), lineWidth: 0.5)
                     )
-                    .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
+                    .shadow(color: self.theme.colors.text.opacity(0.05), radius: 3, y: 1)
             )
         }
         .buttonStyle(.plain)
@@ -184,6 +184,14 @@ struct ChatBubble: View {
     var onReadMore: (() -> Void)?
 
     @Environment(\.theme) private var theme
+    /// Cached inline-markdown parse for finalized (non-streaming) bubbles.
+    /// `AttributedString(markdown:)` runs the full parser over the whole
+    /// string each time, so on a streaming reply with 50 chunks the naive
+    /// pattern parsed N=1, N=2, … N=50 — O(N²) work over a turn. We now
+    /// skip the parse entirely while `isStreaming` is true (plain `Text`
+    /// renders the growing content unparsed) and parse exactly once when
+    /// the stream finishes.
+    @State private var renderedContent: AttributedString = AttributedString()
 
     private var isUser: Bool {
         self.message.sender == .user
@@ -203,14 +211,14 @@ struct ChatBubble: View {
     }
 
     /// Inline markdown (bold/italic/code/links) only; block syntax stays as text so paragraphs and lists keep their layout.
-    private var renderedContent: AttributedString {
+    private static func parseInline(_ content: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace
         )
-        if let attr = try? AttributedString(markdown: self.message.content, options: options) {
+        if let attr = try? AttributedString(markdown: content, options: options) {
             return attr
         }
-        return AttributedString(self.message.content)
+        return AttributedString(content)
     }
 
     var body: some View {
@@ -218,9 +226,12 @@ struct ChatBubble: View {
             if self.isUser { Spacer(minLength: 0) }
 
             VStack(spacing: 0) {
-                Rectangle()
-                    .fill(self.accentColor)
-                    .frame(height: 3)
+                if self.message.isStreaming {
+                    Rectangle()
+                        .fill(self.accentColor)
+                        .frame(height: 3)
+                        .transition(.opacity)
+                }
 
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 0) {
@@ -239,9 +250,23 @@ struct ChatBubble: View {
                     .padding(.bottom, 2)
 
                     HStack(spacing: 0) {
-                        // Streaming → fast inline parse. Expanded → full block-level markdown (lists, headers, code).
-                        // Compact → inline parse so truncation works (StructuredText doesn't support `lineLimit`).
-                        if !self.message.isStreaming, self.compactLineLimit == nil {
+                        // Three render paths:
+                        //  • Streaming  → plain `Text` over the raw string. No
+                        //    markdown parse per chunk; the user sees the bold
+                        //    asterisks etc. for a moment, then once the stream
+                        //    ends we flip to the parsed view. Trade-off worth
+                        //    it: parsing every chunk was O(N²) on the reply.
+                        //  • Expanded   → full block-level markdown.
+                        //  • Compact    → cached inline-parsed AttributedString
+                        //    so truncation works (StructuredText doesn't
+                        //    support `lineLimit`).
+                        if self.message.isStreaming {
+                            Text(self.message.content)
+                                .bobeTextStyle(.chatBody)
+                                .lineSpacing(2)
+                                .foregroundStyle(self.theme.colors.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if self.compactLineLimit == nil {
                             StructuredText(markdown: self.message.content)
                                 .textual.structuredTextStyle(.gitHub)
                                 .textual.textSelection(.disabled)
@@ -253,7 +278,6 @@ struct ChatBubble: View {
                                 .lineSpacing(2)
                                 .foregroundStyle(self.theme.colors.text)
                                 .lineLimit(self.compactLineLimit)
-                                .fixedSize(horizontal: false, vertical: self.compactLineLimit == nil)
                         }
 
                         if self.message.isStreaming {
@@ -279,16 +303,23 @@ struct ChatBubble: View {
                 .padding(.bottom, 10)
             }
             .background(
-                self.isPending ? self.theme.colors.border : self.theme.colors.background
+                self.isPending
+                    ? self.theme.colors.surface
+                    : self.theme.colors.background
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(self.theme.colors.border, lineWidth: 1.5)
+                    .strokeBorder(
+                        self.theme.colors.border,
+                        style: StrokeStyle(
+                            lineWidth: 1.5,
+                            dash: self.isPending ? [4, 3] : []
+                        )
+                    )
             )
-            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-            .opacity(self.isPending ? 0.5 : 1)
-            .frame(maxWidth: self.isUser ? 410 : 460, alignment: self.isUser ? .trailing : .leading)
+            .shadow(color: self.theme.colors.text.opacity(0.07), radius: 4, y: 2)
+            .frame(maxWidth: 440, alignment: self.isUser ? .trailing : .leading)
             .transition(
                 OverlayMotionRuntime.reduceMotion
                     ? .opacity
@@ -300,6 +331,24 @@ struct ChatBubble: View {
 
             if !self.isUser { Spacer(minLength: 0) }
         }
+        // Parse only when we actually need the AttributedString — i.e.
+        // compact-mode rendering after streaming finishes. Streaming
+        // bubbles use plain Text and never touch the parser; once the
+        // stream ends, `.task(id:)` fires once with the final content and
+        // we cache it for the lifetime of the bubble.
+        .task(id: self.parseIdentity) {
+            guard !self.message.isStreaming, self.compactLineLimit != nil else { return }
+            self.renderedContent = Self.parseInline(self.message.content)
+        }
+    }
+
+    /// Composite key that changes exactly when we'd need a fresh parse.
+    /// Streaming → no parse (handled by the early-return above). Finalized
+    /// content change → re-parse. Compact-mode entry → parse on first task.
+    private var parseIdentity: String {
+        // `isStreaming` is captured so the task runs again on stream-finish
+        // — otherwise the bubble would stay on the streaming plain-Text path.
+        "\(self.message.isStreaming ? "S" : "F")|\(self.message.content)"
     }
 
     private static func isLikelyTruncated(_ content: String, lineLimit: Int) -> Bool {
@@ -314,13 +363,14 @@ struct BlinkingCursor: View {
 
     var body: some View {
         Text("|")
-            .font(.system(size: 12, weight: .semibold))
+            .bobeTextStyle(.chatBody)
+            .fontWeight(.semibold)
             .foregroundStyle(self.color)
             .opacity(self.visible ? 1 : 0)
             .task {
                 guard OverlayMotionRuntime.shouldAnimate else { return }
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(0.3))
+                    try? await Task.sleep(for: .seconds(0.5))
                     self.visible.toggle()
                 }
             }
@@ -330,56 +380,56 @@ struct BlinkingCursor: View {
 // MARK: - Previews
 
 #if !SPM_BUILD
-#Preview("Chat Bubble - User") {
-    ChatBubble(message: ChatMessage(sender: .user, content: "Hello BoBe, how are you?"))
+    #Preview("Chat Bubble - User") {
+        ChatBubble(message: ChatMessage(sender: .user, content: "Hello BoBe, how are you?"))
+            .environment(\.theme, allThemes[0])
+            .padding()
+            .frame(width: 500)
+    }
+
+    #Preview("Chat Bubble - BoBe") {
+        ChatBubble(
+            message: ChatMessage(sender: .bobe, content: "I'm doing great! I've been observing your workflow and noticed some interesting patterns.")
+        )
         .environment(\.theme, allThemes[0])
         .padding()
         .frame(width: 500)
-}
+    }
 
-#Preview("Chat Bubble - BoBe") {
-    ChatBubble(
-        message: ChatMessage(sender: .bobe, content: "I'm doing great! I've been observing your workflow and noticed some interesting patterns.")
-    )
-    .environment(\.theme, allThemes[0])
-    .padding()
-    .frame(width: 500)
-}
+    #Preview("Chat Bubble - Markdown") {
+        ChatBubble(
+            message: ChatMessage(sender: .bobe, content: """
+            **Code & Development**
+            - Write, refactor, debug code across any language
+            - Explore unfamiliar codebases and explain how things work
+            - Run tests, builds, linters
 
-#Preview("Chat Bubble - Markdown") {
-    ChatBubble(
-        message: ChatMessage(sender: .bobe, content: """
-        **Code & Development**
-        - Write, refactor, debug code across any language
-        - Explore unfamiliar codebases and explain how things work
-        - Run tests, builds, linters
-
-        **Git & Collaboration**
-        - Commits, branches, PRs via `gh` or `tea`
-        """)
-    )
-    .environment(\.theme, allThemes[0])
-    .padding()
-    .frame(width: 500)
-}
-
-#Preview("Chat Bubble - Streaming") {
-    ChatBubble(message: ChatMessage(sender: .bobe, content: "Thinking about this", isStreaming: true))
+            **Git & Collaboration**
+            - Commits, branches, PRs via `gh` or `tea`
+            """)
+        )
         .environment(\.theme, allThemes[0])
         .padding()
         .frame(width: 500)
-}
+    }
 
-#Preview("Chat Stack") {
-    ChatStack(messages: [
-        ChatMessage(sender: .bobe, content: "Hey! I noticed you've been working on the settings panel."),
-        ChatMessage(sender: .user, content: "Yeah, I'm trying to get the theme picker working."),
-        ChatMessage(sender: .bobe, content: "I can see that! The colors are looking great so far."),
-        ChatMessage(sender: .user, content: "Thanks! Any suggestions?"),
-        ChatMessage(sender: .bobe, content: "You might want to add a preview for the avatar in each theme card."),
-    ])
-    .environment(\.theme, allThemes[0])
-    .frame(width: 540, height: 400)
-    .background(allThemes[0].colors.background)
-}
+    #Preview("Chat Bubble - Streaming") {
+        ChatBubble(message: ChatMessage(sender: .bobe, content: "Thinking about this", isStreaming: true))
+            .environment(\.theme, allThemes[0])
+            .padding()
+            .frame(width: 500)
+    }
+
+    #Preview("Chat Stack") {
+        ChatStack(messages: [
+            ChatMessage(sender: .bobe, content: "Hey! I noticed you've been working on the settings panel."),
+            ChatMessage(sender: .user, content: "Yeah, I'm trying to get the theme picker working."),
+            ChatMessage(sender: .bobe, content: "I can see that! The colors are looking great so far."),
+            ChatMessage(sender: .user, content: "Thanks! Any suggestions?"),
+            ChatMessage(sender: .bobe, content: "You might want to add a preview for the avatar in each theme card."),
+        ])
+        .environment(\.theme, allThemes[0])
+        .frame(width: 540, height: 400)
+        .background(allThemes[0].colors.background)
+    }
 #endif

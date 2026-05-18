@@ -34,10 +34,18 @@ enum ToolCallStatusWire {
 
 /// EOU debounce ms per `voice.pause_sensitivity`. Mirror: Rust
 /// `pause_sensitivity_ms::*`.
+///
+/// Values are tuned for the FluidAudio Parakeet streaming EOU model, which
+/// already does linguistic + acoustic end-of-turn prediction before the
+/// debounce timer starts — the debounce is just a safety wait for trailing
+/// silence. The previous 1280ms balanced default (the model's published
+/// reference value) felt sluggish in practice; 800ms is the FluidAudio
+/// reference VAD-EOU value used by the Qwen3 path and matches what shipping
+/// voice agents like Whisper-based pipelines use.
 enum PauseSensitivityMs {
-    static let tight: Int = 600
-    static let balanced: Int = 1280
-    static let patient: Int = 2000
+    static let tight: Int = 400
+    static let balanced: Int = 800
+    static let patient: Int = 1500
 }
 
 /// Wire form for both `/voice/install/status` and `/local-runtime/status`.
@@ -92,7 +100,10 @@ enum StoreTiming {
     static let toolCompletionLingerSeconds: TimeInterval = 5
     static let conversationClearSeconds: TimeInterval = 3
     static let captureRetryBaseMilliseconds = 350
-    static let reconnectStatusDelayMilliseconds = 600
+    /// How long the SSE may be disconnected before the "Reconnecting…"
+    /// label appears. Sized to absorb the typical sub-second instant
+    /// reconnect after a transient drop so the user never sees flicker.
+    static let reconnectStatusDelayMilliseconds = 1500
 }
 
 enum InactivityTiming {

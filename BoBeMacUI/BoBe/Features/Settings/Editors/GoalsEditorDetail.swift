@@ -5,86 +5,84 @@ extension GoalsEditor {
     var detailPane: some View {
         if let goal = self.selectedGoal {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 16) {
                     self.detailHeader(goal)
                     self.statusActionRow(goal)
 
-                    CollapsibleSection(
-                        title: L10n.tr("settings.goals.section.title"),
-                        icon: "textformat"
-                    ) {
+                    // Title — a plain field with a label above. Wrapping
+                    // it in a CollapsibleSection was extra chrome on what
+                    // is functionally a one-line text input.
+                    self.labeledField(L10n.tr("settings.goals.section.title")) {
                         BobeTextField(
                             placeholder: L10n.tr("settings.goals.new.placeholder"),
                             text: self.$draft.title
                         )
                     }
 
-                    CollapsibleSection(
-                        title: L10n.tr("settings.goals.section.status"),
-                        icon: "flag.fill"
-                    ) {
-                        BobeMenuPicker(
-                            selection: self.$draft.status,
-                            options: Self.statusEditOptions,
-                            label: { Self.statusLabel($0) },
-                            width: 200
-                        )
+                    // Status + Priority share a single row — they're both
+                    // small pickers and pair naturally. Two CollapsibleSections
+                    // stacked vertically read as twice the noise they need.
+                    HStack(alignment: .top, spacing: 16) {
+                        self.labeledField(L10n.tr("settings.goals.section.status")) {
+                            BobeMenuPicker(
+                                selection: self.$draft.status,
+                                options: Self.statusEditOptions,
+                                label: { Self.statusLabel($0) },
+                                width: 200
+                            )
+                        }
+                        self.labeledField(
+                            L10n.tr("settings.goals.section.priority"),
+                            hint: L10n.tr("settings.goals.priority.range_hint")
+                        ) {
+                            BobeMenuPicker(
+                                selection: self.$draft.priority,
+                                options: Self.priorityOptions,
+                                label: { L10n.tr("settings.goals.priority.label_format", $0) },
+                                width: 140
+                            )
+                        }
+                        Spacer()
                     }
 
-                    CollapsibleSection(
-                        title: L10n.tr("settings.goals.section.priority"),
-                        icon: "exclamationmark.triangle.fill",
-                        description: L10n.tr("settings.goals.priority.range_hint")
-                    ) {
-                        BobeMenuPicker(
-                            selection: self.$draft.priority,
-                            options: Self.priorityOptions,
-                            label: { L10n.tr("settings.goals.priority.label_format", $0) },
-                            width: 140
-                        )
-                    }
-
-                    CollapsibleSection(
-                        title: L10n.tr("settings.goals.section.summary"),
-                        icon: "text.alignleft"
-                    ) {
+                    // Prose fields — plain labeled blocks. The CodeEditor's
+                    // visible chrome already reads as an edit surface; the
+                    // disclosure-triangle wrapper was redundant.
+                    self.labeledField(L10n.tr("settings.goals.section.summary")) {
                         self.proseEditor(text: self.$draft.summary, minHeight: 80)
                     }
-
-                    CollapsibleSection(
-                        title: L10n.tr("settings.goals.section.why_it_matters"),
-                        icon: "questionmark.circle.fill"
-                    ) {
+                    self.labeledField(L10n.tr("settings.goals.section.why_it_matters")) {
                         self.proseEditor(text: self.$draft.whyItMatters, minHeight: 100)
                     }
-
-                    CollapsibleSection(
-                        title: L10n.tr("settings.goals.section.notes"),
-                        icon: "note.text"
-                    ) {
-                        self.proseEditor(text: self.$draft.notes, minHeight: 240)
+                    self.labeledField(L10n.tr("settings.goals.section.notes")) {
+                        self.proseEditor(text: self.$draft.notes, minHeight: 220)
                     }
 
-                    self.aiCuratedSection(
-                        title: L10n.tr("settings.goals.section.how_working_on_it"),
-                        icon: "hammer.fill",
-                        body: goal.howWorkingOnIt
-                    )
-                    self.aiCuratedSection(
-                        title: L10n.tr("settings.goals.section.patterns_observed"),
-                        icon: "waveform.path.ecg",
-                        body: goal.patternsObserved
-                    )
-                    self.aiCuratedSection(
-                        title: L10n.tr("settings.goals.section.attitude_feelings"),
-                        icon: "heart.fill",
-                        body: goal.attitudeFeelings
-                    )
-                    self.aiCuratedSection(
-                        title: L10n.tr("settings.goals.section.open_questions"),
-                        icon: "questionmark.bubble.fill",
-                        body: goal.openQuestions
-                    )
+                    // AI-curated sections stay collapsible — they're
+                    // long-form, hide-by-default, and benefit from the
+                    // explicit "AI" badge the CollapsibleSection provides.
+                    VStack(alignment: .leading, spacing: 8) {
+                        self.aiCuratedSection(
+                            title: L10n.tr("settings.goals.section.how_working_on_it"),
+                            icon: "hammer.fill",
+                            body: goal.howWorkingOnIt
+                        )
+                        self.aiCuratedSection(
+                            title: L10n.tr("settings.goals.section.patterns_observed"),
+                            icon: "waveform.path.ecg",
+                            body: goal.patternsObserved
+                        )
+                        self.aiCuratedSection(
+                            title: L10n.tr("settings.goals.section.attitude_feelings"),
+                            icon: "heart.fill",
+                            body: goal.attitudeFeelings
+                        )
+                        self.aiCuratedSection(
+                            title: L10n.tr("settings.goals.section.open_questions"),
+                            icon: "questionmark.bubble.fill",
+                            body: goal.openQuestions
+                        )
+                    }
 
                     SettingsEditorActionRow {
                         self.deleteRow(goal)
@@ -102,6 +100,27 @@ extension GoalsEditor {
                     }
                 }
                 .padding(.bottom, 24)
+            }
+        }
+    }
+
+    /// Label-above-control field used for editable goal properties.
+    /// Lighter than CollapsibleSection (no chevron, no disclosure animation)
+    /// while still keeping enough visual structure to scan.
+    func labeledField(
+        _ label: String,
+        hint: String? = nil,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(self.theme.colors.text)
+            content()
+            if let hint {
+                Text(hint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(self.theme.colors.textMuted)
             }
         }
     }
@@ -145,7 +164,6 @@ extension GoalsEditor {
         }
     }
 
-    @ViewBuilder
     func statusActionRow(_ goal: Goal) -> some View {
         HStack(spacing: 6) {
             Spacer()

@@ -10,6 +10,25 @@ struct MessageInput: View {
     @FocusState private var isFocused: Bool
     @Environment(\.theme) private var theme
     @State private var isCloseHovered = false
+    @State private var hintIndex = 0
+    @State private var hintTask: Task<Void, Never>?
+
+    /// 4 rotating composer hints. We pull the keys at compute time so a
+    /// future locale swap or addition just needs more keys in the
+    /// `overlay.input.placeholder.hint.*` family.
+    private static let hintKeys: [String] = [
+        "overlay.input.placeholder.hint.notice",
+        "overlay.input.placeholder.hint.summarize",
+        "overlay.input.placeholder.hint.goal",
+        "overlay.input.placeholder.hint.feelings",
+    ]
+
+    private var rotatingPlaceholder: String {
+        // Cycle while empty; once the user starts typing, the prompt is
+        // hidden anyway, so the hint freeze is purely cosmetic.
+        let key = Self.hintKeys[self.hintIndex % Self.hintKeys.count]
+        return L10n.tr(key)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,7 +58,7 @@ struct MessageInput: View {
                         TextField(
                             "",
                             text: self.$text,
-                            prompt: Text(L10n.tr("overlay.input.placeholder.default"))
+                            prompt: Text(self.rotatingPlaceholder)
                                 .foregroundStyle(self.placeholderColor),
                             axis: .vertical
                         )
@@ -57,24 +76,27 @@ struct MessageInput: View {
                             return .handled
                         }
 
-                        Button(action: self.handleSubmit) {
-                            ZStack {
-                                Circle()
-                                    .fill(self.hasText ? self.theme.colors.secondary : self.theme.colors.border)
-                                    .frame(width: 40, height: 40)
+                        if !self.isBusy {
+                            Button(action: self.handleSubmit) {
+                                ZStack {
+                                    Circle()
+                                        .fill(self.hasText ? self.theme.colors.secondary : self.theme.colors.border)
+                                        .frame(width: 44, height: 44)
 
-                                Image(systemName: self.isBusy && self.hasText ? "hourglass" : "arrow.up")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(
-                                        self.hasText ? self.theme.colors.background : self.theme.colors.textMuted
-                                    )
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(
+                                            self.hasText ? self.theme.colors.background : self.theme.colors.textMuted
+                                        )
+                                }
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(L10n.tr("overlay.input.send.accessibility"))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                            .disabled(!self.hasText)
+                            .transition(.opacity)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(L10n.tr("overlay.input.send.accessibility"))
-                        .frame(width: 40, height: 40)
-                        .contentShape(Circle())
-                        .disabled(!self.hasText)
 
                         Button(action: self.onClose) {
                             ZStack {
@@ -118,11 +140,15 @@ struct MessageInput: View {
                     self.isFocused = true
                 }
             )
-            .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
+            .shadow(color: self.theme.colors.text.opacity(0.10), radius: 4, y: 2)
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 4)
-        .onAppear { self.isFocused = true }
+        .onAppear {
+            self.isFocused = true
+            self.startHintRotation()
+        }
+        .onDisappear { self.hintTask?.cancel() }
         .transition(
             OverlayMotionRuntime.reduceMotion
                 ? .opacity
@@ -131,6 +157,22 @@ struct MessageInput: View {
                     removal: .opacity
                 )
         )
+    }
+
+    /// Cycles the placeholder every 4 seconds. We bail when the view
+    /// disappears (the close button removes the composer entirely) so the
+    /// task doesn't hold a Sendable closure to a deallocated state.
+    private func startHintRotation() {
+        self.hintTask?.cancel()
+        self.hintTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                if Task.isCancelled { break }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    self.hintIndex = (self.hintIndex + 1) % Self.hintKeys.count
+                }
+            }
+        }
     }
 
     private var hasText: Bool {
@@ -156,25 +198,25 @@ struct MessageInput: View {
 // MARK: - Previews
 
 #if !SPM_BUILD
-#Preview("Message Input") {
-    MessageInput(text: .constant(""), onSend: { _ in true }, onClose: {})
-        .environment(\.theme, allThemes[0])
-        .frame(width: 500)
-        .padding()
-        .background(Color.gray.opacity(0.1))
-}
+    #Preview("Message Input") {
+        MessageInput(text: .constant(""), onSend: { _ in true }, onClose: {})
+            .environment(\.theme, allThemes[0])
+            .frame(width: 500)
+            .padding()
+            .background(Color.gray.opacity(0.1))
+    }
 
-#Preview("Message Input - With Text") {
-    MessageInput(
-        text: .constant("Some draft text"),
-        onSend: { _ in true },
-        onClose: {},
-        feedbackMessage: "Waiting for BoBe to finish thinking.",
-        isBusy: true
-    )
+    #Preview("Message Input - With Text") {
+        MessageInput(
+            text: .constant("Some draft text"),
+            onSend: { _ in true },
+            onClose: {},
+            feedbackMessage: "Waiting for BoBe to finish thinking.",
+            isBusy: true
+        )
         .environment(\.theme, allThemes[0])
         .frame(width: 500)
         .padding()
         .background(Color.gray.opacity(0.1))
-}
+    }
 #endif

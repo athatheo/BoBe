@@ -29,8 +29,8 @@ struct VoiceSetupStepView: View {
     }
 
     private var sttLabel: String {
-        switch pipeline.sttStatus {
-        case .notLoaded: return "Speech recognition: waiting…"
+        switch self.pipeline.sttStatus {
+        case .notLoaded: return L10n.tr("setup.voice.stt_label.waiting")
         case .downloading:
             // FluidAudio doesn't expose progress, but we observe directory
             // size vs the known target to give a real percent. Target +
@@ -45,9 +45,12 @@ struct VoiceSetupStepView: View {
                 : FluidAudioQwen3ModelPresence.observedBytes()
             let mb = Int(bytes / 1_048_576)
             let targetLabel = isEnglish ? "~600 MB" : "~1.75 GB"
-            return "Speech recognition: downloading \(mb) MB (\(percent)% of \(targetLabel))…"
-        case .ready: return "Speech recognition: ready"
-        case .failed(let msg): return "Speech recognition: failed — \(msg)"
+            return String(
+                format: L10n.tr("setup.voice.stt_label.downloading_format"),
+                mb, percent, targetLabel
+            )
+        case .ready: return L10n.tr("setup.voice.stt_label.ready")
+        case let .failed(msg): return String(format: L10n.tr("setup.voice.stt_label.failed_format"), msg)
         }
     }
 
@@ -234,7 +237,7 @@ struct VoiceSetupStepView: View {
 
     private func poll() async {
         while !Task.isCancelled, self.phase == .installing {
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(for: .milliseconds(500))
             // STT failure short-circuits the poll loop AND cancels the
             // daemon-side install so the user doesn't see a half-running
             // background download after the failure screen.

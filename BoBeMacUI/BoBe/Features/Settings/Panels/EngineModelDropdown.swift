@@ -10,7 +10,7 @@ extension EnginePanel {
     ) -> some View {
         let pool = visionOnly ? self.availableModels.filter(\.vision) : self.availableModels
         // "—" sentinel means "use the CLI's default model" — daemon's resolver picks cheapest available.
-        let options: [String] = ["—"] + pool.map(\.id)
+        let options = ["—"] + pool.map(\.id)
         let displayName = { (id: String) -> String in
             if id == "—" {
                 return L10n.tr("settings.engine.models.use_default")
@@ -24,24 +24,24 @@ extension EnginePanel {
 
         let modelBinding = Binding<String>(
             get: {
-                let raw = self.settings?[keyPath: keyPath]
+                let raw = self.store.settings?[keyPath: keyPath]
                 if let raw, !raw.isEmpty { return raw }
                 return "—"
             },
             set: { newValue in
-                guard var current = self.settings else { return }
-                // Empty string is the clear sentinel; daemon normalizes "" back to None.
-                current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
-                // Clear stale reasoning if the new model doesn't support it.
-                if let m = self.availableModels.first(where: { $0.id == newValue }), !m.supportsReasoningEffort {
-                    current[keyPath: reasoningKeyPath] = ""
+                let availableModels = self.availableModels
+                self.store.update { current in
+                    // Empty string is the clear sentinel; daemon normalizes "" back to None.
+                    current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
+                    // Clear stale reasoning if the new model doesn't support it.
+                    if let m = availableModels.first(where: { $0.id == newValue }), !m.supportsReasoningEffort {
+                        current[keyPath: reasoningKeyPath] = ""
+                    }
                 }
-                self.settings = current
-                self.debounceSave()
             }
         )
 
-        let selectedModel = self.availableModels.first { $0.id == self.settings?[keyPath: keyPath] }
+        let selectedModel = self.availableModels.first { $0.id == self.store.settings?[keyPath: keyPath] }
 
         return VStack(alignment: .leading, spacing: 8) {
             SettingsRow(label: label, description: description) {
@@ -62,19 +62,18 @@ extension EnginePanel {
     func reasoningRow(model: ModelInfo, keyPath: WritableKeyPath<DaemonSettings, String?>) -> some View {
         let efforts = model.supportedReasoningEfforts
         let defaultLabel = L10n.tr("settings.engine.reasoning.use_default")
-        let options: [String] = ["—"] + efforts
+        let options = ["—"] + efforts
 
         let binding = Binding<String>(
             get: {
-                let raw = self.settings?[keyPath: keyPath]
+                let raw = self.store.settings?[keyPath: keyPath]
                 if let raw, !raw.isEmpty, efforts.contains(raw) { return raw }
                 return "—"
             },
             set: { newValue in
-                guard var current = self.settings else { return }
-                current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
-                self.settings = current
-                self.debounceSave()
+                self.store.update { current in
+                    current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
+                }
             }
         )
 
@@ -93,7 +92,7 @@ extension EnginePanel {
                 .font(.system(size: 11))
                 .foregroundStyle(self.theme.colors.tertiary)
             Text(L10n.tr("settings.engine.reasoning.label"))
-                .font(.system(size: 12))
+                .bobeTextStyle(.body)
                 .foregroundStyle(self.theme.colors.textMuted)
             BobeMenuPicker(
                 selection: binding,
