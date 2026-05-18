@@ -1,63 +1,26 @@
+//! `/auth/status` and `/models`. Shared response shapes live here; per-engine
+//! logic in `auth` / `models_cloud` / `models_local`.
+
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
-use crate::error::AppError;
+use crate::models::engine_kind::EngineKind;
 
-#[derive(Debug, Serialize)]
-pub(crate) struct AuthStatusResponse {
-    pub(crate) is_authenticated: bool,
-    pub(crate) auth_type: Option<String>,
-    pub(crate) host: Option<String>,
-    pub(crate) login: Option<String>,
-    pub(crate) status_message: Option<String>,
-    /// Bundled CLI path; Swift uses this to open Terminal for sign-in.
-    pub(crate) cli_path: Option<String>,
-    pub(crate) cli_version: Option<String>,
-}
+mod auth;
+mod models_cloud;
+mod models_local;
 
-pub(crate) async fn get_auth_status(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<AuthStatusResponse>, AppError> {
-    // `Client::start` extracts the bundled CLI as a side effect; required
-    // before `embeddedcli::path()` returns Some.
-    let client = state
-        .workers
-        .client_handle()
-        .ensure_started()
-        .await
-        .map_err(|e| AppError::Internal(format!("auth_status: client start failed: {e}")))?;
-
-    let status = client
-        .get_auth_status()
-        .await
-        .map_err(|e| AppError::Internal(format!("auth_status: get_auth_status failed: {e}")))?;
-
-    let cli_path =
-        github_copilot_sdk::embeddedcli::path().map(|p| p.to_string_lossy().into_owned());
-    let cli_version =
-        github_copilot_sdk::embeddedcli::bundled_version().map(std::string::ToString::to_string);
-
-    Ok(Json(AuthStatusResponse {
-        is_authenticated: status.is_authenticated,
-        auth_type: status.auth_type,
-        host: status.host,
-        login: status.login,
-        status_message: status.status_message,
-        cli_path,
-        cli_version,
-    }))
-}
+pub(crate) use auth::get_auth_status;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ListModelsQuery {
-    /// Override engine for preview before flipping `Config.engine`.
+    /// Preview override before flipping `Config.engine`; bad values 400 at decode.
     #[serde(default)]
-    pub(crate) engine: Option<String>,
+    pub(crate) engine: Option<EngineKind>,
 }
 
 #[derive(Debug, Serialize)]
@@ -66,160 +29,119 @@ pub(crate) struct ModelInfo {
     pub(crate) name: String,
     pub(crate) vision: bool,
     pub(crate) context_window: Option<i64>,
-    /// `Some(1.0)` = base rate; `None` only for non-Copilot (Ollama) responses.
+    /// `None` only for Ollama responses; `Some(1.0)` = base rate.
     pub(crate) multiplier: Option<f64>,
     pub(crate) default_reasoning_effort: Option<String>,
     pub(crate) supported_reasoning_efforts: Vec<String>,
-    /// `"enabled"` / `"disabled"` / `"unconfigured"` — UI dims non-enabled entries.
+    /// `"enabled"` / `"disabled"` / `"unconfigured"`.
     pub(crate) policy_state: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ModelsSource {
+    Upstream,
+    /// Upstream call failed; `models` empty, `notice` carries the code, UI hides the picker.
+    Fallback,
+}
+
+/// `list_models` always returns 200; failures emit `source: fallback` + this
+/// notice. Swift maps `code` to action sets (Sign-in / Manage-plan / Use-local / Retry).
+#[derive(Debug, Serialize)]
+pub(crate) struct ModelsNotice {
+    /// `AUTH_REQUIRED` / `NO_ENTITLEMENTS` / `SDK_ERROR` / `UPSTREAM_UNREACHABLE`.
+    pub(crate) code: &'static str,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ListModelsResponse {
-    pub(crate) engine: String,
+    pub(crate) engine: EngineKind,
     pub(crate) models: Vec<ModelInfo>,
+    pub(crate) source: ModelsSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) notice: Option<ModelsNotice>,
 }
 
 pub(crate) async fn list_models(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ListModelsQuery>,
-) -> Result<Json<ListModelsResponse>, AppError> {
+) -> Json<ListModelsResponse> {
     let cfg = state.config();
-    let engine = q.engine.as_deref().unwrap_or(cfg.engine.engine.as_str());
+    let engine = q.engine.unwrap_or(cfg.engine.engine);
 
-    use crate::constants::engine_kind::{COPILOT_CLOUD, LOCAL};
-    match engine {
-        LOCAL => list_local_models(cfg.engine.provider_base_url.as_deref())
-            .await
-            .map(|models| {
-                Json(ListModelsResponse {
-                    engine: LOCAL.to_string(),
-                    models,
-                })
-            }),
-        _ => list_cloud_models(&state).await.map(|models| {
-            Json(ListModelsResponse {
-                engine: COPILOT_CLOUD.to_string(),
-                models,
-            })
-        }),
-    }
-}
+    let (models, source, notice) = match engine {
+        EngineKind::Local => {
+            let (models, notice) = models_local::list_local_models_resilient(
+                &state.infra.http_client,
+                cfg.engine.provider_base_url.as_deref(),
+            )
+            .await;
+            let source = if notice.is_some() {
+                ModelsSource::Fallback
+            } else {
+                ModelsSource::Upstream
+            };
+            (models, source, notice)
+        }
+        EngineKind::CopilotCloud => models_cloud::list_cloud_models_resilient(&state).await,
+    };
 
-async fn list_cloud_models(state: &Arc<AppState>) -> Result<Vec<ModelInfo>, AppError> {
-    let client = state
-        .workers
-        .client_handle()
-        .ensure_started()
-        .await
-        .map_err(|e| AppError::Internal(format!("list_models: client start failed: {e}")))?;
-
-    let models = client
-        .list_models()
-        .await
-        .map_err(|e| AppError::Internal(format!("list_models: SDK list_models failed: {e}")))?;
-
-    Ok(models
-        .into_iter()
-        .map(|m| {
-            let supports = m.capabilities.supports.as_ref();
-            let limits = m.capabilities.limits.as_ref();
-            ModelInfo {
-                vision: supports.and_then(|s| s.vision).unwrap_or(false),
-                context_window: limits.and_then(|l| l.max_context_window_tokens),
-                multiplier: m.billing.as_ref().map(|b| b.multiplier),
-                default_reasoning_effort: m.default_reasoning_effort,
-                supported_reasoning_efforts: m.supported_reasoning_efforts,
-                policy_state: m.policy.as_ref().map(|p| p.state.clone()),
-                id: m.id,
-                name: m.name,
-            }
-        })
-        .collect())
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaTagsResponse {
-    #[serde(default)]
-    models: Vec<OllamaTag>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaTag {
-    name: String,
-    #[serde(default)]
-    details: Option<OllamaTagDetails>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaTagDetails {
-    #[serde(default)]
-    families: Vec<String>,
-    #[serde(default)]
-    family: Option<String>,
-}
-
-async fn list_local_models(base_url: Option<&str>) -> Result<Vec<ModelInfo>, AppError> {
-    // Ollama's `/api/tags` lives on the root, not the `/v1` OpenAI-compat prefix.
-    let root = base_url.map_or_else(
-        || crate::constants::DEFAULT_OLLAMA_BASE_URL.to_string(),
-        |u| u.trim_end_matches('/').trim_end_matches("/v1").to_string(),
-    );
-
-    let url = format!("{root}/api/tags");
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(3))
-        .build()
-        .map_err(|e| AppError::Internal(format!("list_local_models: client build: {e}")))?;
-
-    let resp = client.get(&url).send().await.map_err(|e| {
-        // Surface "not running" as 503 so UI can render "Ollama not running" instead of a 500.
-        AppError::ServiceUnavailable(format!("list_local_models: {e}"))
-    })?;
-
-    if !resp.status().is_success() {
-        return Err(AppError::ServiceUnavailable(format!(
-            "list_local_models: ollama returned {}",
-            resp.status()
-        )));
-    }
-
-    let parsed: OllamaTagsResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("list_local_models: parse: {e}")))?;
-
-    Ok(parsed
-        .models
-        .into_iter()
-        .map(|m| {
-            let vision = guess_vision(m.details.as_ref());
-            ModelInfo {
-                id: m.name.clone(),
-                name: m.name,
-                vision,
-                context_window: None,
-                multiplier: None,
-                default_reasoning_effort: None,
-                supported_reasoning_efforts: Vec::new(),
-                policy_state: None,
-            }
-        })
-        .collect())
-}
-
-/// UX hint only; the Copilot CLI rejects vision calls to non-vision models.
-fn guess_vision(details: Option<&OllamaTagDetails>) -> bool {
-    let Some(d) = details else { return false };
-    let mut all = d.families.clone();
-    if let Some(f) = d.family.as_ref() {
-        all.push(f.clone());
-    }
-    all.iter().any(|f| {
-        let lower = f.to_lowercase();
-        lower.contains("vl")
-            || lower.contains("vision")
-            || lower.contains("llava")
-            || lower.contains("multimodal")
+    Json(ListModelsResponse {
+        engine,
+        models,
+        source,
+        notice,
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "tests panic on precondition failures")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_models_query_decodes_known_engine() {
+        let q: ListModelsQuery =
+            serde_json::from_str(r#"{"engine":"local"}"#).expect("decode local");
+        assert_eq!(q.engine, Some(EngineKind::Local));
+    }
+
+    #[test]
+    fn list_models_query_rejects_unknown_engine() {
+        let result: Result<ListModelsQuery, _> =
+            serde_json::from_str(r#"{"engine":"azure_openai"}"#);
+        assert!(result.is_err(), "unknown engine should fail");
+    }
+
+    #[test]
+    fn list_models_query_empty_is_none() {
+        let q: ListModelsQuery = serde_json::from_str("{}").expect("decode empty");
+        assert!(q.engine.is_none());
+    }
+
+    #[test]
+    fn list_models_response_engine_serializes_to_wire_format() {
+        let response = ListModelsResponse {
+            engine: EngineKind::CopilotCloud,
+            models: vec![],
+            source: ModelsSource::Fallback,
+            notice: None,
+        };
+        let json = serde_json::to_value(&response).expect("serialize");
+        assert_eq!(json["engine"], serde_json::json!("copilot_cloud"));
+        assert_eq!(json["source"], serde_json::json!("fallback"));
+        assert!(json.get("notice").is_none(), "skip_serializing_if hides None");
+    }
+
+    #[test]
+    fn models_notice_serializes_with_static_code() {
+        let notice = ModelsNotice {
+            code: "AUTH_REQUIRED",
+            message: "sign in".into(),
+        };
+        let json = serde_json::to_value(&notice).expect("serialize");
+        assert_eq!(json["code"], serde_json::json!("AUTH_REQUIRED"));
+        assert_eq!(json["message"], serde_json::json!("sign in"));
+    }
 }

@@ -1,7 +1,7 @@
 use tracing::{debug, info, warn};
 
-use crate::db::SoulRepository;
-use crate::db::UserProfileRepository;
+use crate::db::SqliteSoulRepo;
+use crate::db::SqliteUserProfileRepo;
 use crate::error::AppError;
 use crate::models::soul::Soul;
 use crate::models::user_profile::UserProfile;
@@ -32,7 +32,7 @@ fn load_default_asset(filename: &str) -> Option<&'static str> {
 }
 
 pub(crate) async fn seed_default_souls(
-    soul_repo: &dyn SoulRepository,
+    soul_repo: &SqliteSoulRepo,
 ) -> Result<SeedResult, AppError> {
     let mut result = SeedResult {
         created: 0,
@@ -93,7 +93,7 @@ pub(crate) async fn seed_default_souls(
 }
 
 pub(crate) async fn seed_default_user_profiles(
-    profile_repo: &dyn UserProfileRepository,
+    profile_repo: &SqliteUserProfileRepo,
 ) -> Result<SeedResult, AppError> {
     let mut result = SeedResult {
         created: 0,

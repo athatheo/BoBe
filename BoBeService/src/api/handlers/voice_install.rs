@@ -42,8 +42,8 @@ pub(crate) struct PresenceSnapshot {
 }
 
 pub(crate) async fn status(State(state): State<Arc<AppState>>) -> Json<InstallStatusResponse> {
-    let snap: VoiceInstallSnapshot = state.voice_install.subscribe().await.borrow().clone();
-    let install = state.voice_install.as_ref();
+    let snap: VoiceInstallSnapshot = state.voice.voice_install.subscribe().await.borrow().clone();
+    let install = state.voice.voice_install.as_ref();
     let tts = install.is_installed(VoiceModelKind::Tts);
     let presence = PresenceSnapshot {
         tts,
@@ -57,7 +57,7 @@ pub(crate) async fn status(State(state): State<Arc<AppState>>) -> Json<InstallSt
 }
 
 pub(crate) async fn start(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.voice_install.start().await {
+    match state.voice.voice_install.start().await {
         Ok(()) => StatusCode::ACCEPTED.into_response(),
         Err(crate::error::AppError::Conflict(msg)) => (StatusCode::CONFLICT, msg).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -65,6 +65,6 @@ pub(crate) async fn start(State(state): State<Arc<AppState>>) -> impl IntoRespon
 }
 
 pub(crate) async fn cancel(State(state): State<Arc<AppState>>) -> StatusCode {
-    state.voice_install.cancel().await;
+    state.voice.voice_install.cancel().await;
     StatusCode::ACCEPTED
 }

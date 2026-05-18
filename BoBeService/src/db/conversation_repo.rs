@@ -1,9 +1,7 @@
-use crate::db::ConversationRepository;
 use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::ids::{ConversationId, ConversationTurnId};
 use crate::models::types::{ConversationState, TurnRole};
-use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
@@ -16,11 +14,8 @@ impl SqliteConversationRepo {
     pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
-}
 
-#[async_trait]
-impl ConversationRepository for SqliteConversationRepo {
-    async fn save(&self, conversation: &Conversation) -> Result<Conversation, AppError> {
+    pub(crate) async fn save(&self, conversation: &Conversation) -> Result<Conversation, AppError> {
         sqlx::query(
             r"INSERT INTO conversations (id, state, closed_at, summary, created_at, updated_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -44,7 +39,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(conversation.clone())
     }
 
-    async fn get_by_id(&self, id: ConversationId) -> Result<Option<Conversation>, AppError> {
+    pub(crate) async fn get_by_id(&self, id: ConversationId) -> Result<Option<Conversation>, AppError> {
         let row = sqlx::query_as::<_, Conversation>("SELECT * FROM conversations WHERE id = ?1")
             .bind(id)
             .fetch_optional(&self.pool)
@@ -53,7 +48,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(row)
     }
 
-    async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
+    pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
         let row = sqlx::query_as::<_, Conversation>(
             "SELECT * FROM conversations WHERE state IN (?1, ?2) ORDER BY updated_at DESC LIMIT 1",
         )
@@ -65,7 +60,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(row)
     }
 
-    async fn get_last_closed(&self) -> Result<Option<Conversation>, AppError> {
+    pub(crate) async fn get_last_closed(&self) -> Result<Option<Conversation>, AppError> {
         let row = sqlx::query_as::<_, Conversation>(
             "SELECT * FROM conversations WHERE state = ?1 ORDER BY closed_at DESC LIMIT 1",
         )
@@ -76,7 +71,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(row)
     }
 
-    async fn update_state(
+    pub(crate) async fn update_state(
         &self,
         id: ConversationId,
         state: ConversationState,
@@ -116,7 +111,7 @@ impl ConversationRepository for SqliteConversationRepo {
         self.get_by_id(id).await
     }
 
-    async fn add_turn(&self, turn: &ConversationTurn) -> Result<ConversationTurn, AppError> {
+    pub(crate) async fn add_turn(&self, turn: &ConversationTurn) -> Result<ConversationTurn, AppError> {
         // Transaction prevents TOCTOU race: verify not closed + insert + touch timestamp
         let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
 
@@ -178,7 +173,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(turn.clone())
     }
 
-    async fn update_turn_content(
+    pub(crate) async fn update_turn_content(
         &self,
         turn_id: ConversationTurnId,
         content: &str,
@@ -222,7 +217,7 @@ impl ConversationRepository for SqliteConversationRepo {
             .map_err(AppError::Database)
     }
 
-    async fn get_turns(
+    pub(crate) async fn get_turns(
         &self,
         conversation_id: ConversationId,
         limit: i64,
@@ -238,7 +233,7 @@ impl ConversationRepository for SqliteConversationRepo {
         Ok(rows)
     }
 
-    async fn get_recent_turns_by_role(
+    pub(crate) async fn get_recent_turns_by_role(
         &self,
         role: TurnRole,
         limit: i64,
@@ -252,5 +247,107 @@ impl ConversationRepository for SqliteConversationRepo {
         .await
         .map_err(AppError::Database)?;
         Ok(rows.into_iter().map(|(c,)| c).collect())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "tests panic on precondition failures")]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::in_memory_pool;
+
+    #[tokio::test]
+    async fn save_then_get_by_id_roundtrip() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteConversationRepo::new(pool);
+        let conv = Conversation::new_pending();
+        let saved = repo.save(&conv).await.expect("save");
+        let fetched = repo
+            .get_by_id(saved.id)
+            .await
+            .expect("get_by_id")
+            .expect("conversation exists");
+        assert_eq!(fetched.id, saved.id);
+        assert_eq!(fetched.state, ConversationState::Pending);
+    }
+
+    #[tokio::test]
+    async fn pending_lookup_finds_pending() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteConversationRepo::new(pool);
+        let pending = repo
+            .save(&Conversation::new_pending())
+            .await
+            .expect("save pending");
+        let found = repo
+            .get_pending_or_active()
+            .await
+            .expect("get_pending_or_active")
+            .expect("found pending");
+        assert_eq!(found.id, pending.id);
+        assert_eq!(found.state, ConversationState::Pending);
+    }
+
+    #[tokio::test]
+    async fn update_state_transitions_pending_to_active() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteConversationRepo::new(pool);
+        let conv = repo
+            .save(&Conversation::new_pending())
+            .await
+            .expect("save");
+        let updated = repo
+            .update_state(conv.id, ConversationState::Active, None)
+            .await
+            .expect("update_state")
+            .expect("conversation found");
+        assert_eq!(updated.state, ConversationState::Active);
+    }
+
+    #[tokio::test]
+    async fn closed_lookup_returns_most_recent_closed() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteConversationRepo::new(pool);
+        let c = repo.save(&Conversation::new_active()).await.expect("save");
+        repo.update_state(c.id, ConversationState::Closed, Some("summary".into()))
+            .await
+            .expect("close");
+        let last = repo
+            .get_last_closed()
+            .await
+            .expect("get_last_closed")
+            .expect("has closed conversation");
+        assert_eq!(last.id, c.id);
+        assert_eq!(last.summary.as_deref(), Some("summary"));
+    }
+
+    #[tokio::test]
+    async fn add_turn_and_get_turns_in_order() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteConversationRepo::new(pool);
+        let conv = repo.save(&Conversation::new_active()).await.expect("save");
+        let t1 = ConversationTurn::new(conv.id, TurnRole::User, "hello".into());
+        let t2 = ConversationTurn::new(conv.id, TurnRole::Assistant, "world".into());
+        repo.add_turn(&t1).await.expect("add turn 1");
+        repo.add_turn(&t2).await.expect("add turn 2");
+        let turns = repo.get_turns(conv.id, 10).await.expect("get_turns");
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[0].content, "hello");
+        assert_eq!(turns[1].content, "world");
+    }
+
+    #[tokio::test]
+    async fn update_turn_content_overwrites() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteConversationRepo::new(pool);
+        let conv = repo.save(&Conversation::new_active()).await.expect("save");
+        let turn = ConversationTurn::new(conv.id, TurnRole::Assistant, "draft".into());
+        repo.add_turn(&turn).await.expect("add turn");
+        let updated = repo
+            .update_turn_content(turn.id, "final")
+            .await
+            .expect("update_turn_content")
+            .expect("turn exists");
+        assert_eq!(updated.content, "final");
     }
 }

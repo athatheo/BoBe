@@ -77,6 +77,10 @@ unnecessary_literal_bound = "allow"  # 56 tool trait impls return &str literals 
 opt-level = 3
 lto = "thin"
 strip = "symbols"
+# Defend against integer-overflow bugs that silently wrap in optimized
+# builds. The performance cost is unmeasurable for daemon-class workloads
+# and the alternative is the class of bug documented in CVE-2018-1000810.
+overflow-checks = true
 
 [dependencies]
 anyhow = "1.0.102"
@@ -88,22 +92,31 @@ chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6.1", features = ["derive"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
 toml_edit = "0.25.3"
-security-framework-sys = "2.17.0"
-core-foundation = "0.10.1"
-core-foundation-sys = "0.8.7"
 futures = "0.3.32"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-sqlx = { version = "0.8.6", features = [
+# `default-features = false` strips sqlx-mysql and sqlx-postgres from the
+# dep tree — the project only uses SQLite, and the mysql crate transitively
+# pulled `rsa 0.9.10` (RUSTSEC-2023-0071, Marvin timing attack, no upstream
+# fix). Explicit feature list keeps macros + migrate that the default set
+# would have provided.
+sqlx = { version = "0.8.6", default-features = false, features = [
     "runtime-tokio",
     "tls-rustls",
     "sqlite",
     "uuid",
     "chrono",
+    "macros",
+    "migrate",
 ] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-stream = "0.1.18"
+# `rt` feature exposes `CancellationToken` (the modern shutdown
+# coordination primitive that replaces our previous `broadcast::Sender<()>`
+# pattern). 0.7.18's feature naming is unusual — there is no `sync`
+# feature even though the type lives under `tokio_util::sync::`.
+tokio-util = { version = "0.7", features = ["rt"] }
 tower-http = { version = "0.6.10", features = ["cors", "timeout"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
@@ -162,3 +175,10 @@ regex = "1.12.3"
 # via the daemon's existing axum router under GET /metrics.
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
+
+# macOS-only: Keychain access via the Security framework (Data Protection
+# Keychain). Linux uses a file-based `FileSecretStore` fallback.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework-sys = "2.17.0"
+core-foundation = "0.10.1"
+core-foundation-sys = "0.8.7"

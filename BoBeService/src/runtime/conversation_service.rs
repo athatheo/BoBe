@@ -4,7 +4,7 @@ use dashmap::DashMap;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
-use crate::db::ConversationRepository;
+use crate::db::SqliteConversationRepo;
 use crate::error::AppError;
 use crate::models::conversation::{Conversation, ConversationTurn};
 use crate::models::ids::{ConversationId, ConversationTurnId};
@@ -17,13 +17,13 @@ struct StreamingAssistantTurn {
 }
 
 pub(crate) struct ConversationService {
-    repo: Arc<dyn ConversationRepository>,
+    repo: Arc<SqliteConversationRepo>,
     lifecycle_lock: Mutex<()>,
     streaming_assistant_turns: DashMap<ConversationId, StreamingAssistantTurn>,
 }
 
 impl ConversationService {
-    pub(crate) fn new(repo: Arc<dyn ConversationRepository>) -> Self {
+    pub(crate) fn new(repo: Arc<SqliteConversationRepo>) -> Self {
         Self {
             repo,
             lifecycle_lock: Mutex::new(()),

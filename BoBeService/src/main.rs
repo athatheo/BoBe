@@ -64,8 +64,9 @@ async fn main() -> anyhow::Result<()> {
             let state = bootstrap::run(config.clone()).await?;
             let app = api::router::build_router(std::sync::Arc::clone(&state));
 
-            let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(8);
-            let handles = spawn_background_tasks(&state, &shutdown_tx);
+            // One token; spawns get children so subsets can shut independently later.
+            let shutdown = tokio_util::sync::CancellationToken::new();
+            let mut tasks = spawn_background_tasks(&state, &shutdown);
 
             let listener = tokio::net::TcpListener::bind(format!(
                 "{}:{}",
@@ -78,15 +79,16 @@ async fn main() -> anyhow::Result<()> {
                 config.server.port
             );
 
+            let shutdown_for_axum = shutdown.clone();
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {
                     tokio::signal::ctrl_c().await.ok();
                     tracing::info!("Shutdown signal received, stopping background tasks...");
-                    let _ = shutdown_tx.send(());
+                    shutdown_for_axum.cancel();
                 })
                 .await?;
 
-            drain_background_tasks(handles).await;
+            drain_background_tasks(&mut tasks).await;
             run_graceful_shutdown(&state, &config).await;
         }
         #[allow(clippy::print_stdout)]
@@ -98,87 +100,79 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-struct BackgroundHandles {
-    heartbeat: tokio::task::JoinHandle<()>,
-    runtime: tokio::task::JoinHandle<()>,
-    consolidation: tokio::task::JoinHandle<()>,
-}
-
+/// Heartbeat (15s) + RuntimeSession + nightly consolidation.
 fn spawn_background_tasks(
     state: &std::sync::Arc<app_state::AppState>,
-    shutdown_tx: &tokio::sync::broadcast::Sender<()>,
-) -> BackgroundHandles {
-    let heartbeat = {
-        let eq = std::sync::Arc::clone(&state.event_queue);
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
+    shutdown: &tokio_util::sync::CancellationToken,
+) -> tokio::task::JoinSet<&'static str> {
+    let mut set = tokio::task::JoinSet::new();
+
+    {
+        let eq = std::sync::Arc::clone(&state.infra.event_queue);
+        let token = shutdown.clone();
+        set.spawn(async move {
             loop {
                 tokio::select! {
                     () = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
                         eq.push_heartbeat();
                     }
-                    _ = shutdown_rx.recv() => break,
+                    () = token.cancelled() => break,
                 }
             }
-            tracing::info!("heartbeat_task.stopped");
-        })
-    };
+            "heartbeat"
+        });
+    }
 
-    let runtime = {
-        let session = std::sync::Arc::clone(&state.runtime_session);
-        let mut shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
+    {
+        let session = std::sync::Arc::clone(&state.runtime.runtime_session);
+        let token = shutdown.clone();
+        set.spawn(async move {
             tokio::select! {
                 () = session.run() => {}
-                _ = shutdown_rx.recv() => {
+                () = token.cancelled() => {
                     session.stop().await;
                 }
             }
-            tracing::info!("runtime_session_task.stopped");
-        })
-    };
-
-    let consolidation = {
-        let trigger = runtime::triggers::ConsolidationTrigger::new(
-            std::sync::Arc::clone(&state.workers),
-            std::sync::Arc::clone(&state.memory_file),
-        );
-        let shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            trigger.run(shutdown_rx).await;
-            tracing::info!("consolidation_trigger_task.stopped");
-        })
-    };
-
-    BackgroundHandles {
-        heartbeat,
-        runtime,
-        consolidation,
+            "runtime_session"
+        });
     }
+
+    {
+        let scheduler = runtime::consolidation::ConsolidationScheduler::new(
+            std::sync::Arc::clone(&state.runtime.workers),
+            std::sync::Arc::clone(&state.runtime.memory_file),
+        );
+        let token = shutdown.clone();
+        set.spawn(async move {
+            scheduler.run(token).await;
+            "consolidation"
+        });
+    }
+
+    set
 }
 
-async fn drain_background_tasks(handles: BackgroundHandles) {
-    // Bound the wait so a non-cancel-safe await in any background task
-    // can't hang the whole shutdown sequence. Tasks should respect the
-    // broadcast::Sender<()> shutdown signal and exit promptly; the
-    // timeout is a backstop for misbehaving task code.
+async fn drain_background_tasks(tasks: &mut tokio::task::JoinSet<&'static str>) {
+    // Backstop for misbehaving tasks; well-behaved ones honor the cancel token.
     const DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+    let deadline = tokio::time::Instant::now() + DRAIN_TIMEOUT;
 
-    async fn await_with_timeout(
-        handle: tokio::task::JoinHandle<()>,
-        name: &'static str,
-        timeout: std::time::Duration,
-    ) {
-        match tokio::time::timeout(timeout, handle).await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => tracing::error!(task = name, error = %e, "background task panicked"),
-            Err(_) => tracing::warn!(task = name, "background task drain timeout, abandoning"),
+    while !tasks.is_empty() {
+        match tokio::time::timeout_at(deadline, tasks.join_next()).await {
+            Ok(Some(Ok(name))) => tracing::info!(task = name, "background_task.stopped"),
+            Ok(Some(Err(e))) => tracing::error!(error = %e, "background task panicked"),
+            Ok(None) => break,
+            Err(_) => {
+                let remaining = tasks.len();
+                tracing::warn!(
+                    remaining,
+                    "background task drain timeout, abandoning"
+                );
+                tasks.abort_all();
+                return;
+            }
         }
     }
-
-    await_with_timeout(handles.heartbeat, "heartbeat", DRAIN_TIMEOUT).await;
-    await_with_timeout(handles.runtime, "runtime_session", DRAIN_TIMEOUT).await;
-    await_with_timeout(handles.consolidation, "consolidation", DRAIN_TIMEOUT).await;
 }
 
 async fn drain_in_flight_text_turns(counter: &std::sync::atomic::AtomicUsize) {
@@ -204,7 +198,7 @@ async fn run_graceful_shutdown(
     _config: &config::Config,
 ) {
     tracing::info!("Stopping mDNS...");
-    state.mdns_announcer.stop().await;
+    state.infra.mdns_announcer.stop().await;
 
     // Fire the SSE on_disconnect callback so RuntimeSession::on_disconnection
     // runs (stops capture). Writers polling `is_active_connection` see
@@ -212,24 +206,24 @@ async fn run_graceful_shutdown(
     // the stale-id guard so this works regardless of which connection is
     // current.
     tracing::info!("Signaling SSE clients to disconnect...");
-    state.connection_manager.disconnect(None).await;
+    state.infra.connection_manager.disconnect(None).await;
 
     // Cancel + drain any in-flight install jobs so they don't outlive
     // the resources they depend on (db, http client, file system handles).
     tracing::info!("Cancelling in-flight installs...");
-    state.voice_install.cancel().await;
-    state.voice_install.await_idle().await;
+    state.voice.voice_install.cancel().await;
+    state.voice.voice_install.await_idle().await;
 
     tracing::info!("Stopping Copilot workers...");
-    state.workers.shutdown_all().await;
+    state.runtime.workers.shutdown_all().await;
 
     // Wait for in-flight text-turn tasks to finish. The SDK abort above
     // makes their LLM streams fail fast, so they should drop within ms.
     // 10s deadline backstops a misbehaving stream.
-    drain_in_flight_text_turns(&state.in_flight_text_turns).await;
+    drain_in_flight_text_turns(&state.runtime.in_flight_text_turns).await;
 
     tracing::info!("Closing database pool...");
-    state.db.close().await;
+    state.infra.db.close().await;
 
     tracing::info!("BoBe shutdown complete");
 }

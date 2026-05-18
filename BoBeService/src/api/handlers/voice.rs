@@ -23,16 +23,12 @@ use crate::voice::session::{VoiceDefaults, VoiceSession};
 use crate::voice::sinks::SinkGuard;
 
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
-/// Server-initiated Ping cadence. The WS layer auto-responds to Pings with
-/// Pongs, so this also doubles as the client's freshness signal.
+/// Server Ping cadence; auto-Pong from the client doubles as freshness.
 const KEEPALIVE_PING_INTERVAL: Duration = Duration::from_secs(25);
-/// Recv timeout — close the socket if nothing arrives for this long. The
-/// 25s server pings trigger auto-Pong from any live client, so a healthy
-/// connection always replenishes within this window even when muted.
+/// Recv-side close window; auto-Pongs land inside it for any live client.
 const KEEPALIVE_STALE_TIMEOUT: Duration = Duration::from_mins(1);
 
-/// RAII guard for the single-flight voice WS permit. Clears the flag on
-/// drop including panic-unwind so a crashed handler doesn't lock the slot.
+/// Drop-on-panic clears the flag so a crashed handler doesn't lock the slot.
 struct VoiceWsPermit(Arc<AtomicBool>);
 
 impl Drop for VoiceWsPermit {
@@ -41,11 +37,10 @@ impl Drop for VoiceWsPermit {
     }
 }
 
-/// CAS the single-flight slot. On success returns the socket back to the
-/// caller along with the RAII guard; on failure closes the socket with a
-/// `voice_busy` error and returns `None` so handle_socket can just `return`.
+/// Returns `None` after `voice_busy` close so callers can `return` directly.
 async fn acquire_permit(socket: WebSocket, state: &AppState) -> Option<(WebSocket, VoiceWsPermit)> {
     if state
+        .voice
         .voice_ws_active
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
@@ -59,12 +54,10 @@ async fn acquire_permit(socket: WebSocket, state: &AppState) -> Option<(WebSocke
         .await;
         return None;
     }
-    Some((socket, VoiceWsPermit(Arc::clone(&state.voice_ws_active))))
+    Some((socket, VoiceWsPermit(Arc::clone(&state.voice.voice_ws_active))))
 }
 
-/// Per-session bag handed to `teardown_session`. Owns every resource
-/// the session created so the cleanup can drop them in the right order
-/// without 8 positional args.
+/// Bag passed to `teardown_session` so cleanup drop-order is centralized.
 struct SessionTeardown {
     keepalive: tokio::task::JoinHandle<()>,
     session: Option<VoiceSession>,
@@ -74,14 +67,8 @@ struct SessionTeardown {
     out_tx: mpsc::Sender<Message>,
 }
 
-/// Bounded writer drain on session end. Per-turn sub-tasks (kokoro_task,
-/// filler_task) hold cloned out_tx senders; if the WS disconnected
-/// mid-TTS those tasks may still be running (kokoro inside
-/// spawn_blocking isn't cancellation-aware until synthesis returns).
-/// Without a timeout the writer.await would hold the function open for
-/// 5-15s, leaking the ws_permit and voice_busy-rejecting subsequent
-/// connections in that window. Clean disconnects (no in-flight turn)
-/// drain in <10ms.
+/// Bounded drain; kokoro_task isn't cancellation-aware until synth returns,
+/// so without this the ws_permit leaks for 5-15s. Clean drains take <10ms.
 const WRITER_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
@@ -94,8 +81,7 @@ async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
         out_tx,
     } = td;
 
-    // Stop the keepalive task; it'd exit naturally when out_tx drops
-    // below, but aborting first avoids one stray Ping post-disconnect.
+    // Abort eagerly to suppress a final stray Ping post-disconnect.
     keepalive.abort();
 
     if let Some(s) = session.as_mut() {
@@ -107,20 +93,11 @@ async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
         info!(session = %s.session_id, "voice.disconnect");
     }
 
-    // Synchronously clear the sink slot so writer.await sees all senders
-    // dropped. The Drop on sink_guard at function end is a panic-unwind
-    // fallback only — without this explicit await the spawned-task clear
-    // races with handle_socket return and the writer hangs.
-    state
-        .voice_sink
-        .uninstall_if_current(sink_guard.generation)
-        .await;
+    // Sync clear so writer.await sees all senders gone; SinkGuard::drop is panic fallback only.
+    state.voice.voice_sink.uninstall_if_current(sink_guard.generation).await;
     drop(sink_guard);
 
-    // VoiceContext holds an out_tx clone. Drop it BEFORE the explicit
-    // out_tx drop below — otherwise out_rx would still have a sender
-    // (via ctx.out_tx) and the writer task would hang forever, leaking
-    // the _ws_permit and locking the single-flight slot.
+    // Order matters: ctx holds an out_tx clone; drop it first or writer hangs.
     drop(ctx);
     drop(out_tx);
 
@@ -135,9 +112,7 @@ async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
     }
 }
 
-/// Dedicated WS writer task — sole owner of `ws_tx`. Recv loop, per-turn
-/// tasks, and the Kokoro task all post via cloned `out_tx` senders.
-/// Returns when all senders drop (writer drain on session end).
+/// Sole owner of `ws_tx`; everyone else posts via cloned `out_tx`. Exits on all-senders-dropped.
 fn spawn_writer(
     mut ws_tx: futures::stream::SplitSink<WebSocket, Message>,
     mut out_rx: mpsc::Receiver<Message>,
@@ -152,9 +127,7 @@ fn spawn_writer(
     })
 }
 
-/// Keepalive: send WS Ping on a 25s cadence. The WS layer auto-responds
-/// with Pong, so this doubles as the client's freshness signal. Recv-side
-/// `KEEPALIVE_STALE_TIMEOUT` catches dead connections via the Pong absence.
+/// 25s Pings; recv `KEEPALIVE_STALE_TIMEOUT` catches dead clients via missing Pongs.
 fn spawn_keepalive(out_tx: mpsc::Sender<Message>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(KEEPALIVE_PING_INTERVAL);
@@ -173,10 +146,7 @@ pub(crate) async fn voice_stream(
     mut ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // Pick `bobe.voice.v1` if the client advertised it. Daemon happily
-    // accepts an unversioned connection too — older clients keep working
-    // unchanged. Echoing the chosen subprotocol back is mandatory per
-    // RFC 6455 and is what reserves the v2 hook.
+    // Echo the chosen subprotocol per RFC 6455; unversioned clients still work.
     let selected = ws
         .requested_protocols()
         .find(|p| p.as_bytes() == crate::constants::voice_wire::SUBPROTOCOL_V1.as_bytes())
@@ -199,9 +169,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         return;
     };
 
-    // Snapshot voice defaults at WS-accept. Settings hot-swap during the
-    // connection won't retroactively change in-flight Hello defaults — a
-    // new connection picks up the latest config.
+    // Snapshot at accept-time so a mid-session settings hot-swap doesn't retro-change Hello.
     let voice_defaults = VoiceDefaults::from_state(&state);
     if !voice_defaults.enabled {
         warn!("voice.disabled_by_settings");
@@ -220,12 +188,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let keepalive = spawn_keepalive(out_tx.clone());
 
     let mut session: Option<VoiceSession> = None;
-    let runtime_session = Arc::clone(&state.runtime_session);
+    let runtime_session = Arc::clone(&state.runtime.runtime_session);
 
-    // Install the WS sink for the AppState's single-slot voice sink. The
-    // returned guard clears the slot on drop (this scope's end), so a
-    // mid-turn disconnect lets subsequent hook fires safely no-op.
-    let sink_guard = state.voice_sink.install(out_tx.clone()).await;
+    // Install WS sink; SinkGuard::drop on scope-exit makes mid-turn hook fires no-op.
+    let sink_guard = state.voice.voice_sink.install(out_tx.clone()).await;
 
     // CRITICAL: reset shared engines on WS-accept so prior session state
     // doesn't leak forward. The streaming Zipformer + Silero engines are
@@ -244,7 +210,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         runtime_session: Arc::clone(&runtime_session),
         engines: engines.clone(),
         voice_defaults: voice_defaults.clone(),
-        voice_turn_active: Arc::clone(&state.voice_turn_active),
+        voice_turn_active: Arc::clone(&state.voice.voice_turn_active),
         turn_completion_tx,
     };
 

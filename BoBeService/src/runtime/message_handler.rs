@@ -7,8 +7,7 @@ use tracing::{error, info, warn};
 
 use crate::copilot::registry::WorkerRegistry;
 use crate::copilot::types::ChatPrompt;
-use crate::copilot::workers::ChatWorker;
-use crate::db::CooldownRepository;
+use crate::db::SqliteCooldownRepo;
 use crate::error::AppError;
 use crate::models::ids::ConversationId;
 use crate::models::types::TurnRole;
@@ -21,7 +20,7 @@ use crate::util::sse::types::IndicatorType;
 pub(crate) struct MessageHandler {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
-    cooldown_repo: Arc<dyn CooldownRepository>,
+    cooldown_repo: Arc<SqliteCooldownRepo>,
     event_queue: Arc<EventQueue>,
 }
 
@@ -29,7 +28,7 @@ impl MessageHandler {
     pub(crate) fn new(
         workers: Arc<WorkerRegistry>,
         conversation: Arc<ConversationService>,
-        cooldown_repo: Arc<dyn CooldownRepository>,
+        cooldown_repo: Arc<SqliteCooldownRepo>,
         event_queue: Arc<EventQueue>,
     ) -> Self {
         Self {

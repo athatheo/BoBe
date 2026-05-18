@@ -29,7 +29,7 @@ pub(crate) use crate::voice::install_artifacts::{
 type OnCompleteCallback = Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>;
 
 pub(crate) struct VoiceInstallService {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
     models_root: PathBuf,
     state: Arc<Mutex<ServiceState>>,
     on_complete: OnCompleteCallback,
@@ -44,7 +44,7 @@ struct ServiceState {
 
 impl VoiceInstallService {
     pub(crate) fn new(
-        http: reqwest::Client,
+        http: Arc<reqwest::Client>,
         models_root: PathBuf,
         on_complete: OnCompleteCallback,
     ) -> Arc<Self> {

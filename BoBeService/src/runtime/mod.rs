@@ -1,4 +1,5 @@
 pub(crate) mod capture_learner;
+pub(crate) mod consolidation;
 pub(crate) mod conversation_service;
 pub(crate) mod decision_engine;
 pub(crate) mod message_handler;

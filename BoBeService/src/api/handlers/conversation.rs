@@ -45,7 +45,7 @@ pub(crate) async fn send_message(
         return Err(AppError::Validation("content must not be empty".into()));
     }
 
-    let session = Arc::clone(&state.runtime_session);
+    let session = Arc::clone(&state.runtime.runtime_session);
     let content = body.content.clone();
     let user_message_guard = session
         .try_begin_user_message()
@@ -53,7 +53,7 @@ pub(crate) async fn send_message(
 
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
     let msg_id = message_id.clone();
-    let in_flight = InFlightCounter::new(Arc::clone(&state.in_flight_text_turns));
+    let in_flight = InFlightCounter::new(Arc::clone(&state.runtime.in_flight_text_turns));
 
     tokio::spawn(async move {
         let _user_message_guard = user_message_guard;

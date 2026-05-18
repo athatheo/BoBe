@@ -1,10 +1,5 @@
-//! Mode B dispatcher — text transcripts in, client owns ASR.
-//!
-//! Wired from `voice/control.rs::handle_control_text` on
-//! `ClientMessage::TranscriptFinal`. Spawns a per-turn task that runs the
-//! shared convergence body (`voice/run_text_turn::run_text_turn`), and
-//! populates the session's `current_turn` slot so disconnect cleanup +
-//! barge-in cancellation reuse the same plumbing.
+//! Spawns per-turn tasks for `ClientMessage::TranscriptFinal`; populates
+//! `current_turn` so disconnect/barge-in cleanup find it.
 
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
@@ -13,11 +8,9 @@ use crate::voice::context::VoiceContext;
 use crate::voice::run_text_turn::run_text_turn;
 use crate::voice::session::{SessionVoiceConfig, TurnInFlight, VoiceSession};
 
-/// Entry point called from `control.rs` when a `TranscriptFinal` arrives.
-/// Drops the message (with a warning) if there's no active session, the
-/// session is muted, or a turn is already in flight (single-flight is
-/// enforced structurally here in addition to the LLM-level guard inside
-/// `run_text_turn`).
+/// Drops with a warning when there's no session, the session is muted,
+/// or a turn is already in flight (structural single-flight on top of
+/// the LLM-level guard).
 pub(crate) async fn dispatch_from_control(
     turn_id: String,
     text: String,
@@ -55,12 +48,9 @@ pub(crate) async fn dispatch_from_control(
     s.current_turn = Some(TurnInFlight { turn_id, join });
 }
 
-/// Spawn the per-turn task. Disconnect cleanup + barge-in abort plumbing
-/// reads `current_turn` regardless of how the turn started. The task
-/// always signals `turn_completion_tx` on exit (natural OR early-return)
-/// so the recv loop can clear `session.current_turn`; without it the slot
-/// stays pinned to a finished `JoinHandle` and the single-flight gate
-/// drops every subsequent `TranscriptFinal`.
+/// Always signals `turn_completion_tx` on exit so the recv loop clears
+/// `current_turn`; otherwise the single-flight gate would drop all
+/// subsequent transcripts after this one finishes.
 fn spawn_text_turn(
     text: String,
     turn_id: String,
@@ -73,8 +63,7 @@ fn spawn_text_turn(
     let completion_tx = ctx.turn_completion_tx.clone();
     tokio::spawn(async move {
         run_mode_b_turn(text, turn_id, task_ctx, voice_cfg, language).await;
-        // Failure here means recv loop dropped the receiver (WS already
-        // tore down) — slot is being dismantled anyway, ignore.
+        // Recv dropped = WS torn down; ignore.
         let _ = completion_tx.send(()).await;
     })
 }

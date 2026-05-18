@@ -32,6 +32,7 @@ pub(crate) async fn start_install(
     Json(body): Json<InstallRequestBody>,
 ) -> Result<(axum::http::StatusCode, Json<InstallStartedResponse>), AppError> {
     state
+        .services
         .ollama_install
         .start(InstallRequest {
             chat_model: body.chat_model,
@@ -50,7 +51,7 @@ pub(crate) async fn start_install(
 pub(crate) async fn cancel_install(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<InstallStartedResponse>, AppError> {
-    state.ollama_install.cancel().await;
+    state.services.ollama_install.cancel().await;
     Ok(Json(InstallStartedResponse {
         message: "Cancel requested".into(),
     }))
@@ -125,7 +126,7 @@ impl From<&InstallSnapshot> for InstallSnapshotDto {
 pub(crate) async fn install_status_stream(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let rx = state.ollama_install.subscribe().await;
+    let rx = state.services.ollama_install.subscribe().await;
     let stream = WatchStream::new(rx).map(|snap| {
         let dto = InstallSnapshotDto::from(&snap);
         let payload = serde_json::to_string(&dto).unwrap_or_else(|_| "{}".into());

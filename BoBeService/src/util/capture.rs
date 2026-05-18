@@ -1,12 +1,8 @@
-//! Screen capture wrapper. Returns active-window title + raw PNG bytes
-//! for LLM context. Driven by `CaptureTrigger` on a config-controlled
-//! interval; result is fed into the conversation context.
+//! Active-window title + raw PNG bytes. Driven by `CaptureTrigger`.
 
 use tracing::{debug, info};
 
 use crate::error::AppError;
-
-const CAPTURE_DIR: &str = "/tmp";
 
 pub(crate) struct ScreenCapture;
 
@@ -17,6 +13,13 @@ impl ScreenCapture {
 
     pub(crate) async fn capture_screen(&self) -> Result<CaptureResult, AppError> {
         debug!("capture.started");
+
+        // Preflight is microseconds; screencapture is millis + a temp file.
+        if !super::screen_capture_permission::has_screen_capture_permission() {
+            return Err(AppError::Capture(
+                "Screen recording permission not granted. Enable in System Settings → Privacy & Security → Screen Recording.".into()
+            ));
+        }
 
         let image = tokio::task::spawn_blocking(take_screenshot)
             .await
@@ -47,7 +50,13 @@ impl Default for ScreenCapture {
 }
 
 fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
-    let capture_path = format!("{}/bobe_capture_{}.png", CAPTURE_DIR, uuid::Uuid::new_v4());
+    // `temp_dir()` honors `$TMPDIR` so sandboxed builds get their container path.
+    let dir = std::env::temp_dir();
+    let capture_path = dir.join(format!("bobe_capture_{}.png", uuid::Uuid::new_v4()));
+    let capture_path = capture_path
+        .to_str()
+        .ok_or_else(|| std::io::Error::other("temp dir path is not valid UTF-8"))?
+        .to_owned();
     let output = std::process::Command::new("screencapture")
         .args(["-x", &capture_path])
         .output()?;
@@ -66,10 +75,11 @@ fn take_screenshot() -> Result<Vec<u8>, std::io::Error> {
         tracing::warn!(path = %capture_path, error = %e, "capture.temp_file_cleanup_failed");
     }
 
-    // macOS returns an all-black PNG when screen recording permission is denied.
+    // Defense in depth: catches the narrow window where permission is revoked
+    // between preflight and capture, or post-upgrade TCC-vs-kernel lag.
     if data.len() > 1000 && is_blank_image(&data) {
         return Err(std::io::Error::other(
-            "Screen capture returned a blank frame — screen recording permission may not be granted",
+            "Screen capture returned a blank frame — permission may have been revoked mid-capture",
         ));
     }
 

@@ -44,6 +44,9 @@ impl axum::response::IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
 
+        // Explicit OR-pattern so adding a new AppError variant fails the
+        // compile until its HTTP status is assigned — `_ => 500` would
+        // silently route the new variant to Internal Server Error.
         let (status, code) = match &self {
             AppError::Validation(_) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
             AppError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT"),
@@ -53,7 +56,12 @@ impl axum::response::IntoResponse for AppError {
                 (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE")
             }
             AppError::Canceled(_) => (StatusCode::CONFLICT, "CANCELED"),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
+            AppError::Config(_)
+            | AppError::Capture(_)
+            | AppError::Mcp(_)
+            | AppError::Serialization(_)
+            | AppError::Io(_)
+            | AppError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         };
 
         let body = serde_json::json!({

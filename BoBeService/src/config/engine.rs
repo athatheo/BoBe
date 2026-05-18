@@ -5,11 +5,14 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::models::engine_kind::EngineKind;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct EngineConfig {
-    /// `"copilot_cloud"` or `"local"`. Hot-applied via `ConfigManager`.
-    pub(crate) engine: String,
+    /// Hot-applied via `ConfigManager`. Serializes as snake_case
+    /// (`"copilot_cloud"` / `"local"`) for wire + on-disk TOML.
+    pub(crate) engine: EngineKind,
     #[serde(deserialize_with = "empty_string_as_none", default)]
     pub(crate) provider_base_url: Option<String>,
     /// Alias `provider_text_model` retained for pre-foundation configs on this branch.
@@ -47,7 +50,7 @@ where
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            engine: crate::constants::engine_kind::COPILOT_CLOUD.into(),
+            engine: EngineKind::default(),
             provider_base_url: None,
             provider_chat_model: None,
             provider_batch_model: None,

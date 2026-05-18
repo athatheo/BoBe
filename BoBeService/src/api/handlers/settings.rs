@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::error::AppError;
+use crate::models::engine_kind::EngineKind;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct SettingsResponse {
@@ -19,8 +20,8 @@ pub(crate) struct SettingsResponse {
     pub(crate) conversation_auto_close_minutes: u64,
     pub(crate) goal_check_interval_seconds: f64,
     pub(crate) mcp_enabled: bool,
-    /// Hot-swap; daemon rebuilds Copilot CLI and worker sessions on change.
-    pub(crate) engine: String,
+    /// Hot-swap; rebuilds Copilot CLI + worker sessions.
+    pub(crate) engine: EngineKind,
     pub(crate) provider_base_url: Option<String>,
     pub(crate) provider_chat_model: Option<String>,
     pub(crate) provider_batch_model: Option<String>,
@@ -32,13 +33,11 @@ pub(crate) struct SettingsResponse {
     pub(crate) voice_enabled: bool,
     pub(crate) voice_persona: String,
     pub(crate) voice_speed: f32,
-    /// User's primary STT language (BCP-47: "en", "zh"). Drives client-side
-    /// engine selection in Mode B (FluidAudio). Field added in M6.A.
+    /// BCP-47 ("en", "zh"); client uses it to pick the ASR engine.
     pub(crate) voice_stt_language: String,
-    /// End-of-utterance debounce preset. Kebab-case enum: "tight"|"balanced"|"patient".
+    /// `tight` | `balanced` | `patient`.
     pub(crate) voice_pause_sensitivity: String,
-    /// Whether the live partial-transcript caption is shown while the user
-    /// speaks. Pure UI toggle — daemon doesn't consume; Swift overlay does.
+    /// UI-only; Swift overlay consumes, daemon doesn't.
     pub(crate) voice_show_partial_caption: bool,
 }
 
@@ -53,7 +52,7 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) conversation_auto_close_minutes: Option<u64>,
     pub(crate) goal_check_interval_seconds: Option<f64>,
     pub(crate) mcp_enabled: Option<bool>,
-    pub(crate) engine: Option<String>,
+    pub(crate) engine: Option<EngineKind>,
     pub(crate) provider_base_url: Option<String>,
     pub(crate) provider_chat_model: Option<String>,
     pub(crate) provider_batch_model: Option<String>,
@@ -93,7 +92,7 @@ pub(crate) async fn get_settings(
         conversation_auto_close_minutes: cfg.conversation.auto_close_minutes,
         goal_check_interval_seconds: cfg.goals.check_interval_seconds,
         mcp_enabled: cfg.mcp.enabled,
-        engine: cfg.engine.engine.clone(),
+        engine: cfg.engine.engine,
         provider_base_url: cfg.engine.provider_base_url.clone(),
         provider_chat_model: cfg.engine.provider_chat_model.clone(),
         provider_batch_model: cfg.engine.provider_batch_model.clone(),
@@ -170,7 +169,7 @@ pub(crate) async fn update_settings(
         }));
     }
 
-    let result = state.config_manager.update(&changes);
+    let result = state.infra.config_manager.update(&changes);
 
     tracing::info!(
         applied = ?result.applied_fields,
@@ -186,4 +185,71 @@ pub(crate) async fn update_settings(
         restart_required_fields: result.restart_required_fields,
         persist_failed: result.persist_failed,
     }))
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "tests panic on precondition failures")]
+mod tests {
+    use super::*;
+
+    // Every test below proves bad wire input is rejected at decode time (400),
+    // not silently coerced.
+
+    #[test]
+    fn engine_kind_decodes_snake_case_variants() {
+        let req: SettingsUpdateRequest =
+            serde_json::from_str(r#"{"engine":"copilot_cloud"}"#).expect("decode cloud");
+        assert_eq!(req.engine, Some(EngineKind::CopilotCloud));
+
+        let req: SettingsUpdateRequest =
+            serde_json::from_str(r#"{"engine":"local"}"#).expect("decode local");
+        assert_eq!(req.engine, Some(EngineKind::Local));
+    }
+
+    #[test]
+    fn engine_kind_rejects_unknown_variant() {
+        let result: Result<SettingsUpdateRequest, _> =
+            serde_json::from_str(r#"{"engine":"azure_openai"}"#);
+        assert!(result.is_err(), "unknown engine variant should be rejected");
+    }
+
+    #[test]
+    fn engine_kind_rejects_camel_case() {
+        // Wire is snake_case; a Swift `copilotCloud` mistake must not silent-drop.
+        let result: Result<SettingsUpdateRequest, _> =
+            serde_json::from_str(r#"{"engine":"copilotCloud"}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn engine_kind_rejects_wrong_type() {
+        let result: Result<SettingsUpdateRequest, _> =
+            serde_json::from_str(r#"{"engine":42}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_body_decodes_to_all_none() {
+        // Swift only sends touched fields; "{}" is a valid no-op.
+        let req: SettingsUpdateRequest = serde_json::from_str("{}").expect("decode empty");
+        assert!(req.engine.is_none());
+        assert!(req.capture_enabled.is_none());
+        assert!(req.voice_speed.is_none());
+    }
+
+    #[test]
+    fn negative_interval_decodes_then_validation_layer_catches_it() {
+        // u64 rejects -1 at decode time.
+        let result: Result<SettingsUpdateRequest, _> =
+            serde_json::from_str(r#"{"capture_interval_seconds":-1}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn engine_kind_serializes_to_snake_case() {
+        let resp_engine = serde_json::to_value(EngineKind::CopilotCloud).expect("serialize");
+        assert_eq!(resp_engine, serde_json::json!("copilot_cloud"));
+        let resp_engine = serde_json::to_value(EngineKind::Local).expect("serialize");
+        assert_eq!(resp_engine, serde_json::json!("local"));
+    }
 }

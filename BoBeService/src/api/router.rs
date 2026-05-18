@@ -44,6 +44,10 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/local-runtime/status",
             get(handlers::local_runtime::install_status_stream),
+        )
+        .route(
+            "/auth/copilot/login/events",
+            get(handlers::copilot_login::events),
         );
 
     // Short-lived JSON/REST endpoints — bounded by a 30s timeout so a
@@ -118,6 +122,14 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::settings::get_settings).patch(handlers::settings::update_settings),
         )
         .route("/auth/status", get(handlers::engine::get_auth_status))
+        .route(
+            "/auth/copilot/login/start",
+            post(handlers::copilot_login::start_login),
+        )
+        .route(
+            "/auth/copilot/login/cancel",
+            post(handlers::copilot_login::cancel_login),
+        )
         .route("/models", get(handlers::engine::list_models))
         .route(
             "/local-runtime/install",

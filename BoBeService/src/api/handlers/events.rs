@@ -12,8 +12,8 @@ use crate::app_state::AppState;
 pub(crate) async fn stream_events(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let connection_manager = Arc::clone(&state.connection_manager);
-    let queue = Arc::clone(&state.event_queue);
+    let connection_manager = Arc::clone(&state.infra.connection_manager);
+    let queue = Arc::clone(&state.infra.event_queue);
 
     let conn_id = connection_manager.connect().await;
     tracing::info!(connection_id = %conn_id, "sse.connected");

@@ -1,5 +1,6 @@
 pub(crate) mod capture;
 pub(crate) mod conversation;
+pub(crate) mod copilot_login;
 pub(crate) mod engine;
 pub(crate) mod events;
 pub(crate) mod goals;

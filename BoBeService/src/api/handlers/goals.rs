@@ -113,10 +113,10 @@ pub(crate) async fn list_goals(
 ) -> Result<Json<GoalListResponse>, AppError> {
     let mut goals = if let Some(ref status_str) = params.status {
         let status = parse_goal_status(status_str)?;
-        let all = state.goals_service.list_all().await?;
+        let all = state.services.goals_service.list_all().await?;
         all.into_iter().filter(|g| g.status == status).collect()
     } else {
-        state.goals_service.list_all().await?
+        state.services.goals_service.list_all().await?
     };
 
     if !params.include_archived && params.status.is_none() {
@@ -139,6 +139,7 @@ pub(crate) async fn get_goal(
     Path(goal_id): Path<GoalId>,
 ) -> Result<Json<GoalResponse>, AppError> {
     let doc = state
+        .services
         .goals_service
         .get(goal_id)
         .await?
@@ -163,7 +164,7 @@ pub(crate) async fn create_goal(
     doc.priority = body.priority;
     doc.why_it_matters = body.why_it_matters;
 
-    let saved = state.goals_service.create(doc).await?;
+    let saved = state.services.goals_service.create(doc).await?;
     Ok((StatusCode::CREATED, Json(doc_to_response(&saved))))
 }
 
@@ -182,6 +183,7 @@ pub(crate) async fn update_goal(
     }
 
     let updated = state
+        .services
         .goals_service
         .update(
             goal_id,
@@ -203,6 +205,7 @@ pub(crate) async fn complete_goal(
     Path(goal_id): Path<GoalId>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
     let updated = state
+        .services
         .goals_service
         .set_status(goal_id, GoalStatus::Completed)
         .await?
@@ -219,6 +222,7 @@ pub(crate) async fn archive_goal(
     Path(goal_id): Path<GoalId>,
 ) -> Result<Json<GoalActionResponse>, AppError> {
     let updated = state
+        .services
         .goals_service
         .set_status(goal_id, GoalStatus::Archived)
         .await?
@@ -234,7 +238,7 @@ pub(crate) async fn delete_goal(
     State(state): State<Arc<AppState>>,
     Path(goal_id): Path<GoalId>,
 ) -> Result<StatusCode, AppError> {
-    if !state.goals_service.delete(goal_id).await? {
+    if !state.services.goals_service.delete(goal_id).await? {
         return Err(AppError::NotFound(format!("Goal {goal_id} not found")));
     }
     Ok(StatusCode::NO_CONTENT)

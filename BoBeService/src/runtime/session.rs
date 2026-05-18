@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
-use crate::db::CooldownRepository;
+use crate::db::SqliteCooldownRepo;
 use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::state::Decision;
@@ -21,7 +21,7 @@ pub(crate) struct RuntimeSession {
     capture_trigger: Mutex<CaptureTrigger>,
     message_handler: Arc<MessageHandler>,
     conversation: Arc<ConversationService>,
-    cooldown_repo: Arc<dyn CooldownRepository>,
+    cooldown_repo: Arc<SqliteCooldownRepo>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
     running: std::sync::atomic::AtomicBool,
@@ -46,7 +46,7 @@ impl RuntimeSession {
         capture_trigger: CaptureTrigger,
         message_handler: Arc<MessageHandler>,
         conversation: Arc<ConversationService>,
-        cooldown_repo: Arc<dyn CooldownRepository>,
+        cooldown_repo: Arc<SqliteCooldownRepo>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
         user_message_in_flight: Arc<AtomicBool>,
@@ -232,12 +232,8 @@ impl RuntimeSession {
             .await;
     }
 
-    /// Voice variant: caller installs a text-delta observer that runs in
-    /// addition to the SSE EventQueue path. The SDK send rides
-    /// `DeliveryMode::Immediate` (atomic server-side interrupt of any
-    /// in-flight turn), so a barge-in's new transcript replaces the prior
-    /// generation in a single RPC without depending on `AbortGuard` drop
-    /// timing.
+    /// Voice variant: text-delta observer runs in addition to SSE.
+    /// `DeliveryMode::Immediate` makes barge-ins atomic without AbortGuard timing.
     pub(crate) async fn handle_user_message_with_observer<F>(
         &self,
         content: &str,
@@ -294,11 +290,7 @@ impl RuntimeSession {
     }
 }
 
-/// Race the trigger future against a timeout and emit the standard reach_out
-/// / timeout log lines. Returns `true` if the timeout fired (caller may
-/// surface an extra trigger_error_event). Replaces three near-identical
-/// `tokio::time::timeout + match Ok(Decision::Engage)/Ok(_)/Err(_)` blocks
-/// in `RuntimeSession::run`.
+/// Returns `true` if the timeout fired so the caller can surface an extra error event.
 async fn run_trigger(
     name: &'static str,
     timeout: std::time::Duration,
@@ -314,5 +306,46 @@ async fn run_trigger(
             warn!(trigger = name, "runtime_session.trigger_timeout");
             true
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Single-flight correctness rests on Drop clearing the flag on every exit.
+    #[test]
+    fn user_message_guard_clears_flag_on_drop() {
+        let flag = Arc::new(AtomicBool::new(true));
+        let guard = UserMessageGuard {
+            user_message_in_flight: Arc::clone(&flag),
+        };
+        assert!(
+            flag.load(Ordering::Acquire),
+            "flag should be true while guard is alive"
+        );
+        drop(guard);
+        assert!(
+            !flag.load(Ordering::Acquire),
+            "Drop must release the in-flight claim"
+        );
+    }
+
+    /// Without unwind-safe Drop a single panicking turn would brick all future text messages.
+    #[test]
+    fn user_message_guard_clears_flag_on_panic() {
+        let flag = Arc::new(AtomicBool::new(true));
+        let flag_clone = Arc::clone(&flag);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let _guard = UserMessageGuard {
+                user_message_in_flight: flag_clone,
+            };
+            panic!("simulated turn failure");
+        }));
+        assert!(result.is_err(), "test setup: panic should propagate");
+        assert!(
+            !flag.load(Ordering::Acquire),
+            "Drop fires during unwind — flag should be cleared even on panic"
+        );
     }
 }

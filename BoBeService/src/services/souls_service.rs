@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tracing::info;
 
-use crate::db::SoulRepository;
+use crate::db::SqliteSoulRepo;
 use crate::error::AppError;
 use crate::models::ids::SoulId;
 use crate::models::soul::Soul;
@@ -12,7 +12,7 @@ use crate::services::DeleteOutcome;
 const MIN_CONTENT_LEN: usize = 10;
 
 pub(crate) struct SoulsService {
-    repo: Arc<dyn SoulRepository>,
+    repo: Arc<SqliteSoulRepo>,
 }
 
 pub(crate) struct SoulSummary {
@@ -21,7 +21,7 @@ pub(crate) struct SoulSummary {
 }
 
 impl SoulsService {
-    pub(crate) fn new(repo: Arc<dyn SoulRepository>) -> Self {
+    pub(crate) fn new(repo: Arc<SqliteSoulRepo>) -> Self {
         Self { repo }
     }
 

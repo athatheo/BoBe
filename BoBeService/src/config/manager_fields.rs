@@ -179,3 +179,141 @@ fn normalize_key(key: &str) -> String {
     }
     .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::engine_kind::EngineKind;
+    use serde_json::json;
+
+    fn changes(pairs: &[(&str, serde_json::Value)]) -> HashMap<String, serde_json::Value> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), v.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn known_field_happy_path_mutates() {
+        let mut cfg = Config::default();
+        let original_interval = cfg.capture.interval_seconds;
+        apply(&mut cfg, &changes(&[("capture.interval_seconds", json!(42))]));
+        assert_eq!(cfg.capture.interval_seconds, 42);
+        assert_ne!(cfg.capture.interval_seconds, original_interval);
+    }
+
+    #[test]
+    fn unknown_field_is_noop() {
+        let mut cfg = Config::default();
+        let snapshot_engine = cfg.engine.engine;
+        apply(
+            &mut cfg,
+            &changes(&[("nonexistent.field", json!("anything"))]),
+        );
+        // The default branch in apply() is a no-op — but we want to also
+        // verify it doesn't accidentally clobber siblings via macro
+        // side-effects.
+        assert_eq!(cfg.engine.engine, snapshot_engine);
+    }
+
+    #[test]
+    fn wrong_type_is_silently_skipped() {
+        let mut cfg = Config::default();
+        let original = cfg.capture.interval_seconds;
+        // capture_interval_seconds is u64; a JSON string is the wrong type.
+        // set_parsed!'s match arm returns Err and warns — the field stays.
+        apply(
+            &mut cfg,
+            &changes(&[("capture.interval_seconds", json!("not a number"))]),
+        );
+        assert_eq!(cfg.capture.interval_seconds, original);
+    }
+
+    #[test]
+    fn engine_kind_decodes_known_variants() {
+        let mut cfg = Config::default();
+        apply(&mut cfg, &changes(&[("engine.engine", json!("local"))]));
+        assert_eq!(cfg.engine.engine, EngineKind::Local);
+        apply(
+            &mut cfg,
+            &changes(&[("engine.engine", json!("copilot_cloud"))]),
+        );
+        assert_eq!(cfg.engine.engine, EngineKind::CopilotCloud);
+    }
+
+    #[test]
+    fn engine_kind_rejects_unknown_variant_silently() {
+        let mut cfg = Config::default();
+        cfg.engine.engine = EngineKind::CopilotCloud;
+        apply(
+            &mut cfg,
+            &changes(&[("engine.engine", json!("azure_openai"))]),
+        );
+        // serde rejects unknown variant — field stays at previous value,
+        // matching the "bad input is a no-op" contract of `set_parsed!`.
+        assert_eq!(cfg.engine.engine, EngineKind::CopilotCloud);
+    }
+
+    #[test]
+    fn empty_string_clears_optional_field() {
+        let mut cfg = Config::default();
+        cfg.engine.provider_chat_model = Some("gpt-4o".into());
+        apply(
+            &mut cfg,
+            &changes(&[("engine.provider_chat_model", json!(""))]),
+        );
+        // set_opt_string! treats empty string as explicit clear (Swift
+        // omits nil via JSONEncoder default, so "" is the wire signal).
+        assert_eq!(cfg.engine.provider_chat_model, None);
+    }
+
+    #[test]
+    fn null_clears_optional_field() {
+        let mut cfg = Config::default();
+        cfg.engine.provider_chat_model = Some("gpt-4o".into());
+        apply(
+            &mut cfg,
+            &changes(&[("engine.provider_chat_model", serde_json::Value::Null)]),
+        );
+        assert_eq!(cfg.engine.provider_chat_model, None);
+    }
+
+    #[test]
+    fn flat_key_normalizes_to_dotted() {
+        assert_eq!(normalize_key("capture_enabled"), "capture.enabled");
+        assert_eq!(normalize_key("engine"), "engine.engine");
+        assert_eq!(normalize_key("voice_speed"), "voice.speed");
+    }
+
+    #[test]
+    fn dotted_key_passes_through_unchanged() {
+        assert_eq!(normalize_key("server.host"), "server.host");
+        assert_eq!(
+            normalize_key("engine.provider_base_url"),
+            "engine.provider_base_url"
+        );
+    }
+
+    #[test]
+    fn unknown_flat_key_passes_through_as_other() {
+        // `other => other` — the function does NOT alter unknown keys,
+        // it just forwards them. apply() will then ignore them.
+        assert_eq!(normalize_key("totally_unknown_field"), "totally_unknown_field");
+    }
+
+    #[test]
+    fn multiple_changes_apply_independently() {
+        let mut cfg = Config::default();
+        apply(
+            &mut cfg,
+            &changes(&[
+                ("capture.enabled", json!(true)),
+                ("voice.speed", json!(1.25_f32)),
+                ("engine.provider_offline", json!(false)),
+            ]),
+        );
+        assert!(cfg.capture.enabled);
+        assert!((cfg.voice.speed - 1.25).abs() < 0.001);
+        assert!(!cfg.engine.provider_offline);
+    }
+}

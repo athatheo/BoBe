@@ -17,7 +17,7 @@ pub(crate) async fn start_capture(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaptureStatusResponse>, AppError> {
     tracing::info!("api.capture_start_requested");
-    state.runtime_session.start_capture().await;
+    state.runtime.runtime_session.start_capture().await;
 
     Ok(Json(CaptureStatusResponse {
         capturing: true,
@@ -29,7 +29,7 @@ pub(crate) async fn stop_capture(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaptureStatusResponse>, AppError> {
     tracing::info!("api.capture_stop_requested");
-    state.runtime_session.stop_capture().await;
+    state.runtime.runtime_session.stop_capture().await;
 
     Ok(Json(CaptureStatusResponse {
         capturing: false,

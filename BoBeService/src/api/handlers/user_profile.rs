@@ -96,7 +96,7 @@ pub(crate) async fn list_profiles(
     State(state): State<Arc<AppState>>,
     Query(params): Query<UserProfileListQuery>,
 ) -> Result<Json<UserProfileListResponse>, AppError> {
-    let summary = state.user_profile_service.list(params.enabled_only).await?;
+    let summary = state.services.user_profile_service.list(params.enabled_only).await?;
     Ok(Json(UserProfileListResponse {
         count: summary.profiles.len(),
         enabled_count: summary.enabled_count,
@@ -109,6 +109,7 @@ pub(crate) async fn create_profile(
     Json(body): Json<UserProfileCreateRequest>,
 ) -> Result<(StatusCode, Json<UserProfileResponse>), AppError> {
     let saved = state
+        .services
         .user_profile_service
         .create(body.name, body.content, body.enabled)
         .await?;
@@ -120,6 +121,7 @@ pub(crate) async fn get_profile(
     Path(profile_id): Path<UserProfileId>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
     let profile = state
+        .services
         .user_profile_service
         .get(profile_id)
         .await?
@@ -133,6 +135,7 @@ pub(crate) async fn update_profile(
     Json(body): Json<UserProfileUpdateRequest>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
     let updated = state
+        .services
         .user_profile_service
         .update(profile_id, body.content, body.enabled)
         .await?
@@ -144,21 +147,21 @@ pub(crate) async fn enable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<UserProfileId>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    set_enabled(&state.user_profile_service, profile_id, true).await
+    set_enabled(&state.services.user_profile_service, profile_id, true).await
 }
 
 pub(crate) async fn disable_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<UserProfileId>,
 ) -> Result<Json<UserProfileActionResponse>, AppError> {
-    set_enabled(&state.user_profile_service, profile_id, false).await
+    set_enabled(&state.services.user_profile_service, profile_id, false).await
 }
 
 pub(crate) async fn delete_profile(
     State(state): State<Arc<AppState>>,
     Path(profile_id): Path<UserProfileId>,
 ) -> Result<StatusCode, AppError> {
-    match state.user_profile_service.delete(profile_id).await? {
+    match state.services.user_profile_service.delete(profile_id).await? {
         DeleteOutcome::Deleted => Ok(StatusCode::NO_CONTENT),
         DeleteOutcome::NotFound => Err(AppError::NotFound(format!(
             "User profile {profile_id} not found"

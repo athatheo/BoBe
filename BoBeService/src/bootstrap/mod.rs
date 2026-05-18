@@ -34,29 +34,18 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         let path = crate::util::paths::bobe_data_dir().join("memory.md");
         crate::copilot::memory_file::MemoryFile::new(path)
     };
-    // Idempotent: existing skills are never overwritten.
+    // Existing skill files are never overwritten.
     crate::copilot::skills::ensure_skills(&crate::util::paths::bobe_data_dir()).await;
-    // SDK owns MCP process spawn + tool dispatch via `SessionConfig::mcp_servers`.
     let mcp_servers = load_mcp_servers_for_sdk(&config);
-    // One-shot cleanup of files left behind after the Mode A rip-out
-    // (Zipformer/Silero/SmartTurn no longer used; daemon = TTS only).
-    // Idempotent — silently no-ops once the files are gone.
-    cleanup_legacy_mode_a_files();
-    // Voice-turn signal lives here so AppState (consumed by voice.rs) and
-    // WorkerRegistry (consumed by BobeHooks) both reference the same Arc.
+    // Shared by AppState (consumed by voice.rs) and WorkerRegistry (BobeHooks).
     let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    // Single-flight permit for /voice/stream. Engines are not safe for
-    // concurrent feed; CAS true→false in voice.rs::handle_socket admits.
+    // Engines aren't concurrent-feed safe; CAS in voice.rs admits one at a time.
     let voice_ws_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    // Single-slot voice sink — same dual-consumer pattern as the flag.
     let voice_sink = Arc::new(crate::voice::sinks::VoiceSink::new());
-    // Install the Prometheus recorder once at boot. The handle goes on
-    // AppState; the `/metrics` route renders from it on each request.
+    // Prometheus recorder is process-global; install once.
     let metrics_handle = crate::voice::telemetry::install_recorder()
         .map_err(|e| AppError::Internal(format!("metrics recorder: {e}")))?;
-    // Voice engines under one ArcSwap so the install service can hot-swap
-    // post-download. Workers + hooks reference the snapshot Arc; reads at
-    // hook-fire time pick up the latest filler library without restart.
+    // ArcSwap so the installer can hot-swap post-download without daemon restart.
     let initial_voice_engines = build_voice_engines_snapshot().await;
     let voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>> =
         Arc::new(ArcSwap::from_pointee(initial_voice_engines));
@@ -75,14 +64,10 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
 
-    // Engine config changes: hard reload only when the SDK process itself needs new env
-    // (engine type, provider URL, offline). Model/reasoning changes use a soft reload that
-    // preserves the chat session so the user doesn't lose context.
-    //
-    // Reload defers up to 30s while a voice turn is in flight. Without this
-    // gate a mid-turn `PATCH /settings` calls `client.stop()` underneath the
-    // LLM stream, aborting it; the RAII guards drop cleanly but the user
-    // hears half a sentence and silence.
+    // Hard reload only when SDK env changes (engine/provider/offline); model
+    // changes go soft to preserve chat context. Defers up to 30s mid-voice
+    // turn — otherwise PATCH /settings stops the LLM stream and the user
+    // hears half a sentence.
     {
         let registry_for_listener = Arc::clone(&workers);
         let voice_turn_active_for_listener = Arc::clone(&voice_turn_active);
@@ -125,16 +110,27 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     print_banner(&infra.config_arc.load());
 
+    // Shared outbound client. `read_timeout` resets per-read so stalled
+    // downloads die at the TLS layer; no whole-response timeout because
+    // voice install streams ~340 MB on slow connections.
+    let http_client = Arc::new(
+        reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .read_timeout(std::time::Duration::from_secs(30))
+            .user_agent(concat!(
+                "bobe-daemon/",
+                env!("CARGO_PKG_VERSION"),
+                " (+https://www.bobebot.com)"
+            ))
+            .build()
+            .map_err(|e| AppError::Internal(format!("reqwest client build: {e}")))?,
+    );
+
     let ollama_install = {
         let data_dir = crate::util::paths::bobe_data_dir();
-        let http = Arc::new(
-            reqwest::Client::builder()
-                .build()
-                .map_err(|e| AppError::Internal(format!("reqwest client build: {e}")))?,
-        );
         let binary = Arc::new(crate::services::ollama::binary_manager::BinaryManager::new(
             &data_dir,
-            Arc::clone(&http),
+            Arc::clone(&http_client),
         ));
         // Strip `/v1` OpenAI-compat suffix to get the native Ollama API root.
         let base_url = config.engine.provider_base_url.as_deref().map_or_else(
@@ -142,16 +138,14 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             crate::services::ollama::manager::OllamaManager::root_from_provider_url,
         );
         let manager = Arc::new(crate::services::ollama::manager::OllamaManager::new(
-            Arc::clone(&http),
+            Arc::clone(&http_client),
             &base_url,
         ));
         crate::services::ollama::install_service::OllamaInstallService::new(binary, manager)
     };
 
     let voice_install = {
-        let http = reqwest::Client::builder()
-            .build()
-            .map_err(|e| AppError::Internal(format!("voice install http client: {e}")))?;
+        let http = Arc::clone(&http_client);
         let models_root = dirs::home_dir()
             .map(|h| h.join(".bobe").join("models"))
             .ok_or_else(|| AppError::Internal("no home_dir for voice models root".into()))?;
@@ -171,70 +165,63 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         crate::voice::install_service::VoiceInstallService::new(http, models_root, on_complete)
     };
 
-    let secret_store: Arc<dyn crate::secrets::SecretStore> =
-        Arc::new(crate::secrets::KeychainSecretStore);
+    let secret_store = crate::secrets::default_secret_store();
 
     let in_flight_text_turns = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
+    let copilot_login = crate::copilot::login::LoginCoordinator::new();
+
     let state = Arc::new(AppState {
-        db: pool,
-        config: Arc::clone(&infra.config_arc),
-        event_queue: infra.event_queue,
-        connection_manager: infra.connection_manager,
-        souls_service: wired.souls_service,
-        user_profile_service: wired.user_profile_service,
-        goals_service: wired.goals_service,
-        runtime_session: wired.runtime_session,
-        config_manager: wired.config_manager,
-        mcp_config_lock: Arc::new(tokio::sync::Mutex::new(())),
-        mdns_announcer: infra.mdns_announcer,
-        workers,
-        memory_file,
-        ollama_install,
-        secret_store,
-        voice_install,
-        voice_engines,
-        voice_turn_active,
-        voice_ws_active,
-        voice_sink,
-        in_flight_text_turns,
-        metrics_handle,
+        infra: Arc::new(crate::app_state::Infrastructure {
+            db: pool,
+            config: Arc::clone(&infra.config_arc),
+            config_manager: wired.config_manager,
+            event_queue: infra.event_queue,
+            connection_manager: infra.connection_manager,
+            mdns_announcer: infra.mdns_announcer,
+            secret_store,
+            metrics_handle,
+            http_client,
+            mcp_config_lock: Arc::new(tokio::sync::Mutex::new(())),
+        }),
+        runtime: Arc::new(crate::app_state::RuntimeContext {
+            runtime_session: wired.runtime_session,
+            workers,
+            memory_file,
+            in_flight_text_turns,
+        }),
+        voice: Arc::new(crate::app_state::VoiceContext {
+            voice_install,
+            voice_engines,
+            voice_turn_active,
+            voice_ws_active,
+            voice_sink,
+        }),
+        services: Arc::new(crate::app_state::DomainServices {
+            souls_service: wired.souls_service,
+            user_profile_service: wired.user_profile_service,
+            goals_service: wired.goals_service,
+            ollama_install,
+        }),
+        auth: Arc::new(crate::app_state::AuthContext { copilot_login }),
     });
 
-    Ok(state)
-}
-
-/// Delete on-disk model files left behind after the Mode A rip-out. The
-/// daemon now only needs Kokoro TTS (Mode B): STT/VAD/smart-turn moved to
-/// the Swift client (FluidAudio). The legacy Zipformer/Silero/SmartTurn
-/// downloads (~90MB combined) just take up space if they survived the
-/// model-catalog change. Idempotent — silent no-op once cleaned up.
-fn cleanup_legacy_mode_a_files() {
-    let Some(home) = dirs::home_dir() else { return };
-    let models = home.join(".bobe").join("models");
-    let legacy: &[(&str, bool)] = &[
-        // (path under models/, is_dir)
-        ("sherpa-onnx-streaming-zipformer-en", true),
-        ("silero-vad", true),
-        ("smart-turn-v3.2-cpu.onnx", false),
-    ];
-    for (rel, is_dir) in legacy {
-        let path = models.join(rel);
-        if !path.exists() {
-            continue;
-        }
-        let result = if *is_dir {
-            std::fs::remove_dir_all(&path)
-        } else {
-            std::fs::remove_file(&path)
-        };
-        match result {
-            Ok(()) => info!(path = %path.display(), "voice.legacy_mode_a_file_removed"),
-            Err(e) => {
-                warn!(path = %path.display(), error = %e, "voice.legacy_mode_a_remove_failed");
+    // Cold-start prewarm: the first chat message was paying for `Client::start`
+    // (copilot-cli subprocess spawn) + session creation + MCP connection on the
+    // user's send path. Fire-and-forget it now so the SDK is hot by the time
+    // the user types their first prompt. Failures are non-fatal — the lazy
+    // path still works on the user's first send, just slower.
+    {
+        let workers = Arc::clone(&state.runtime.workers);
+        tokio::spawn(async move {
+            match workers.chat().await {
+                Ok(_) => tracing::info!("bootstrap.chat_prewarm.ok"),
+                Err(e) => tracing::warn!(err = %e, "bootstrap.chat_prewarm.failed"),
             }
-        }
+        });
     }
+
+    Ok(state)
 }
 
 /// Poll-wait until the voice turn flag clears, capped so a wedged turn

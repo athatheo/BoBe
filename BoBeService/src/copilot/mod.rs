@@ -2,6 +2,7 @@ pub(crate) mod client;
 pub(crate) mod error;
 pub(crate) mod handler;
 pub(crate) mod hooks;
+pub(crate) mod login;
 pub(crate) mod memory_file;
 pub(crate) mod registry;
 mod registry_session_factory;

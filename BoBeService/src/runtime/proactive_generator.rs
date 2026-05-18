@@ -8,8 +8,7 @@ use uuid::Uuid;
 
 use crate::copilot::registry::WorkerRegistry;
 use crate::copilot::types::{ChatPrompt, JobInput};
-use crate::copilot::workers::ChatWorker;
-use crate::db::CooldownRepository;
+use crate::db::SqliteCooldownRepo;
 use crate::error::AppError;
 use crate::models::conversation::Conversation;
 use crate::runtime::conversation_service::ConversationService;
@@ -29,7 +28,7 @@ pub(crate) struct ProactiveGenerator {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
     event_queue: Arc<EventQueue>,
-    cooldown_repo: Arc<dyn CooldownRepository>,
+    cooldown_repo: Arc<SqliteCooldownRepo>,
 }
 
 impl ProactiveGenerator {
@@ -37,7 +36,7 @@ impl ProactiveGenerator {
         workers: Arc<WorkerRegistry>,
         conversation: Arc<ConversationService>,
         event_queue: Arc<EventQueue>,
-        cooldown_repo: Arc<dyn CooldownRepository>,
+        cooldown_repo: Arc<SqliteCooldownRepo>,
     ) -> Self {
         Self {
             workers,

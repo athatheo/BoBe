@@ -19,7 +19,7 @@ pub(crate) struct ServiceHealth {
 }
 
 pub(crate) async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
-    let db_ok = sqlx::query("SELECT 1").fetch_one(&state.db).await.is_ok();
+    let db_ok = sqlx::query("SELECT 1").fetch_one(&state.infra.db).await.is_ok();
     let status = if db_ok { "healthy" } else { "degraded" };
 
     Json(HealthResponse {
@@ -32,7 +32,7 @@ pub(crate) async fn health_check(State(state): State<Arc<AppState>>) -> Json<Hea
 }
 
 pub(crate) async fn get_status(State(state): State<Arc<AppState>>) -> Json<Value> {
-    let mut status = state.runtime_session.get_status();
+    let mut status = state.runtime.runtime_session.get_status();
     if let Some(obj) = status.as_object_mut() {
         obj.insert("version".to_owned(), json!(env!("CARGO_PKG_VERSION")));
     }

@@ -96,7 +96,7 @@ pub(crate) async fn list_souls(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SoulListQuery>,
 ) -> Result<Json<SoulListResponse>, AppError> {
-    let summary = state.souls_service.list(params.enabled_only).await?;
+    let summary = state.services.souls_service.list(params.enabled_only).await?;
     Ok(Json(SoulListResponse {
         count: summary.souls.len(),
         enabled_count: summary.enabled_count,
@@ -109,6 +109,7 @@ pub(crate) async fn get_soul(
     Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulResponse>, AppError> {
     let soul = state
+        .services
         .souls_service
         .get(soul_id)
         .await?
@@ -121,6 +122,7 @@ pub(crate) async fn create_soul(
     Json(body): Json<SoulCreateRequest>,
 ) -> Result<(StatusCode, Json<SoulResponse>), AppError> {
     let saved = state
+        .services
         .souls_service
         .create(body.name, body.content, body.enabled)
         .await?;
@@ -133,6 +135,7 @@ pub(crate) async fn update_soul(
     Json(body): Json<SoulUpdateRequest>,
 ) -> Result<Json<SoulResponse>, AppError> {
     let updated = state
+        .services
         .souls_service
         .update(soul_id, body.content, body.enabled)
         .await?
@@ -144,21 +147,21 @@ pub(crate) async fn enable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    set_enabled(&state.souls_service, soul_id, true).await
+    set_enabled(&state.services.souls_service, soul_id, true).await
 }
 
 pub(crate) async fn disable_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,
 ) -> Result<Json<SoulActionResponse>, AppError> {
-    set_enabled(&state.souls_service, soul_id, false).await
+    set_enabled(&state.services.souls_service, soul_id, false).await
 }
 
 pub(crate) async fn delete_soul(
     State(state): State<Arc<AppState>>,
     Path(soul_id): Path<SoulId>,
 ) -> Result<StatusCode, AppError> {
-    match state.souls_service.delete(soul_id).await? {
+    match state.services.souls_service.delete(soul_id).await? {
         DeleteOutcome::Deleted => Ok(StatusCode::NO_CONTENT),
         DeleteOutcome::NotFound => Err(AppError::NotFound(format!("Soul {soul_id} not found"))),
     }

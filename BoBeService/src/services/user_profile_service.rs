@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use crate::db::UserProfileRepository;
+use crate::db::SqliteUserProfileRepo;
 use crate::error::AppError;
 use crate::models::ids::UserProfileId;
 use crate::models::user_profile::UserProfile;
@@ -11,7 +11,7 @@ use crate::services::DeleteOutcome;
 const MIN_CONTENT_LEN: usize = 10;
 
 pub(crate) struct UserProfileService {
-    repo: Arc<dyn UserProfileRepository>,
+    repo: Arc<SqliteUserProfileRepo>,
 }
 
 pub(crate) struct UserProfileSummary {
@@ -20,7 +20,7 @@ pub(crate) struct UserProfileSummary {
 }
 
 impl UserProfileService {
-    pub(crate) fn new(repo: Arc<dyn UserProfileRepository>) -> Self {
+    pub(crate) fn new(repo: Arc<SqliteUserProfileRepo>) -> Self {
         Self { repo }
     }
 

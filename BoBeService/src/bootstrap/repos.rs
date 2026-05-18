@@ -3,17 +3,14 @@ use std::sync::Arc;
 use sqlx::sqlite::SqlitePool;
 
 use crate::db::{
-    ConversationRepository, CooldownRepository, SoulRepository, UserProfileRepository,
-};
-use crate::db::{
     SqliteConversationRepo, SqliteCooldownRepo, SqliteSoulRepo, SqliteUserProfileRepo,
 };
 
 pub(crate) struct Repositories {
-    pub(crate) conversation_repo: Arc<dyn ConversationRepository>,
-    pub(crate) cooldown_repo: Arc<dyn CooldownRepository>,
-    pub(crate) soul_repo: Arc<dyn SoulRepository>,
-    pub(crate) user_profile_repo: Arc<dyn UserProfileRepository>,
+    pub(crate) conversation_repo: Arc<SqliteConversationRepo>,
+    pub(crate) cooldown_repo: Arc<SqliteCooldownRepo>,
+    pub(crate) soul_repo: Arc<SqliteSoulRepo>,
+    pub(crate) user_profile_repo: Arc<SqliteUserProfileRepo>,
 }
 
 impl Repositories {

@@ -1,8 +1,6 @@
-use crate::db::CooldownRepository;
 use crate::error::AppError;
 use crate::models::cooldown::{Cooldown, CooldownInfo};
 use crate::models::ids::CooldownId;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use tokio::sync::Mutex;
@@ -23,7 +21,7 @@ impl SqliteCooldownRepo {
         }
     }
 
-    async fn ensure_loaded(&self) -> Result<CooldownId, AppError> {
+    pub(crate) async fn ensure_loaded(&self) -> Result<CooldownId, AppError> {
         let guard = self.state.lock().await;
         if let Some(s) = guard.as_ref() {
             return Ok(s.id);
@@ -35,16 +33,15 @@ impl SqliteCooldownRepo {
     }
 }
 
-#[async_trait]
-impl CooldownRepository for SqliteCooldownRepo {
-    fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo> {
+impl SqliteCooldownRepo {
+    pub(crate) fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo> {
         self.state
             .try_lock()
             .ok()
             .and_then(|s| s.as_ref()?.check_cooldown(base_minutes, extended_minutes))
     }
 
-    async fn load_or_create(&self) -> Result<(), AppError> {
+    pub(crate) async fn load_or_create(&self) -> Result<(), AppError> {
         let row = sqlx::query_as::<_, Cooldown>("SELECT * FROM cooldown_state LIMIT 1")
             .fetch_optional(&self.pool)
             .await
@@ -78,7 +75,7 @@ impl CooldownRepository for SqliteCooldownRepo {
         Ok(())
     }
 
-    async fn update_last_engagement(&self, timestamp: DateTime<Utc>) -> Result<(), AppError> {
+    pub(crate) async fn update_last_engagement(&self, timestamp: DateTime<Utc>) -> Result<(), AppError> {
         let id = self.ensure_loaded().await?;
 
         sqlx::query(
@@ -100,7 +97,7 @@ impl CooldownRepository for SqliteCooldownRepo {
         Ok(())
     }
 
-    async fn update_last_user_response(&self, timestamp: DateTime<Utc>) -> Result<(), AppError> {
+    pub(crate) async fn update_last_user_response(&self, timestamp: DateTime<Utc>) -> Result<(), AppError> {
         let id = self.ensure_loaded().await?;
 
         sqlx::query(
@@ -120,5 +117,78 @@ impl CooldownRepository for SqliteCooldownRepo {
 
         debug!(last_user_response = %timestamp, "cooldown_repository.state_saved");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "tests panic on precondition failures")]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::in_memory_pool;
+    use chrono::Duration as ChronoDuration;
+
+    #[tokio::test]
+    async fn load_or_create_is_idempotent() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteCooldownRepo::new(pool);
+
+        repo.load_or_create().await.expect("first load_or_create");
+        let id_first = repo.ensure_loaded().await.expect("ensure_loaded #1");
+
+        // Second call should NOT insert a new row — the in-memory cache
+        // and the WHERE-LIMIT-1 SELECT mean we keep the same ID.
+        repo.load_or_create().await.expect("second load_or_create");
+        let id_second = repo.ensure_loaded().await.expect("ensure_loaded #2");
+
+        assert_eq!(id_first, id_second);
+    }
+
+    #[tokio::test]
+    async fn check_cooldown_returns_none_before_engagement() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteCooldownRepo::new(pool);
+        repo.load_or_create().await.expect("seed cooldown state");
+        // No engagement recorded yet — cooldown shouldn't gate anything.
+        assert!(repo.check_cooldown(5, 30).is_none());
+    }
+
+    #[tokio::test]
+    async fn check_cooldown_fires_within_window() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteCooldownRepo::new(pool);
+        repo.load_or_create().await.expect("seed cooldown state");
+        repo.update_last_engagement(Utc::now())
+            .await
+            .expect("record engagement");
+
+        // Just-now engagement → cooldown active for the next 5 minutes.
+        let info = repo.check_cooldown(5, 30);
+        assert!(info.is_some(), "expected cooldown to fire within base window");
+    }
+
+    #[tokio::test]
+    async fn check_cooldown_clears_after_base_window() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteCooldownRepo::new(pool);
+        repo.load_or_create().await.expect("seed cooldown state");
+        // Engagement 10 minutes ago, base window = 5 minutes → cleared.
+        let past = Utc::now() - ChronoDuration::minutes(10);
+        repo.update_last_engagement(past)
+            .await
+            .expect("record old engagement");
+        assert!(repo.check_cooldown(5, 30).is_none());
+    }
+
+    #[tokio::test]
+    async fn update_user_response_persists() {
+        let pool = in_memory_pool().await;
+        let repo = SqliteCooldownRepo::new(pool);
+        let ts = Utc::now();
+        repo.update_last_user_response(ts)
+            .await
+            .expect("update user response");
+        let guard = repo.state.lock().await;
+        let cached = guard.as_ref().expect("state cached after update");
+        assert_eq!(cached.last_user_response, Some(ts));
     }
 }

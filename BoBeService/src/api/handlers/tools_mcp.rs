@@ -11,10 +11,10 @@ use crate::services::mcp_config_service::{
 
 fn deps_from(state: &AppState) -> McpConfigDeps<'_> {
     McpConfigDeps {
-        config: &state.config,
-        mcp_config_lock: &state.mcp_config_lock,
-        workers: &state.workers,
-        secret_store: &state.secret_store,
+        config: &state.infra.config,
+        mcp_config_lock: &state.infra.mcp_config_lock,
+        workers: &state.runtime.workers,
+        secret_store: &state.infra.secret_store,
     }
 }
 

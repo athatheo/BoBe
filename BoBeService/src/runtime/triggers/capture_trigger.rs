@@ -10,7 +10,7 @@ const VISION_FAILURE_BREAKER_THRESHOLD: u32 = 3;
 const VISION_FAILURE_COOLDOWN: Duration = Duration::from_mins(3);
 
 use crate::config::Config;
-use crate::db::CooldownRepository;
+use crate::db::SqliteCooldownRepo;
 use crate::runtime::capture_learner::CaptureLearner;
 use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::proactive_generator::ProactiveGenerator;
@@ -38,7 +38,7 @@ pub(crate) struct CaptureTrigger {
     capture_learner: Arc<CaptureLearner>,
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
-    cooldown_repo: Arc<dyn CooldownRepository>,
+    cooldown_repo: Arc<SqliteCooldownRepo>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
     /// Same Arc as `RuntimeSession.user_message_in_flight`. CAS true at
@@ -62,7 +62,7 @@ impl CaptureTrigger {
         capture_learner: Arc<CaptureLearner>,
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
-        cooldown_repo: Arc<dyn CooldownRepository>,
+        cooldown_repo: Arc<SqliteCooldownRepo>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
         user_message_in_flight: Arc<AtomicBool>,

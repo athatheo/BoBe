@@ -26,7 +26,7 @@ pub(super) fn session_extras_for_class(
         }
     };
 
-    let provider = if cfg.engine == crate::constants::engine_kind::LOCAL {
+    let provider = if cfg.engine == crate::models::engine_kind::EngineKind::Local {
         let base_url = cfg
             .provider_base_url
             .clone()

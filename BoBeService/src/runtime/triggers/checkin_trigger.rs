@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use tracing::{debug, info};
 
 use crate::config::Config;
-use crate::db::CooldownRepository;
+use crate::db::SqliteCooldownRepo;
 use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::Decision;
@@ -15,7 +15,7 @@ pub(crate) struct CheckinTrigger {
     scheduler: CheckinScheduler,
     generator: Arc<ProactiveGenerator>,
     conversation: Arc<ConversationService>,
-    cooldown_repo: Arc<dyn CooldownRepository>,
+    cooldown_repo: Arc<SqliteCooldownRepo>,
     config: Arc<ArcSwap<Config>>,
 }
 
@@ -24,7 +24,7 @@ impl CheckinTrigger {
         scheduler: CheckinScheduler,
         generator: Arc<ProactiveGenerator>,
         conversation: Arc<ConversationService>,
-        cooldown_repo: Arc<dyn CooldownRepository>,
+        cooldown_repo: Arc<SqliteCooldownRepo>,
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {

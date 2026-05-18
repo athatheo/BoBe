@@ -54,7 +54,9 @@ impl ClientHandle {
 /// Only sets `COPILOT_OFFLINE` in local mode; cloud mode requires network access.
 fn client_options_from_config(config: &Config) -> ClientOptions {
     let mut opts = ClientOptions::default();
-    if config.engine.engine == "local" && config.engine.provider_offline {
+    if config.engine.engine == crate::models::engine_kind::EngineKind::Local
+        && config.engine.provider_offline
+    {
         opts.env
             .push((OsString::from("COPILOT_OFFLINE"), OsString::from("true")));
     }

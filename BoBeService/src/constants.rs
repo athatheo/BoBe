@@ -14,7 +14,12 @@ pub(crate) const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 /// engine = "local".
 pub(crate) const DEFAULT_OLLAMA_V1_URL: &str = "http://127.0.0.1:11434/v1";
 
-/// Wire-format engine kinds. Mirror: Swift `EngineKind`.
+/// Wire-format engine kinds. Mirror: Swift `EngineKind`. Drift script
+/// `scripts/check-cross-language-constants.sh` reads these by name; the
+/// `models::engine_kind::EngineKind` enum's serde rename produces the
+/// same strings, so flipping a value here would silently desync the
+/// daemon's wire output from these pins.
+#[allow(dead_code, reason = "drift checkpoint; Swift + EngineKind serde rename consume the values")]
 pub(crate) mod engine_kind {
     pub(crate) const COPILOT_CLOUD: &str = "copilot_cloud";
     pub(crate) const LOCAL: &str = "local";
@@ -47,9 +52,9 @@ pub(crate) mod tool_call_status {
 /// side is documentation only — drift script locks both sides.
 #[allow(dead_code, reason = "drift checkpoint; Swift consumes the values")]
 pub(crate) mod pause_sensitivity_ms {
-    pub(crate) const TIGHT: u32 = 600;
-    pub(crate) const BALANCED: u32 = 1280;
-    pub(crate) const PATIENT: u32 = 2000;
+    pub(crate) const TIGHT: u32 = 400;
+    pub(crate) const BALANCED: u32 = 800;
+    pub(crate) const PATIENT: u32 = 1500;
 }
 
 /// Voice wire/disk constants. Mirror: Swift `VoiceWire`.

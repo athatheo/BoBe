@@ -1,33 +1,20 @@
-//! WS wire protocol for `/voice/stream`.
-//!
-//! Mode B only: client owns ASR (FluidAudio Parakeet EOU / Qwen3-ASR via the
-//! Swift `Voice/` module). Daemon owns LLM + TTS. Wire carries transcripts
-//! and control in JSON; daemon-to-client TTS audio in Opus binary frames.
-//! Client never sends audio.
+//! WS wire protocol for `/voice/stream`. Client owns ASR + ships transcripts;
+//! daemon owns LLM + TTS and ships Opus binary audio. No audio uplink.
 
 use serde::{Deserialize, Serialize};
 
-/// Control actions the client may request mid-session.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ControlAction {
-    /// Cancel the in-flight turn (user-initiated barge-in or explicit abort).
     Abort,
-    /// Pause input — client should stop forwarding ASR transcripts until Unmute.
     Mute,
     Unmute,
-    /// Reset session state (clear running turn; conversation context preserved).
+    /// Drops running turn; keeps conversation context.
     Reset,
 }
 
-/// Daemon-side authoritative turn phase. Client mirrors for UI only.
-/// Client-driven states (`Connecting`, `Cancelling`, `Failed`) live in the
-/// Swift `VoicePipeline.State` enum and never cross the wire.
-///
-/// **Wire contract:** match `BoBeMacUI/BoBe/Voice/VoiceProtocol.swift::
-/// VoicePhaseWire` variant set. Adding a variant here without the Swift
-/// counterpart makes decode fail on the client; the converse silently
-/// drops unknown phases.
+/// **Wire contract:** mirror `VoicePhaseWire` in Swift. Adding a variant
+/// without the Swift counterpart breaks decode on the client.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum VoicePhase {
@@ -37,22 +24,11 @@ pub(crate) enum VoicePhase {
     Speaking,
 }
 
-/// **Wire contract:** `type` tag values (`hello`, `barge_in`, `wake`,
-/// `playback_ack`, `control`, `transcript_partial`, `transcript_final`)
-/// must match `BoBeMacUI/BoBe/Voice/VoiceProtocol.swift::ClientVoiceMessage`
-/// encoder/decoder. Field names inside each variant mirror the Swift
-/// `CodingKeys` switch — if you add/rename one, update both files.
+/// **Wire contract:** mirror `ClientVoiceMessage` in Swift; rename fields here = update both.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(
-    dead_code,
-    reason = "BargeIn/Wake/PlaybackAck fields are wire-protocol contract"
-)]
+#[allow(dead_code, reason = "BargeIn/Wake/PlaybackAck fields are wire-protocol contract")]
 pub(crate) enum ClientMessage {
-    /// Session handshake; sent once after WS connect. `language` (BCP-47)
-    /// drives daemon-side telemetry/tracing; the client decides which local
-    /// ASR engine to use. `voice_id`/`speed` override the daemon's Kokoro
-    /// persona defaults for this WS only.
     Hello {
         session_id: String,
         playback_rate: u32,
@@ -60,61 +36,38 @@ pub(crate) enum ClientMessage {
         voice_id: Option<String>,
         #[serde(default)]
         speed: Option<f32>,
+        /// BCP-47; daemon telemetry only — client picks the ASR engine.
         #[serde(default)]
         language: Option<String>,
     },
-    /// Client detected speech during BoBe TTS playback — candidate barge-in.
-    /// Daemon decides whether to honour after the min-words gate.
+    /// Candidate barge-in; daemon decides after the min-words gate.
     BargeIn { ts_ms: u64, playback_ms_played: u64 },
-    /// Wake-word fired locally. Daemon may auto-open mic if not yet active.
-    Wake {
-        phrase: String,
-        score: f32,
-        ts_ms: u64,
-    },
-    /// Reports how much of TTS chunk_id has actually played, for truncation math.
+    Wake { phrase: String, score: f32, ts_ms: u64 },
+    /// Playback progress for truncation math.
     PlaybackAck { chunk_id: u64, played_ms: u64 },
-    /// User-initiated control.
     Control { action: ControlAction },
-    /// Client's streaming ASR emitted a partial transcript. Daemon stores it
-    /// on `session.last_partial_text` for the cancel-phrase regex and the
-    /// MinWords barge-in gate.
+    /// Daemon stores on `session.last_partial_text` for cancel-phrase + MinWords gate.
     TranscriptPartial { turn_id: String, text: String },
-    /// Client's streaming ASR finalized this turn's text. Daemon admits the
-    /// turn (single-flight) and hands off to the convergence pipeline.
+    /// Triggers single-flight admit + convergence pipeline.
     TranscriptFinal { turn_id: String, text: String },
 }
 
-/// **Wire contract:** `type` tag values (`hello_ack`, `state`, `tts_end`,
-/// `truncate`, `transcript_final`, `error`) must match
-/// `BoBeMacUI/BoBe/Voice/VoiceProtocol.swift::ServerVoiceMessage` decoder.
-/// Note Binary TTS frames bypass this enum — see `encode_tts_frame` below.
+/// **Wire contract:** mirror `ServerVoiceMessage` in Swift. Binary TTS frames
+/// bypass this enum — see `encode_tts_frame` below.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ServerMessage {
-    /// Capability ack sent once, immediately after a valid `Hello`, before
-    /// any `State`. Confirms the resolved Kokoro persona and playback rate.
-    HelloAck {
-        voice_pack: String,
-        playback_rate: u32,
-    },
-    /// Authoritative phase transition. Sent on every state change.
+    HelloAck { voice_pack: String, playback_rate: u32 },
     State { phase: VoicePhase, turn_id: String },
-    /// Echo of the client-finalized transcript for chat persistence + UI.
     TranscriptFinal { turn_id: String, text: String },
-    /// All sentences flushed for this turn — client may leave Speaking.
     TtsEnd { turn_id: String },
     /// Post-barge-in: client drops queued audio beyond `keep_ms`.
     Truncate { turn_id: String, keep_ms: u64 },
-    /// Non-fatal error message.
     Error { code: String, message: String },
 }
 
-/// Binary frame layout for `tts.chunk` and `filler.chunk`:
-/// `[8 bytes BE u64 chunk_id][1 byte flags][N bytes Opus packet]`.
-///
-/// flags bit 0: 1 = filler (preemptible by real reply)
-/// flags bit 1: 1 = first chunk of turn
+/// `[8 bytes BE u64 chunk_id][1 byte flags][N bytes Opus]`.
+/// flags: bit 0 = filler (preemptible), bit 1 = first chunk of turn.
 pub(crate) const TTS_FRAME_HEADER_LEN: usize = 9;
 pub(crate) const FLAG_FILLER: u8 = 0b0000_0001;
 pub(crate) const FLAG_FIRST_OF_TURN: u8 = 0b0000_0010;

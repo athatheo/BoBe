@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, NaiveTime, TimeZone, Utc};
 use serde_json::json;
-use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::copilot::memory_file::{MemoryFile, TARGET_MAX_BYTES};
@@ -15,13 +15,13 @@ use crate::error::AppError;
 
 const DEFAULT_FIRE_AT: (u32, u32) = (3, 0);
 
-pub(crate) struct ConsolidationTrigger {
+pub(crate) struct ConsolidationScheduler {
     workers: Arc<WorkerRegistry>,
     memory_file: Arc<MemoryFile>,
     fire_at: NaiveTime,
 }
 
-impl ConsolidationTrigger {
+impl ConsolidationScheduler {
     pub(crate) fn new(workers: Arc<WorkerRegistry>, memory_file: Arc<MemoryFile>) -> Self {
         let fire_at = NaiveTime::from_hms_opt(DEFAULT_FIRE_AT.0, DEFAULT_FIRE_AT.1, 0)
             .unwrap_or(NaiveTime::MIN);
@@ -32,19 +32,19 @@ impl ConsolidationTrigger {
         }
     }
 
-    pub(crate) async fn run(self, mut shutdown: broadcast::Receiver<()>) {
+    pub(crate) async fn run(self, shutdown: CancellationToken) {
         loop {
             let wait = duration_until_next(self.fire_at, Utc::now());
             tracing::info!(
                 wait_secs = wait.as_secs(),
                 fire_at = %self.fire_at,
-                "consolidation_trigger.sleeping"
+                "consolidation.sleeping"
             );
 
             tokio::select! {
                 () = tokio::time::sleep(wait) => {}
-                _ = shutdown.recv() => {
-                    tracing::info!("consolidation_trigger.stopped");
+                () = shutdown.cancelled() => {
+                    tracing::info!("consolidation.stopped");
                     return;
                 }
             }
@@ -52,10 +52,10 @@ impl ConsolidationTrigger {
             match self.consolidate_once().await {
                 Ok(()) => {}
                 Err(AppError::Conflict(reason)) => {
-                    tracing::info!(reason = %reason, "consolidation_trigger.skipped");
+                    tracing::info!(reason = %reason, "consolidation.skipped");
                 }
                 Err(e) => {
-                    tracing::warn!(err = %e, "consolidation_trigger.run_failed");
+                    tracing::warn!(err = %e, "consolidation.run_failed");
                 }
             }
         }
@@ -112,7 +112,7 @@ impl ConsolidationTrigger {
             tracing::warn!(
                 before_bytes,
                 current_bytes = current.len(),
-                "consolidation_trigger.aborted_concurrent_write"
+                "consolidation.aborted_concurrent_write"
             );
             return Err(AppError::Conflict(
                 "memory.md changed during consolidation; skipping this pass".into(),
@@ -127,7 +127,7 @@ impl ConsolidationTrigger {
             after_bytes,
             saved_bytes = before_bytes.saturating_sub(after_bytes),
             took_ms = took.as_millis(),
-            "consolidation_trigger.run_complete"
+            "consolidation.run_complete"
         );
 
         Ok(())

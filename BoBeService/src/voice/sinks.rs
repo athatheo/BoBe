@@ -1,9 +1,6 @@
-//! Single-slot voice sink on AppState. The WS handler stashes its
-//! outbound sender on connect; BobeHooks pushes cached PCM (fillers) to
-//! it from the SDK hook context. Single-slot suffices because
-//! UserMessageGuard single-flights voice turns. Each `install` stamps a
-//! generation; the returned guard's drop only clears when its generation
-//! still matches, so a newer connection that overwrote the slot is safe.
+//! Single-slot voice sink. WS handler installs on connect; hooks push
+//! filler PCM. Single-flight via UserMessageGuard. Per-install generation
+//! tag prevents an older guard's drop from clearing a newer slot.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,9 +15,7 @@ use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
 
 pub(crate) struct VoiceSink {
     inner: RwLock<Option<SinkSlot>>,
-    /// Monotonic install counter — each `install` increments and stamps
-    /// the new slot. `SinkGuard::drop` only clears if the live slot still
-    /// matches its captured generation.
+    /// Stamped onto each install; SinkGuard::drop only clears when it matches.
     next_generation: AtomicU64,
 }
 
@@ -43,10 +38,7 @@ impl VoiceSink {
         }
     }
 
-    /// Stash a sender for the lifetime of the returned guard. Drop clears
-    /// the slot — so a WS disconnect mid-turn lets subsequent hook fires
-    /// safely no-op rather than write to a closed channel. Generation
-    /// tagging guarantees the clear only fires for the install it owns.
+    /// Drop clears the slot; mid-turn disconnects make later hook fires no-op.
     pub(crate) async fn install(self: &Arc<Self>, sink: mpsc::Sender<Message>) -> SinkGuard {
         let generation = self.next_generation.fetch_add(1, Ordering::AcqRel);
         *self.inner.write().await = Some(SinkSlot {
@@ -67,10 +59,7 @@ impl VoiceSink {
             .map(|slot| slot.sender.clone())
     }
 
-    /// Synchronously clear the slot if it still holds `generation`. Used
-    /// by the WS handler's cleanup path so the writer task's `out_rx`
-    /// can see all senders dropped and exit, allowing handle_socket to
-    /// return promptly. The Drop fallback covers panic-unwind.
+    /// WS-handler cleanup path; Drop covers panic-unwind.
     pub(crate) async fn uninstall_if_current(&self, generation: u64) {
         let mut guard = self.inner.write().await;
         if guard.as_ref().is_some_and(|s| s.generation == generation) {
@@ -79,13 +68,8 @@ impl VoiceSink {
     }
 }
 
-/// RAII guard that clears the voice sink slot on drop. The clear runs in a
-/// detached task so destruction stays sync from the caller's perspective.
-/// Only clears if the slot still holds the guard's generation — a newer
-/// `install` between this drop's spawn and run is preserved.
-///
-/// Prefer the explicit `VoiceSink::uninstall_if_current(generation)` from
-/// the WS handler's cleanup path; the Drop is the panic-unwind fallback.
+/// RAII clear on drop; clear runs in a detached task. Generation match
+/// preserves newer installs. Prefer explicit `uninstall_if_current`.
 pub(crate) struct SinkGuard {
     slot: Arc<VoiceSink>,
     pub(crate) generation: u64,
@@ -104,9 +88,7 @@ impl Drop for SinkGuard {
     }
 }
 
-/// Encode a cached PCM filler as 20ms Opus frames and push them over the
-/// active voice sink with `FLAG_FILLER`. No-op when no client is connected,
-/// no library is loaded, or the kind isn't in the library.
+/// 20ms Opus frames with `FLAG_FILLER`. No-op if disconnected / library missing.
 pub(crate) async fn emit_filler(sink: &VoiceSink, library: &FillerLibrary, kind: FillerKind) {
     let Some(tx) = sink.get().await else {
         return;
@@ -129,10 +111,7 @@ pub(crate) async fn emit_filler(sink: &VoiceSink, library: &FillerLibrary, kind:
     }
 }
 
-/// Map a tool name from `PreToolUseInput.tool_name` to a filler intent.
-/// Unknown tools fall through to `ToolGeneric`; the routing here is
-/// case-insensitive and matches the canonical Copilot CLI names plus
-/// common MCP aliases.
+/// Case-insensitive; unknown tools fall through to `ToolGeneric`.
 pub(crate) fn filler_for_tool(tool_name: &str) -> FillerKind {
     let lower = tool_name.to_ascii_lowercase();
     if (lower.contains("web") && lower.contains("search")) || lower == "websearch" {

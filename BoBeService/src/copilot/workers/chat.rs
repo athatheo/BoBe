@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_stream::stream;
-use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use futures::Stream;
@@ -16,8 +15,6 @@ use tokio::sync::Mutex;
 
 use crate::copilot::error::WorkerError;
 use crate::copilot::types::{ChatAttachment, ChatDelta, ChatPrompt};
-
-use super::ChatWorker;
 
 pub(crate) struct CopilotChatWorker {
     session: Arc<Session>,
@@ -75,9 +72,8 @@ impl CopilotChatWorker {
     }
 }
 
-#[async_trait]
-impl ChatWorker for CopilotChatWorker {
-    async fn send(
+impl CopilotChatWorker {
+    pub(crate) async fn send(
         &self,
         prompt: ChatPrompt,
     ) -> Result<Pin<Box<dyn Stream<Item = ChatDelta> + Send>>, WorkerError> {

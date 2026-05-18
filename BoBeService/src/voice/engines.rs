@@ -38,7 +38,7 @@ pub(crate) struct VoiceEngines {
 
 impl VoiceEngines {
     pub(crate) fn from_state(state: &AppState) -> Option<Self> {
-        let snap = state.voice_engines.load();
+        let snap = state.voice.voice_engines.load();
         Some(Self {
             tts: Arc::clone(snap.tts.as_ref()?),
             fillers: snap.filler_library.as_ref().map(Arc::clone),

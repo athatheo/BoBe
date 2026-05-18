@@ -6,7 +6,7 @@ use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
-use crate::db::CooldownRepository;
+use crate::db::SqliteCooldownRepo;
 use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::{Decision, TriggerContext, TriggerType};
@@ -19,7 +19,7 @@ pub(crate) struct GoalTrigger {
     goals_service: Arc<GoalsService>,
     decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
-    cooldown_repo: Arc<dyn CooldownRepository>,
+    cooldown_repo: Arc<SqliteCooldownRepo>,
     event_queue: Arc<EventQueue>,
     config: Arc<ArcSwap<Config>>,
 }
@@ -29,7 +29,7 @@ impl GoalTrigger {
         goals_service: Arc<GoalsService>,
         decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
-        cooldown_repo: Arc<dyn CooldownRepository>,
+        cooldown_repo: Arc<SqliteCooldownRepo>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
     ) -> Self {
