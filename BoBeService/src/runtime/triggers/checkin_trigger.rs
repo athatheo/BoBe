@@ -43,16 +43,18 @@ impl CheckinTrigger {
 
         let cfg = self.config.load();
 
-        if let Ok(Some(existing)) = self.conversation.get_pending_or_active().await
-            && let Ok(turns) = self
+        if let Ok(Some(existing)) = self.conversation.get_pending_or_active().await {
+            let last_user_at = self
                 .conversation
-                .get_conversation_turns(existing.id, 100)
+                .last_user_turn_at(existing.id)
                 .await
-            && !existing.is_stale(cfg.conversation.auto_close_minutes as i64, &turns)
-        {
-            debug!(reason = "active_conversation", "checkin_trigger.skipped");
-            self.scheduler.mark_checkin_done();
-            return Decision::Idle;
+                .ok()
+                .flatten();
+            if !existing.is_stale_since(cfg.conversation.auto_close_minutes as i64, last_user_at) {
+                debug!(reason = "active_conversation", "checkin_trigger.skipped");
+                self.scheduler.mark_checkin_done();
+                return Decision::Idle;
+            }
         }
 
         if let Some(cooldown) = self.cooldown_repo.check_cooldown(

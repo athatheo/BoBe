@@ -15,8 +15,7 @@ pub(crate) async fn connect_and_apply_schema(db_url: &str) -> Result<SqlitePool,
     }
 
     let opts: SqliteConnectOptions = db_url
-        .parse::<SqliteConnectOptions>()
-        .map_err(AppError::Database)?
+        .parse::<SqliteConnectOptions>()?
         .create_if_missing(true)
         .pragma("journal_mode", "WAL")
         .pragma("foreign_keys", "ON")
@@ -25,13 +24,9 @@ pub(crate) async fn connect_and_apply_schema(db_url: &str) -> Result<SqlitePool,
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(opts)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
-    sqlx::raw_sql(SCHEMA)
-        .execute(&pool)
-        .await
-        .map_err(AppError::Database)?;
+    sqlx::raw_sql(SCHEMA).execute(&pool).await?;
 
     info!("database.schema_applied");
     Ok(pool)

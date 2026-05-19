@@ -24,7 +24,7 @@ pub(crate) use runtime::{
     CaptureConfig, CheckinConfig, ConversationConfig, DecisionConfig, GoalsConfig,
 };
 pub(crate) use server::{DatabaseConfig, LoggingConfig, ServerConfig};
-pub(crate) use voice::VoiceConfig;
+pub(crate) use voice::{PauseSensitivity, VoiceConfig};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]

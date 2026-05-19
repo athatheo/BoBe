@@ -36,6 +36,9 @@ pub(crate) enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -55,6 +58,7 @@ impl axum::response::IntoResponse for AppError {
             AppError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE")
             }
+            AppError::Network(_) => (StatusCode::SERVICE_UNAVAILABLE, "NETWORK_ERROR"),
             AppError::Canceled(_) => (StatusCode::CONFLICT, "CANCELED"),
             AppError::Config(_)
             | AppError::Capture(_)

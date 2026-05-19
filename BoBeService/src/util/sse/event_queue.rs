@@ -54,7 +54,12 @@ impl EventQueue {
     }
 
     pub(crate) fn set_indicator(&self, indicator: IndicatorType) {
-        *lock_or_recover(&self.current_indicator, "event_queue.current_indicator") = indicator;
+        let mut cur = lock_or_recover(&self.current_indicator, "event_queue.current_indicator");
+        if *cur == indicator {
+            return;
+        }
+        *cur = indicator;
+        drop(cur);
         self.push(indicator_event(indicator, None));
     }
 

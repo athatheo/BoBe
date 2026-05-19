@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use tokio::sync::{Mutex, watch};
@@ -164,9 +164,7 @@ impl VoiceInstallService {
         snapshot_tx: watch::Sender<VoiceInstallSnapshot>,
         cancel_rx: watch::Receiver<bool>,
     ) -> Result<(), AppError> {
-        tokio::fs::create_dir_all(&self.models_root)
-            .await
-            .map_err(|e| AppError::Internal(format!("models_root mkdir: {e}")))?;
+        tokio::fs::create_dir_all(&self.models_root).await?;
 
         for art in ARTIFACTS {
             if *cancel_rx.borrow() {
@@ -196,7 +194,7 @@ impl VoiceInstallService {
         cancel_rx: &watch::Receiver<bool>,
     ) -> Result<(), AppError> {
         info!(kind = %art.kind.label(), url = art.url, "voice_install.start");
-        let tmp_dir = tempfile_dir().map_err(|e| AppError::Internal(format!("tmpdir: {e}")))?;
+        let tmp_dir = tempfile_dir()?;
         let archive_name = art.url.rsplit('/').next().unwrap_or("download.bin");
         let archive_path = tmp_dir.join(archive_name);
 
@@ -212,13 +210,9 @@ impl VoiceInstallService {
             extract_and_install(&archive_path, &tmp_dir, &final_target).await?;
         } else {
             if let Some(parent) = final_target.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| AppError::Internal(format!("mkdir {}: {e}", parent.display())))?;
+                tokio::fs::create_dir_all(parent).await?;
             }
-            tokio::fs::rename(&archive_path, &final_target)
-                .await
-                .map_err(|e| AppError::Internal(format!("rename to target: {e}")))?;
+            tokio::fs::rename(&archive_path, &final_target).await?;
         }
         drop(tokio::fs::remove_dir_all(&tmp_dir).await);
 
@@ -238,47 +232,47 @@ impl VoiceInstallService {
         snapshot_tx: &watch::Sender<VoiceInstallSnapshot>,
         cancel_rx: &watch::Receiver<bool>,
     ) -> Result<(), AppError> {
-        let response = self
-            .http
-            .get(art.url)
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("http get: {e}")))?
-            .error_for_status()
-            .map_err(|e| AppError::Internal(format!("http status: {e}")))?;
+        let response = self.http.get(art.url).send().await?.error_for_status()?;
         let total = response.content_length();
         let mut stream = response.bytes_stream();
-        let mut file = tokio::fs::File::create(dest)
-            .await
-            .map_err(|e| AppError::Internal(format!("create tmp: {e}")))?;
+        let mut file = tokio::fs::File::create(dest).await?;
         use tokio::io::AsyncWriteExt;
+        // Throttle progress emission. A 340 MB download produces 5-20k
+        // chunks; without rate limiting that's the same number of
+        // VoiceInstallSnapshot clones and watch-channel sends, all forwarded
+        // to the SSE writer as JSON. Throttle to "percent changed OR ≥250ms
+        // since last emit" — no perceptible UX cost, ~100× fewer events.
+        let throttle = Duration::from_millis(250);
+        let mut last_emit = Instant::now();
+        let mut last_percent: Option<u8> = None;
         let mut got: u64 = 0;
+        let make_progress = |got: u64, percent: Option<u8>| ModelProgress {
+            kind: art.kind,
+            label: art.kind.label(),
+            status: "downloading".into(),
+            bytes_downloaded: got,
+            bytes_total: total,
+            percent,
+        };
         while let Some(chunk) = stream.next().await {
             if *cancel_rx.borrow() {
                 return Err(AppError::Canceled("Voice install canceled".into()));
             }
-            let chunk = chunk.map_err(|e| AppError::Internal(format!("http chunk: {e}")))?;
-            file.write_all(&chunk)
-                .await
-                .map_err(|e| AppError::Internal(format!("write tmp: {e}")))?;
+            let chunk = chunk?;
+            file.write_all(&chunk).await?;
             got = got.saturating_add(chunk.len() as u64);
             let percent = total.map(|t| ((got as f64 / t as f64) * 100.0).min(100.0) as u8);
-            self.update_model(
-                snapshot_tx,
-                art.kind,
-                ModelProgress {
-                    kind: art.kind,
-                    label: art.kind.label(),
-                    status: "downloading".into(),
-                    bytes_downloaded: got,
-                    bytes_total: total,
-                    percent,
-                },
-            );
+            if percent != last_percent || last_emit.elapsed() >= throttle {
+                self.update_model(snapshot_tx, art.kind, make_progress(got, percent));
+                last_emit = Instant::now();
+                last_percent = percent;
+            }
         }
-        file.flush()
-            .await
-            .map_err(|e| AppError::Internal(format!("flush tmp: {e}")))?;
+        // Force final emit so the UI sees the last bytes even when the last
+        // chunk landed inside the throttle window.
+        let final_percent = total.map(|t| ((got as f64 / t as f64) * 100.0).min(100.0) as u8);
+        self.update_model(snapshot_tx, art.kind, make_progress(got, final_percent));
+        file.flush().await?;
         Ok(())
     }
 
@@ -296,23 +290,19 @@ impl VoiceInstallService {
     }
 
     /// Wait for any in-flight install to finish — used by shutdown paths.
-    /// Block until any in-flight install completes (or polls every 50ms
-    /// if there isn't one). Used by the graceful shutdown path so the
-    /// install task doesn't outlive the http client / file-system
-    /// resources it depends on.
+    /// We take the handle out under the lock and `.await` it without
+    /// holding the lock. Shutdown is single-flight so the "what if start()
+    /// races" concern doesn't apply here in practice.
     pub(crate) async fn await_idle(&self) {
-        loop {
-            let handle = {
-                let state = self.state.lock().await;
-                state
-                    .in_flight
-                    .as_ref()
-                    .and_then(|h| (!h.is_finished()).then_some(()))
-            };
-            if handle.is_none() {
-                return;
+        let handle = {
+            let mut state = self.state.lock().await;
+            match state.in_flight.as_ref() {
+                Some(h) if !h.is_finished() => state.in_flight.take(),
+                _ => None,
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
+        if let Some(h) = handle {
+            drop(h.await);
         }
     }
 }

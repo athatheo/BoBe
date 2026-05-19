@@ -1,6 +1,9 @@
 //! Per-test in-memory SQLite pool with the production schema applied.
 
-#![allow(clippy::expect_used, reason = "test setup panics on precondition failures")]
+#![allow(
+    clippy::expect_used,
+    reason = "test setup panics on precondition failures"
+)]
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::str::FromStr;

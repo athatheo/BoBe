@@ -197,7 +197,10 @@ mod tests {
     fn known_field_happy_path_mutates() {
         let mut cfg = Config::default();
         let original_interval = cfg.capture.interval_seconds;
-        apply(&mut cfg, &changes(&[("capture.interval_seconds", json!(42))]));
+        apply(
+            &mut cfg,
+            &changes(&[("capture.interval_seconds", json!(42))]),
+        );
         assert_eq!(cfg.capture.interval_seconds, 42);
         assert_ne!(cfg.capture.interval_seconds, original_interval);
     }
@@ -298,7 +301,10 @@ mod tests {
     fn unknown_flat_key_passes_through_as_other() {
         // `other => other` — the function does NOT alter unknown keys,
         // it just forwards them. apply() will then ignore them.
-        assert_eq!(normalize_key("totally_unknown_field"), "totally_unknown_field");
+        assert_eq!(
+            normalize_key("totally_unknown_field"),
+            "totally_unknown_field"
+        );
     }
 
     #[test]

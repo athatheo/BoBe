@@ -1,8 +1,9 @@
-//! Voice engine loader — reads the Kokoro TTS model from `~/.bobe/models/`
-//! and constructs the runtime engine snapshot. Mode B: daemon owns TTS
-//! only; STT/VAD/smart-turn moved to the Swift client (FluidAudio).
-//! Called at bootstrap and again by `VoiceInstallService` on install
-//! completion (single source of truth).
+//! Voice engine loader — reads the Kokoro TTS model from the BoBe data
+//! dir's `models/` subdir (`~/.bobe/models/` by default, override via
+//! `$BOBE_DATA_DIR`) and constructs the runtime engine snapshot. Mode B:
+//! daemon owns TTS only; STT/VAD/smart-turn moved to the Swift client
+//! (FluidAudio). Called at bootstrap and again by `VoiceInstallService`
+//! on install completion (single source of truth).
 
 use std::sync::Arc;
 
@@ -26,18 +27,15 @@ pub(super) async fn build_voice_engines_snapshot() -> VoiceEnginesSnapshot {
     }
 }
 
-/// Best-effort load of Kokoro TTS from `~/.bobe/models/`. Sync because the
-/// loader is sync (sherpa-onnx init).
+/// Best-effort load of Kokoro TTS from the BoBe data dir's `models/`
+/// subdir (`bobe_data_dir().join("models")`). Sync because the loader is
+/// sync (sherpa-onnx init).
 ///
 /// Provider selection per platform: macOS → CoreML EP, others → CPU.
 /// Env overrides: `BOBE_VOICE_PROVIDER` (cpu|coreml|cuda|directml),
 /// `BOBE_VOICE_NUM_THREADS` (default 4).
 fn load_tts() -> Option<Arc<dyn crate::speech::TtsEngine>> {
-    let Some(home) = dirs::home_dir() else {
-        warn!("voice.load: no home dir, skipping engine load");
-        return None;
-    };
-    let models_root = home.join(".bobe").join("models");
+    let models_root = crate::util::paths::bobe_data_dir().join("models");
 
     let provider = std::env::var("BOBE_VOICE_PROVIDER").unwrap_or_else(|_| {
         if cfg!(target_os = "macos") {

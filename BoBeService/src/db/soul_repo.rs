@@ -34,41 +34,42 @@ impl SqliteSoulRepo {
         .bind(soul.created_at)
         .bind(soul.updated_at)
         .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
         debug!(soul_id = %soul.id, name = %soul.name, is_default = soul.is_default, "soul_repo.saved");
         Ok(soul.clone())
     }
 
     pub(crate) async fn get_by_id(&self, id: SoulId) -> Result<Option<Soul>, AppError> {
-        sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE id = ?1")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
+        Ok(
+            sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE id = ?1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn get_by_name(&self, name: &str) -> Result<Option<Soul>, AppError> {
-        sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE name = ?1")
-            .bind(name)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
+        Ok(
+            sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE name = ?1")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn get_all(&self) -> Result<Vec<Soul>, AppError> {
-        sqlx::query_as::<_, Soul>("SELECT * FROM souls")
+        Ok(sqlx::query_as::<_, Soul>("SELECT * FROM souls")
             .fetch_all(&self.pool)
-            .await
-            .map_err(AppError::Database)
+            .await?)
     }
 
     pub(crate) async fn find_enabled(&self) -> Result<Vec<Soul>, AppError> {
-        sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE enabled = 1")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(AppError::Database)
+        Ok(
+            sqlx::query_as::<_, Soul>("SELECT * FROM souls WHERE enabled = 1")
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn update(
@@ -115,7 +116,7 @@ impl SqliteSoulRepo {
             q = q.bind(n);
         }
         q = q.bind(chrono::Utc::now()).bind(id);
-        q.execute(&self.pool).await.map_err(AppError::Database)?;
+        q.execute(&self.pool).await?;
 
         info!(
             soul_id = %id,
@@ -130,8 +131,7 @@ impl SqliteSoulRepo {
         let result = sqlx::query("DELETE FROM souls WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+            .await?;
 
         if result.rows_affected() > 0 {
             info!(soul_id = %id, "soul_repo.deleted");

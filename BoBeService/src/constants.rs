@@ -19,7 +19,10 @@ pub(crate) const DEFAULT_OLLAMA_V1_URL: &str = "http://127.0.0.1:11434/v1";
 /// `models::engine_kind::EngineKind` enum's serde rename produces the
 /// same strings, so flipping a value here would silently desync the
 /// daemon's wire output from these pins.
-#[allow(dead_code, reason = "drift checkpoint; Swift + EngineKind serde rename consume the values")]
+#[allow(
+    dead_code,
+    reason = "drift checkpoint; Swift + EngineKind serde rename consume the values"
+)]
 pub(crate) mod engine_kind {
     pub(crate) const COPILOT_CLOUD: &str = "copilot_cloud";
     pub(crate) const LOCAL: &str = "local";

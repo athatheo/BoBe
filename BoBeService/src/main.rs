@@ -164,10 +164,7 @@ async fn drain_background_tasks(tasks: &mut tokio::task::JoinSet<&'static str>) 
             Ok(None) => break,
             Err(_) => {
                 let remaining = tasks.len();
-                tracing::warn!(
-                    remaining,
-                    "background task drain timeout, abandoning"
-                );
+                tracing::warn!(remaining, "background task drain timeout, abandoning");
                 tasks.abort_all();
                 return;
             }

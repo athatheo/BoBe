@@ -1,3 +1,4 @@
+pub(crate) mod atomic_flag_guard;
 pub(crate) mod capture;
 pub(crate) mod logging;
 pub(crate) mod network;

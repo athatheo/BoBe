@@ -27,7 +27,10 @@ pub(crate) enum VoicePhase {
 /// **Wire contract:** mirror `ClientVoiceMessage` in Swift; rename fields here = update both.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code, reason = "BargeIn/Wake/PlaybackAck fields are wire-protocol contract")]
+#[allow(
+    dead_code,
+    reason = "BargeIn/Wake/PlaybackAck fields are wire-protocol contract"
+)]
 pub(crate) enum ClientMessage {
     Hello {
         session_id: String,
@@ -41,15 +44,33 @@ pub(crate) enum ClientMessage {
         language: Option<String>,
     },
     /// Candidate barge-in; daemon decides after the min-words gate.
-    BargeIn { ts_ms: u64, playback_ms_played: u64 },
-    Wake { phrase: String, score: f32, ts_ms: u64 },
+    BargeIn {
+        ts_ms: u64,
+        playback_ms_played: u64,
+    },
+    Wake {
+        phrase: String,
+        score: f32,
+        ts_ms: u64,
+    },
     /// Playback progress for truncation math.
-    PlaybackAck { chunk_id: u64, played_ms: u64 },
-    Control { action: ControlAction },
+    PlaybackAck {
+        chunk_id: u64,
+        played_ms: u64,
+    },
+    Control {
+        action: ControlAction,
+    },
     /// Daemon stores on `session.last_partial_text` for cancel-phrase + MinWords gate.
-    TranscriptPartial { turn_id: String, text: String },
+    TranscriptPartial {
+        turn_id: String,
+        text: String,
+    },
     /// Triggers single-flight admit + convergence pipeline.
-    TranscriptFinal { turn_id: String, text: String },
+    TranscriptFinal {
+        turn_id: String,
+        text: String,
+    },
 }
 
 /// **Wire contract:** mirror `ServerVoiceMessage` in Swift. Binary TTS frames
@@ -57,13 +78,30 @@ pub(crate) enum ClientMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ServerMessage {
-    HelloAck { voice_pack: String, playback_rate: u32 },
-    State { phase: VoicePhase, turn_id: String },
-    TranscriptFinal { turn_id: String, text: String },
-    TtsEnd { turn_id: String },
+    HelloAck {
+        voice_pack: String,
+        playback_rate: u32,
+    },
+    State {
+        phase: VoicePhase,
+        turn_id: String,
+    },
+    TranscriptFinal {
+        turn_id: String,
+        text: String,
+    },
+    TtsEnd {
+        turn_id: String,
+    },
     /// Post-barge-in: client drops queued audio beyond `keep_ms`.
-    Truncate { turn_id: String, keep_ms: u64 },
-    Error { code: String, message: String },
+    Truncate {
+        turn_id: String,
+        keep_ms: u64,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 /// `[8 bytes BE u64 chunk_id][1 byte flags][N bytes Opus]`.

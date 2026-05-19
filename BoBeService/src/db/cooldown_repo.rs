@@ -34,7 +34,11 @@ impl SqliteCooldownRepo {
 }
 
 impl SqliteCooldownRepo {
-    pub(crate) fn check_cooldown(&self, base_minutes: i64, extended_minutes: i64) -> Option<CooldownInfo> {
+    pub(crate) fn check_cooldown(
+        &self,
+        base_minutes: i64,
+        extended_minutes: i64,
+    ) -> Option<CooldownInfo> {
         self.state
             .try_lock()
             .ok()
@@ -44,8 +48,7 @@ impl SqliteCooldownRepo {
     pub(crate) async fn load_or_create(&self) -> Result<(), AppError> {
         let row = sqlx::query_as::<_, Cooldown>("SELECT * FROM cooldown_state LIMIT 1")
             .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+            .await?;
 
         let state = if let Some(existing) = row {
             info!(
@@ -64,8 +67,7 @@ impl SqliteCooldownRepo {
             .bind(new_state.created_at)
             .bind(new_state.updated_at)
             .execute(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+            .await?;
             info!(state_id = %new_state.id, "cooldown_repository.state_created");
             new_state
         };
@@ -75,7 +77,10 @@ impl SqliteCooldownRepo {
         Ok(())
     }
 
-    pub(crate) async fn update_last_engagement(&self, timestamp: DateTime<Utc>) -> Result<(), AppError> {
+    pub(crate) async fn update_last_engagement(
+        &self,
+        timestamp: DateTime<Utc>,
+    ) -> Result<(), AppError> {
         let id = self.ensure_loaded().await?;
 
         sqlx::query(
@@ -85,8 +90,7 @@ impl SqliteCooldownRepo {
         .bind(Utc::now())
         .bind(id)
         .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
         let mut guard = self.state.lock().await;
         if let Some(s) = guard.as_mut() {
@@ -97,7 +101,10 @@ impl SqliteCooldownRepo {
         Ok(())
     }
 
-    pub(crate) async fn update_last_user_response(&self, timestamp: DateTime<Utc>) -> Result<(), AppError> {
+    pub(crate) async fn update_last_user_response(
+        &self,
+        timestamp: DateTime<Utc>,
+    ) -> Result<(), AppError> {
         let id = self.ensure_loaded().await?;
 
         sqlx::query(
@@ -107,8 +114,7 @@ impl SqliteCooldownRepo {
         .bind(Utc::now())
         .bind(id)
         .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
         let mut guard = self.state.lock().await;
         if let Some(s) = guard.as_mut() {
@@ -163,7 +169,10 @@ mod tests {
 
         // Just-now engagement → cooldown active for the next 5 minutes.
         let info = repo.check_cooldown(5, 30);
-        assert!(info.is_some(), "expected cooldown to fire within base window");
+        assert!(
+            info.is_some(),
+            "expected cooldown to fire within base window"
+        );
     }
 
     #[tokio::test]

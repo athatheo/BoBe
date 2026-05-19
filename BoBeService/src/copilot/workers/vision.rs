@@ -1,10 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use github_copilot_sdk::session::Session;
-use github_copilot_sdk::types::{Attachment, MessageOptions};
+use github_copilot_sdk::types::MessageOptions;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -40,10 +38,9 @@ impl VisionWorker {
         let _guard = self.submit_lock.lock().await;
         let request_id = Uuid::new_v4();
 
-        let attachment = to_sdk_attachment(image)?;
         let opts = MessageOptions::new(question.to_string())
             .with_wait_timeout(self.turn_timeout)
-            .with_attachments(vec![attachment]);
+            .with_attachments(vec![image.into()]);
 
         let event = self
             .session
@@ -74,28 +71,22 @@ impl VisionWorker {
     }
 }
 
-fn to_sdk_attachment(att: ChatAttachment) -> Result<Attachment, WorkerError> {
-    let ChatAttachment::ImageBytes { bytes, mime_type } = att;
-    Ok(Attachment::Blob {
-        data: BASE64.encode(&bytes),
-        mime_type: mime_type.to_string(),
-        display_name: None,
-    })
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "tests panic on precondition failures")]
 mod tests {
     use super::*;
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use github_copilot_sdk::types::Attachment;
 
     #[test]
     fn blob_attachment_round_trips_base64() {
         let raw = b"\x89PNG\r\n\x1a\nfake-png-data";
-        let att = to_sdk_attachment(ChatAttachment::ImageBytes {
+        let att: Attachment = ChatAttachment::ImageBytes {
             bytes: raw.to_vec(),
             mime_type: "image/png",
-        })
-        .unwrap();
+        }
+        .into();
         match att {
             Attachment::Blob {
                 data, mime_type, ..

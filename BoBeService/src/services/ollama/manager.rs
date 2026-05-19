@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use serde::Deserialize;
@@ -119,8 +119,7 @@ impl OllamaManager {
             .env("OLLAMA_HOST", "127.0.0.1:11434")
             .env("OLLAMA_ORIGINS", "http://127.0.0.1:*")
             .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| AppError::Internal(format!("ollama spawn: {e}")))?;
+            .spawn()?;
 
         *self.child.lock().await = Some(child);
 
@@ -171,6 +170,13 @@ impl OllamaManager {
 
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
+        // Throttle in-phase emissions; status transitions and the final
+        // success line bypass the throttle so consumers don't miss state
+        // changes. Same shape as voice install_service throttle.
+        let throttle = Duration::from_millis(250);
+        let mut last_emit = Instant::now();
+        let mut last_status: Option<String> = None;
+        let mut last_percent: Option<u8> = None;
 
         while let Some(chunk) = stream.next().await {
             if is_canceled() {
@@ -217,14 +223,20 @@ impl OllamaManager {
                     return Ok(());
                 }
 
-                progress_tx
-                    .send(PullProgress {
-                        status,
-                        completed_bytes: event.completed,
-                        total_bytes: event.total,
-                        percent,
-                    })
-                    .ok();
+                let status_changed = last_status.as_deref() != Some(status.as_str());
+                if status_changed || percent != last_percent || last_emit.elapsed() >= throttle {
+                    progress_tx
+                        .send(PullProgress {
+                            status: status.clone(),
+                            completed_bytes: event.completed,
+                            total_bytes: event.total,
+                            percent,
+                        })
+                        .ok();
+                    last_emit = Instant::now();
+                    last_status = Some(status);
+                    last_percent = percent;
+                }
             }
         }
 
@@ -251,10 +263,7 @@ impl OllamaManager {
             )));
         }
 
-        let tags: TagsResponse = resp
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(format!("ollama tags parse: {e}")))?;
+        let tags: TagsResponse = resp.json().await?;
         Ok(tags.models.into_iter().map(|m| m.name).collect())
     }
 

@@ -56,19 +56,16 @@ impl SseConnectionManager {
     }
 
     pub(crate) async fn track_indicator(&self, event: &StreamBundle) {
-        if event.event_type == super::types::EventType::Indicator
-            && let Some(ind) = event.payload.get("indicator").and_then(|v| v.as_str())
-        {
-            let mut st = self.state.lock().await;
-            st.current_indicator = match ind {
-                "SCREEN_CAPTURE" | "screen_capture" | "ScreenCapture" => {
-                    IndicatorType::ScreenCapture
-                }
-                "THINKING" | "thinking" | "Thinking" => IndicatorType::Thinking,
-                "STREAMING" | "streaming" | "Streaming" => IndicatorType::Streaming,
-                _ => IndicatorType::Idle,
-            };
+        if event.event_type != super::types::EventType::Indicator {
+            return;
         }
+        let Some(value) = event.payload.get("indicator").cloned() else {
+            return;
+        };
+        let Ok(indicator) = serde_json::from_value::<IndicatorType>(value) else {
+            return;
+        };
+        self.state.lock().await.current_indicator = indicator;
     }
 
     pub(crate) async fn connect(&self) -> String {

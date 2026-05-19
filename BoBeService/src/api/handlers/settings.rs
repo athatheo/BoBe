@@ -6,6 +6,7 @@ use axum::extract::State;
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
+use crate::config::PauseSensitivity;
 use crate::error::AppError;
 use crate::models::engine_kind::EngineKind;
 
@@ -35,8 +36,7 @@ pub(crate) struct SettingsResponse {
     pub(crate) voice_speed: f32,
     /// BCP-47 ("en", "zh"); client uses it to pick the ASR engine.
     pub(crate) voice_stt_language: String,
-    /// `tight` | `balanced` | `patient`.
-    pub(crate) voice_pause_sensitivity: String,
+    pub(crate) voice_pause_sensitivity: PauseSensitivity,
     /// UI-only; Swift overlay consumes, daemon doesn't.
     pub(crate) voice_show_partial_caption: bool,
 }
@@ -65,7 +65,7 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) voice_persona: Option<String>,
     pub(crate) voice_speed: Option<f32>,
     pub(crate) voice_stt_language: Option<String>,
-    pub(crate) voice_pause_sensitivity: Option<String>,
+    pub(crate) voice_pause_sensitivity: Option<PauseSensitivity>,
     pub(crate) voice_show_partial_caption: Option<bool>,
 }
 
@@ -105,10 +105,7 @@ pub(crate) async fn get_settings(
         voice_persona: cfg.voice.persona.clone(),
         voice_speed: cfg.voice.speed,
         voice_stt_language: cfg.voice.stt_language.clone(),
-        voice_pause_sensitivity: serde_json::to_value(cfg.voice.pause_sensitivity)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_owned))
-            .unwrap_or_else(|| "balanced".into()),
+        voice_pause_sensitivity: cfg.voice.pause_sensitivity,
         voice_show_partial_caption: cfg.voice.show_partial_caption,
     }))
 }
@@ -169,7 +166,9 @@ pub(crate) async fn update_settings(
         }));
     }
 
-    let result = state.infra.config_manager.update(&changes);
+    // Persist writes are sync std::fs; yield the worker so other handlers
+    // don't block on disk while config.toml is rewritten.
+    let result = tokio::task::block_in_place(|| state.infra.config_manager.update(&changes));
 
     tracing::info!(
         applied = ?result.applied_fields,
@@ -223,8 +222,7 @@ mod tests {
 
     #[test]
     fn engine_kind_rejects_wrong_type() {
-        let result: Result<SettingsUpdateRequest, _> =
-            serde_json::from_str(r#"{"engine":42}"#);
+        let result: Result<SettingsUpdateRequest, _> = serde_json::from_str(r#"{"engine":42}"#);
         assert!(result.is_err());
     }
 

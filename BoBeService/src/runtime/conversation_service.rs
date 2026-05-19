@@ -220,7 +220,6 @@ impl ConversationService {
         &self,
         conversation_id: ConversationId,
         auto_close_minutes: i64,
-        turn_limit: i64,
     ) -> Result<Option<usize>, AppError> {
         let _guard = self.lifecycle_lock.lock().await;
 
@@ -231,13 +230,12 @@ impl ConversationService {
             return Ok(None);
         }
 
-        let conversation = self.repo.get_by_id(conversation_id).await?;
-        let Some(conversation) = conversation else {
+        let Some(conversation) = self.repo.get_by_id(conversation_id).await? else {
             return Ok(None);
         };
 
-        let turns = self.repo.get_turns(conversation_id, turn_limit).await?;
-        if !conversation.is_stale(auto_close_minutes, &turns) {
+        let last_user_at = self.repo.last_user_turn_at(conversation_id).await?;
+        if !conversation.is_stale_since(auto_close_minutes, last_user_at) {
             return Ok(None);
         }
 
@@ -246,11 +244,19 @@ impl ConversationService {
             .update_state(conversation_id, ConversationState::Closed, None)
             .await?;
         if updated.is_some() {
+            let turn_count = self.repo.count_turns(conversation_id).await?;
             info!(conversation_id = %conversation_id, "conversation.closed");
-            return Ok(Some(turns.len()));
+            return Ok(Some(usize::try_from(turn_count).unwrap_or(0)));
         }
 
         Ok(None)
+    }
+
+    pub(crate) async fn last_user_turn_at(
+        &self,
+        conversation_id: ConversationId,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, AppError> {
+        self.repo.last_user_turn_at(conversation_id).await
     }
 
     pub(crate) async fn get_last_closed_conversation(

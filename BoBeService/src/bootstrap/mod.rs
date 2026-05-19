@@ -46,9 +46,24 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     let metrics_handle = crate::voice::telemetry::install_recorder()
         .map_err(|e| AppError::Internal(format!("metrics recorder: {e}")))?;
     // ArcSwap so the installer can hot-swap post-download without daemon restart.
-    let initial_voice_engines = build_voice_engines_snapshot().await;
-    let voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>> =
-        Arc::new(ArcSwap::from_pointee(initial_voice_engines));
+    // Start empty and spawn the engine load — TTS ONNX init + filler synthesis
+    // adds 1-3s to bootstrap on CPU. Voice readiness is gated on `is_complete()`
+    // already, so a connection arriving before the swap sees "not ready" and
+    // the client retries. Listener bind doesn't have to wait on it.
+    let voice_engines: Arc<ArcSwap<crate::voice::engines::VoiceEnginesSnapshot>> = Arc::new(
+        ArcSwap::from_pointee(crate::voice::engines::VoiceEnginesSnapshot::default()),
+    );
+    {
+        let voice_engines = Arc::clone(&voice_engines);
+        tokio::spawn(async move {
+            let snap = build_voice_engines_snapshot().await;
+            info!(
+                complete = snap.is_complete(),
+                "bootstrap.voice_engines_loaded"
+            );
+            voice_engines.store(Arc::new(snap));
+        });
+    }
     let workers = {
         let data_dir = crate::util::paths::bobe_data_dir();
         crate::copilot::registry::WorkerRegistry::new(
@@ -122,8 +137,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
                 env!("CARGO_PKG_VERSION"),
                 " (+https://www.bobebot.com)"
             ))
-            .build()
-            .map_err(|e| AppError::Internal(format!("reqwest client build: {e}")))?,
+            .build()?,
     );
 
     let ollama_install = {
@@ -146,9 +160,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     let voice_install = {
         let http = Arc::clone(&http_client);
-        let models_root = dirs::home_dir()
-            .map(|h| h.join(".bobe").join("models"))
-            .ok_or_else(|| AppError::Internal("no home_dir for voice models root".into()))?;
+        let models_root = crate::util::paths::bobe_data_dir().join("models");
         let engines_for_reload = Arc::clone(&voice_engines);
         let on_complete: Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync> =
             Arc::new(move || {

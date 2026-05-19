@@ -1,7 +1,6 @@
 //! One install at a time; mutex on in-flight handle lets POST /local-runtime/install return 409.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
@@ -323,7 +322,7 @@ impl OllamaInstallService {
             .pull_model(name, &pull_tx, cancel_check)
             .await;
         pump.abort();
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        drop(pump.await);
         result
     }
 

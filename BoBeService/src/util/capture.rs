@@ -21,13 +21,16 @@ impl ScreenCapture {
             ));
         }
 
-        let image = tokio::task::spawn_blocking(take_screenshot)
-            .await
+        let (image_join, window_join) = tokio::join!(
+            tokio::task::spawn_blocking(take_screenshot),
+            tokio::task::spawn_blocking(get_active_window),
+        );
+
+        let image = image_join
             .map_err(|e| AppError::Capture(format!("Screenshot task panicked: {e}")))?
             .map_err(|e| AppError::Capture(format!("Screenshot failed: {e}")))?;
 
-        let active_window = tokio::task::spawn_blocking(get_active_window)
-            .await
+        let active_window = window_join
             .map_err(|e| AppError::Capture(format!("Window title task panicked: {e}")))?;
 
         info!(

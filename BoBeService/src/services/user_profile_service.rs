@@ -6,7 +6,7 @@ use crate::db::SqliteUserProfileRepo;
 use crate::error::AppError;
 use crate::models::ids::UserProfileId;
 use crate::models::user_profile::UserProfile;
-use crate::services::DeleteOutcome;
+use crate::services::{DeleteOutcome, validate_markdown_doc_input};
 
 const MIN_CONTENT_LEN: usize = 10;
 
@@ -47,14 +47,7 @@ impl UserProfileService {
         content: String,
         enabled: bool,
     ) -> Result<UserProfile, AppError> {
-        if name.is_empty() {
-            return Err(AppError::Validation("name must not be empty".into()));
-        }
-        if content.len() < MIN_CONTENT_LEN {
-            return Err(AppError::Validation(format!(
-                "content must be at least {MIN_CONTENT_LEN} characters"
-            )));
-        }
+        validate_markdown_doc_input(&name, &content, MIN_CONTENT_LEN)?;
         if self.repo.get_by_name(&name).await?.is_some() {
             return Err(AppError::Validation(format!(
                 "User profile with name '{name}' already exists"

@@ -14,13 +14,27 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct SoulResponse {
-    pub(crate) id: String,
+    pub(crate) id: SoulId,
     pub(crate) name: String,
     pub(crate) content: String,
     pub(crate) enabled: bool,
     pub(crate) is_default: bool,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
+}
+
+impl From<&Soul> for SoulResponse {
+    fn from(soul: &Soul) -> Self {
+        Self {
+            id: soul.id,
+            name: soul.name.clone(),
+            content: soul.content.clone(),
+            enabled: soul.enabled,
+            is_default: soul.is_default,
+            created_at: soul.created_at,
+            updated_at: soul.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -46,7 +60,7 @@ pub(crate) struct SoulUpdateRequest {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct SoulActionResponse {
-    pub(crate) id: String,
+    pub(crate) id: SoulId,
     pub(crate) name: String,
     pub(crate) enabled: bool,
     pub(crate) message: String,
@@ -56,18 +70,6 @@ pub(crate) struct SoulActionResponse {
 pub(crate) struct SoulListQuery {
     #[serde(default)]
     pub(crate) enabled_only: bool,
-}
-
-fn soul_to_response(soul: &Soul) -> SoulResponse {
-    SoulResponse {
-        id: soul.id.to_string(),
-        name: soul.name.clone(),
-        content: soul.content.clone(),
-        enabled: soul.enabled,
-        is_default: soul.is_default,
-        created_at: soul.created_at,
-        updated_at: soul.updated_at,
-    }
 }
 
 async fn set_enabled(
@@ -81,7 +83,7 @@ async fn set_enabled(
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
 
     Ok(Json(SoulActionResponse {
-        id: soul_id.to_string(),
+        id: soul_id,
         name: soul.name,
         enabled,
         message: if enabled {
@@ -96,11 +98,15 @@ pub(crate) async fn list_souls(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SoulListQuery>,
 ) -> Result<Json<SoulListResponse>, AppError> {
-    let summary = state.services.souls_service.list(params.enabled_only).await?;
+    let summary = state
+        .services
+        .souls_service
+        .list(params.enabled_only)
+        .await?;
     Ok(Json(SoulListResponse {
         count: summary.souls.len(),
         enabled_count: summary.enabled_count,
-        souls: summary.souls.iter().map(soul_to_response).collect(),
+        souls: summary.souls.iter().map(SoulResponse::from).collect(),
     }))
 }
 
@@ -114,7 +120,7 @@ pub(crate) async fn get_soul(
         .get(soul_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-    Ok(Json(soul_to_response(&soul)))
+    Ok(Json(SoulResponse::from(&soul)))
 }
 
 pub(crate) async fn create_soul(
@@ -126,7 +132,7 @@ pub(crate) async fn create_soul(
         .souls_service
         .create(body.name, body.content, body.enabled)
         .await?;
-    Ok((StatusCode::CREATED, Json(soul_to_response(&saved))))
+    Ok((StatusCode::CREATED, Json(SoulResponse::from(&saved))))
 }
 
 pub(crate) async fn update_soul(
@@ -140,7 +146,7 @@ pub(crate) async fn update_soul(
         .update(soul_id, body.content, body.enabled)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Soul {soul_id} not found")))?;
-    Ok(Json(soul_to_response(&updated)))
+    Ok(Json(SoulResponse::from(&updated)))
 }
 
 pub(crate) async fn enable_soul(

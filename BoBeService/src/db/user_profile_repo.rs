@@ -34,41 +34,47 @@ impl SqliteUserProfileRepo {
         .bind(profile.created_at)
         .bind(profile.updated_at)
         .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
         debug!(profile_id = %profile.id, name = %profile.name, is_default = profile.is_default, "user_profile_repo.saved");
         Ok(profile.clone())
     }
 
-    pub(crate) async fn get_by_id(&self, id: UserProfileId) -> Result<Option<UserProfile>, AppError> {
-        sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE id = ?1")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
+    pub(crate) async fn get_by_id(
+        &self,
+        id: UserProfileId,
+    ) -> Result<Option<UserProfile>, AppError> {
+        Ok(
+            sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE id = ?1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn get_by_name(&self, name: &str) -> Result<Option<UserProfile>, AppError> {
-        sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE name = ?1")
-            .bind(name)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
+        Ok(
+            sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE name = ?1")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn find_enabled(&self) -> Result<Vec<UserProfile>, AppError> {
-        sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE enabled = 1")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(AppError::Database)
+        Ok(
+            sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles WHERE enabled = 1")
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn get_all(&self) -> Result<Vec<UserProfile>, AppError> {
-        sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(AppError::Database)
+        Ok(
+            sqlx::query_as::<_, UserProfile>("SELECT * FROM user_profiles")
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn update(
@@ -101,7 +107,7 @@ impl SqliteUserProfileRepo {
             q = q.bind(e);
         }
         q = q.bind(chrono::Utc::now()).bind(id);
-        q.execute(&self.pool).await.map_err(AppError::Database)?;
+        q.execute(&self.pool).await?;
 
         info!(
             profile_id = %id,
@@ -116,8 +122,7 @@ impl SqliteUserProfileRepo {
         let result = sqlx::query("DELETE FROM user_profiles WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+            .await?;
 
         if result.rows_affected() > 0 {
             info!(profile_id = %id, "user_profile_repo.deleted");

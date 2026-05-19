@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
@@ -20,18 +20,7 @@ use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::{indicator_event, trigger_error_event};
 use crate::util::sse::types::IndicatorType;
 
-/// RAII release of the shared in-flight flag. Mirrors `UserMessageGuard`
-/// in `runtime/session.rs` but lives here so the capture trigger doesn't
-/// import RuntimeSession (circular: RuntimeSession owns CaptureTrigger).
-struct InFlightGuard {
-    flag: Arc<AtomicBool>,
-}
-
-impl Drop for InFlightGuard {
-    fn drop(&mut self) {
-        self.flag.store(false, Ordering::Release);
-    }
-}
+use crate::util::atomic_flag_guard::AtomicFlagGuard;
 
 pub(crate) struct CaptureTrigger {
     screen_capture: Arc<ScreenCapture>,
@@ -101,17 +90,8 @@ impl CaptureTrigger {
 
     /// CAS the shared in-flight flag; returns a guard that releases on drop.
     /// `None` means another turn is already running — caller should skip.
-    fn try_acquire_in_flight(&self) -> Option<InFlightGuard> {
-        if self
-            .user_message_in_flight
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return None;
-        }
-        Some(InFlightGuard {
-            flag: Arc::clone(&self.user_message_in_flight),
-        })
+    fn try_acquire_in_flight(&self) -> Option<AtomicFlagGuard> {
+        AtomicFlagGuard::try_acquire(Arc::clone(&self.user_message_in_flight))
     }
 
     fn vision_breaker_open(&mut self) -> bool {

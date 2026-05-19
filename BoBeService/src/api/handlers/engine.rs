@@ -131,7 +131,10 @@ mod tests {
         let json = serde_json::to_value(&response).expect("serialize");
         assert_eq!(json["engine"], serde_json::json!("copilot_cloud"));
         assert_eq!(json["source"], serde_json::json!("fallback"));
-        assert!(json.get("notice").is_none(), "skip_serializing_if hides None");
+        assert!(
+            json.get("notice").is_none(),
+            "skip_serializing_if hides None"
+        );
     }
 
     #[test]

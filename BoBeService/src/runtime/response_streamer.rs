@@ -3,10 +3,10 @@ use std::time::{Duration, Instant};
 
 use futures::{Stream, StreamExt};
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
 
 use crate::constants::MILLIS_PER_SECOND;
 use crate::copilot::types::ChatDelta;
+use crate::models::ids::new_message_id;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::{
     end_of_turn_event, error_event, text_delta_event, tool_call_complete_event,
@@ -52,8 +52,7 @@ struct StreamAccumulator {
 impl StreamAccumulator {
     fn new(msg_id: Option<&str>) -> Self {
         Self {
-            msg_id: msg_id
-                .map_or_else(|| format!("msg_{}", Uuid::new_v4().simple()), str::to_owned),
+            msg_id: msg_id.map_or_else(new_message_id, str::to_owned),
             start_time: Instant::now(),
             sequence: 0,
             full_response: String::new(),

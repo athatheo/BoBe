@@ -3,18 +3,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_stream::stream;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use futures::Stream;
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::subscription::RecvError;
-use github_copilot_sdk::types::{
-    Attachment, DeliveryMode, MessageOptions, SessionEvent, SetModelOptions,
-};
+use github_copilot_sdk::types::{DeliveryMode, MessageOptions, SessionEvent, SetModelOptions};
 use tokio::sync::Mutex;
 
 use crate::copilot::error::WorkerError;
-use crate::copilot::types::{ChatAttachment, ChatDelta, ChatPrompt};
+use crate::copilot::types::{ChatDelta, ChatPrompt};
 
 pub(crate) struct CopilotChatWorker {
     session: Arc<Session>,
@@ -178,7 +174,7 @@ impl CopilotChatWorker {
 fn build_message_options(prompt: ChatPrompt) -> Result<MessageOptions, std::io::Error> {
     let mut attachments = Vec::with_capacity(prompt.attachments.len());
     for att in prompt.attachments {
-        attachments.push(to_sdk_attachment(att)?);
+        attachments.push(att.into());
     }
 
     let mut opts = MessageOptions::new(prompt.text);
@@ -191,89 +187,96 @@ fn build_message_options(prompt: ChatPrompt) -> Result<MessageOptions, std::io::
     Ok(opts)
 }
 
-fn to_sdk_attachment(att: ChatAttachment) -> Result<Attachment, std::io::Error> {
-    let ChatAttachment::ImageBytes { bytes, mime_type } = att;
-    Ok(Attachment::Blob {
-        data: BASE64.encode(&bytes),
-        mime_type: mime_type.to_string(),
-        display_name: None,
-    })
+/// Typed SDK event payloads. Each variant matches one `event.event_type`
+/// arm in `event_to_delta`. `serde(default)` rescues *missing* fields
+/// (empty string / false) — type-mismatched fields or a non-object
+/// `event.data` still fail decode and drop the event via `.ok()?`. In
+/// practice the SDK always sends `Value::Object` for these event types,
+/// and `response_streamer` already filters empty deltas downstream.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MessageDeltaPayload {
+    #[serde(default)]
+    delta_content: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MessagePayload {
+    #[serde(default)]
+    content: String,
+    output_tokens: Option<u64>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolStartPayload {
+    #[serde(default)]
+    tool_call_id: String,
+    #[serde(default)]
+    tool_name: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolCompletePayload {
+    #[serde(default)]
+    tool_call_id: String,
+    #[serde(default)]
+    tool_name: String,
+    #[serde(default)]
+    success: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct SessionErrorPayload {
+    message: Option<String>,
 }
 
 fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
+    let payload = || event.data.clone();
     match event.event_type.as_str() {
-        "assistant.message_delta" => event
-            .data
-            .get("deltaContent")
-            .and_then(|v| v.as_str())
-            .map(|s| ChatDelta::MessageDelta(s.to_string())),
-
+        "assistant.message_delta" => {
+            let p: MessageDeltaPayload = serde_json::from_value(payload()).ok()?;
+            // Empty delta = nothing to emit. Differs slightly from the old
+            // `.and_then(.as_str).map(...)` which would emit Some("") for a
+            // present-but-empty field, but `response_streamer` filters empty
+            // text anyway, so consumers see the same behavior.
+            if p.delta_content.is_empty() {
+                None
+            } else {
+                Some(ChatDelta::MessageDelta(p.delta_content))
+            }
+        }
         "assistant.message" => {
-            let content = event
-                .data
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let output_tokens = event
-                .data
-                .get("outputTokens")
-                .and_then(serde_json::Value::as_u64);
+            let p: MessagePayload = serde_json::from_value(payload()).ok()?;
             Some(ChatDelta::MessageComplete {
-                content,
-                output_tokens,
+                content: p.content,
+                output_tokens: p.output_tokens,
             })
         }
-
         "tool.execution_start" => {
-            let id = event
-                .data
-                .get("toolCallId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let name = event
-                .data
-                .get("toolName")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            Some(ChatDelta::ToolStart { id, name })
+            let p: ToolStartPayload = serde_json::from_value(payload()).ok()?;
+            Some(ChatDelta::ToolStart {
+                id: p.tool_call_id,
+                name: p.tool_name,
+            })
         }
-
         "tool.execution_complete" => {
-            let id = event
-                .data
-                .get("toolCallId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let name = event
-                .data
-                .get("toolName")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let success = event
-                .data
-                .get("success")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            Some(ChatDelta::ToolComplete { id, name, success })
+            let p: ToolCompletePayload = serde_json::from_value(payload()).ok()?;
+            Some(ChatDelta::ToolComplete {
+                id: p.tool_call_id,
+                name: p.tool_name,
+                success: p.success,
+            })
         }
-
         "session.idle" => Some(ChatDelta::Done),
-
         "session.error" => {
-            let msg = event
-                .data
-                .get("message")
-                .and_then(|v| v.as_str())
-                .unwrap_or("session error")
-                .to_string();
-            Some(ChatDelta::Error(msg))
+            let p: SessionErrorPayload = serde_json::from_value(payload()).ok()?;
+            Some(ChatDelta::Error(
+                p.message.unwrap_or_else(|| "session error".into()),
+            ))
         }
-
         _ => None,
     }
 }
@@ -282,7 +285,12 @@ fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
 #[allow(clippy::unwrap_used, reason = "tests panic on precondition failures")]
 mod tests {
     use super::*;
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use github_copilot_sdk::types::Attachment;
     use serde_json::json;
+
+    use crate::copilot::types::ChatAttachment;
 
     fn ev(event_type: &str, data: serde_json::Value) -> SessionEvent {
         SessionEvent {

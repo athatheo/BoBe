@@ -48,7 +48,18 @@ impl Conversation {
     }
 
     pub(crate) fn is_stale(&self, auto_close_minutes: i64, turns: &[ConversationTurn]) -> bool {
-        let reference = self.last_user_message_at(turns).unwrap_or(self.created_at);
+        self.is_stale_since(auto_close_minutes, self.last_user_message_at(turns))
+    }
+
+    /// Lighter variant: takes the last user-turn timestamp directly so
+    /// callers can sidestep loading every turn row just to find the most
+    /// recent user message.
+    pub(crate) fn is_stale_since(
+        &self,
+        auto_close_minutes: i64,
+        last_user_at: Option<DateTime<Utc>>,
+    ) -> bool {
+        let reference = last_user_at.unwrap_or(self.created_at);
         let elapsed = Utc::now() - reference;
         elapsed >= chrono::Duration::minutes(auto_close_minutes)
     }

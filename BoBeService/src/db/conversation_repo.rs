@@ -32,43 +32,41 @@ impl SqliteConversationRepo {
         .bind(conversation.created_at)
         .bind(conversation.updated_at)
         .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
         debug!(conversation_id = %conversation.id, state = %conversation.state, "conversation_repo.saved");
         Ok(conversation.clone())
     }
 
-    pub(crate) async fn get_by_id(&self, id: ConversationId) -> Result<Option<Conversation>, AppError> {
-        let row = sqlx::query_as::<_, Conversation>("SELECT * FROM conversations WHERE id = ?1")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
-        Ok(row)
+    pub(crate) async fn get_by_id(
+        &self,
+        id: ConversationId,
+    ) -> Result<Option<Conversation>, AppError> {
+        Ok(
+            sqlx::query_as::<_, Conversation>("SELECT * FROM conversations WHERE id = ?1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
-        let row = sqlx::query_as::<_, Conversation>(
+        Ok(sqlx::query_as::<_, Conversation>(
             "SELECT * FROM conversations WHERE state IN (?1, ?2) ORDER BY updated_at DESC LIMIT 1",
         )
         .bind(ConversationState::Pending.as_str())
         .bind(ConversationState::Active.as_str())
         .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
-        Ok(row)
+        .await?)
     }
 
     pub(crate) async fn get_last_closed(&self) -> Result<Option<Conversation>, AppError> {
-        let row = sqlx::query_as::<_, Conversation>(
+        Ok(sqlx::query_as::<_, Conversation>(
             "SELECT * FROM conversations WHERE state = ?1 ORDER BY closed_at DESC LIMIT 1",
         )
         .bind(ConversationState::Closed.as_str())
         .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
-        Ok(row)
+        .await?)
     }
 
     pub(crate) async fn update_state(
@@ -94,8 +92,7 @@ impl SqliteConversationRepo {
         .bind(now)
         .bind(id)
         .execute(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
         if result.rows_affected() == 0 {
             warn!(conversation_id = %id, "conversation_repo.update_state.not_found");
@@ -111,16 +108,18 @@ impl SqliteConversationRepo {
         self.get_by_id(id).await
     }
 
-    pub(crate) async fn add_turn(&self, turn: &ConversationTurn) -> Result<ConversationTurn, AppError> {
+    pub(crate) async fn add_turn(
+        &self,
+        turn: &ConversationTurn,
+    ) -> Result<ConversationTurn, AppError> {
         // Transaction prevents TOCTOU race: verify not closed + insert + touch timestamp
-        let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
+        let mut tx = self.pool.begin().await?;
 
         let conv_state: Option<(String,)> =
             sqlx::query_as("SELECT state FROM conversations WHERE id = ?1")
                 .bind(turn.conversation_id)
                 .fetch_optional(&mut *tx)
-                .await
-                .map_err(AppError::Database)?;
+                .await?;
 
         match conv_state {
             None => {
@@ -151,17 +150,15 @@ impl SqliteConversationRepo {
         .bind(turn.created_at)
         .bind(turn.updated_at)
         .execute(&mut *tx)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
 
         sqlx::query("UPDATE conversations SET updated_at = ?1 WHERE id = ?2")
             .bind(Utc::now())
             .bind(turn.conversation_id)
             .execute(&mut *tx)
-            .await
-            .map_err(AppError::Database)?;
+            .await?;
 
-        tx.commit().await.map_err(AppError::Database)?;
+        tx.commit().await?;
 
         debug!(
             conversation_id = %turn.conversation_id,
@@ -178,15 +175,14 @@ impl SqliteConversationRepo {
         turn_id: ConversationTurnId,
         content: &str,
     ) -> Result<Option<ConversationTurn>, AppError> {
-        let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
+        let mut tx = self.pool.begin().await?;
         let now = Utc::now();
 
         let conversation_id: Option<(ConversationId,)> =
             sqlx::query_as("SELECT conversation_id FROM conversation_turns WHERE id = ?1")
                 .bind(turn_id)
                 .fetch_optional(&mut *tx)
-                .await
-                .map_err(AppError::Database)?;
+                .await?;
 
         let Some((conversation_id,)) = conversation_id else {
             warn!(turn_id = %turn_id, "conversation_repo.update_turn_content.not_found");
@@ -198,23 +194,22 @@ impl SqliteConversationRepo {
             .bind(now)
             .bind(turn_id)
             .execute(&mut *tx)
-            .await
-            .map_err(AppError::Database)?;
+            .await?;
 
         sqlx::query("UPDATE conversations SET updated_at = ?1 WHERE id = ?2")
             .bind(now)
             .bind(conversation_id)
             .execute(&mut *tx)
-            .await
-            .map_err(AppError::Database)?;
+            .await?;
 
-        tx.commit().await.map_err(AppError::Database)?;
+        tx.commit().await?;
 
-        sqlx::query_as::<_, ConversationTurn>("SELECT * FROM conversation_turns WHERE id = ?1")
-            .bind(turn_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(AppError::Database)
+        Ok(
+            sqlx::query_as::<_, ConversationTurn>("SELECT * FROM conversation_turns WHERE id = ?1")
+                .bind(turn_id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     pub(crate) async fn get_turns(
@@ -222,15 +217,43 @@ impl SqliteConversationRepo {
         conversation_id: ConversationId,
         limit: i64,
     ) -> Result<Vec<ConversationTurn>, AppError> {
-        let rows = sqlx::query_as::<_, ConversationTurn>(
+        Ok(sqlx::query_as::<_, ConversationTurn>(
             "SELECT * FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at ASC LIMIT ?2",
         )
         .bind(conversation_id)
         .bind(limit)
         .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
-        Ok(rows)
+        .await?)
+    }
+
+    /// Single-row staleness check — avoids loading 100 turn rows just to
+    /// find the most-recent user turn. Returns `None` when no user turn
+    /// has been recorded yet (the conversation `created_at` is then the
+    /// staleness reference).
+    pub(crate) async fn last_user_turn_at(
+        &self,
+        conversation_id: ConversationId,
+    ) -> Result<Option<chrono::DateTime<Utc>>, AppError> {
+        let row: Option<(Option<chrono::DateTime<Utc>>,)> = sqlx::query_as(
+            "SELECT MAX(created_at) FROM conversation_turns WHERE conversation_id = ?1 AND role = ?2",
+        )
+        .bind(conversation_id)
+        .bind(TurnRole::User.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.and_then(|(ts,)| ts))
+    }
+
+    pub(crate) async fn count_turns(
+        &self,
+        conversation_id: ConversationId,
+    ) -> Result<i64, AppError> {
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM conversation_turns WHERE conversation_id = ?1")
+                .bind(conversation_id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(row.0)
     }
 
     pub(crate) async fn get_recent_turns_by_role(
@@ -244,8 +267,7 @@ impl SqliteConversationRepo {
         .bind(role.as_str())
         .bind(limit)
         .fetch_all(&self.pool)
-        .await
-        .map_err(AppError::Database)?;
+        .await?;
         Ok(rows.into_iter().map(|(c,)| c).collect())
     }
 }
@@ -292,10 +314,7 @@ mod tests {
     async fn update_state_transitions_pending_to_active() {
         let pool = in_memory_pool().await;
         let repo = SqliteConversationRepo::new(pool);
-        let conv = repo
-            .save(&Conversation::new_pending())
-            .await
-            .expect("save");
+        let conv = repo.save(&Conversation::new_pending()).await.expect("save");
         let updated = repo
             .update_state(conv.id, ConversationState::Active, None)
             .await

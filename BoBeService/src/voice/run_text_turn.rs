@@ -16,6 +16,7 @@ use crate::speech::TtsEngine;
 use crate::speech::protocol::{
     FLAG_FILLER, FLAG_FIRST_OF_TURN, ServerMessage, VoicePhase, encode_tts_frame,
 };
+use crate::util::atomic_flag_guard::AtomicFlagGuard;
 use crate::voice::abort_on_drop::AbortOnDrop;
 use crate::voice::context::VoiceContext;
 use crate::voice::filler_library::FillerKind;
@@ -35,17 +36,6 @@ pub(crate) const FILLER_TRIGGER: Duration = Duration::from_millis(800);
 /// task. Bursts during fast LLM token rates can push 3-5 sentences within
 /// ~200ms; 16 gives comfortable headroom while still bounding memory.
 pub(crate) const SENTENCE_CHANNEL_CAPACITY: usize = 16;
-
-/// RAII flag: `voice_turn_active` is set to true on construction and cleared
-/// on drop. Ensures the BobeHooks signal goes back to false even if the
-/// run_text_turn body errors out mid-flight.
-struct VoiceTurnFlag(Arc<AtomicBool>);
-
-impl Drop for VoiceTurnFlag {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
 
 /// The convergence body. Caller is responsible for pre-validating the
 /// trimmed `text` (non-empty) and populating the session's `current_turn`
@@ -79,7 +69,7 @@ pub(crate) async fn run_text_turn(
     // and inject the voice-tone hint into a non-voice turn. RAII guard
     // clears on drop including panic-unwind.
     ctx.voice_turn_active.store(true, Ordering::Release);
-    let _voice_flag = VoiceTurnFlag(Arc::clone(&ctx.voice_turn_active));
+    let _voice_flag = AtomicFlagGuard::new(Arc::clone(&ctx.voice_turn_active));
 
     send_state(out_tx, VoicePhase::Thinking, turn_id).await;
     send_json(

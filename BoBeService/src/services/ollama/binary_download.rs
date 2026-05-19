@@ -23,8 +23,7 @@ pub(crate) async fn download_ollama(
         .get(OLLAMA_DARWIN_URL)
         .timeout(OLLAMA_DOWNLOAD_TIMEOUT)
         .send()
-        .await
-        .map_err(|e| AppError::Config(format!("Failed to download Ollama: {e}")))?;
+        .await?;
 
     if !response.status().is_success() {
         return Err(AppError::Config(format!(
@@ -37,8 +36,7 @@ pub(crate) async fn download_ollama(
     info!(total_bytes = ?total_size, "binary_download.content_length");
 
     if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Config(format!("Failed to create directory: {e}")))?;
+        std::fs::create_dir_all(parent)?;
     }
 
     let partial_path = output_path.with_file_name(format!(
@@ -50,9 +48,7 @@ pub(crate) async fn download_ollama(
     ));
     let _ignored = tokio::fs::remove_file(&partial_path).await;
 
-    let mut file = tokio::fs::File::create(&partial_path)
-        .await
-        .map_err(|e| AppError::Config(format!("Failed to create output file: {e}")))?;
+    let mut file = tokio::fs::File::create(&partial_path).await?;
 
     let result = async {
         let mut stream = response.bytes_stream();
@@ -60,13 +56,8 @@ pub(crate) async fn download_ollama(
         let mut last_progress: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| AppError::Config(format!("Download stream error: {e}")))?;
-
-            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
-                .await
-                .map_err(|e| AppError::Config(format!("Failed to write chunk: {e}")))?;
-
+            let chunk = chunk?;
+            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
             downloaded += chunk.len() as u64;
 
             if downloaded - last_progress > 1_000_000 {
@@ -75,9 +66,7 @@ pub(crate) async fn download_ollama(
             }
         }
 
-        tokio::io::AsyncWriteExt::flush(&mut file)
-            .await
-            .map_err(|e| AppError::Config(format!("Failed to flush download file: {e}")))?;
+        tokio::io::AsyncWriteExt::flush(&mut file).await?;
         on_progress(downloaded, total_size);
         Ok::<u64, AppError>(downloaded)
     }
@@ -92,12 +81,9 @@ pub(crate) async fn download_ollama(
     };
 
     if output_path.exists() {
-        std::fs::remove_file(output_path)
-            .map_err(|e| AppError::Config(format!("Failed to replace existing archive: {e}")))?;
+        std::fs::remove_file(output_path)?;
     }
-    tokio::fs::rename(&partial_path, output_path)
-        .await
-        .map_err(|e| AppError::Config(format!("Failed to finalize download: {e}")))?;
+    tokio::fs::rename(&partial_path, output_path).await?;
 
     info!(
         bytes = downloaded,

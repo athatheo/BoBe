@@ -31,9 +31,7 @@ fn load_default_asset(filename: &str) -> Option<&'static str> {
     }
 }
 
-pub(crate) async fn seed_default_souls(
-    soul_repo: &SqliteSoulRepo,
-) -> Result<SeedResult, AppError> {
+pub(crate) async fn seed_default_souls(soul_repo: &SqliteSoulRepo) -> Result<SeedResult, AppError> {
     let mut result = SeedResult {
         created: 0,
         updated: 0,

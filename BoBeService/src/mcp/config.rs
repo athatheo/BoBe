@@ -57,9 +57,7 @@ pub(crate) fn resolve_mcp_config_path(config_file: Option<&str>) -> Result<PathB
         return Ok(crate::util::paths::expand_tilde(path));
     }
 
-    let home = dirs::home_dir()
-        .ok_or_else(|| AppError::Config("Cannot resolve home directory for MCP config".into()))?;
-    Ok(home.join(".bobe").join("mcp.json"))
+    Ok(crate::util::paths::bobe_data_dir().join("mcp.json"))
 }
 
 pub(crate) fn ensure_mcp_config_exists(config_file: Option<&str>) -> Result<PathBuf, AppError> {

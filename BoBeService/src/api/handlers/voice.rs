@@ -54,7 +54,10 @@ async fn acquire_permit(socket: WebSocket, state: &AppState) -> Option<(WebSocke
         .await;
         return None;
     }
-    Some((socket, VoiceWsPermit(Arc::clone(&state.voice.voice_ws_active))))
+    Some((
+        socket,
+        VoiceWsPermit(Arc::clone(&state.voice.voice_ws_active)),
+    ))
 }
 
 /// Bag passed to `teardown_session` so cleanup drop-order is centralized.
@@ -94,7 +97,11 @@ async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
     }
 
     // Sync clear so writer.await sees all senders gone; SinkGuard::drop is panic fallback only.
-    state.voice.voice_sink.uninstall_if_current(sink_guard.generation).await;
+    state
+        .voice
+        .voice_sink
+        .uninstall_if_current(sink_guard.generation)
+        .await;
     drop(sink_guard);
 
     // Order matters: ctx holds an out_tx clone; drop it first or writer hangs.

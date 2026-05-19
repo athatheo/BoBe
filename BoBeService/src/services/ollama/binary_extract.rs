@@ -10,30 +10,21 @@ pub(crate) fn extract_ollama_archive(
     archive_path: &Path,
     output_path: &Path,
 ) -> Result<(), AppError> {
-    let file = std::fs::File::open(archive_path)
-        .map_err(|e| AppError::Config(format!("Failed to open archive: {e}")))?;
+    let file = std::fs::File::open(archive_path)?;
 
     let decoder = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(decoder);
 
     if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Config(format!("Failed to create output directory: {e}")))?;
+        std::fs::create_dir_all(parent)?;
     }
 
     let mut found = false;
-    let entries = archive
-        .entries()
-        .map_err(|e| AppError::Config(format!("Failed to read archive entries: {e}")))?;
+    let entries = archive.entries()?;
 
     for entry in entries {
-        let mut entry =
-            entry.map_err(|e| AppError::Config(format!("Failed to read archive entry: {e}")))?;
-
-        let entry_path = entry
-            .path()
-            .map_err(|e| AppError::Config(format!("Failed to read entry path: {e}")))?
-            .into_owned();
+        let mut entry = entry?;
+        let entry_path = entry.path()?.into_owned();
 
         if entry_path
             .components()
@@ -55,18 +46,14 @@ pub(crate) fn extract_ollama_archive(
                 "binary_extract.extracting_binary"
             );
 
-            let mut output_file = std::fs::File::create(output_path)
-                .map_err(|e| AppError::Config(format!("Failed to create output binary: {e}")))?;
-
-            std::io::copy(&mut entry, &mut output_file)
-                .map_err(|e| AppError::Config(format!("Failed to extract binary: {e}")))?;
+            let mut output_file = std::fs::File::create(output_path)?;
+            std::io::copy(&mut entry, &mut output_file)?;
 
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 let perms = std::fs::Permissions::from_mode(0o755);
-                std::fs::set_permissions(output_path, perms)
-                    .map_err(|e| AppError::Config(format!("Failed to set permissions: {e}")))?;
+                std::fs::set_permissions(output_path, perms)?;
             }
 
             found = true;

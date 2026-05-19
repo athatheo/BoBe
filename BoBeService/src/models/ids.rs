@@ -61,6 +61,27 @@ define_id!(SoulId);
 define_id!(UserProfileId);
 define_id!(CooldownId);
 
+/// Wire-format message id used by SSE consumers (Swift overlay,
+/// response_streamer.rs). The `msg_` prefix and simple-uuid form are part
+/// of the published contract — do not change without coordinating the
+/// client.
+pub(crate) fn new_message_id() -> String {
+    format!("msg_{}", Uuid::new_v4().simple())
+}
+
+/// Wire-format voice-turn id. `voice_` prefix is the published contract
+/// the Swift voice client decodes against. Wake-triggered turns prefix
+/// `voice_wake_` so log filtering can separate them — pass `true` for
+/// `wake_triggered`.
+pub(crate) fn new_turn_id(wake_triggered: bool) -> String {
+    let suffix = Uuid::new_v4().simple();
+    if wake_triggered {
+        format!("voice_wake_{suffix}")
+    } else {
+        format!("voice_{suffix}")
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

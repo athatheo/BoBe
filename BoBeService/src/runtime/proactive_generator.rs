@@ -123,7 +123,7 @@ impl ProactiveGenerator {
         // would leave the indicator stuck Streaming and reject every
         // subsequent turn. Mirror of the message_handler.rs pattern.
         let _indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
-        let msg_id = format!("msg_{}", Uuid::new_v4().simple());
+        let msg_id = crate::models::ids::new_message_id();
         let conversation_id = target_conversation.id;
 
         let prompt_text = match context_summary.as_deref() {

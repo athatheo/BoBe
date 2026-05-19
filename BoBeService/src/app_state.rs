@@ -59,7 +59,8 @@ pub(crate) struct VoiceContext {
     /// Hot-swapped post-install; WS handler snapshots at connect; hooks read at fire-time.
     pub(crate) voice_engines: Arc<ArcSwap<VoiceEnginesSnapshot>>,
     /// Set true while a voice turn is in flight so hooks can branch on
-    /// tone/filler behavior. Cleared by `VoiceTurnFlag` RAII.
+    /// tone/filler behavior. Cleared by `AtomicFlagGuard` RAII (held in
+    /// `voice/run_text_turn.rs::run_text_turn`).
     pub(crate) voice_turn_active: Arc<AtomicBool>,
     /// Single-flight permit for `/voice/stream`. Kokoro + per-WS Opus
     /// encoder aren't concurrent-feed safe; a second connect closes 409.

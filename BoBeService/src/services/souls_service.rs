@@ -7,7 +7,7 @@ use crate::db::SqliteSoulRepo;
 use crate::error::AppError;
 use crate::models::ids::SoulId;
 use crate::models::soul::Soul;
-use crate::services::DeleteOutcome;
+use crate::services::{DeleteOutcome, validate_markdown_doc_input};
 
 const MIN_CONTENT_LEN: usize = 10;
 
@@ -48,14 +48,7 @@ impl SoulsService {
         content: String,
         enabled: bool,
     ) -> Result<Soul, AppError> {
-        if name.is_empty() {
-            return Err(AppError::Validation("name must not be empty".into()));
-        }
-        if content.len() < MIN_CONTENT_LEN {
-            return Err(AppError::Validation(format!(
-                "content must be at least {MIN_CONTENT_LEN} characters"
-            )));
-        }
+        validate_markdown_doc_input(&name, &content, MIN_CONTENT_LEN)?;
         if self.repo.get_by_name(&name).await?.is_some() {
             return Err(AppError::Validation(format!(
                 "Soul with name '{name}' already exists"

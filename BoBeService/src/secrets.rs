@@ -9,11 +9,28 @@ compile_error!("BoBe daemon supports only macOS and Unix-family OSes (Linux, *BS
 
 use std::sync::{Arc, OnceLock};
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SecretError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Serialization error: {0}")]
+    Serialize(#[from] serde_json::Error),
+
+    #[error("Lock poisoned: {0}")]
+    Lock(String),
+
+    /// Catch-all for platform-specific failures (Keychain OSStatus, etc.)
+    /// that don't map onto the structured variants.
+    #[error("{0}")]
+    Backend(String),
+}
+
 /// Stable API for handler/service code; backend swaps per platform.
 pub(crate) trait SecretStore: Send + Sync {
     fn read(&self, account: &str) -> Option<String>;
-    fn store(&self, account: &str, value: &str) -> Result<(), String>;
-    fn delete(&self, account: &str) -> Result<(), String>;
+    fn store(&self, account: &str, value: &str) -> Result<(), SecretError>;
+    fn delete(&self, account: &str) -> Result<(), SecretError>;
 }
 
 /// Process-wide singleton so boot-phase code (`mcp/config.rs`) and
@@ -90,7 +107,7 @@ mod macos {
         query
     }
 
-    pub(super) fn store_secret(account: &str, value: &str) -> Result<(), String> {
+    pub(super) fn store_secret(account: &str, value: &str) -> Result<(), super::SecretError> {
         if value.is_empty() {
             let _ignored = delete_secret(account);
             return Ok(());
@@ -111,9 +128,10 @@ mod macos {
             info!(account, "secrets.stored");
             Ok(())
         } else {
-            let msg = format!("Failed to store secret '{account}': OSStatus {status}");
             warn!(account, status, "secrets.store_failed");
-            Err(msg)
+            Err(super::SecretError::Backend(format!(
+                "Failed to store secret '{account}': OSStatus {status}"
+            )))
         }
     }
 
@@ -146,7 +164,7 @@ mod macos {
         String::from_utf8(data.bytes().to_vec()).ok()
     }
 
-    pub(super) fn delete_secret(account: &str) -> Result<(), String> {
+    pub(super) fn delete_secret(account: &str) -> Result<(), super::SecretError> {
         let query = base_query(account);
         // SAFETY: valid query dict from base_query.
         let status = unsafe { SecItemDelete(query.as_concrete_TypeRef()) };
@@ -154,9 +172,9 @@ mod macos {
         if status == 0 || status == -25300 {
             Ok(())
         } else {
-            Err(format!(
+            Err(super::SecretError::Backend(format!(
                 "Failed to delete secret '{account}': OSStatus {status}"
-            ))
+            )))
         }
     }
 
@@ -166,10 +184,10 @@ mod macos {
         fn read(&self, account: &str) -> Option<String> {
             read_secret(account)
         }
-        fn store(&self, account: &str, value: &str) -> Result<(), String> {
+        fn store(&self, account: &str, value: &str) -> Result<(), super::SecretError> {
             store_secret(account, value)
         }
-        fn delete(&self, account: &str) -> Result<(), String> {
+        fn delete(&self, account: &str) -> Result<(), super::SecretError> {
             delete_secret(account)
         }
     }
@@ -210,17 +228,16 @@ pub(crate) mod file {
             }
         }
 
-        fn flush(&self, map: &HashMap<String, String>) -> Result<(), String> {
+        fn flush(&self, map: &HashMap<String, String>) -> Result<(), super::SecretError> {
             write_atomic(&self.path, map)
         }
     }
 
-    fn write_atomic(path: &Path, map: &HashMap<String, String>) -> Result<(), String> {
+    fn write_atomic(path: &Path, map: &HashMap<String, String>) -> Result<(), super::SecretError> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(parent)?;
         }
-        let bytes =
-            serde_json::to_vec_pretty(map).map_err(|e| format!("serialize secrets: {e}"))?;
+        let bytes = serde_json::to_vec_pretty(map)?;
         let tmp = path.with_extension("json.tmp");
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -229,11 +246,11 @@ pub(crate) mod file {
                 .truncate(true)
                 .write(true)
                 .mode(0o600)
-                .open(&tmp)
-                .map_err(|e| e.to_string())?;
-            f.write_all(&bytes).map_err(|e| e.to_string())?;
+                .open(&tmp)?;
+            f.write_all(&bytes)?;
         }
-        std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+        std::fs::rename(&tmp, path)?;
+        Ok(())
     }
 
     fn load(path: &Path) -> Option<HashMap<String, String>> {
@@ -245,8 +262,11 @@ pub(crate) mod file {
             load(&self.path).and_then(|m| m.get(account).cloned())
         }
 
-        fn store(&self, account: &str, value: &str) -> Result<(), String> {
-            let mut guard = self.cache.lock().map_err(|e| format!("lock poisoned: {e}"))?;
+        fn store(&self, account: &str, value: &str) -> Result<(), super::SecretError> {
+            let mut guard = self
+                .cache
+                .lock()
+                .map_err(|e| super::SecretError::Lock(e.to_string()))?;
             if value.is_empty() {
                 guard.remove(account);
             } else {
@@ -257,8 +277,11 @@ pub(crate) mod file {
             Ok(())
         }
 
-        fn delete(&self, account: &str) -> Result<(), String> {
-            let mut guard = self.cache.lock().map_err(|e| format!("lock poisoned: {e}"))?;
+        fn delete(&self, account: &str) -> Result<(), super::SecretError> {
+            let mut guard = self
+                .cache
+                .lock()
+                .map_err(|e| super::SecretError::Lock(e.to_string()))?;
             let removed = guard.remove(account).is_some();
             self.flush(&guard)?;
             if !removed {

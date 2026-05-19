@@ -16,9 +16,9 @@ use crate::services::goals::goal_md::GoalDoc;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GoalResponse {
-    pub(crate) id: String,
+    pub(crate) id: GoalId,
     pub(crate) title: String,
-    pub(crate) status: String,
+    pub(crate) status: GoalStatus,
     pub(crate) priority: u8,
     pub(crate) summary: String,
     pub(crate) why_it_matters: String,
@@ -29,6 +29,26 @@ pub(crate) struct GoalResponse {
     pub(crate) notes: String,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
+}
+
+impl From<&GoalDoc> for GoalResponse {
+    fn from(doc: &GoalDoc) -> Self {
+        Self {
+            id: doc.id,
+            title: doc.title.clone(),
+            status: doc.status,
+            priority: doc.priority,
+            summary: doc.summary.clone(),
+            why_it_matters: doc.why_it_matters.clone(),
+            how_working_on_it: doc.how_working_on_it.clone(),
+            patterns_observed: doc.patterns_observed.clone(),
+            attitude_feelings: doc.attitude_feelings.clone(),
+            open_questions: doc.open_questions.clone(),
+            notes: doc.notes.clone(),
+            created_at: doc.created_at,
+            updated_at: doc.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -56,7 +76,7 @@ fn default_priority() -> u8 {
 #[derive(Debug, Deserialize)]
 pub(crate) struct GoalUpdateRequest {
     pub(crate) title: Option<String>,
-    pub(crate) status: Option<String>,
+    pub(crate) status: Option<GoalStatus>,
     pub(crate) priority: Option<u8>,
     pub(crate) summary: Option<String>,
     pub(crate) why_it_matters: Option<String>,
@@ -65,54 +85,23 @@ pub(crate) struct GoalUpdateRequest {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GoalActionResponse {
-    pub(crate) id: String,
-    pub(crate) status: String,
+    pub(crate) id: GoalId,
+    pub(crate) status: GoalStatus,
     pub(crate) message: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct GoalListQuery {
-    pub(crate) status: Option<String>,
+    pub(crate) status: Option<GoalStatus>,
     #[serde(default)]
     pub(crate) include_archived: bool,
-}
-
-fn doc_to_response(doc: &GoalDoc) -> GoalResponse {
-    GoalResponse {
-        id: doc.id.to_string(),
-        title: doc.title.clone(),
-        status: doc.status.as_str().to_owned(),
-        priority: doc.priority,
-        summary: doc.summary.clone(),
-        why_it_matters: doc.why_it_matters.clone(),
-        how_working_on_it: doc.how_working_on_it.clone(),
-        patterns_observed: doc.patterns_observed.clone(),
-        attitude_feelings: doc.attitude_feelings.clone(),
-        open_questions: doc.open_questions.clone(),
-        notes: doc.notes.clone(),
-        created_at: doc.created_at,
-        updated_at: doc.updated_at,
-    }
-}
-
-fn parse_goal_status(s: &str) -> Result<GoalStatus, AppError> {
-    match s.to_lowercase().as_str() {
-        "active" => Ok(GoalStatus::Active),
-        "paused" => Ok(GoalStatus::Paused),
-        "completed" => Ok(GoalStatus::Completed),
-        "archived" => Ok(GoalStatus::Archived),
-        _ => Err(AppError::Validation(format!(
-            "Invalid status '{s}'. Valid: active, paused, completed, archived"
-        ))),
-    }
 }
 
 pub(crate) async fn list_goals(
     State(state): State<Arc<AppState>>,
     Query(params): Query<GoalListQuery>,
 ) -> Result<Json<GoalListResponse>, AppError> {
-    let mut goals = if let Some(ref status_str) = params.status {
-        let status = parse_goal_status(status_str)?;
+    let mut goals = if let Some(status) = params.status {
         let all = state.services.goals_service.list_all().await?;
         all.into_iter().filter(|g| g.status == status).collect()
     } else {
@@ -130,7 +119,7 @@ pub(crate) async fn list_goals(
     Ok(Json(GoalListResponse {
         count: goals.len(),
         active_count,
-        goals: goals.iter().map(doc_to_response).collect(),
+        goals: goals.iter().map(GoalResponse::from).collect(),
     }))
 }
 
@@ -144,7 +133,7 @@ pub(crate) async fn get_goal(
         .get(goal_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
-    Ok(Json(doc_to_response(&doc)))
+    Ok(Json(GoalResponse::from(&doc)))
 }
 
 pub(crate) async fn create_goal(
@@ -165,7 +154,7 @@ pub(crate) async fn create_goal(
     doc.why_it_matters = body.why_it_matters;
 
     let saved = state.services.goals_service.create(doc).await?;
-    Ok((StatusCode::CREATED, Json(doc_to_response(&saved))))
+    Ok((StatusCode::CREATED, Json(GoalResponse::from(&saved))))
 }
 
 pub(crate) async fn update_goal(
@@ -173,7 +162,6 @@ pub(crate) async fn update_goal(
     Path(goal_id): Path<GoalId>,
     Json(body): Json<GoalUpdateRequest>,
 ) -> Result<Json<GoalResponse>, AppError> {
-    let status = body.status.as_deref().map(parse_goal_status).transpose()?;
     if let Some(p) = body.priority
         && p > 5
     {
@@ -188,7 +176,7 @@ pub(crate) async fn update_goal(
         .update(
             goal_id,
             body.title,
-            status,
+            body.status,
             body.priority,
             body.summary,
             body.why_it_matters,
@@ -197,7 +185,7 @@ pub(crate) async fn update_goal(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
 
-    Ok(Json(doc_to_response(&updated)))
+    Ok(Json(GoalResponse::from(&updated)))
 }
 
 pub(crate) async fn complete_goal(
@@ -211,8 +199,8 @@ pub(crate) async fn complete_goal(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
     Ok(Json(GoalActionResponse {
-        id: goal_id.to_string(),
-        status: updated.status.as_str().to_owned(),
+        id: goal_id,
+        status: updated.status,
         message: "Goal marked as completed".into(),
     }))
 }
@@ -228,8 +216,8 @@ pub(crate) async fn archive_goal(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;
     Ok(Json(GoalActionResponse {
-        id: goal_id.to_string(),
-        status: updated.status.as_str().to_owned(),
+        id: goal_id,
+        status: updated.status,
         message: "Goal archived".into(),
     }))
 }

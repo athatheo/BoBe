@@ -29,14 +29,15 @@ pub(crate) struct RuntimeSession {
     user_message_in_flight: Arc<AtomicBool>,
 }
 
-pub(crate) struct UserMessageGuard {
-    user_message_in_flight: Arc<AtomicBool>,
-}
+/// RAII gate for "is a user-driven turn in flight." Cleared on drop so a
+/// panicking turn doesn't brick the next message.
+pub(crate) type UserMessageGuard = crate::util::atomic_flag_guard::AtomicFlagGuard;
 
-impl Drop for UserMessageGuard {
-    fn drop(&mut self) {
-        self.user_message_in_flight.store(false, Ordering::Release);
-    }
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct RuntimeStatus {
+    pub(crate) indicator: IndicatorType,
+    pub(crate) capturing: bool,
+    pub(crate) accepting_user_messages: bool,
 }
 
 impl RuntimeSession {
@@ -129,7 +130,8 @@ impl RuntimeSession {
         }
 
         let mut loop_counter: u64 = 0;
-        let maintenance_interval = std::time::Duration::from_mins(1);
+        let heartbeat_interval = std::time::Duration::from_mins(5);
+        let mut last_heartbeat = Instant::now();
         let mut last_goal_check = Instant::now();
         let mut last_capture_time = Instant::now();
 
@@ -137,8 +139,9 @@ impl RuntimeSession {
             loop_counter += 1;
             let cfg = self.config.load();
 
-            if loop_counter.is_multiple_of(5) {
+            if last_heartbeat.elapsed() >= heartbeat_interval {
                 self.log_heartbeat(loop_counter).await;
+                last_heartbeat = Instant::now();
             }
 
             run_trigger("checkin", std::time::Duration::from_mins(1), async {
@@ -181,7 +184,13 @@ impl RuntimeSession {
                 }
             }
 
-            tokio::time::sleep(maintenance_interval).await;
+            // Sleep at the shortest configured cadence so a user-tuned
+            // 5-second capture actually fires every 5 seconds. Floor at 1s
+            // (avoid busy loop), ceiling at 60s (keep checkin scheduler
+            // resolution under a minute).
+            let goal_secs = cfg.goals.check_interval_seconds.max(1.0).round() as u64;
+            let sleep_secs = cfg.capture.interval_seconds.max(1).min(goal_secs).min(60);
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
         }
 
         self.stop().await;
@@ -189,22 +198,20 @@ impl RuntimeSession {
 
     async fn close_stale_conversation_if_needed(&self) -> Result<(), crate::error::AppError> {
         let cfg = self.config.load();
-        let existing = self.conversation.get_pending_or_active().await?;
-        let Some(existing) = existing else {
+        let Some(existing) = self.conversation.get_pending_or_active().await? else {
             return Ok(());
         };
 
-        let turns = self
-            .conversation
-            .get_conversation_turns(existing.id, 100)
-            .await?;
-        if !existing.is_stale(cfg.conversation.auto_close_minutes as i64, &turns) {
+        // MAX(created_at) query instead of loading 100 turn rows just to
+        // find the most recent user-turn timestamp.
+        let last_user_at = self.conversation.last_user_turn_at(existing.id).await?;
+        if !existing.is_stale_since(cfg.conversation.auto_close_minutes as i64, last_user_at) {
             return Ok(());
         }
 
         if let Some(turn_count) = self
             .conversation
-            .close_if_stale(existing.id, cfg.conversation.auto_close_minutes as i64, 100)
+            .close_if_stale(existing.id, cfg.conversation.auto_close_minutes as i64)
             .await?
         {
             info!(
@@ -248,17 +255,13 @@ impl RuntimeSession {
     }
 
     pub(crate) fn try_begin_user_message(&self) -> Result<UserMessageGuard, &'static str> {
-        if self
-            .user_message_in_flight
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return Err("BoBe is still finishing the previous message");
-        }
+        let guard = UserMessageGuard::try_acquire(Arc::clone(&self.user_message_in_flight))
+            .ok_or("BoBe is still finishing the previous message")?;
 
         let indicator = self.event_queue.current_indicator();
         if indicator != IndicatorType::Idle {
-            self.user_message_in_flight.store(false, Ordering::Release);
+            // Drop releases the CAS we just made.
+            drop(guard);
             return Err(match indicator {
                 IndicatorType::ScreenCapture => "BoBe is finishing capture work",
                 IndicatorType::Thinking => "BoBe is still thinking",
@@ -267,18 +270,17 @@ impl RuntimeSession {
             });
         }
 
-        Ok(UserMessageGuard {
-            user_message_in_flight: Arc::clone(&self.user_message_in_flight),
-        })
+        Ok(guard)
     }
 
-    pub(crate) fn get_status(&self) -> serde_json::Value {
-        serde_json::json!({
-            "indicator": self.event_queue.current_indicator().as_str(),
-            "capturing": self.capture_enabled.load(std::sync::atomic::Ordering::Acquire),
-            "accepting_user_messages": self.event_queue.current_indicator() == IndicatorType::Idle
+    pub(crate) fn get_status(&self) -> RuntimeStatus {
+        let indicator = self.event_queue.current_indicator();
+        RuntimeStatus {
+            indicator,
+            capturing: self.capture_enabled.load(Ordering::Acquire),
+            accepting_user_messages: indicator == IndicatorType::Idle
                 && !self.user_message_in_flight.load(Ordering::Acquire),
-        })
+        }
     }
 
     fn push_error_event(&self, trigger: &str, message: &str) {
@@ -317,9 +319,7 @@ mod tests {
     #[test]
     fn user_message_guard_clears_flag_on_drop() {
         let flag = Arc::new(AtomicBool::new(true));
-        let guard = UserMessageGuard {
-            user_message_in_flight: Arc::clone(&flag),
-        };
+        let guard = UserMessageGuard::new(Arc::clone(&flag));
         assert!(
             flag.load(Ordering::Acquire),
             "flag should be true while guard is alive"
@@ -337,9 +337,7 @@ mod tests {
         let flag = Arc::new(AtomicBool::new(true));
         let flag_clone = Arc::clone(&flag);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            let _guard = UserMessageGuard {
-                user_message_in_flight: flag_clone,
-            };
+            let _guard = UserMessageGuard::new(flag_clone);
             panic!("simulated turn failure");
         }));
         assert!(result.is_err(), "test setup: panic should propagate");

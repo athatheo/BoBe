@@ -25,9 +25,9 @@ pub(crate) enum IndicatorType {
 
 impl IndicatorType {
     /// Wire-format string. Must match the `#[serde(rename_all =
-    /// "SCREAMING_SNAKE_CASE")]` attr on the enum so the manual JSON
-    /// callers (`runtime/session.rs::get_status`, SSE
-    /// `StreamBundle.description`) agree with what serde emits and what
+    /// "SCREAMING_SNAKE_CASE")]` attr on the enum so the one remaining
+    /// manual-string caller (`factories::indicator_event` populating
+    /// `StreamBundle.description`) agrees with what serde emits and what
     /// `BoBeMacUI/BoBe/Models/AppState.swift::IndicatorType` decodes.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
@@ -47,4 +47,23 @@ pub(crate) struct StreamBundle {
     pub(crate) timestamp: String,
     pub(crate) description: String,
     pub(crate) payload: serde_json::Value,
+}
+
+impl StreamBundle {
+    /// Builds a bundle with `timestamp` set to RFC3339-now. Factories
+    /// call this so the timestamp string lives in exactly one place.
+    pub(crate) fn now(
+        event_type: EventType,
+        message_id: String,
+        description: String,
+        payload: serde_json::Value,
+    ) -> Self {
+        Self {
+            event_type,
+            message_id,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            description,
+            payload,
+        }
+    }
 }

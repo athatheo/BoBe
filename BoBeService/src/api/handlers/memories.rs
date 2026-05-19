@@ -30,7 +30,11 @@ pub(crate) async fn update_memory(
     State(state): State<Arc<AppState>>,
     Json(body): Json<MemoryUpdateRequest>,
 ) -> Result<Json<MemoryResponse>, AppError> {
-    state.runtime.memory_file.replace_all(body.content.clone()).await?;
+    state
+        .runtime
+        .memory_file
+        .replace_all(body.content.clone())
+        .await?;
     let bytes = body.content.len();
     Ok(Json(MemoryResponse {
         content: body.content,

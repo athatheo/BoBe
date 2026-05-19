@@ -72,14 +72,13 @@ impl GoalTrigger {
 
         info!(goal_count = goals.len(), "goal_trigger.checking_goals");
 
-        for goal in &goals {
-            // RAII: ensures Indicator returns to Idle even if decide()
-            // panics or this loop is aborted mid-flight (shutdown,
-            // task cancel). Generator path also has its own guard,
-            // so the Streaming → Idle transition is covered there.
-            let indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
-            self.event_queue.set_indicator(IndicatorType::Thinking);
+        // RAII: one Thinking → Idle bracket for the whole goal scan. Without
+        // hoisting, N goals produced 2N indicator events. EventQueue's
+        // set_indicator short-circuits no-ops so iteration is silent.
+        let indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
+        self.event_queue.set_indicator(IndicatorType::Thinking);
 
+        for goal in &goals {
             let context = TriggerContext {
                 trigger_type: TriggerType::Goal,
                 context_text: goal.title.clone(),
@@ -102,8 +101,6 @@ impl GoalTrigger {
                     .await;
                 return Decision::Engage;
             }
-            // indicator_guard drops here → Idle restored.
-            drop(indicator_guard);
         }
 
         debug!("goal_trigger.no_engagement");

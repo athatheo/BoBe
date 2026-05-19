@@ -51,7 +51,7 @@ pub(crate) async fn send_message(
         .try_begin_user_message()
         .map_err(|message| AppError::Conflict(message.into()))?;
 
-    let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let message_id = crate::models::ids::new_message_id();
     let msg_id = message_id.clone();
     let in_flight = InFlightCounter::new(Arc::clone(&state.runtime.in_flight_text_turns));
 

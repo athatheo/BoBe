@@ -4,8 +4,8 @@
 //! `ClientMessage` variants — there is no Binary path on the daemon.
 
 use tracing::{debug, info, warn};
-use uuid::Uuid;
 
+use crate::models::ids::new_turn_id;
 use crate::speech::protocol::{ClientMessage, ControlAction, ServerMessage, VoicePhase};
 use crate::voice::cancel_phrases::is_cancel_phrase;
 use crate::voice::context::VoiceContext;
@@ -56,7 +56,7 @@ pub(crate) async fn handle_control_text(
             let cfg = SessionVoiceConfig::new(voice_id, speed, voice_defaults);
             let voice_pack = cfg.voice_id.clone();
             let s = VoiceSession::new(session_id, cfg, language);
-            let initial_turn = format!("voice_{}", Uuid::new_v4().simple());
+            let initial_turn = new_turn_id(false);
             // Rehello: a second Hello on the same WS replaces the session.
             // Abort the previous in-flight turn first — otherwise the
             // spawned task keeps running (JoinHandle::drop does NOT abort)
@@ -97,7 +97,7 @@ pub(crate) async fn handle_control_text(
                 && s.current_turn.is_none()
                 && !s.muted
             {
-                let turn_id = format!("voice_wake_{}", Uuid::new_v4().simple());
+                let turn_id = new_turn_id(true);
                 send_state(out_tx, VoicePhase::Listening, &turn_id).await;
             }
             true

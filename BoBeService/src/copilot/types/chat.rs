@@ -41,6 +41,19 @@ pub(crate) enum ChatAttachment {
     },
 }
 
+impl From<ChatAttachment> for github_copilot_sdk::types::Attachment {
+    fn from(att: ChatAttachment) -> Self {
+        use base64::Engine;
+        let base64 = base64::engine::general_purpose::STANDARD;
+        let ChatAttachment::ImageBytes { bytes, mime_type } = att;
+        Self::Blob {
+            data: base64.encode(&bytes),
+            mime_type: mime_type.to_string(),
+            display_name: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum ChatDelta {
     MessageDelta(String),

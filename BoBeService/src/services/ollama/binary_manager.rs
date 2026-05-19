@@ -64,8 +64,7 @@ impl BinaryManager {
         let parent = target_path
             .parent()
             .ok_or_else(|| AppError::Config("Invalid binary path".into()))?;
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Config(format!("Failed to create binary directory: {e}")))?;
+        std::fs::create_dir_all(parent)?;
 
         let archive_path = self.data_dir.join("ollama").join("ollama-darwin.tgz");
 
