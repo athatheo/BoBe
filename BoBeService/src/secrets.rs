@@ -7,37 +7,40 @@
 #[cfg(not(any(target_os = "macos", unix)))]
 compile_error!("BoBe daemon supports only macOS and Unix-family OSes (Linux, *BSD).");
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Stable API for handler/service code; backend swaps per platform.
 pub(crate) trait SecretStore: Send + Sync {
+    fn read(&self, account: &str) -> Option<String>;
     fn store(&self, account: &str, value: &str) -> Result<(), String>;
     fn delete(&self, account: &str) -> Result<(), String>;
 }
 
+/// Process-wide singleton so boot-phase code (`mcp/config.rs`) and
+/// handler-phase code (`mcp_config_service`) dispatch through the same
+/// `Arc`. Without this the read path and write path could silently
+/// disagree even though they're nominally the same backend.
+static DEFAULT_STORE: OnceLock<Arc<dyn SecretStore>> = OnceLock::new();
+
 pub(crate) fn default_secret_store() -> Arc<dyn SecretStore> {
-    #[cfg(target_os = "macos")]
-    {
-        Arc::new(macos::KeychainSecretStore)
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        Arc::new(file::FileSecretStore::new())
-    }
+    Arc::clone(DEFAULT_STORE.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            Arc::new(macos::KeychainSecretStore) as Arc<dyn SecretStore>
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            Arc::new(file::FileSecretStore::new()) as Arc<dyn SecretStore>
+        }
+    }))
 }
 
-/// Free function used by `mcp/config.rs` deep materialization.
+/// Boot-phase read for `mcp/config.rs` deep materialization, before
+/// `AppState` exists. Dispatches through the same singleton that AppState
+/// later receives, so the boot read and the handler-time `Arc<dyn SecretStore>`
+/// hit the identical backend instance.
 pub(crate) fn read_secret(account: &str) -> Option<String> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::read_secret(account)
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        file::read_secret_default()
-            .as_ref()
-            .and_then(|m| m.get(account).cloned())
-    }
+    default_secret_store().read(account)
 }
 
 #[cfg(target_os = "macos")]
@@ -160,6 +163,9 @@ mod macos {
     pub(crate) struct KeychainSecretStore;
 
     impl super::SecretStore for KeychainSecretStore {
+        fn read(&self, account: &str) -> Option<String> {
+            read_secret(account)
+        }
         fn store(&self, account: &str, value: &str) -> Result<(), String> {
             store_secret(account, value)
         }
@@ -234,11 +240,11 @@ pub(crate) mod file {
         serde_json::from_slice(&std::fs::read(path).ok()?).ok()
     }
 
-    pub(crate) fn read_secret_default() -> Option<HashMap<String, String>> {
-        load(&crate::util::paths::bobe_data_dir().join("secrets.json"))
-    }
-
     impl super::SecretStore for FileSecretStore {
+        fn read(&self, account: &str) -> Option<String> {
+            load(&self.path).and_then(|m| m.get(account).cloned())
+        }
+
         fn store(&self, account: &str, value: &str) -> Result<(), String> {
             let mut guard = self.cache.lock().map_err(|e| format!("lock poisoned: {e}"))?;
             if value.is_empty() {
@@ -318,9 +324,22 @@ pub(crate) mod file {
         #[test]
         fn missing_file_loads_empty() {
             let path = tmpfile();
-            // path doesn't exist yet — constructor must not panic.
+            // Constructor must not panic on a missing file.
             let store = FileSecretStore::at_path(path.clone());
-            assert!(store.cache.lock().unwrap().is_empty());
+            assert!(store.read("anything").is_none());
+        }
+
+        #[test]
+        fn read_through_trait_returns_stored_value() {
+            // Closes Finding 3 from the post-commit review: reads and writes
+            // now both flow through `SecretStore` so a future test stub
+            // intercepts both halves consistently.
+            let path = tmpfile();
+            let store: Box<dyn SecretStore> = Box::new(FileSecretStore::at_path(path.clone()));
+            store.store("acct", "hunter2").unwrap();
+            assert_eq!(store.read("acct").as_deref(), Some("hunter2"));
+            assert!(store.read("nope").is_none());
+            drop(std::fs::remove_file(&path));
         }
     }
 }
