@@ -1,17 +1,6 @@
 import Foundation
 
 extension OverlayView {
-    func handleAvatarClick() {
-        guard self.canAvatarToggleChat else { return }
-        self.toggleChatManually()
-    }
-
-    func handleCaptureToggle() {
-        Task {
-            _ = await self.store.toggleCapture()
-        }
-    }
-
     @discardableResult
     func handleSendMessage(_ content: String) -> Bool {
         self.lastMessageActivity = .now

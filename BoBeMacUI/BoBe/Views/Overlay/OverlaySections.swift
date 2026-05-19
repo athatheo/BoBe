@@ -259,11 +259,17 @@ extension OverlayView {
         }
     }
 
-    /// The avatar + its satellites (chat toggle, mic). Satellites are
-    /// owned by `AvatarView` itself via the `cardSatellites:` parameter,
-    /// so their positions are expressed in the card's local coordinate
-    /// space (0..cardSize) — they CAN'T drift when outer layout
-    /// constants (column size, padding, BobeLabel offset) change.
+    /// The avatar + its rim satellites (chat toggle, mic), composed as
+    /// peers. `AvatarView` is purely visual now; the satellites live at
+    /// this layer with their own hit-test scope so rim-positioned
+    /// buttons are reachable (the previous design had them as children
+    /// of the avatar's `.contentShape(Circle())` and they were visible
+    /// but unclickable).
+    ///
+    /// Layout: the satellite container is an `.overlay(alignment: .topLeading)`
+    /// on the AvatarView, framed to the card size. This pins the
+    /// satellite coordinate space to the avatar's top-leading regardless
+    /// of the column's outer padding (which shifts with `showStatusLabel`).
     ///
     /// The chat toggle and mic are hover-gated — at rest the avatar
     /// reads as a single clean circle; on hover the satellites fade in.
@@ -291,11 +297,17 @@ extension OverlayView {
             showInput: self.isChatVisible,
             statusOverride: self.statusTextOverride,
             showStatusLabel: self.isChatVisible,
-            bubbleShowingMessage: !self.isChatVisible && self.floatingBubbleMessage != nil,
-            isAvatarActionEnabled: self.canAvatarToggleChat,
-            onClick: self.avatarClickAction,
-            onToggleCapture: self.handleCaptureToggle,
-            cardSatellites: {
+            bubbleShowingMessage: !self.isChatVisible && self.floatingBubbleMessage != nil
+        )
+        .overlay(alignment: .topLeading) {
+            // Card-local coordinate space for the satellite offsets.
+            // 116×116 anchor matches `AvatarMetrics.cardSize`; the
+            // alignment.topLeading on AvatarView's outer column places
+            // this anchor at (0, statusPadding) within the column frame,
+            // which is exactly where `AvatarMetrics.rimOffset` was
+            // calibrated for. AvatarView's internal status-label padding
+            // shifts both the card AND this anchor by the same amount.
+            ZStack(alignment: .topLeading) {
                 if self.showChatToggleSatellite {
                     ChatToggleButton(isActive: self.isChatVisible, action: self.toggleChatFromBubble)
                         .offset(chatOffset)
@@ -307,7 +319,13 @@ extension OverlayView {
                         .transition(.opacity)
                 }
             }
-        )
+            .frame(
+                width: AvatarMetrics.cardSize,
+                height: AvatarMetrics.cardSize,
+                alignment: .topLeading
+            )
+            .padding(.top, self.isChatVisible ? 16 : 0)
+        }
         .padding(.top, topInset)
         .padding(.leading, leadingPad)
         .frame(width: 148, height: clusterHeight, alignment: .topLeading)

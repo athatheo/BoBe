@@ -184,22 +184,6 @@ struct OverlayView: View {
         )
     }
 
-    /// Clicking the avatar should always be able to open the chat. Previously
-    /// this was gated on `stateType == .wantsToSpeak`, which meant a user
-    /// who'd dismissed BoBe couldn't reopen by clicking the avatar — they
-    /// had to find the small chevron. We keep `wantsToSpeak` as the trigger
-    /// for the attention pulse decoration, but the click affordance is now
-    /// only gated on connectivity so a disconnected daemon doesn't pretend
-    /// to be interactive.
-    var canAvatarToggleChat: Bool {
-        self.store.isConnected
-    }
-
-    var avatarClickAction: (() -> Void)? {
-        guard self.canAvatarToggleChat else { return nil }
-        return { self.handleAvatarClick() }
-    }
-
     var avatarStateType: BobeStateType {
         if self.store.isInitialConnectionPending {
             return .loading

@@ -76,7 +76,29 @@ enum AvatarMetrics {
     }
 }
 
-struct AvatarView<Satellites: View>: View {
+/// AvatarView — purely visual.
+///
+/// Renders BoBe's face, the per-state rings (thinking / speaking /
+/// wantsToSpeak), the breathing animation, the connection dot, the
+/// message badge, the status pill above the head, and the BoBe label
+/// below. **No interaction** — clicks pass through. The chat-toggle and
+/// mic buttons that visually sit on the rim are now composed as
+/// peers in `OverlaySections.avatarCluster`, not inside this view.
+///
+/// History: AvatarView used to accept a `cardSatellites: @ViewBuilder`
+/// closure (generic on a `Satellites: View` type parameter) AND an
+/// `onClick`/`isAvatarActionEnabled` pair that wrapped the entire card
+/// in a Button. Two issues with that design:
+///   1. The Button's `.contentShape(Circle())` constrained hit-testing
+///      to the inner circle, but the satellites — positioned at the rim
+///      via `AvatarMetrics.rimOffset` with an 8pt overlap — sat OUTSIDE
+///      that circle, so they were visible but unclickable.
+///   2. AvatarView mixed visual + interactive concerns. Three callers
+///      filled the satellite hole; one filled the click action.
+/// Both go away once the avatar body click is dropped. The chat lives
+/// behind its own affordance (the chat-toggle satellite, plus floating
+/// bubble taps); we don't need the avatar body as an additional target.
+struct AvatarView: View {
     let stateType: BobeStateType
     let isConnected: Bool
     let hasMessage: Bool
@@ -95,54 +117,10 @@ struct AvatarView<Satellites: View>: View {
     /// the unread signal AND the actual content), so we suppress it to
     /// avoid two indicators saying the same thing.
     var bubbleShowingMessage: Bool = false
-    var isAvatarActionEnabled = false
-    var onClick: (() -> Void)?
-    var onToggleCapture: (() -> Void)?
-    /// Children drawn on the avatar card's rim — e.g. the mic and
-    /// chat-toggle buttons. Rendered as an `.overlay` on the card so
-    /// their positions are expressed in the card's local coordinate
-    /// space (0..cardSize). Use `AvatarMetrics.rimOffset(…)` to place
-    /// them precisely on the rim. Keeping satellites here (rather than
-    /// in the cluster) is what stops them drifting whenever an outer
-    /// layout constant changes — they only see the card geometry.
-    @ViewBuilder var cardSatellites: () -> Satellites
 
     @Environment(\.theme) private var theme
     @State private var isHovered = false
     @State private var breathingExpanded = false
-}
-
-extension AvatarView where Satellites == EmptyView {
-    /// Convenience init for callers that don't need rim satellites
-    /// (previews, doc shots). Production avatar in the overlay always
-    /// passes `cardSatellites:` explicitly so the mic + chat toggle
-    /// render on the rim.
-    init(
-        stateType: BobeStateType,
-        isConnected: Bool,
-        hasMessage: Bool,
-        showInput: Bool = false,
-        statusOverride: String? = nil,
-        showStatusLabel: Bool = true,
-        bubbleShowingMessage: Bool = false,
-        isAvatarActionEnabled: Bool = false,
-        onClick: (() -> Void)? = nil,
-        onToggleCapture: (() -> Void)? = nil
-    ) {
-        self.init(
-            stateType: stateType,
-            isConnected: isConnected,
-            hasMessage: hasMessage,
-            showInput: showInput,
-            statusOverride: statusOverride,
-            showStatusLabel: showStatusLabel,
-            bubbleShowingMessage: bubbleShowingMessage,
-            isAvatarActionEnabled: isAvatarActionEnabled,
-            onClick: onClick,
-            onToggleCapture: onToggleCapture,
-            cardSatellites: { EmptyView() }
-        )
-    }
 }
 
 extension AvatarView {
@@ -164,16 +142,6 @@ extension AvatarView {
                     MessageBadge()
                         .offset(x: AvatarMetrics.messageBadgeOffset, y: -AvatarMetrics.messageBadgeOffset)
                 }
-
-                // Satellites sit LAST in the ZStack — top of the z-order
-                // and OUTSIDE `avatarCard`'s `.contentShape(Circle())`.
-                // This is the fix for the chat-toggle and mic buttons
-                // not being clickable: they're offset to the rim where
-                // their centres land ~8pt beyond the Circle's radius;
-                // when they were children of the Circle-clipped ZStack,
-                // hit-testing stopped at the Circle boundary and the
-                // satellite Buttons never received the click.
-                self.cardSatellitesOverlay
             }
             .padding(.top, self.showStatusLabel ? 16 : 0)
             .frame(width: AvatarMetrics.cardSize, height: AvatarMetrics.cardFrameHeight)
@@ -217,9 +185,14 @@ extension AvatarView {
         return hoverScale * breathingScale
     }
 
-    @ViewBuilder
+    /// The avatar card itself — voice-presence ring, the circular body,
+    /// the per-state ring overlay, and the inner face. No interactivity,
+    /// no hit shape: clicks pass straight through to whatever is layered
+    /// above (the chat-toggle and mic satellites in `OverlaySections.
+    /// avatarCluster`). The accessibility element bundles the children
+    /// so VoiceOver reads "BoBe is thinking" / etc. as one node.
     private var avatarCard: some View {
-        let base = ZStack {
+        ZStack {
             // Voice-presence ring sits BEHIND the card so the card's solid
             // fill + border still reads as the avatar surface. Driven by
             // `VoicePipeline.inputLevel`; rendered only when mic is open.
@@ -247,39 +220,8 @@ extension AvatarView {
 
             self.innerFace
         }
-        // Hit-test is constrained to the Circle so a click ANYWHERE on the
-        // card body opens the chat (when wrapped in Button below). The
-        // satellite buttons live OUTSIDE this contentShape — see
-        // `body`'s `cardSatellites()` overlay. Pulling them out of the
-        // avatarCard ZStack fixes the bug where rim-positioned satellites
-        // (at offsets that put their centres ~8pt beyond the Circle's
-        // radius) were visible but unclickable, because hit-testing
-        // stopped at the Circle boundary.
-        .contentShape(Circle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(L10n.tr("overlay.avatar.accessibility_format", self.stateAccessibilityText))
-
-        if self.isAvatarActionEnabled, let onClick = self.onClick {
-            Button(action: onClick) { base }
-                .buttonStyle(.plain)
-        } else {
-            base
-        }
-    }
-
-    /// Satellite layer — overlaid as a sibling of `avatarCard` in `body`
-    /// so it sits OUTSIDE the card's `.contentShape(Circle())` hit shape.
-    /// Each satellite is offset relative to the card's top-leading via
-    /// `AvatarMetrics.rimOffset(...)`; the 116x116 frame provides the
-    /// coordinate anchor so satellite positions don't drift when outer
-    /// layout (padding, BobeLabel) changes.
-    private var cardSatellitesOverlay: some View {
-        self.cardSatellites()
-            .frame(
-                width: AvatarMetrics.cardSize,
-                height: AvatarMetrics.cardSize,
-                alignment: .topLeading
-            )
     }
 
     private var innerFace: some View {
