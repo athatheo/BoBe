@@ -69,9 +69,15 @@ struct BobeMenuBarScene: Scene {
     /// catalog wired for non-app-icon images today, and adding one is
     /// more churn than this single image deserves. `isTemplate = true`
     /// makes it auto-adapt to the menu-bar's light/dark theme.
+    ///
+    /// Loads via `Bundle.appResources.image(forResource:)` rather than
+    /// `NSImage(contentsOf:)` so AppKit can match the `@2x` sibling
+    /// (`trayIconTemplate@2x.png`) we ship alongside the base PNG. The
+    /// `contentsOf:` form picks exactly one file path and ignores
+    /// resolution variants — Retina displays got a blurry upscale of
+    /// the 1x asset until this was fixed.
     private static let brandImage: Image = {
-        if let url = Bundle.appResources.url(forResource: "trayIconTemplate", withExtension: "png"),
-           let nsImage = NSImage(contentsOf: url) {
+        if let nsImage = Bundle.appResources.image(forResource: NSImage.Name("trayIconTemplate")) {
             nsImage.isTemplate = true
             return Image(nsImage: nsImage)
         }

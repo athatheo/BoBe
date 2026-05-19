@@ -270,6 +270,16 @@ extension VoicePipeline {
             while let self, !Task.isCancelled {
                 if self.shouldExitDecayLoop() {
                     self.ttsOutputLevel = 0
+                    // Drop the audibility latch too. Without this, the
+                    // soft-stop early-return in `stopTtsLevelDecay()`
+                    // (which fires when `audioStillPlaying()` is true)
+                    // can leave `isTtsAudible == true` even after the
+                    // loop drains audio to silence — UI silence button
+                    // would stick visible until the next .speaking →
+                    // .listening transition.
+                    self.audibleHangoverTask?.cancel()
+                    self.audibleHangoverTask = nil
+                    if self.isTtsAudible { self.isTtsAudible = false }
                     return
                 }
                 // Skip the decay multiplier while the RMS tap is

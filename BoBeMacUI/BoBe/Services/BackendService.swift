@@ -43,20 +43,52 @@ actor BackendService {
     private(set) var lastError: String?
     /// Non-fatal — daemon /health OK but a subsystem reported degraded.
     private(set) var startupWarning: String?
-    private var stateContinuation: AsyncStream<ServiceState>.Continuation?
-    nonisolated let stateStream: AsyncStream<ServiceState>
+    /// Multi-cast continuations — every `stateStream` subscriber gets its
+    /// own continuation appended here, so two consumers (`BobeStore` and
+    /// `SettingsStore`) both receive every transition. Prior implementation
+    /// was a single `AsyncStream` with one buffered continuation, which is
+    /// single-subscriber — whichever consumer hit `next()` first won every
+    /// value and the other starved. `SettingsStore`'s "refetch on daemon
+    /// recovery" silently never fired under that model.
+    private var stateContinuations: [UUID: AsyncStream<ServiceState>.Continuation] = [:]
 
     private init() {
-        var cont: AsyncStream<ServiceState>.Continuation?
-        self.stateStream = AsyncStream { cont = $0 }
-        self.stateContinuation = cont
         self.dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(BobePaths.dataDirName)
         self.pidFilePath = self.dataDir.appendingPathComponent("bobe-service.pid")
     }
 
+    /// Returns a fresh `AsyncStream<ServiceState>` for each subscriber. The
+    /// continuation is registered in `stateContinuations` and removed on
+    /// stream termination so subscribers that go away don't leak.
+    nonisolated var stateStream: AsyncStream<ServiceState> {
+        AsyncStream { continuation in
+            let id = UUID()
+            Task { await self.registerContinuation(id: id, continuation: continuation) }
+            continuation.onTermination = { @Sendable _ in
+                Task { await self.unregisterContinuation(id: id) }
+            }
+        }
+    }
+
+    private func registerContinuation(
+        id: UUID,
+        continuation: AsyncStream<ServiceState>.Continuation
+    ) {
+        self.stateContinuations[id] = continuation
+        // Emit the current state on subscribe so late subscribers see the
+        // present state, not just future transitions.
+        continuation.yield(self.state)
+    }
+
+    private func unregisterContinuation(id: UUID) {
+        self.stateContinuations.removeValue(forKey: id)
+    }
+
     private func transition(to newState: ServiceState) {
         self.state = newState
-        self.stateContinuation?.yield(newState)
+        for cont in self.stateContinuations.values {
+            cont.yield(newState)
+        }
     }
 
     func start() async throws {

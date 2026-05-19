@@ -164,6 +164,16 @@ extension AvatarView {
                     MessageBadge()
                         .offset(x: AvatarMetrics.messageBadgeOffset, y: -AvatarMetrics.messageBadgeOffset)
                 }
+
+                // Satellites sit LAST in the ZStack — top of the z-order
+                // and OUTSIDE `avatarCard`'s `.contentShape(Circle())`.
+                // This is the fix for the chat-toggle and mic buttons
+                // not being clickable: they're offset to the rim where
+                // their centres land ~8pt beyond the Circle's radius;
+                // when they were children of the Circle-clipped ZStack,
+                // hit-testing stopped at the Circle boundary and the
+                // satellite Buttons never received the click.
+                self.cardSatellitesOverlay
             }
             .padding(.top, self.showStatusLabel ? 16 : 0)
             .frame(width: AvatarMetrics.cardSize, height: AvatarMetrics.cardFrameHeight)
@@ -236,21 +246,15 @@ extension AvatarView {
             }
 
             self.innerFace
-
-            // Rim satellites (chat toggle, mic) — last in the ZStack so
-            // they layer above the face and rings. Bound to an explicit
-            // `Color.clear.frame(cardSize, cardSize)` so the overlay's
-            // coordinate space is guaranteed to be exactly the card
-            // surface, independent of any other ring's frame, padding,
-            // or BobeLabel offset. This is what stops satellites from
-            // drifting when outer-layout constants change.
-            Color.clear
-                .frame(width: AvatarMetrics.cardSize, height: AvatarMetrics.cardSize)
-                .overlay(alignment: .topLeading) {
-                    self.cardSatellites()
-                }
-                .zIndex(20)
         }
+        // Hit-test is constrained to the Circle so a click ANYWHERE on the
+        // card body opens the chat (when wrapped in Button below). The
+        // satellite buttons live OUTSIDE this contentShape — see
+        // `body`'s `cardSatellites()` overlay. Pulling them out of the
+        // avatarCard ZStack fixes the bug where rim-positioned satellites
+        // (at offsets that put their centres ~8pt beyond the Circle's
+        // radius) were visible but unclickable, because hit-testing
+        // stopped at the Circle boundary.
         .contentShape(Circle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(L10n.tr("overlay.avatar.accessibility_format", self.stateAccessibilityText))
@@ -261,6 +265,21 @@ extension AvatarView {
         } else {
             base
         }
+    }
+
+    /// Satellite layer — overlaid as a sibling of `avatarCard` in `body`
+    /// so it sits OUTSIDE the card's `.contentShape(Circle())` hit shape.
+    /// Each satellite is offset relative to the card's top-leading via
+    /// `AvatarMetrics.rimOffset(...)`; the 116x116 frame provides the
+    /// coordinate anchor so satellite positions don't drift when outer
+    /// layout (padding, BobeLabel) changes.
+    private var cardSatellitesOverlay: some View {
+        self.cardSatellites()
+            .frame(
+                width: AvatarMetrics.cardSize,
+                height: AvatarMetrics.cardSize,
+                alignment: .topLeading
+            )
     }
 
     private var innerFace: some View {

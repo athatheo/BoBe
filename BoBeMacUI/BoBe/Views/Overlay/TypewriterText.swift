@@ -71,7 +71,15 @@ struct TypewriterText: View {
         if !canContinue {
             self.displayed = ""
         }
-        let remaining = String(target[self.displayed.endIndex...])
+        // Slice via character-offset, NOT via `displayed.endIndex` applied
+        // to `target`. Swift's `String.Index` is only contractually valid
+        // against the string that produced it; using `displayed.endIndex`
+        // on `target` traps with "String index is out of bounds" the
+        // moment grapheme widths differ (any emoji, CJK glyph, combining
+        // accent, or Greek/Cyrillic character — i.e. half our supported
+        // locales). `dropFirst(_:)` counts characters and is index-safe.
+        let prefixCount = self.displayed.count
+        let remaining = String(target.dropFirst(prefixCount))
         if remaining.isEmpty {
             self.isTyping = false
             return
