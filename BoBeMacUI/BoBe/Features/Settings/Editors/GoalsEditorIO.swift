@@ -40,11 +40,10 @@ extension GoalsEditor {
         }
     }
 
-    func saveGoal() {
-        guard let id = self.editorState.selectedId else { return }
+    func saveGoal() async -> Bool {
+        guard let id = self.editorState.selectedId else { return false }
         self.editorState.setSaving(true)
-        Task {
-            defer { self.editorState.setSaving(false) }
+        defer { self.editorState.setSaving(false) }
             do {
                 var req = GoalUpdateRequest()
                 req.title = self.draft.title
@@ -59,10 +58,11 @@ extension GoalsEditor {
                 }
                 self.draft = GoalDraft(updated)
                 self.editorState.setDirty(false)
+                return true
             } catch {
                 self.editorState.setError(error)
+                return false
             }
-        }
     }
 
     func deleteGoal(_ goal: Goal) {

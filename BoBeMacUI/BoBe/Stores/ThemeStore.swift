@@ -1,28 +1,44 @@
+import AppKit
 import Observation
 import SwiftUI
 
 @MainActor
 @Observable
-final class ThemeStore {
+final class ThemeStore: NSObject {
     static let shared = ThemeStore()
 
-    private(set) var currentTheme: ThemeConfig
+    private(set) var themeId: ThemeId
+    private var appearanceRevision = 0
+    @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
     private static let themeDefaultsKey = "bobe_theme_id"
 
-    var themeId: ThemeId {
-        get { self.currentTheme.themeId }
-        set { self.setTheme(newValue) }
+    var currentTheme: ThemeConfig {
+        _ = self.appearanceRevision
+        return themeById(self.themeId)
     }
 
-    private init() {
-        let savedId =
+    var preferredColorScheme: ColorScheme? {
+        guard self.themeId != .system else { return nil }
+        return self.currentTheme.isDark ? .dark : .light
+    }
+
+    override private init() {
+        self.themeId =
             UserDefaults.standard.string(forKey: Self.themeDefaultsKey)
                 .flatMap { ThemeId(rawValue: $0) } ?? .bauhaus
-        self.currentTheme = themeById(savedId)
+        super.init()
+        self.appearanceObservation = NSApp.observe(
+            \.effectiveAppearance,
+            options: [.new]
+        ) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                self?.appearanceRevision &+= 1
+            }
+        }
     }
 
     func setTheme(_ id: ThemeId) {
-        self.currentTheme = themeById(id)
+        self.themeId = id
         UserDefaults.standard.set(id.rawValue, forKey: Self.themeDefaultsKey)
     }
 }

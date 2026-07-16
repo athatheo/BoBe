@@ -42,6 +42,8 @@ pub(super) struct ModelArtifact {
     pub(super) is_tarball: bool,
     /// Final on-disk path the daemon's loader inspects.
     pub(super) target_subpath: &'static str,
+    pub(super) sha256: &'static str,
+    pub(super) max_bytes: u64,
 }
 
 pub(super) const ARTIFACTS: &[ModelArtifact] = &[ModelArtifact {
@@ -49,6 +51,8 @@ pub(super) const ARTIFACTS: &[ModelArtifact] = &[ModelArtifact {
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
     is_tarball: true,
     target_subpath: crate::constants::voice_wire::KOKORO_MODEL_DIR,
+    sha256: "c133d26353d776da730870dac7da07dbfc9a5e3bc80cc5e8e83ab6e823be7046",
+    max_bytes: 375_000_000,
 }];
 
 #[derive(Debug, Clone, Default, Serialize)]

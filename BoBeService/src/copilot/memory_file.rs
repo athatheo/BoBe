@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -9,7 +10,7 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use crate::error::AppError;
 
-const DEFAULT_BODY: &str =
+pub(crate) const DEFAULT_BODY: &str =
     "# BoBe Memory\n\n## Profile\n\n## Active Goals\n\n## Long-term\n\n## Recent\n";
 
 /// Soft cap enforced only by the nightly consolidation worker.
@@ -18,6 +19,7 @@ pub(crate) const TARGET_MAX_BYTES: usize = 50 * 1024;
 pub(crate) struct MemoryFile {
     path: PathBuf,
     write_lock: Arc<Mutex<()>>,
+    revision: AtomicU64,
 }
 
 /// Hold across consolidate cycle so appends queue behind it instead of being clobbered.
@@ -31,7 +33,7 @@ impl WriterGuard<'_> {
         self.file.read_unlocked().await
     }
     pub(crate) async fn replace_all(&self, body: String) -> Result<(), AppError> {
-        commit(&self.file.path, &body).await
+        self.file.commit(&body).await
     }
 }
 
@@ -40,6 +42,7 @@ impl MemoryFile {
         Arc::new(Self {
             path,
             write_lock: Arc::new(Mutex::new(())),
+            revision: AtomicU64::new(1),
         })
     }
 
@@ -53,6 +56,10 @@ impl MemoryFile {
 
     pub(crate) async fn read(&self) -> Result<String, AppError> {
         self.read_unlocked().await
+    }
+
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision.load(Ordering::Acquire)
     }
 
     async fn read_unlocked(&self) -> Result<String, AppError> {
@@ -71,7 +78,7 @@ impl MemoryFile {
         let date = now.format("%Y-%m-%d %H:%M");
         let line = format!("- {date} — {}", entry.trim());
         let new_body = upsert_bullet(&body, section, &line);
-        commit(&self.path, &new_body).await
+        self.commit(&new_body).await
     }
 
     /// Wholesale overwrite. Used by the `PUT /memory` handler when the user
@@ -80,7 +87,13 @@ impl MemoryFile {
     /// + write under one lock.
     pub(crate) async fn replace_all(&self, body: String) -> Result<(), AppError> {
         let _guard = self.write_lock.lock().await;
-        commit(&self.path, &body).await
+        self.commit(&body).await
+    }
+
+    async fn commit(&self, body: &str) -> Result<(), AppError> {
+        commit(&self.path, body).await?;
+        self.revision.fetch_add(1, Ordering::AcqRel);
+        Ok(())
     }
 }
 
@@ -119,20 +132,7 @@ fn upsert_bullet(body: &str, heading: &str, line: &str) -> String {
 }
 
 async fn commit(path: &Path, body: &str) -> Result<(), AppError> {
-    let parent = path.parent().ok_or_else(|| {
-        AppError::Internal(format!("memory.md has no parent: {}", path.display()))
-    })?;
-    tokio::fs::create_dir_all(parent).await?;
-
-    let tmp = parent.join(format!(
-        ".{}.tmp",
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("memory")
-    ));
-    tokio::fs::write(&tmp, body).await?;
-    tokio::fs::rename(&tmp, path).await?;
-    Ok(())
+    crate::util::durable_fs::atomic_write(path, body.as_bytes()).await
 }
 
 #[cfg(test)]
@@ -172,6 +172,7 @@ mod tests {
         mem.append_under("Recent", "User asked about Bar")
             .await
             .unwrap();
+        assert_eq!(mem.revision(), 3);
         let body = mem.read().await.unwrap();
 
         assert!(body.contains("User asked about Foo"));

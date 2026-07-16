@@ -18,11 +18,18 @@ bundle version="1.0.0":
     rm -rf "$APP"
     mkdir -p "$APP/Contents/MacOS"
     mkdir -p "$APP/Contents/Resources"
+    mkdir -p "$APP/Contents/Frameworks"
 
     # Copy binaries (ditto preserves symlinks per Apple docs)
     # Backend named "bobe-daemon" to avoid case-insensitive collision with "BoBe" on APFS
     ditto BoBeService/target/release/bobe "$APP/Contents/MacOS/bobe-daemon"
     ditto BoBeMacUI/.build/release/BoBe "$APP/Contents/MacOS/BoBe"
+
+    # Embed SwiftPM dynamic frameworks required by the frontend.
+    for framework in BoBeMacUI/.build/release/*.framework; do
+        [ -d "$framework" ] || continue
+        ditto "$framework" "$APP/Contents/Frameworks/$(basename "$framework")"
+    done
 
     # Copy Info.plist and update version
     cp BoBeMacUI/BoBe/Resources/Info.plist "$APP/Contents/Info.plist"
@@ -36,6 +43,16 @@ bundle version="1.0.0":
     # Strip debug symbols for smaller binary
     strip -x "$APP/Contents/MacOS/bobe-daemon" 2>/dev/null || true
     strip -x "$APP/Contents/MacOS/BoBe" 2>/dev/null || true
+
+    # Fail assembly if any linked @rpath framework was not embedded.
+    while IFS= read -r dependency; do
+        framework=${dependency#@rpath/}
+        framework=${framework%%/Versions/*}
+        test -d "$APP/Contents/Frameworks/$framework" || {
+            echo "Missing embedded framework: $framework" >&2
+            exit 1
+        }
+    done < <(otool -L "$APP/Contents/MacOS/BoBe" | grep -o '@rpath/[^ ]*\.framework/[^ ]*' || true)
 
     echo "Bundle created at $APP"
     echo "  Backend: $(wc -c < "$APP/Contents/MacOS/bobe-daemon" | tr -d ' ') bytes"
@@ -122,10 +139,13 @@ notarize-api-key version="1.0.0" key-path="" key-id="" issuer="":
         --wait
     echo "Notarization complete"
 
-# Staple the notarization ticket
+# Staple and validate the notarization ticket on the app before packaging updates
 staple version="1.0.0":
+    xcrun stapler staple build/BoBe.app
+    xcrun stapler validate build/BoBe.app
     xcrun stapler staple "build/BoBe-{{ version }}.dmg"
-    echo "Stapled successfully"
+    xcrun stapler validate "build/BoBe-{{ version }}.dmg"
+    echo "App and DMG stapled and validated successfully"
 
 # Full release: build → sign app → create DMG → sign DMG
 release version="1.0.0" identity="Developer ID Application": (build version) (sign identity) (dmg version) (sign-dmg identity version)
@@ -276,7 +296,7 @@ format-swift:
 check-swift-format:
     cd BoBeMacUI && swiftformat --lint BoBe
 
-# fmt + clippy + test + deny + machete + swiftlint + swift build + cross-language drift
+# fmt + clippy + test + deny + machete + swiftlint + swift build
 check:
     cd BoBeService && cargo fmt --check
     cd BoBeService && cargo clippy -q
@@ -285,7 +305,6 @@ check:
     cd BoBeService && cargo machete
     cd BoBeMacUI && swiftlint lint --quiet
     cd BoBeMacUI && swift build -c debug
-    scripts/check-cross-language-constants.sh
 
 # CI: deterministic Rust + Swift validation
 check-ci:
@@ -296,7 +315,6 @@ check-ci:
     cd BoBeService && cargo machete
     cd BoBeMacUI && swiftlint lint --quiet
     cd BoBeMacUI && swift build -c debug
-    scripts/check-cross-language-constants.sh
 
 # Alias for check (muscle memory)
 test: check

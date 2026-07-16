@@ -57,20 +57,7 @@ impl SessionStore {
         id: &SessionId,
     ) -> Result<(), AppError> {
         let path = self.id_path(class, now_local);
-        let parent = path.parent().ok_or_else(|| {
-            AppError::Internal(format!("session-id path has no parent: {}", path.display()))
-        })?;
-        tokio::fs::create_dir_all(parent).await?;
-
-        let tmp = parent.join(format!(
-            ".{}.tmp",
-            path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("session")
-        ));
-        tokio::fs::write(&tmp, id.as_str()).await?;
-        tokio::fs::rename(&tmp, &path).await?;
-        Ok(())
+        crate::util::durable_fs::atomic_write(&path, id.as_str().as_bytes()).await
     }
 
     pub(crate) async fn forget(
@@ -79,11 +66,9 @@ impl SessionStore {
         now_local: DateTime<Local>,
     ) -> Result<(), AppError> {
         let path = self.id_path(class, now_local);
-        match tokio::fs::remove_file(&path).await {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(AppError::Io(e)),
-        }
+        crate::util::durable_fs::durable_remove_file(&path)
+            .await
+            .map(|_| ())
     }
 }
 

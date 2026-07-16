@@ -1,5 +1,5 @@
 //! Voice SLO telemetry — Prometheus at `GET /metrics`. Histograms = per-
-//! stage latencies (docs/voice-plan.md D10); counters = discrete events
+//! stage latencies (docs/physical-bobe.md); counters = discrete events
 //! (barge-in, fillers, cancel-phrase, ask_user). Uses the `metrics`
 //! facade → `PrometheusBuilder` recorder → `PrometheusHandle::render`.
 
@@ -11,7 +11,11 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 // here; adding describes for un-recorded histograms pollutes the
 // Prometheus exposition with empty series. New stages get their describe
 // added when their record callsite goes in.
-pub(crate) const HIST_E2E_MS: &str = "voice_e2e_ms";
+pub(crate) const HIST_E2E_MS: &str = "voice_transcript_to_first_audio_ms";
+pub(crate) const HIST_TURN_TOTAL_MS: &str = "voice_turn_total_ms";
+pub(crate) const HIST_LLM_TTFT_MS: &str = "voice_llm_ttft_ms";
+pub(crate) const HIST_FIRST_SENTENCE_MS: &str = "voice_first_sentence_ms";
+pub(crate) const HIST_TTS_SYNTH_MS: &str = "voice_tts_synth_ms";
 
 // Event counters — discrete signals.
 pub(crate) const CTR_TURN_COMPLETE: &str = "voice_turn_complete_total";
@@ -34,7 +38,27 @@ pub(crate) fn install_recorder() -> Result<PrometheusHandle, String> {
     describe_histogram!(
         HIST_E2E_MS,
         Unit::Milliseconds,
-        "End-of-speech to first audio frame on the wire (composite SLO)"
+        "Final transcript arrival to first audio frame on the wire"
+    );
+    describe_histogram!(
+        HIST_TURN_TOTAL_MS,
+        Unit::Milliseconds,
+        "Final transcript arrival to completion of the spoken turn"
+    );
+    describe_histogram!(
+        HIST_LLM_TTFT_MS,
+        Unit::Milliseconds,
+        "Chat worker send to first assistant text delta"
+    );
+    describe_histogram!(
+        HIST_FIRST_SENTENCE_MS,
+        Unit::Milliseconds,
+        "Final transcript arrival to first speakable sentence boundary"
+    );
+    describe_histogram!(
+        HIST_TTS_SYNTH_MS,
+        Unit::Milliseconds,
+        "Per-sentence text-to-speech synthesis duration"
     );
 
     describe_counter!(

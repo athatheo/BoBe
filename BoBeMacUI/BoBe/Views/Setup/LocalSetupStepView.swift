@@ -12,7 +12,6 @@ struct LocalSetupStepView: View {
     @State private var snapshot: LocalRuntimeSnapshot?
     @State private var ramGB: Int? = systemMemoryGB()
     @State private var streamTask: Task<Void, Never>?
-    @State private var hasStarted = false
     @State private var startError: String?
     @Environment(\.theme) private var theme
 
@@ -40,6 +39,10 @@ struct LocalSetupStepView: View {
                     pull: self.snapshot?.chatModel
                 )
                 self.modelRow(
+                    title: L10n.tr("setup.local.batch_model"),
+                    pull: self.snapshot?.batchModel
+                )
+                self.modelRow(
                     title: L10n.tr("setup.local.vision_model"),
                     pull: self.snapshot?.visionModel
                 )
@@ -48,12 +51,13 @@ struct LocalSetupStepView: View {
             if let error = self.startError {
                 Text(error)
                     .bobeTextStyle(.helper)
-                    .foregroundStyle(self.theme.colors.primary)
+                    .foregroundStyle(self.theme.colors.error)
             }
 
             Spacer()
 
             self.actionRow
+                .accessibilityIdentifier("setup.local.action")
         }
         .task {
             await self.startInstall()
@@ -68,7 +72,7 @@ struct LocalSetupStepView: View {
         if let ramGB = self.ramGB, ramGB < 16 {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(self.theme.colors.tertiary)
+                    .foregroundStyle(self.theme.colors.warning)
                 Text(L10n.tr("setup.local.ram_warning"))
                     .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
@@ -76,7 +80,7 @@ struct LocalSetupStepView: View {
             .padding(10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(self.theme.colors.tertiary.opacity(0.1))
+                    .fill(self.theme.colors.warning.opacity(0.1))
             )
         }
     }
@@ -144,7 +148,7 @@ struct LocalSetupStepView: View {
                 if let error = self.snapshot?.error {
                     Text(error)
                         .bobeTextStyle(.helper)
-                        .foregroundStyle(self.theme.colors.primary)
+                        .foregroundStyle(self.theme.colors.error)
                         .multilineTextAlignment(.center)
                 }
                 Button(L10n.tr("setup.local.retry")) {
@@ -167,19 +171,23 @@ struct LocalSetupStepView: View {
         )
         do {
             _ = try await DaemonClient.shared.startLocalRuntimeInstall(request)
-            self.hasStarted = true
         } catch {
             // 409 = install already in flight; still subscribe to status.
             if !error.localizedDescription.lowercased().contains("conflict") {
                 self.startError = error.localizedDescription
             }
         }
+        self.subscribeToStatus()
+    }
+
+    private func subscribeToStatus() {
         self.streamTask?.cancel()
         self.streamTask = Task { @MainActor in
             do {
                 try await DaemonClient.shared.streamLocalRuntimeStatus { snap in
                     Task { @MainActor in
                         self.snapshot = snap
+                        self.startError = nil
                     }
                 }
             } catch {
@@ -189,8 +197,15 @@ struct LocalSetupStepView: View {
     }
 
     private func cancelInstall() {
+        self.streamTask?.cancel()
+        self.startError = L10n.tr("setup.local.canceling")
         Task {
-            try? await DaemonClient.shared.cancelLocalRuntimeInstall()
+            do {
+                _ = try await DaemonClient.shared.cancelLocalRuntimeInstall()
+                await MainActor.run { self.subscribeToStatus() }
+            } catch {
+                await MainActor.run { self.startError = error.localizedDescription }
+            }
         }
     }
 }

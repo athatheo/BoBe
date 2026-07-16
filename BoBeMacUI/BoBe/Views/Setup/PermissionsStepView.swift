@@ -10,10 +10,17 @@ private enum PermissionState {
 }
 
 struct PermissionsStepView: View {
+    let screenContextEnabled: Bool
     let onContinue: () -> Void
+
+    init(screenContextEnabled: Bool = true, onContinue: @escaping () -> Void) {
+        self.screenContextEnabled = screenContextEnabled
+        self.onContinue = onContinue
+    }
 
     @State private var screenState: PermissionState = .unknown
     @State private var micState: PermissionState = .unknown
+    @AppStorage("screenCapturePermissionRequested") private var screenPermissionRequested = false
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -22,29 +29,35 @@ struct PermissionsStepView: View {
                 Text(L10n.tr("setup.permissions.title"))
                     .bobeTextStyle(.setupTitle)
                     .foregroundStyle(self.theme.colors.text)
-                Text(L10n.tr("setup.permissions.body"))
-                    .bobeTextStyle(.setupBody)
-                    .foregroundStyle(self.theme.colors.textMuted)
-                    .multilineTextAlignment(.center)
+                Text(
+                    L10n.tr(
+                        self.screenContextEnabled
+                            ? "setup.permissions.body"
+                            : "setup.permissions.body.no_capture"
+                    )
+                )
+                .bobeTextStyle(.setupBody)
+                .foregroundStyle(self.theme.colors.textMuted)
+                .multilineTextAlignment(.center)
             }
             .padding(.top, 12)
 
             Spacer()
 
             HStack(spacing: 12) {
-                self.permissionCard(
-                    title: L10n.tr("setup.permissions.card.screen.title"),
-                    subtitle: L10n.tr("setup.permissions.card.screen.subtitle"),
-                    state: self.screenState,
-                    deniedHint: L10n.tr("setup.permissions.card.screen.denied"),
-                    settingsURL: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture"
-                )
+                if self.screenContextEnabled {
+                    self.permissionCard(
+                        title: L10n.tr("setup.permissions.card.screen.title"),
+                        subtitle: L10n.tr("setup.permissions.card.screen.subtitle"),
+                        state: self.screenState,
+                        deniedHint: L10n.tr("setup.permissions.card.screen.denied")
+                    )
+                }
                 self.permissionCard(
                     title: L10n.tr("setup.permissions.card.mic.title"),
                     subtitle: L10n.tr("setup.permissions.card.mic.subtitle"),
                     state: self.micState,
-                    deniedHint: L10n.tr("setup.permissions.card.mic.denied"),
-                    settingsURL: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone"
+                    deniedHint: L10n.tr("setup.permissions.card.mic.denied")
                 )
             }
 
@@ -67,8 +80,7 @@ struct PermissionsStepView: View {
         title: String,
         subtitle: String,
         state: PermissionState,
-        deniedHint: String,
-        settingsURL _: String
+        deniedHint: String
     ) -> some View {
         VStack(spacing: 10) {
             Image(systemName: self.icon(for: state))
@@ -115,7 +127,8 @@ struct PermissionsStepView: View {
     @ViewBuilder
     private var actionRow: some View {
         let anyDenied = self.screenState == .denied || self.micState == .denied
-        let allGranted = self.screenState == .granted && self.micState == .granted
+        let allGranted = (!self.screenContextEnabled || self.screenState == .granted)
+            && self.micState == .granted
         if allGranted {
             Button(L10n.tr("setup.welcome.continue"), action: self.onContinue)
                 .bobeButton(.primary, size: .regular)
@@ -151,7 +164,11 @@ struct PermissionsStepView: View {
     }
 
     private func refreshState() {
-        self.screenState = CGPreflightScreenCaptureAccess() ? .granted : .unknown
+        if !self.screenContextEnabled || CGPreflightScreenCaptureAccess() {
+            self.screenState = .granted
+        } else {
+            self.screenState = self.screenPermissionRequested ? .denied : .unknown
+        }
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: self.micState = .granted
         case .denied, .restricted: self.micState = .denied
@@ -163,8 +180,11 @@ struct PermissionsStepView: View {
     private func requestAccess() {
         // Screen capture is synchronous on macOS; mic is async via
         // AVCaptureDevice. Fire both, update state from each.
-        let screenGranted = CGRequestScreenCaptureAccess()
-        self.screenState = screenGranted ? .granted : .denied
+        if self.screenContextEnabled {
+            self.screenPermissionRequested = true
+            let screenGranted = CGRequestScreenCaptureAccess()
+            self.screenState = screenGranted ? .granted : .denied
+        }
         Task {
             let micGranted = await AVCaptureDevice.requestAccess(for: .audio)
             await MainActor.run {

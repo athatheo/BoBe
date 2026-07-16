@@ -31,6 +31,7 @@ enum AvatarMetrics {
     /// Message-badge inner fill diameter and outer-ring frame.
     static let messageBadgeInner: CGFloat = 16
     static let messageBadgeOuter: CGFloat = 20
+    static let satelliteSize: CGFloat = 32
     /// Voice-presence ring base diameter — sits just outside the avatar card
     /// stroke. Driven by `VoicePipeline.inputLevel` so the user sees their
     /// voice modulating the ring while BoBe listens.
@@ -119,7 +120,6 @@ struct AvatarView: View {
     var bubbleShowingMessage: Bool = false
 
     @Environment(\.theme) private var theme
-    @State private var isHovered = false
     @State private var breathingExpanded = false
 }
 
@@ -144,12 +144,20 @@ extension AvatarView {
                 }
             }
             .padding(.top, self.showStatusLabel ? 16 : 0)
-            .frame(width: AvatarMetrics.cardSize, height: AvatarMetrics.cardFrameHeight)
+            .frame(
+                width: AvatarMetrics.cardSize,
+                height: AvatarMetrics.cardFrameHeight,
+                alignment: .top
+            )
 
             BobeLabel()
                 .padding(.top, -11)
         }
-        .frame(width: AvatarMetrics.columnWidth, height: AvatarMetrics.columnHeight)
+        .frame(
+            width: AvatarMetrics.columnWidth,
+            height: AvatarMetrics.columnHeight,
+            alignment: .top
+        )
         .task(id: self.shouldBreathe) {
             // Reset MUST be in a no-animation transaction. Without this,
             // any ambient `withAnimation` in a parent (`OverlaySections`
@@ -179,10 +187,10 @@ extension AvatarView {
         }
     }
 
-    private var motionScale: CGFloat {
-        let hoverScale = OverlayMotionRuntime.hoverScale(isHovered: self.isHovered)
-        let breathingScale = self.shouldBreathe ? OverlayMotionRuntime.breathingScale(isExpanded: self.breathingExpanded) : 1.0
-        return hoverScale * breathingScale
+    private var breathingScale: CGFloat {
+        self.shouldBreathe
+            ? OverlayMotionRuntime.breathingScale(isExpanded: self.breathingExpanded)
+            : 1.0
     }
 
     /// The avatar card itself — voice-presence ring, the circular body,
@@ -254,13 +262,7 @@ extension AvatarView {
 
             EyesIndicator(state: self.stateType, chatOpen: self.showInput)
         }
-        .scaleEffect(self.motionScale)
-        .offset(y: OverlayMotionRuntime.hoverYOffset(isHovered: self.isHovered))
-        .onHover { hovering in
-            withAnimation(OverlayMotionRuntime.animation(for: .hover)) {
-                self.isHovered = hovering
-            }
-        }
+        .scaleEffect(self.breathingScale)
         .zIndex(10)
     }
 
@@ -536,7 +538,11 @@ struct MessageBadge: View {
                     self.scale = 1.0
                     return
                 }
-                withAnimation(OverlayMotionRuntime.animation(for: .badgePulse).repeatForever(autoreverses: true)) {
+                guard let animation = OverlayMotionRuntime.animation(for: .badgePulse) else {
+                    self.scale = 1.0
+                    return
+                }
+                withAnimation(animation.repeatForever(autoreverses: true)) {
                     self.scale = 1.1
                 }
             }
@@ -550,7 +556,7 @@ struct ChatToggleButton: View {
     let action: () -> Void
     @Environment(\.theme) private var theme
 
-    private let bubbleDiameter: CGFloat = 32
+    private let bubbleDiameter = AvatarMetrics.satelliteSize
 
     var body: some View {
         Button(action: self.action) {
@@ -577,6 +583,7 @@ struct ChatToggleButton: View {
                 ? L10n.tr("overlay.chat_toggle.hide.accessibility")
                 : L10n.tr("overlay.chat_toggle.show.accessibility")
         )
+        .accessibilityIdentifier("overlay.avatar.chat-toggle")
     }
 }
 

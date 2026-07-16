@@ -34,6 +34,7 @@ pub(crate) async fn handle_control_text(
             voice_id,
             speed,
             language,
+            tts_backend,
         }) => {
             let language = language.unwrap_or_else(|| DEFAULT_LANGUAGE.to_string());
             info!(
@@ -42,6 +43,7 @@ pub(crate) async fn handle_control_text(
                 voice_id = ?voice_id,
                 speed = ?speed,
                 language = %language,
+                tts_backend = ?tts_backend,
                 "voice.hello"
             );
             if playback_rate != TTS_OUTPUT_SAMPLE_RATE {
@@ -53,7 +55,17 @@ pub(crate) async fn handle_control_text(
                 .await;
                 return false;
             }
-            let cfg = SessionVoiceConfig::new(voice_id, speed, voice_defaults);
+            let cfg =
+                SessionVoiceConfig::new(voice_id, speed, tts_backend.as_deref(), voice_defaults);
+            if !cfg.client_tts && !ctx.engines.supports_server_tts() {
+                send_error(
+                    out_tx,
+                    "engines_unavailable",
+                    "Kokoro is not installed; select client Supertonic or install Kokoro",
+                )
+                .await;
+                return false;
+            }
             let voice_pack = cfg.voice_id.clone();
             let s = VoiceSession::new(session_id, cfg, language);
             let initial_turn = new_turn_id(false);
@@ -77,11 +89,43 @@ pub(crate) async fn handle_control_text(
             send_state(out_tx, VoicePhase::Listening, &initial_turn).await;
             true
         }
+        Ok(ClientMessage::TtsPlaybackStarted {
+            turn_id,
+            synthesis_ms,
+        }) => {
+            metrics::histogram!(crate::voice::telemetry::HIST_TTS_SYNTH_MS)
+                .record(synthesis_ms as f64);
+            if let Some(turn) = session
+                .as_ref()
+                .and_then(|session| session.current_turn.as_ref())
+                .filter(|turn| turn.turn_id == turn_id)
+            {
+                metrics::histogram!(crate::voice::telemetry::HIST_E2E_MS)
+                    .record(turn.started_at.elapsed().as_secs_f64() * 1_000.0);
+            }
+            true
+        }
+        Ok(ClientMessage::TtsPlaybackComplete { turn_id }) => {
+            if let Some(sender) = session
+                .as_mut()
+                .and_then(|session| session.current_turn.as_mut())
+                .filter(|turn| turn.turn_id == turn_id)
+                .and_then(|turn| turn.playback_complete.take())
+                && sender.send(()).is_err()
+            {
+                debug!("voice.client_tts_completion_receiver_dropped");
+            }
+            true
+        }
         Ok(ClientMessage::BargeIn {
             ts_ms,
             playback_ms_played,
+            partial_text,
         }) => {
             info!(ts_ms, playback_ms_played, "voice.barge_in_received");
+            if let (Some(s), Some(evidence)) = (session.as_mut(), partial_text) {
+                s.last_partial_text = evidence;
+            }
             handle_barge_in(ctx, session, playback_ms_played).await;
             true
         }
@@ -90,7 +134,10 @@ pub(crate) async fn handle_control_text(
             score,
             ts_ms,
         }) => {
-            info!(phrase = %phrase, score, ts_ms, "voice.wake_received");
+            info!(
+                phrase_chars = phrase.chars().count(),
+                score, ts_ms, "voice.wake_received"
+            );
             // If no turn is in flight and the user hasn't muted, send
             // state(Listening) so the client opens the mic.
             if let Some(s) = session.as_mut()
@@ -154,7 +201,7 @@ async fn handle_transcript_partial(
     if s.current_turn.is_some() && is_cancel_phrase(&s.last_partial_text) {
         info!(
             turn_id = %turn_id,
-            partial = %s.last_partial_text,
+            partial_chars = s.last_partial_text.chars().count(),
             "voice.cancel_phrase_detected"
         );
         metrics::counter!(CTR_CANCEL_PHRASE).increment(1);
@@ -172,8 +219,9 @@ pub(crate) async fn handle_control_action(
     match action {
         ControlAction::Abort => {
             info!("voice.control.abort");
-            handle_barge_in(ctx, session, 0).await;
-            if let Some(s) = session.as_ref() {
+            if let Some(s) = session.as_mut() {
+                abort_active_turn(s, ctx, 0, "control_abort").await;
+                s.last_partial_text.clear();
                 send_state(out_tx, VoicePhase::Idle, &s.session_id).await;
             }
         }
@@ -191,8 +239,9 @@ pub(crate) async fn handle_control_action(
         }
         ControlAction::Reset => {
             info!("voice.control.reset");
-            handle_barge_in(ctx, session, 0).await;
             if let Some(s) = session.as_mut() {
+                abort_active_turn(s, ctx, 0, "control_reset").await;
+                s.last_partial_text.clear();
                 s.muted = false;
                 send_state(out_tx, VoicePhase::Listening, &s.session_id).await;
             }

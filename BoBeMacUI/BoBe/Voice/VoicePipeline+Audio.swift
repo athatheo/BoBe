@@ -25,10 +25,16 @@ extension VoicePipeline {
     /// warm. `internal` so the audio-device hot-swap path in
     /// `+AudioDevice` can drive the rebuild cycle.
     func tearDownAudio() {
-        guard self.isWarm else { return }
-        self.audioEngine.inputNode.removeTap(onBus: 0)
-        self.playerNode.removeTap(onBus: 0)
+        if self.inputTapInstalled {
+            self.audioEngine.inputNode.removeTap(onBus: 0)
+            self.inputTapInstalled = false
+        }
+        if self.playerTapInstalled {
+            self.playerNode.removeTap(onBus: 0)
+            self.playerTapInstalled = false
+        }
         self.playerNode.stop()
+        self.cancelClientTtsTurn()
         self.audioEngine.stop()
         // Explicitly disable VPIO on both nodes AFTER stopping the engine
         // (Apple requires a stopped engine to toggle this). Without these
@@ -39,11 +45,23 @@ extension VoicePipeline {
         // Wrapped in try? — these can't fail in practice (the engine is
         // stopped, we never touched audio session state on macOS), but
         // throwing here would leak isWarm=true and break re-connect.
-        try? self.audioEngine.inputNode.setVoiceProcessingEnabled(false)
-        try? self.audioEngine.outputNode.setVoiceProcessingEnabled(false)
-        self.converter = nil
-        self.pcmAccumulator.removeAll(keepingCapacity: false)
+        if self.inputVoiceProcessingEnabled {
+            try? self.audioEngine.inputNode.setVoiceProcessingEnabled(false)
+            self.inputVoiceProcessingEnabled = false
+        }
+        if self.outputVoiceProcessingEnabled {
+            try? self.audioEngine.outputNode.setVoiceProcessingEnabled(false)
+            self.outputVoiceProcessingEnabled = false
+        }
+        self.audioInputContinuation?.finish()
+        self.audioInputContinuation = nil
+        self.audioInputTask?.cancel()
+        self.audioInputTask = nil
+        Task { await self.inputProcessor.reset() }
         self.pendingTurnId = nil
+        self.partialSendTask?.cancel()
+        self.partialSendTask = nil
+        self.pendingPartialForServer = nil
         // STT model itself stays loaded across reconnects; just clear state.
         let engine = self.activeStt
         Task { try? await engine.reset() }
@@ -55,37 +73,53 @@ extension VoicePipeline {
     /// `internal` so the audio-device hot-swap extension can rebuild the
     /// engine after a default-input change.
     func configureEngine() throws {
+        do {
+            try self.configureEngineTransaction()
+        } catch {
+            self.tearDownAudio()
+            throw error
+        }
+    }
+
+    private func configureEngineTransaction() throws {
         let inputNode = self.audioEngine.inputNode
         try inputNode.setVoiceProcessingEnabled(true)
+        self.inputVoiceProcessingEnabled = true
         // VPIO on the output node too — gives Apple's AEC a reference
         // signal for AEC during full-duplex (barge-in path). Required by
         // the architecture doc; on macOS it's idempotent if already
         // enabled.
         try self.audioEngine.outputNode.setVoiceProcessingEnabled(true)
+        self.outputVoiceProcessingEnabled = true
 
         let inputFormat = inputNode.inputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0 else {
             throw VoiceError.runtime("input sample rate is 0 — no mic device?")
         }
-        guard let int16Format = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: self.captureSampleRate,
-            channels: 1,
-            interleaved: false
+
+        let (audioStream, continuation) = AsyncStream.makeStream(
+            of: CapturedVoiceAudio.self,
+            bufferingPolicy: .bufferingNewest(16)
         )
-        else {
-            throw VoiceError.runtime("could not create Int16 target format")
+        self.audioInputContinuation = continuation
+        let engine = self.activeStt
+        let processor = self.inputProcessor
+        self.audioInputTask = Task { @MainActor [weak self] in
+            for await captured in audioStream {
+                guard !Task.isCancelled else { return }
+                do {
+                    let processed = try await processor.process(captured)
+                    guard let self else { return }
+                    await self.handleProcessedInput(processed, engine: engine)
+                } catch {
+                    guard let self else { return }
+                    self.lastError = "input processing: \(error.localizedDescription)"
+                    logger.warning(
+                        "input processing failed: \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
         }
-        guard let converter = AVAudioConverter(from: inputFormat, to: int16Format) else {
-            throw VoiceError.runtime("could not create AVAudioConverter")
-        }
-        // VPIO on macOS delivers multichannel deinterleaved Float32.
-        // Channel 0 is the AEC'd mic; channels 1+ are reference signals.
-        // Default downmix would sum them all and mask AEC. Force ch 0 only.
-        if inputFormat.channelCount > 1 {
-            converter.channelMap = [NSNumber(value: 0)]
-        }
-        self.converter = converter
 
         // installTap's block runs on the realtime audio dispatch queue.
         // Marked @Sendable so it doesn't inherit @MainActor isolation
@@ -93,11 +127,19 @@ extension VoicePipeline {
         // isolation check crashes the realtime queue the moment audio
         // flows.
         let tapBlock: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { [weak self] buffer, _ in
-            DispatchQueue.main.async {
-                self?.handleInputBuffer(buffer)
+            guard let captured = CapturedVoiceAudio(buffer: buffer) else { return }
+            if case .dropped = continuation.yield(captured) {
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.droppedAudioInputChunks += 1
+                    logger.warning(
+                        "voice.input_queue_drop total=\(self.droppedAudioInputChunks)"
+                    )
+                }
             }
         }
         inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat, block: tapBlock)
+        self.inputTapInstalled = true
 
         // TTS playback envelope tap. Decoding all incoming Opus frames
         // takes ~200ms while the actual playback through the speakers
@@ -121,6 +163,7 @@ extension VoicePipeline {
                 format: playerFormat,
                 block: playerTapBlock
             )
+            self.playerTapInstalled = true
         }
 
         self.audioEngine.prepare()
@@ -136,13 +179,11 @@ extension VoicePipeline {
 
     // MARK: - Tap handling
 
-    /// Realtime mic-tap handler, hopped to MainActor by the tap block.
-    /// Runs at ~50 Hz during active capture — every microsecond of work
-    /// here is paid back many times over.
-    func handleInputBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard self.task != nil,
-              let converter = self.converter
-        else { return }
+    func handleProcessedInput(
+        _ processed: ProcessedVoiceAudio,
+        engine: any VoiceSttEngine
+    ) async {
+        guard self.task != nil else { return }
         switch self.state {
         case .idle, .connecting, .failed:
             return
@@ -150,81 +191,22 @@ extension VoicePipeline {
             break
         }
 
-        let outFormat = converter.outputFormat
-        let cap = AVAudioFrameCount(
-            Double(buffer.frameLength) * outFormat.sampleRate / buffer.format.sampleRate
-        ) + 16
-        guard let outBuf = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: cap) else { return }
-
-        let (status, err) = convertSingleBuffer(converter, source: buffer, into: outBuf)
-        if status == .error || err != nil {
-            self.lastError = "convert: \(err?.localizedDescription ?? "?")"
-            logger.error("convert: \(err?.localizedDescription ?? "?", privacy: .public)")
-            return
-        }
-        guard let int16Ptr = outBuf.int16ChannelData?[0] else { return }
-        let count = Int(outBuf.frameLength)
-        let samples = UnsafeBufferPointer(start: int16Ptr, count: count)
-        self.pcmAccumulator.append(contentsOf: samples)
-
-        // Walk the accumulator in 320-sample windows via index offset
-        // rather than `prefix(...) + removeFirst(...)`. The old pattern
-        // allocated a fresh [Int16] each iteration and forced an O(n)
-        // memmove on the remaining samples — multiply by ~50 Hz tap
-        // callbacks and the wasted work was visible in instruments.
-        var readIndex = 0
-        let frameSize = self.rmsFrameSamples
-        while readIndex + frameSize <= self.pcmAccumulator.count {
-            let slice = self.pcmAccumulator[readIndex ..< readIndex + frameSize]
-            let frameRms = self.rmsDbfs(of: slice)
+        for frameRms in processed.rmsFramesDbfs {
             self.publishInputLevel(frameRms: frameRms)
             self.checkBargeIn(frameRms: frameRms)
-            readIndex += frameSize
-        }
-        if readIndex > 0 {
-            self.pcmAccumulator.removeFirst(readIndex)
         }
 
-        // Feed the ORIGINAL Float32 buffer to FluidAudio — each engine
-        // resamples internally (Parakeet) or via its own AVAudioConverter
-        // (Qwen3) so we don't need to pre-convert. Mute gates the feed
-        // too so we don't transcribe during user-requested silence.
         guard !self.muted else { return }
-        // Skip the feed entirely while the STT engine is still loading —
-        // it can't accept buffers yet and would throw .notLoaded for
-        // every 21ms chunk, spamming the main actor at ~50 logs/s. That
-        // backlog is what stutters the avatar's voice presence ring at
-        // first mic open. The engine drains buffered audio once .ready.
         guard self.sttStatus == .ready, self.sttLoaded else { return }
-        // Deep-copy the buffer before the async hop. Apple's docs say
-        // tap buffer storage may be reused after the installTap block
-        // returns; capturing the buffer across `Task { ... await }`
-        // would let the realtime queue clobber the bytes under heavy
-        // CPU load before FluidAudio reads them. Helper lives in
-        // VoicePipelineSupport.
-        guard let copy = copyPcmFloatBuffer(buffer) else {
-            logger.warning("stt.buffer_copy_failed")
-            return
-        }
-        let engine = self.activeStt
-        Task { [copy] in
-            do {
-                try await engine.acceptAudio(copy)
-            } catch {
-                // FluidAudio errors during a streaming pass are non-
-                // fatal — most likely a transient model state issue.
-                // Log and keep capturing; the next chunk's
-                // processBufferedAudio will recover. .notLoaded
-                // specifically can race with the readiness gate above
-                // when the actor toggles loaded mid-chunk; demote to
-                // debug so it doesn't drown the console.
-                if case FluidAudioSttError.notLoaded = error {
-                    logger.debug("stt.acceptAudio_notLoaded_race")
-                } else {
-                    logger.warning(
-                        "stt.acceptAudio failed: \(error.localizedDescription, privacy: .public)"
-                    )
-                }
+        do {
+            try await engine.acceptSamples(processed.samples16k)
+        } catch {
+            if case FluidAudioSttError.notLoaded = error {
+                logger.debug("stt.acceptSamples_notLoaded_race")
+            } else {
+                logger.warning(
+                    "stt.acceptSamples failed: \(error.localizedDescription, privacy: .public)"
+                )
             }
         }
     }
@@ -247,19 +229,6 @@ extension VoicePipeline {
         }
     }
 
-    /// Generic over the slice type so callers can pass `ArraySlice<Int16>`
-    /// without copying into a fresh `[Int16]`.
-    private func rmsDbfs(of samples: some Collection<Int16>) -> Float {
-        guard !samples.isEmpty else { return -100 }
-        var sumSquares: Double = 0
-        for s in samples {
-            let f = Double(s) / 32_768.0
-            sumSquares += f * f
-        }
-        let rms = sqrt(sumSquares / Double(samples.count))
-        return rms > 1e-9 ? Float(20 * log10(rms)) : -100
-    }
-
     /// Per-frame barge-in detector. Only fires during `.speaking`;
     /// resets in every other state so we don't carry stale counts
     /// between turns. Sends `barge_in` with the current playback
@@ -276,10 +245,26 @@ extension VoicePipeline {
             if self.bargeInCount >= self.bargeInFramesNeeded, !self.bargeInSent {
                 self.bargeInSent = true
                 let playedMs = self.currentPlaybackMs()
+                if self.clientTtsActive,
+                   self.partialTranscript.split(whereSeparator: \.isWhitespace).count >= 3 {
+                    self.cancelClientTtsTurn()
+                }
                 let tsMs = UInt64(Date.now.timeIntervalSince1970 * 1_000)
                 logger.info("voice.barge_in_sending playedMs=\(playedMs)")
+                let evidence = self.partialTranscript
                 Task { [weak self] in
-                    await self?.sendClient(.bargeIn(tsMs: tsMs, playbackMsPlayed: playedMs))
+                    guard let self else { return }
+                    await self.sendClient(.bargeIn(
+                        tsMs: tsMs,
+                        playbackMsPlayed: playedMs,
+                        partialText: evidence.isEmpty ? nil : evidence
+                    ))
+                    // A MinWords rejection has no acknowledgement. Permit a
+                    // later candidate once STT has accumulated more evidence.
+                    try? await Task.sleep(for: .milliseconds(250))
+                    guard self.state == .speaking else { return }
+                    self.bargeInSent = false
+                    self.bargeInCount = 0
                 }
             }
         } else {

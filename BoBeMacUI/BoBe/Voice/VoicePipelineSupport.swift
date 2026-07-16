@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import os
 
 /// Thrown when `VoicePipeline.ensureSttLoaded` exceeds its deadline.
 struct VoiceLoadTimeout: Error {}
@@ -32,39 +33,17 @@ func withVoiceLoadTimeout(
     }
 }
 
-/// `http(s)://host:port` → `ws(s)://host:port/voice/stream`. Returns nil if
-/// the base URL is malformed.
+/// `http(s)://host:port/prefix` → `ws(s)://host:port/prefix/voice/stream`.
+/// Returns nil if the base URL is malformed.
 func voiceWsEndpoint(from baseURL: URL) -> URL? {
     guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
         return nil
     }
     let scheme = components.scheme?.lowercased()
     components.scheme = (scheme == "https") ? "wss" : "ws"
-    components.path = "/voice/stream"
+    let prefix = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    components.path = prefix.isEmpty ? "/voice/stream" : "/\(prefix)/voice/stream"
     return components.url
-}
-
-/// Deep-copy the tap buffer's float channel data into a fresh
-/// `AVAudioPCMBuffer` that's safe to send across `Task { ... }` hops.
-/// Apple's docs state tap buffer storage may be reused after the
-/// `installTap` block returns; capturing the raw buffer across an async
-/// hop lets the realtime queue clobber bytes before the consumer reads
-/// them. Returns nil on alloc failure or if the source isn't Float32.
-func copyPcmFloatBuffer(_ src: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-    guard let copy = AVAudioPCMBuffer(pcmFormat: src.format, frameCapacity: src.frameCapacity)
-    else {
-        return nil
-    }
-    copy.frameLength = src.frameLength
-    guard let srcChannels = src.floatChannelData, let dstChannels = copy.floatChannelData else {
-        return nil
-    }
-    let frameCount = Int(src.frameLength)
-    let bytes = frameCount * MemoryLayout<Float>.size
-    for ch in 0 ..< Int(src.format.channelCount) {
-        memcpy(dstChannels[ch], srcChannels[ch], bytes)
-    }
-    return copy
 }
 
 /// One-line dump of an `AVAudioFormat` for log lines, e.g. "16000Hz 1ch f32".
@@ -82,32 +61,28 @@ func describe(_ format: AVAudioFormat) -> String {
 
 /// Run `AVAudioConverter.convert(to:error:withInputFrom:)` with the
 /// "feed this buffer exactly once" pattern used by every call site
-/// (Opus decode, Parakeet input resample, Qwen3 input resample). The
+/// (Opus decode, Parakeet input resample, Nemotron input resample). The
 /// converter's input block runs in a loop until `.noDataNow` is
 /// returned, so the once-flag lives in a reference type so the
 /// `@Sendable` closure can mutate it.
 ///
-/// Safety: `FedState` is `@unchecked Sendable` by convention, not by
-/// synchronization. `AVAudioConverter.convert(to:error:withInputFrom:)`
-/// invokes its input closure synchronously on the calling thread for
-/// the duration of one `convert` call — there is no cross-thread
-/// access, so the `var fed` read/write happens on a single thread.
-/// The `@unchecked` is documentation of this convention so the
-/// `@Sendable` input-closure signature compiles.
 func convertSingleBuffer(
     _ converter: AVAudioConverter,
     source: AVAudioBuffer,
     into output: AVAudioPCMBuffer
 ) -> (status: AVAudioConverterOutputStatus, error: NSError?) {
-    final class FedState: @unchecked Sendable { var fed = false }
-    let state = FedState()
+    let state = OSAllocatedUnfairLock(initialState: false)
     var err: NSError?
     let status = converter.convert(to: output, error: &err) { _, statusPtr in
-        if state.fed {
+        let shouldFeed = state.withLock { fed in
+            guard !fed else { return false }
+            fed = true
+            return true
+        }
+        if !shouldFeed {
             statusPtr.pointee = .noDataNow
             return nil
         }
-        state.fed = true
         statusPtr.pointee = .haveData
         return source
     }

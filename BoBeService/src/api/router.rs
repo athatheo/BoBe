@@ -7,10 +7,15 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 
 use super::handlers;
-use super::middleware::{AllowedHosts, host_validation, request_logging};
+use super::middleware::{
+    AllowedHosts, AllowedOrigins, ApiToken, bearer_auth, host_validation, request_logging,
+};
 use crate::app_state::AppState;
 
-pub(crate) fn build_router(state: Arc<AppState>) -> Router {
+pub(crate) fn build_router(
+    state: Arc<AppState>,
+    shutdown: tokio_util::sync::CancellationToken,
+) -> Router {
     let cfg = state.config();
 
     let origins: Vec<axum::http::HeaderValue> = cfg
@@ -28,10 +33,16 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             axum::http::Method::PATCH,
             axum::http::Method::DELETE,
         ])
-        .allow_headers([axum::http::header::CONTENT_TYPE])
+        .allow_headers([
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::CONTENT_TYPE,
+        ])
         .allow_credentials(true);
 
-    let allowed_hosts = AllowedHosts::new(&cfg.server.host, cfg.server.port);
+    let allowed_hosts =
+        AllowedHosts::new(&cfg.server.host, cfg.server.port, &cfg.server.allowed_hosts);
+    let api_token = ApiToken::new(cfg.server.api_token.clone());
+    let allowed_origins = AllowedOrigins::new(cfg.cors_origins_vec());
 
     // Long-lived endpoints (SSE, WebSocket) — MUST NOT be wrapped in
     // TimeoutLayer. A 30s request timeout kills them mid-stream every
@@ -121,6 +132,10 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             "/settings",
             get(handlers::settings::get_settings).patch(handlers::settings::update_settings),
         )
+        .route(
+            "/privacy/data",
+            axum::routing::delete(handlers::privacy::purge),
+        )
         .route("/auth/status", get(handlers::engine::get_auth_status))
         .route(
             "/auth/copilot/login/start",
@@ -168,7 +183,11 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     // get the same security treatment as the REST API.
     short_lived
         .merge(long_lived)
+        .layer(axum::Extension(shutdown))
+        .layer(axum::Extension(allowed_origins))
         .layer(axum_middleware::from_fn(request_logging))
+        .layer(axum_middleware::from_fn(bearer_auth))
+        .layer(axum::Extension(api_token))
         .layer(axum_middleware::from_fn(host_validation))
         .layer(axum::Extension(allowed_hosts))
         .layer(cors)

@@ -259,6 +259,12 @@ impl ConversationService {
         self.repo.last_user_turn_at(conversation_id).await
     }
 
+    pub(crate) async fn latest_user_turn_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, AppError> {
+        self.repo.latest_user_turn_at().await
+    }
+
     pub(crate) async fn get_last_closed_conversation(
         &self,
     ) -> Result<Option<Conversation>, AppError> {
@@ -291,12 +297,6 @@ impl ConversationService {
 
     pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
         self.repo.get_pending_or_active().await
-    }
-
-    pub(crate) async fn get_recent_ai_messages(&self, limit: i64) -> Result<Vec<String>, AppError> {
-        self.repo
-            .get_recent_turns_by_role(TurnRole::Assistant, limit)
-            .await
     }
 
     pub(crate) async fn get_conversation(

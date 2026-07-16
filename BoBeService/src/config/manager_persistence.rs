@@ -2,15 +2,17 @@ use std::collections::BTreeMap;
 
 use tracing::{error, info};
 
-pub(crate) fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
-    let dir = crate::util::paths::bobe_data_dir();
-    if let Err(e) = std::fs::create_dir_all(&dir) {
+pub(crate) fn persist(
+    data_root: &std::path::Path,
+    changes: &BTreeMap<String, serde_json::Value>,
+) -> bool {
+    let dir = data_root;
+    if let Err(e) = std::fs::create_dir_all(dir) {
         error!(error = %e, "config_persistence.mkdir_failed");
         return false;
     }
 
     let config_path = dir.join("config.toml");
-    let tmp_path = dir.join("config.toml.tmp");
 
     let existing = if config_path.exists() {
         match std::fs::read_to_string(&config_path) {
@@ -38,12 +40,8 @@ pub(crate) fn persist(changes: &BTreeMap<String, serde_json::Value>) -> bool {
 
     let content = doc.to_string();
 
-    if let Err(e) = std::fs::write(&tmp_path, &content) {
+    if let Err(e) = crate::util::durable_fs::atomic_write_sync(&config_path, content.as_bytes()) {
         error!(error = %e, "config_persistence.write_failed");
-        return false;
-    }
-    if let Err(e) = std::fs::rename(&tmp_path, &config_path) {
-        error!(error = %e, "config_persistence.rename_failed");
         return false;
     }
 

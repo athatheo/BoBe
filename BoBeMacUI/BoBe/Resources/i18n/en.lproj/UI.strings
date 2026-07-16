@@ -38,6 +38,10 @@
 "overlay.connection.disconnected" = "Disconnected";
 "overlay.conversation.ending" = "Conversation ended, clearing in a moment";
 "overlay.input.close.accessibility" = "Close chat input";
+"overlay.input.placeholder.hint.notice" = "What should BoBe notice?";
+"overlay.input.placeholder.hint.summarize" = "Summarize what's on screen";
+"overlay.input.placeholder.hint.goal" = "Help me move a goal forward";
+"overlay.input.placeholder.hint.feelings" = "I'm feeling stuck";
 "overlay.input.send.accessibility" = "Send message";
 "overlay.input.waiting_for_capturing" = "Waiting for BoBe to finish capturing.";
 "overlay.input.waiting_for_reconnecting" = "Waiting for BoBe to finish reconnecting.";
@@ -124,7 +128,13 @@
 "settings.goals.loading" = "Loading goals...";
 "settings.goals.new.placeholder" = "What's the goal?";
 "settings.goals.priority.label_format" = "P%d";
-"settings.goals.priority.range_hint" = "0 = lowest, 5 = highest";
+"settings.goals.priority.range_hint" = "Choose how strongly BoBe should prioritize this goal.";
+"settings.goals.priority.0" = "Someday";
+"settings.goals.priority.1" = "Low";
+"settings.goals.priority.2" = "Normal";
+"settings.goals.priority.3" = "Important";
+"settings.goals.priority.4" = "High";
+"settings.goals.priority.5" = "Critical";
 "settings.goals.section.ai_curated_badge" = "AI-curated";
 "settings.goals.section.ai_empty" = "BoBe hasn't filled this in yet.";
 "settings.goals.section.attitude_feelings" = "Attitude & Feelings";
@@ -246,12 +256,12 @@
 "settings.window.overview.row.profiles.action" = "User profile";
 "settings.window.overview.row.behavior.label" = "Tune when BoBe glances at your screen and when it speaks up.";
 "settings.window.overview.row.behavior.action" = "Behavior";
-"settings.window.overview.footer" = "Everything runs locally on your Mac.";
+"settings.window.overview.footer" = "Your memories and settings stay on this Mac. Cloud engines receive the context included in each request.";
 "settings.window.search.placeholder" = "Search settings…";
 "settings.window.search.no_results" = "No settings match \"%@\".";
 "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
 "settings.window.search.enable_expert" = "Enable Expert mode";
-"settings.window.sidebar_title" = "BOBE TUNING";
+"settings.window.sidebar_title" = "BOBE SETTINGS";
 "settings.window.title" = "BoBe Settings";
 
 /* Expert mode toggle (own settings category) */
@@ -260,7 +270,7 @@
 "settings.expert.toggle" = "Show expert controls";
 "settings.expert.toggle.description" = "Off by default. Turn on if you want to see every knob BoBe exposes. Existing values keep working when you turn it off again.";
 "settings.expert.section.what_changes" = "What changes";
-"settings.expert.section.what_changes.list" = "• Model codenames (Kokoro, Parakeet, Qwen3) show alongside friendly names\n• Tool servers (MCP) become editable as raw JSON\n• Strict offline toggle becomes visible\n• Advanced (For Nerds) sidebar entry becomes visible\n• Sign-in via Terminal fallback becomes available";
+"settings.expert.section.what_changes.list" = "• Model codenames (Kokoro, Parakeet, Nemotron) show alongside friendly names\n• Souls, profiles, and memory gain a Raw Markdown mode\n• Tool servers (MCP) become editable as raw JSON\n• Strict offline controls become visible\n• Sign-in via Terminal fallback becomes available";
 
 /* Overlay: daemon disconnect banner */
 "overlay.error.daemon_disconnected" = "BoBe is offline";
@@ -284,7 +294,8 @@
 "setup.engine.local.best_for" = "If you want full privacy and have 16+ GB of memory.";
 "setup.engine.title" = "How should BoBe think?";
 "setup.engine.hello" = "Welcome to BoBe.";
-"setup.permissions.body" = "BoBe glances at your screen periodically so it can offer relevant help. Screenshots stay on this Mac.";
+"setup.permissions.body" = "Screen context is optional. With a cloud engine, enabled captures may be sent to GitHub Copilot to answer you; with local AI, they stay on this Mac.";
+"setup.permissions.body.no_capture" = "You chose Quiet mode, so screen capture stays off. Microphone access is optional and only needed for voice conversations.";
 "setup.permissions.grant" = "Grant access";
 "setup.permissions.open_settings" = "Open System Settings";
 "setup.permissions.skip" = "Skip, set up later";
@@ -298,7 +309,7 @@
 "setup.permissions.card.status.allowed" = "Allowed";
 "setup.wizard.back" = "Back";
 "setup.wizard.back.accessibility" = "Go to the previous step";
-"setup.welcome.continue" = "Let's get set up";
+"setup.welcome.continue" = "Continue";
 "setup.window.title" = "BoBe Setup";
 
 "menu.view.toggle_overlay" = "Toggle Overlay";
@@ -436,6 +447,7 @@
 "setup.voice.continue" = "Continue";
 "setup.voice.stt_label.waiting" = "Speech recognition: waiting…";
 "setup.voice.stt_label.downloading_format" = "Speech recognition: downloading %d MB (%d%% of %@)…";
+"setup.voice.stt_label.progress_format" = "Speech recognition: downloading (%d%%)…";
 "setup.voice.stt_label.ready" = "Speech recognition: ready";
 "setup.voice.stt_label.failed_format" = "Speech recognition: failed. %@";
 "settings.category.voice" = "Voice";
@@ -448,6 +460,9 @@
 "settings.voice.language.description" = "Which language BoBe listens for. English is the most reliable; other languages are still maturing.";
 "settings.voice.pause_sensitivity" = "Pause sensitivity";
 "settings.voice.pause_sensitivity.description" = "How long to wait after you stop talking before BoBe answers. Patient waits longer, Tight cuts earlier.";
+"settings.voice.pause_sensitivity.tight" = "Tight";
+"settings.voice.pause_sensitivity.balanced" = "Balanced";
+"settings.voice.pause_sensitivity.patient" = "Patient";
 "settings.voice.partial_caption" = "Show partial caption";
 "settings.voice.partial_caption.description" = "Show a live transcript as you speak. Turn it off if the streaming text feels distracting.";
 "settings.voice.enabled" = "Enable voice";
@@ -456,7 +471,7 @@
 "settings.voice.persona.description" = "Which voice BoBe uses when speaking to you.";
 "settings.voice.speed" = "Speed";
 "settings.voice.speed.description" = "Playback speed (0.5× to 2.0×). 1.0× is natural pace.";
-"settings.voice.installed_label" = "Installed";
+"settings.voice.installed_label" = "Ready for current language";
 "settings.voice.missing_label" = "Not installed";
 "settings.voice.partial_label" = "Partial · some models missing";
 
@@ -465,14 +480,17 @@
 "settings.voice.model.tts.name_expert" = "Kokoro v1.0 multilingual";
 "settings.voice.model.tts.purpose" = "What BoBe sounds like when it speaks.";
 "settings.voice.model.tts.size" = "~340 MB";
+"settings.voice.model.supertonic.name" = "FluidAudio Supertonic-3 multilingual";
+"settings.voice.model.supertonic.purpose" = "Experimental in-app speech synthesis; Kokoro remains the stable fallback.";
+"settings.voice.model.supertonic.size" = "~100 MB";
 "settings.voice.model.stt_en.name" = "Listener — English";
 "settings.voice.model.stt_en.name_expert" = "FluidAudio Parakeet EOU (English)";
 "settings.voice.model.stt_en.purpose" = "Hears you when language is set to English.";
 "settings.voice.model.stt_en.size" = "~600 MB";
 "settings.voice.model.stt_multi.name" = "Listener — other languages";
-"settings.voice.model.stt_multi.name_expert" = "FluidAudio Qwen3-ASR (multilingual) + Silero VAD";
+"settings.voice.model.stt_multi.name_expert" = "FluidAudio Nemotron 3.5 Streaming Multilingual + Silero VAD";
 "settings.voice.model.stt_multi.purpose" = "Hears you when language isn't English.";
-"settings.voice.model.stt_multi.size" = "~1.75 GB";
+"settings.voice.model.stt_multi.size" = "Varies by model revision";
 
 "settings.voice.reinstall" = "Reinstall all";
 "settings.voice.reinstalling" = "Reinstalling…";
@@ -505,3 +523,116 @@
 "overlay.input.mic.disabled.connecting" = "Connecting to voice…";
 "overlay.input.mic.disabled.cancelling" = "Stopping the current turn…";
 "overlay.input.mic.permission_denied" = "Microphone access denied. Open System Settings.";
+
+/* Accessible themes and semantic UI */
+"theme.system.name" = "Follow System";
+"theme.system.description" = "Matches your Mac’s light or dark appearance";
+"theme.bauhaus.name" = "Terracotta Dreams";
+"theme.bauhaus.description" = "Warm earth tones with clear contrast";
+"theme.bauhaus_pastel.name" = "Soft Clay";
+"theme.bauhaus_pastel.description" = "Muted warmth with a lighter surface";
+"theme.cute.name" = "Bubblegum";
+"theme.cute.description" = "Playful pink with grounded text";
+"theme.cute_pastel.name" = "Cotton Candy";
+"theme.cute_pastel.description" = "Soft pastels with readable controls";
+"theme.bauhaus_dark.name" = "Midnight Clay";
+"theme.bauhaus_dark.description" = "Warm accents on a dark surface";
+"theme.cute_dark.name" = "Twilight Rose";
+"theme.cute_dark.description" = "Soft pink accents after dark";
+
+/* Settings shell */
+"settings.window.search.clear" = "Clear settings search";
+"settings.window.search.empty.title" = "No matching settings";
+"settings.behavior.checkins.remove_time_accessibility_format" = "Remove check-in time %@";
+"settings.engine.privacy.toggle" = "Keep non-essential engine traffic offline";
+
+/* Privacy and data flow */
+"settings.privacy.data_flow.title" = "Where your data goes";
+"settings.privacy.data_flow.description" = "Storage and AI processing are separate choices. BoBe keeps its memory on this Mac and clearly identifies when an engine or tool can contact an external service.";
+"settings.privacy.data_flow.local.title" = "Stored on this Mac";
+"settings.privacy.data_flow.local.body" = "Souls, goals, memory, profiles, settings, and tool configuration are stored locally.";
+"settings.privacy.data_flow.cloud.title" = "Cloud answers use GitHub Copilot";
+"settings.privacy.data_flow.cloud.body" = "Prompts and the context needed to answer—including an enabled screen capture when relevant—may be sent to GitHub Copilot.";
+"settings.privacy.data_flow.local_engine.title" = "AI processing stays local";
+"settings.privacy.data_flow.local_engine.body" = "The selected local model processes prompts and captures on this Mac.";
+"settings.privacy.data_flow.unknown_engine.title" = "AI processing depends on your engine";
+"settings.privacy.data_flow.unknown_engine.body" = "Local AI processes context on this Mac. Cloud engines send the context needed for an answer to their provider.";
+"settings.privacy.data_flow.capture.title" = "Screen context is optional";
+"settings.privacy.data_flow.capture.body" = "Disable capture under Behavior at any time. BoBe requests Screen Recording permission before it can see anything.";
+"settings.privacy.data_flow.tools.title" = "Connected tools have their own network access";
+"settings.privacy.data_flow.tools.body" = "Only tools you configure can contact their services. Review or disable them under Tools.";
+
+/* Voice model presentation */
+"settings.voice.model.status.installed" = "Installed";
+"settings.voice.model.status.missing" = "Install required";
+"settings.voice.model.status.downloading_percent_format" = "Downloading %d%%";
+"settings.voice.model.status.downloading_bytes_format" = "Downloading %@ / %@";
+"settings.voice.model.status.downloading" = "Downloading…";
+"settings.voice.model.status.failed" = "Failed";
+"settings.voice.model.status.checking" = "Checking…";
+"settings.voice.tts_backend" = "Speech synthesis backend";
+"settings.voice.tts_backend.description" = "Experimental. Supertonic runs multilingual TTS in the app and downloads its Core ML model on first use. Reconnect voice after changing.";
+"settings.voice.tts_backend.server_kokoro" = "Server Kokoro (stable)";
+"settings.voice.tts_backend.client_supertonic" = "Client Supertonic-3 (experimental)";
+"setup.voice.model.tts" = "BoBe’s speaking voice";
+"setup.voice.model.stt" = "On-device listener";
+"setup.voice.daemon_unreachable" = "BoBe’s local service is not reachable.";
+
+/* Value-first onboarding */
+"setup.value.title" = "A companion that learns what matters";
+"setup.value.body" = "BoBe stays close to your work, remembers the context you choose, and can speak up when it has something useful.";
+"setup.value.goal.title" = "Starts from your goals";
+"setup.value.goal.body" = "Tell BoBe what you are trying to accomplish, not just which model to run.";
+"setup.value.control.title" = "You control the context";
+"setup.value.control.body" = "Memories stay on this Mac. Cloud processing and screen access are always explained before use.";
+"setup.value.presence.title" = "Quiet until useful";
+"setup.value.presence.body" = "Choose how proactive BoBe should be and change it any time.";
+"setup.value.continue" = "Shape my BoBe";
+
+"setup.personalize.title" = "Give BoBe a starting point";
+"setup.personalize.body" = "A name and one goal are enough for the first conversation. Both are optional and editable later.";
+"setup.personalize.name.label" = "What should BoBe call you?";
+"setup.personalize.name.placeholder" = "Preferred name";
+"setup.personalize.name.help" = "Stored only in your local user profile.";
+"setup.personalize.goal.label" = "What is one thing you want help with?";
+"setup.personalize.goal.placeholder" = "For example: ship BoBe’s first release";
+"setup.personalize.goal.help" = "BoBe creates an active goal and can notice relevant moments.";
+"setup.personalize.goal.summary" = "Created during BoBe setup.";
+"setup.personalize.optional" = "You can leave either field blank.";
+
+"setup.proactivity.title" = "How present should BoBe be?";
+"setup.proactivity.body" = "This controls screen context and scheduled check-ins. Direct messages always work.";
+"setup.proactivity.quiet.title" = "Quiet";
+"setup.proactivity.quiet.description" = "No screen capture or scheduled check-ins. BoBe responds when you open it.";
+"setup.proactivity.balanced.title" = "Balanced";
+"setup.proactivity.balanced.description" = "Uses occasional screen context but does not start scheduled check-ins.";
+"setup.proactivity.proactive.title" = "Proactive";
+"setup.proactivity.proactive.description" = "Checks context more often and can initiate scheduled check-ins.";
+"setup.proactivity.footer" = "Nothing is permanent. Fine-tune every interval under Behavior.";
+
+"setup.done.first_goal_format" = "First goal: %@";
+"setup.done.hint" = "Hover the avatar to chat or use ⇧⌘B to show and hide BoBe.";
+
+/* Friendly context editing */
+"settings.context_editor.mode.guided" = "Guided";
+"settings.context_editor.mode.raw" = "Raw";
+"settings.context_editor.mode.accessibility" = "Context editor mode";
+"settings.context_editor.title" = "Document title";
+"settings.context_editor.title.help" = "A short name BoBe can recognize.";
+"settings.context_editor.title.placeholder" = "Title";
+"settings.context_editor.overview" = "Overview";
+"settings.context_editor.overview.help" = "Write naturally. BoBe receives the structured Markdown in the background.";
+"settings.context_editor.section.placeholder" = "Section title";
+"settings.context_editor.section.new_title" = "New section";
+"settings.context_editor.section.add" = "Add section";
+"settings.context_editor.section.delete_accessibility_format" = "Delete section %@";
+
+"settings.unsaved.title" = "Unsaved changes";
+"settings.unsaved.message" = "Save your changes before leaving this editor?";
+
+"settings.voice.install.failed.tts" = "The speech model installation failed. Retry the installation.";
+"settings.voice.install.failed_format" = "Voice installation failed: %@";
+"settings.voice.uninstall.failed_format" = "Could not remove the voice model: %@";
+
+
+"overlay.input.composer.accessibility" = "Message to BoBe";

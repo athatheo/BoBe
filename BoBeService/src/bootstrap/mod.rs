@@ -1,6 +1,7 @@
 mod database;
 mod infra;
-mod mcp_loader;
+mod legacy_migration;
+pub(crate) mod mcp_loader;
 mod repos;
 mod voice_loader;
 mod wiring;
@@ -18,25 +19,30 @@ use mcp_loader::load_mcp_servers_for_sdk;
 use voice_loader::build_voice_engines_snapshot;
 
 pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
+    crate::util::tls::install_crypto_provider()?;
     let pool = database::connect_and_apply_schema(&config.database.url).await?;
+    let data_root = std::path::PathBuf::from(&config.data_dir);
+    legacy_migration::run(&pool, &data_root).await?;
 
     let infra = infra::Infrastructure::build(&config)?;
     let repos = repos::Repositories::from_pool(&pool);
 
     if config.mcp.enabled
-        && let Err(e) =
-            crate::mcp::config::ensure_mcp_config_exists(config.mcp.config_file.as_deref())
+        && let Err(e) = crate::mcp::config::ensure_mcp_config_exists(
+            &data_root,
+            config.mcp.config_file.as_deref(),
+        )
     {
         warn!(error = %e, "bootstrap.ensure_mcp_config_failed");
     }
 
     let memory_file = {
-        let path = crate::util::paths::bobe_data_dir().join("memory.md");
+        let path = data_root.join("memory.md");
         crate::copilot::memory_file::MemoryFile::new(path)
     };
     // Existing skill files are never overwritten.
-    crate::copilot::skills::ensure_skills(&crate::util::paths::bobe_data_dir()).await;
-    let mcp_servers = load_mcp_servers_for_sdk(&config);
+    crate::copilot::skills::ensure_skills(&data_root).await;
+    let mcp = load_mcp_servers_for_sdk(&config);
     // Shared by AppState (consumed by voice.rs) and WorkerRegistry (BobeHooks).
     let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
     // Engines aren't concurrent-feed safe; CAS in voice.rs admits one at a time.
@@ -65,12 +71,13 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         });
     }
     let workers = {
-        let data_dir = crate::util::paths::bobe_data_dir();
+        let data_dir = data_root.clone();
         crate::copilot::registry::WorkerRegistry::new(
             Arc::clone(&infra.config_arc),
             Arc::clone(&memory_file),
             data_dir,
-            mcp_servers,
+            mcp.servers,
+            mcp.excluded_tools,
             Arc::clone(&voice_turn_active),
             Arc::clone(&voice_sink),
             Arc::clone(&voice_engines),
@@ -141,7 +148,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     );
 
     let ollama_install = {
-        let data_dir = crate::util::paths::bobe_data_dir();
+        let data_dir = data_root.clone();
         let binary = Arc::new(crate::services::ollama::binary_manager::BinaryManager::new(
             &data_dir,
             Arc::clone(&http_client),
@@ -160,7 +167,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     let voice_install = {
         let http = Arc::clone(&http_client);
-        let models_root = crate::util::paths::bobe_data_dir().join("models");
+        let models_root = data_root.join("models");
         let engines_for_reload = Arc::clone(&voice_engines);
         let on_complete: Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync> =
             Arc::new(move || {
@@ -181,7 +188,13 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
 
     let in_flight_text_turns = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
-    let copilot_login = crate::copilot::login::LoginCoordinator::new();
+    let copilot_login = {
+        let workers = Arc::clone(&workers);
+        crate::copilot::login::LoginCoordinator::new(Arc::new(move || {
+            let workers = Arc::clone(&workers);
+            tokio::spawn(async move { workers.reload_soft().await });
+        }))
+    };
 
     let state = Arc::new(AppState {
         infra: Arc::new(crate::app_state::Infrastructure {

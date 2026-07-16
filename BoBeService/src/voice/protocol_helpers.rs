@@ -8,6 +8,7 @@
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
+use tracing::{debug, error};
 
 use crate::speech::protocol::{ServerMessage, VoicePhase};
 
@@ -20,7 +21,11 @@ pub(crate) async fn close_with_error(socket: WebSocket, code: &str, message: &st
         message: message.to_string(),
     };
     if let Ok(text) = serde_json::to_string(&payload) {
-        drop(tx.send(Message::Text(Utf8Bytes::from(text))).await);
+        if let Err(send_error) = tx.send(Message::Text(Utf8Bytes::from(text))).await {
+            debug!(error = %send_error, "voice.handshake_error_send_failed");
+        }
+    } else {
+        error!("voice.handshake_error_encode_failed");
     }
 }
 
@@ -52,10 +57,20 @@ pub(crate) async fn send_error(out_tx: &mpsc::Sender<Message>, code: &str, messa
 }
 
 /// Serialise + push any `Serialize` value as a Text frame on the outbound
-/// channel. Silent on encode failure (rare, indicates a developer error).
+/// channel.
 pub(crate) async fn send_json<T: serde::Serialize>(out_tx: &mpsc::Sender<Message>, msg: &T) {
-    let Ok(text) = serde_json::to_string(msg) else {
-        return;
+    let text = match serde_json::to_string(msg) {
+        Ok(text) => text,
+        Err(encode_error) => {
+            error!(error = %encode_error, "voice.control_encode_failed");
+            return;
+        }
     };
-    drop(out_tx.send(Message::Text(Utf8Bytes::from(text))).await);
+    if out_tx
+        .send(Message::Text(Utf8Bytes::from(text)))
+        .await
+        .is_err()
+    {
+        debug!("voice.control_send_closed");
+    }
 }

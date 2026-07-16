@@ -142,24 +142,33 @@ impl OllamaManager {
         )))
     }
 
-    /// `is_canceled` checked between chunks so wizard cancel aborts multi-GB downloads promptly.
+    /// Cancellation races both connection establishment and every stream read,
+    /// so a stalled Ollama server cannot pin the install until the HTTP timeout.
     pub(crate) async fn pull_model(
         &self,
         name: &str,
         progress_tx: &watch::Sender<PullProgress>,
-        is_canceled: impl Fn() -> bool,
+        mut cancel_rx: watch::Receiver<bool>,
     ) -> Result<(), AppError> {
         let url = format!("{}/api/pull", self.base_url);
         info!(model = name, "ollama_manager.pull_starting");
 
-        let resp = self
+        let request = self
             .http_client
             .post(&url)
             .json(&serde_json::json!({"name": name}))
             .timeout(PULL_TIMEOUT)
-            .send()
-            .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("ollama pull: {e}")))?;
+            .send();
+        tokio::pin!(request);
+        let resp = tokio::select! {
+            biased;
+            () = wait_for_cancel(&mut cancel_rx) => {
+                info!(model = name, "ollama_manager.pull_canceled");
+                return Err(AppError::Canceled("Model pull canceled".into()));
+            }
+            result = &mut request => result
+                .map_err(|e| AppError::ServiceUnavailable(format!("ollama pull: {e}")))?,
+        };
 
         if !resp.status().is_success() {
             return Err(AppError::ServiceUnavailable(format!(
@@ -178,11 +187,16 @@ impl OllamaManager {
         let mut last_status: Option<String> = None;
         let mut last_percent: Option<u8> = None;
 
-        while let Some(chunk) = stream.next().await {
-            if is_canceled() {
-                info!(model = name, "ollama_manager.pull_canceled");
-                return Err(AppError::Canceled("Model pull canceled".into()));
-            }
+        loop {
+            let chunk = tokio::select! {
+                biased;
+                () = wait_for_cancel(&mut cancel_rx) => {
+                    info!(model = name, "ollama_manager.pull_canceled");
+                    return Err(AppError::Canceled("Model pull canceled".into()));
+                }
+                chunk = stream.next() => chunk,
+            };
+            let Some(chunk) = chunk else { break };
 
             let bytes =
                 chunk.map_err(|e| AppError::ServiceUnavailable(format!("pull stream: {e}")))?;
@@ -276,9 +290,94 @@ impl OllamaManager {
     }
 }
 
+async fn wait_for_cancel(cancel_rx: &mut watch::Receiver<bool>) {
+    if *cancel_rx.borrow() {
+        return;
+    }
+    while cancel_rx.changed().await.is_ok() {
+        if *cancel_rx.borrow() {
+            return;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::OllamaManager;
+    #![allow(clippy::expect_used)]
+
+    use std::convert::Infallible;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use axum::Router;
+    use axum::body::Bytes;
+    use axum::routing::post;
+    use tokio::net::TcpListener;
+    use tokio::sync::{Notify, watch};
+
+    use super::{OllamaManager, PullProgress};
+
+    #[tokio::test]
+    async fn stalled_model_pull_cancels_without_another_chunk() {
+        crate::util::tls::install_crypto_provider().expect("TLS provider should install");
+        let first_chunk_sent = Arc::new(Notify::new());
+        let release_stream = Arc::new(Notify::new());
+        let app = Router::new().route(
+            "/api/pull",
+            post({
+                let first_chunk_sent = Arc::clone(&first_chunk_sent);
+                let release_stream = Arc::clone(&release_stream);
+                move || {
+                    let first_chunk_sent = Arc::clone(&first_chunk_sent);
+                    let release_stream = Arc::clone(&release_stream);
+                    async move {
+                        let stream = async_stream::stream! {
+                            yield Ok::<_, Infallible>(Bytes::from_static(
+                                b"{\"status\":\"pulling\",\"completed\":1,\"total\":2}\n"
+                            ));
+                            first_chunk_sent.notify_one();
+                            release_stream.notified().await;
+                        };
+                        axum::body::Body::from_stream(stream)
+                    }
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test server should bind");
+        let address = listener.local_addr().expect("test address should exist");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("test server should run");
+        });
+
+        let manager = OllamaManager::new(
+            Arc::new(reqwest::Client::new()),
+            &format!("http://{address}"),
+        );
+        let (progress_tx, _progress_rx) = watch::channel(PullProgress::default());
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let pull = tokio::spawn(async move {
+            manager
+                .pull_model("test-model", &progress_tx, cancel_rx)
+                .await
+        });
+
+        first_chunk_sent.notified().await;
+        cancel_tx.send(true).expect("cancel receiver should exist");
+        let error = tokio::time::timeout(Duration::from_secs(1), pull)
+            .await
+            .expect("cancellation should be prompt")
+            .expect("pull task should join")
+            .expect_err("pull should be canceled");
+
+        assert!(matches!(error, crate::error::AppError::Canceled(_)));
+        release_stream.notify_waiters();
+        server.abort();
+        drop(server.await);
+    }
 
     #[test]
     fn root_from_provider_url_strips_v1() {

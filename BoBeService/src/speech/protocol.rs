@@ -27,10 +27,6 @@ pub(crate) enum VoicePhase {
 /// **Wire contract:** mirror `ClientVoiceMessage` in Swift; rename fields here = update both.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(
-    dead_code,
-    reason = "BargeIn/Wake/PlaybackAck fields are wire-protocol contract"
-)]
 pub(crate) enum ClientMessage {
     Hello {
         session_id: String,
@@ -42,11 +38,17 @@ pub(crate) enum ClientMessage {
         /// BCP-47; daemon telemetry only — client picks the ASR engine.
         #[serde(default)]
         language: Option<String>,
+        #[serde(default)]
+        tts_backend: Option<String>,
     },
     /// Candidate barge-in; daemon decides after the min-words gate.
     BargeIn {
         ts_ms: u64,
         playback_ms_played: u64,
+        /// Latest acoustic transcript evidence, carried atomically with the
+        /// candidate so transport scheduling cannot reorder it behind barge-in.
+        #[serde(default)]
+        partial_text: Option<String>,
     },
     Wake {
         phrase: String,
@@ -71,6 +73,13 @@ pub(crate) enum ClientMessage {
         turn_id: String,
         text: String,
     },
+    TtsPlaybackStarted {
+        turn_id: String,
+        synthesis_ms: u64,
+    },
+    TtsPlaybackComplete {
+        turn_id: String,
+    },
 }
 
 /// **Wire contract:** mirror `ServerVoiceMessage` in Swift. Binary TTS frames
@@ -92,6 +101,11 @@ pub(crate) enum ServerMessage {
     },
     TtsEnd {
         turn_id: String,
+    },
+    TtsText {
+        turn_id: String,
+        sequence: u64,
+        text: String,
     },
     /// Post-barge-in: client drops queued audio beyond `keep_ms`.
     Truncate {
@@ -135,12 +149,14 @@ mod tests {
                 voice_id,
                 speed,
                 language,
+                tts_backend,
             } => {
                 assert_eq!(session_id, "abc");
                 assert_eq!(playback_rate, 24_000);
                 assert_eq!(voice_id, None);
                 assert_eq!(speed, None);
                 assert_eq!(language, None);
+                assert_eq!(tts_backend, None);
             }
             other => panic!("expected Hello, got {other:?}"),
         }
@@ -186,6 +202,20 @@ mod tests {
     }
 
     #[test]
+    fn client_tts_text_serializes_with_sequence() {
+        let value = serde_json::to_value(ServerMessage::TtsText {
+            turn_id: "turn-1".into(),
+            sequence: 2,
+            text: "Hello.".into(),
+        })
+        .unwrap();
+        assert_eq!(value["type"], "tts_text");
+        assert_eq!(value["turn_id"], "turn-1");
+        assert_eq!(value["sequence"], 2);
+        assert_eq!(value["text"], "Hello.");
+    }
+
+    #[test]
     fn transcript_final_deserialize() {
         let raw = r#"{"type":"transcript_final","turn_id":"voice_t1","text":"hello world"}"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
@@ -206,12 +236,32 @@ mod tests {
             ClientMessage::BargeIn {
                 ts_ms,
                 playback_ms_played,
+                partial_text,
             } => {
                 assert_eq!(ts_ms, 1_000);
                 assert_eq!(playback_ms_played, 420);
+                assert_eq!(partial_text, None);
             }
             other => panic!("expected BargeIn, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn barge_in_deserialize_with_atomic_partial_evidence() {
+        let raw = r#"{
+            "type":"barge_in",
+            "ts_ms":1000,
+            "playback_ms_played":420,
+            "partial_text":"please stop now"
+        }"#;
+        let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
+        assert!(matches!(
+            parsed,
+            ClientMessage::BargeIn {
+                partial_text: Some(ref text),
+                ..
+            } if text == "please stop now"
+        ));
     }
 
     #[test]

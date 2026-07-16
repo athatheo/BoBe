@@ -12,13 +12,6 @@ pub(crate) struct AtomicFlagGuard {
 impl AtomicFlagGuard {
     /// Construct without CAS. The caller is responsible for having set the
     /// flag to `true`; the guard only handles the release side.
-    #[cfg_attr(
-        not(test),
-        allow(
-            dead_code,
-            reason = "wrap-existing-state API used by tests + voice flag"
-        )
-    )]
     pub(crate) fn new(flag: Arc<AtomicBool>) -> Self {
         Self { flag }
     }

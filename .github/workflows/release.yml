@@ -7,8 +7,8 @@ on:
         description: Release version without a leading v
         required: true
         type: string
-      publish_update:
-        description: Publish the Sparkle ZIP and appcast after notarization
+      create_appcast_deployment_pr:
+        description: Create the GitHub Release and a website appcast deployment PR
         required: true
         type: boolean
         default: false
@@ -155,7 +155,16 @@ jobs:
             "$APPLE_API_KEY_ID" \
             "$APPLE_API_ISSUER_ID"
           just staple "$VERSION"
+          codesign --verify --deep --strict --verbose=2 build/BoBe.app
+          xcrun stapler validate build/BoBe.app
+          xcrun stapler validate "build/BoBe-$VERSION.dmg"
           just sparkle-zip "$VERSION"
+          rm -rf "$RUNNER_TEMP/sparkle-zip-verification"
+          mkdir -p "$RUNNER_TEMP/sparkle-zip-verification"
+          ditto -x -k "build/BoBe-$VERSION.zip" "$RUNNER_TEMP/sparkle-zip-verification"
+          codesign --verify --deep --strict --verbose=2 \
+            "$RUNNER_TEMP/sparkle-zip-verification/BoBe.app"
+          xcrun stapler validate "$RUNNER_TEMP/sparkle-zip-verification/BoBe.app"
           just sparkle-sign-update \
             "$VERSION" \
             "$SPARKLE_PRIVATE_KEY_PATH"
@@ -209,9 +218,9 @@ jobs:
           rm -f "$CERTIFICATE_PATH" "$APPLE_API_KEY_PATH" "$SPARKLE_PRIVATE_KEY_PATH"
           security delete-keychain "$KEYCHAIN_PATH" || true
 
-  publish-update:
-    name: Publish release and Sparkle update
-    if: ${{ inputs.publish_update }}
+  create-appcast-deployment-pr:
+    name: Create release and appcast deployment PR
+    if: ${{ inputs.create_appcast_deployment_pr }}
     needs: build-sign-notarize
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -262,7 +271,7 @@ jobs:
               "build/release-artifacts/BoBe-$VERSION.zip"
           fi
 
-      - name: Deploy appcast to website repo
+      - name: Create appcast deployment PR in website repo
         env:
           GH_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN }}
         run: |

@@ -42,6 +42,52 @@ struct ServiceState {
     cancel_tx: Option<watch::Sender<bool>>,
 }
 
+fn safe_model_target(models_root: &Path, target_subpath: &str) -> Result<PathBuf, AppError> {
+    let relative = Path::new(target_subpath);
+    if relative.as_os_str().is_empty()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(AppError::Config(format!(
+            "Invalid voice model target path: {target_subpath}"
+        )));
+    }
+    Ok(models_root.join(relative))
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    clippy::items_after_test_module,
+    reason = "focused path-validation tests sit next to their private helper"
+)]
+mod tests {
+    use super::safe_model_target;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn model_target_stays_beneath_models_root() {
+        assert_eq!(
+            safe_model_target(Path::new("/models"), "kokoro/model.onnx")
+                .expect("relative target is valid"),
+            PathBuf::from("/models/kokoro/model.onnx")
+        );
+    }
+
+    #[test]
+    fn model_target_rejects_absolute_and_traversal_paths() {
+        for target in [
+            "/tmp/model.onnx",
+            "../model.onnx",
+            "kokoro/../model.onnx",
+            "",
+        ] {
+            assert!(safe_model_target(Path::new("/models"), target).is_err());
+        }
+    }
+}
+
 impl VoiceInstallService {
     pub(crate) fn new(
         http: Arc<reqwest::Client>,
@@ -87,19 +133,17 @@ impl VoiceInstallService {
         }
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "compile-time artifact catalog is exhaustive and validated by tests"
+    )]
     pub(crate) fn target_path(&self, kind: VoiceModelKind) -> PathBuf {
-        // SAFETY: ARTIFACTS is a compile-time constant array with one entry
-        // per VoiceModelKind variant. Adding a variant without an entry
-        // would only fail at this expect, not at compile time — we accept
-        // that because the catalog and the enum live next to each other in
-        // install_artifacts.rs and divergence is caught by the very next
-        // `is_installed` call in tests.
-        #[allow(clippy::expect_used)]
         let art = ARTIFACTS
             .iter()
             .find(|a| a.kind == kind)
             .expect("every VoiceModelKind has a manifest entry");
-        self.models_root.join(art.target_subpath)
+        safe_model_target(&self.models_root, art.target_subpath)
+            .expect("compile-time voice artifact target must remain relative")
     }
 
     pub(crate) async fn start(self: &Arc<Self>) -> Result<(), AppError> {
@@ -114,13 +158,11 @@ impl VoiceInstallService {
         let (cancel_tx, cancel_rx) = watch::channel(false);
         state.cancel_tx = Some(cancel_tx);
         let snapshot_tx = state.snapshot_tx.clone();
-        snapshot_tx
-            .send(VoiceInstallSnapshot {
-                models: VoiceModelKind::all().map(ModelProgress::pending).collect(),
-                status: InstallStatus::Running,
-                error: None,
-            })
-            .ok();
+        drop(snapshot_tx.send_replace(VoiceInstallSnapshot {
+            models: VoiceModelKind::all().map(ModelProgress::pending).collect(),
+            status: InstallStatus::Running,
+            error: None,
+        }));
         let svc = Arc::clone(self);
         let on_complete = Arc::clone(&self.on_complete);
         state.in_flight = Some(tokio::spawn(async move {
@@ -141,13 +183,11 @@ impl VoiceInstallService {
                 (on_complete)().await;
             }
             let snap = snapshot_tx.borrow().clone();
-            snapshot_tx
-                .send(VoiceInstallSnapshot {
-                    status: final_status,
-                    error: final_error,
-                    ..snap
-                })
-                .ok();
+            drop(snapshot_tx.send_replace(VoiceInstallSnapshot {
+                status: final_status,
+                error: final_error,
+                ..snap
+            }));
         }));
         Ok(())
     }
@@ -155,7 +195,7 @@ impl VoiceInstallService {
     pub(crate) async fn cancel(&self) {
         let state = self.state.lock().await;
         if let Some(tx) = state.cancel_tx.as_ref() {
-            tx.send(true).ok();
+            tx.send_replace(true);
         }
     }
 
@@ -195,6 +235,24 @@ impl VoiceInstallService {
     ) -> Result<(), AppError> {
         info!(kind = %art.kind.label(), url = art.url, "voice_install.start");
         let tmp_dir = tempfile_dir()?;
+        let result = self
+            .install_one_in(art, snapshot_tx, cancel_rx, &tmp_dir)
+            .await;
+        if let Err(error) = tokio::fs::remove_dir_all(&tmp_dir).await
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            warn!(path = %tmp_dir.display(), error = %error, "voice_install.temp_cleanup_failed");
+        }
+        result
+    }
+
+    async fn install_one_in(
+        &self,
+        art: &ModelArtifact,
+        snapshot_tx: &watch::Sender<VoiceInstallSnapshot>,
+        cancel_rx: &watch::Receiver<bool>,
+        tmp_dir: &Path,
+    ) -> Result<(), AppError> {
         let archive_name = art.url.rsplit('/').next().unwrap_or("download.bin");
         let archive_path = tmp_dir.join(archive_name);
 
@@ -205,17 +263,15 @@ impl VoiceInstallService {
             return Err(AppError::Canceled("Voice install canceled".into()));
         }
 
-        let final_target = self.models_root.join(art.target_subpath);
+        let final_target = safe_model_target(&self.models_root, art.target_subpath)?;
         if art.is_tarball {
-            extract_and_install(&archive_path, &tmp_dir, &final_target).await?;
+            extract_and_install(&archive_path, tmp_dir, &final_target).await?;
         } else {
             if let Some(parent) = final_target.parent() {
                 tokio::fs::create_dir_all(parent).await?;
             }
             tokio::fs::rename(&archive_path, &final_target).await?;
         }
-        drop(tokio::fs::remove_dir_all(&tmp_dir).await);
-
         self.update_model(
             snapshot_tx,
             art.kind,
@@ -232,10 +288,31 @@ impl VoiceInstallService {
         snapshot_tx: &watch::Sender<VoiceInstallSnapshot>,
         cancel_rx: &watch::Receiver<bool>,
     ) -> Result<(), AppError> {
-        let response = self.http.get(art.url).send().await?.error_for_status()?;
+        let mut cancel = cancel_rx.clone();
+        let response = tokio::select! {
+            changed = cancel.changed() => {
+                if changed.is_err() || *cancel.borrow() {
+                    return Err(AppError::Canceled("Voice install canceled".into()));
+                }
+                return Err(AppError::Internal("Voice install cancellation channel changed unexpectedly".into()));
+            }
+            response = self.http.get(art.url).send() => response?.error_for_status()?,
+        };
         let total = response.content_length();
+        if total.is_some_and(|size| size > art.max_bytes) {
+            return Err(AppError::Config(format!(
+                "{} download Content-Length exceeds {} byte limit",
+                art.kind.label(),
+                art.max_bytes
+            )));
+        }
         let mut stream = response.bytes_stream();
         let mut file = tokio::fs::File::create(dest).await?;
+        let mut integrity = crate::util::download_integrity::DownloadIntegrity::new(
+            art.kind.label(),
+            art.sha256,
+            art.max_bytes,
+        );
         use tokio::io::AsyncWriteExt;
         // Throttle progress emission. A 340 MB download produces 5-20k
         // chunks; without rate limiting that's the same number of
@@ -254,11 +331,19 @@ impl VoiceInstallService {
             bytes_total: total,
             percent,
         };
-        while let Some(chunk) = stream.next().await {
-            if *cancel_rx.borrow() {
-                return Err(AppError::Canceled("Voice install canceled".into()));
-            }
+        loop {
+            let next = tokio::select! {
+                changed = cancel.changed() => {
+                    if changed.is_err() || *cancel.borrow() {
+                        return Err(AppError::Canceled("Voice install canceled".into()));
+                    }
+                    continue;
+                }
+                chunk = stream.next() => chunk,
+            };
+            let Some(chunk) = next else { break };
             let chunk = chunk?;
+            integrity.update(&chunk)?;
             file.write_all(&chunk).await?;
             got = got.saturating_add(chunk.len() as u64);
             let percent = total.map(|t| ((got as f64 / t as f64) * 100.0).min(100.0) as u8);
@@ -273,6 +358,8 @@ impl VoiceInstallService {
         let final_percent = total.map(|t| ((got as f64 / t as f64) * 100.0).min(100.0) as u8);
         self.update_model(snapshot_tx, art.kind, make_progress(got, final_percent));
         file.flush().await?;
+        let verified_bytes = integrity.finish()?;
+        debug_assert_eq!(got, verified_bytes);
         Ok(())
     }
 
@@ -282,11 +369,11 @@ impl VoiceInstallService {
         kind: VoiceModelKind,
         progress: ModelProgress,
     ) {
-        let mut snap = snapshot_tx.borrow().clone();
-        if let Some(slot) = snap.models.iter_mut().find(|m| m.kind == kind) {
-            *slot = progress;
-        }
-        snapshot_tx.send(snap).ok();
+        snapshot_tx.send_modify(|snapshot| {
+            if let Some(slot) = snapshot.models.iter_mut().find(|model| model.kind == kind) {
+                *slot = progress;
+            }
+        });
     }
 
     /// Wait for any in-flight install to finish — used by shutdown paths.

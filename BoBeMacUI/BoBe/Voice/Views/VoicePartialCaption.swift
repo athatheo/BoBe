@@ -37,7 +37,10 @@ struct VoicePartialCaption: View {
             // Prior version animated on `partialTranscript` itself, which
             // restarted the easeOut on every partial and produced visible
             // jitter as new words arrived.
-            .animation(.easeOut(duration: 0.15), value: self.pipeline.partialTranscript.isEmpty)
+            .animation(
+                OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.15),
+                value: self.pipeline.partialTranscript.isEmpty
+            )
         }
     }
 }

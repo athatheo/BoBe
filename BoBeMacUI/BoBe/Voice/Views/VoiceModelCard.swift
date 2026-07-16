@@ -10,7 +10,7 @@ struct VoiceModelCard: View {
     let name: String
     let purpose: String
     let sizeHint: String
-    let location: String
+    let location: String?
     let status: Status
     /// Optional daemon-side progress (only daemon models surface this — the
     /// client-side FluidAudio path doesn't expose byte progress today).
@@ -42,10 +42,10 @@ struct VoiceModelCard: View {
                 self.statusIcon
                 VStack(alignment: .leading, spacing: 2) {
                     Text(self.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .bobeTextStyle(.rowTitle)
                         .foregroundStyle(self.theme.colors.text)
                     Text(self.purpose)
-                        .font(.system(size: 11))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -56,18 +56,20 @@ struct VoiceModelCard: View {
                 Label(self.sizeHint, systemImage: "internaldrive")
                     .font(.system(size: 11))
                     .foregroundStyle(self.theme.colors.textMuted)
-                Button(action: self.openLocationInFinder) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "folder")
-                        Text(self.shortLocation)
-                            .font(.system(size: 11, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                if let location {
+                    Button(action: self.openLocationInFinder) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder")
+                            Text(self.shortLocation(location))
+                                .font(.system(size: 11, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(self.theme.colors.textMuted)
+                    .help(location)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(self.theme.colors.textMuted)
-                .help(self.location)
                 Spacer()
                 self.actionButtons
             }
@@ -78,8 +80,8 @@ struct VoiceModelCard: View {
             }
             if case let .failed(msg) = self.status {
                 Text(msg)
-                    .font(.system(size: 11))
-                    .foregroundStyle(self.theme.colors.primary)
+                    .bobeTextStyle(.helper)
+                    .foregroundStyle(self.theme.colors.error)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -132,17 +134,17 @@ struct VoiceModelCard: View {
             switch self.status {
             case .installed:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(self.theme.colors.secondary)
+                    .foregroundStyle(self.theme.colors.success)
             case .missing:
                 Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundStyle(self.theme.colors.primary)
+                    .foregroundStyle(self.theme.colors.warning)
             case .downloading:
                 ProgressView()
                     .progressViewStyle(.circular)
                     .controlSize(.small)
             case .failed:
                 Image(systemName: "xmark.octagon.fill")
-                    .foregroundStyle(self.theme.colors.primary)
+                    .foregroundStyle(self.theme.colors.error)
             case .unknown:
                 Image(systemName: "questionmark.circle")
                     .foregroundStyle(self.theme.colors.textMuted)
@@ -166,29 +168,38 @@ struct VoiceModelCard: View {
 
     private var statusLabel: String {
         switch self.status {
-        case .installed: return "Installed"
-        case .missing: return "Missing, install required"
+        case .installed: return L10n.tr("settings.voice.model.status.installed")
+        case .missing: return L10n.tr("settings.voice.model.status.missing")
         case let .downloading(down, total, percent):
-            if let percent { return "Downloading \(percent)%" }
-            if let total { return "Downloading \(self.format(down)) / \(self.format(total))" }
-            return "Downloading…"
-        case .failed: return "Failed"
-        case .unknown: return "Checking…"
+            if let percent {
+                return L10n.tr("settings.voice.model.status.downloading_percent_format", percent)
+            }
+            if let total {
+                return L10n.tr(
+                    "settings.voice.model.status.downloading_bytes_format",
+                    self.format(down),
+                    self.format(total)
+                )
+            }
+            return L10n.tr("settings.voice.model.status.downloading")
+        case .failed: return L10n.tr("settings.voice.model.status.failed")
+        case .unknown: return L10n.tr("settings.voice.model.status.checking")
         }
     }
 
     private var statusBadgeColor: Color {
         switch self.status {
-        case .installed: self.theme.colors.secondary
-        case .missing, .failed: self.theme.colors.primary
+        case .installed: self.theme.colors.success
+        case .missing: self.theme.colors.warning
+        case .failed: self.theme.colors.error
         case .downloading: self.theme.colors.primary
         case .unknown: self.theme.colors.textMuted
         }
     }
 
     /// Tail of the path for compactness. Hover surfaces the full path.
-    private var shortLocation: String {
-        self.location
+    private func shortLocation(_ location: String) -> String {
+        location
             .replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }
 
@@ -198,7 +209,8 @@ struct VoiceModelCard: View {
     }
 
     private func openLocationInFinder() {
-        let expanded = NSString(string: self.location).expandingTildeInPath
+        guard let location = self.location else { return }
+        let expanded = NSString(string: location).expandingTildeInPath
         let url = URL(fileURLWithPath: expanded)
         // If the path doesn't exist (model not installed), reveal the
         // parent directory instead so the user still gets useful context.

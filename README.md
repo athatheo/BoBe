@@ -10,7 +10,7 @@
   <a href="https://github.com/athatheo/BoBe/actions/workflows/ci.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/athatheo/BoBe/actions/workflows/release.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/release.yml/badge.svg?event=workflow_dispatch" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey?logo=apple" alt="macOS 15+">
   <img src="https://img.shields.io/badge/arch-Apple%20Silicon-orange" alt="Apple Silicon">
 </p>
 
@@ -36,7 +36,7 @@ Everything runs locally by default. Your data never leaves your machine unless y
 
 | Platform | Architecture | Minimum Version | Status |
 |----------|-------------|-----------------|--------|
-| macOS    | Apple Silicon (arm64) | macOS 14 Sonoma | ✅ Supported |
+| macOS    | Apple Silicon (arm64) | macOS 15 Sequoia | ✅ Supported |
 | Windows  | x86_64 / arm64 | — | 🚧 TBD |
 
 > **Note:** Linux and iOS are not currently planned.
@@ -55,7 +55,7 @@ cd Bobe
 just run
 ```
 
-> Requires Rust 1.93+, Xcode 16+, and [just](https://github.com/casey/just). See [CONTRIBUTING.md](CONTRIBUTING.md) for full prerequisites.
+> Requires macOS 15+, Rust 1.94+, Xcode 16+, and [just](https://github.com/casey/just). See [CONTRIBUTING.md](CONTRIBUTING.md) for full prerequisites.
 
 ### First Launch
 
@@ -102,6 +102,7 @@ Key security properties:
 - **File tools** use path canonicalization + ancestry checks
 - **MCP commands** validated against a configurable blocklist
 - **CORS** locked to localhost origins
+- **Remote/reverse-proxy access** must configure an API bearer token and TLS certificate/key; adding a public allowed host without both is rejected at startup, including when the daemon itself binds to loopback behind a proxy
 
 ## Contributing
 

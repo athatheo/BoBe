@@ -244,6 +244,17 @@ impl SqliteConversationRepo {
         Ok(row.and_then(|(ts,)| ts))
     }
 
+    pub(crate) async fn latest_user_turn_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<Utc>>, AppError> {
+        let row: Option<(Option<chrono::DateTime<Utc>>,)> =
+            sqlx::query_as("SELECT MAX(created_at) FROM conversation_turns WHERE role = ?1")
+                .bind(TurnRole::User.as_str())
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.and_then(|(ts,)| ts))
+    }
+
     pub(crate) async fn count_turns(
         &self,
         conversation_id: ConversationId,
@@ -254,21 +265,6 @@ impl SqliteConversationRepo {
                 .fetch_one(&self.pool)
                 .await?;
         Ok(row.0)
-    }
-
-    pub(crate) async fn get_recent_turns_by_role(
-        &self,
-        role: TurnRole,
-        limit: i64,
-    ) -> Result<Vec<String>, AppError> {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT content FROM conversation_turns WHERE role = ?1 ORDER BY created_at DESC LIMIT ?2",
-        )
-        .bind(role.as_str())
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows.into_iter().map(|(c,)| c).collect())
     }
 }
 

@@ -22,6 +22,17 @@ extension DaemonClient {
         try await fetch("/tools/mcp/config", method: "DELETE")
     }
 
+    // MARK: Privacy
+
+    struct PrivacyPurgeResponse: Decodable {
+        let message: String
+        let retained: [String]
+    }
+
+    func purgePersonalData() async throws -> PrivacyPurgeResponse {
+        try await fetch("/privacy/data", method: "DELETE")
+    }
+
     // MARK: Settings
 
     func getSettings() async throws -> DaemonSettings {
@@ -65,36 +76,58 @@ extension DaemonClient {
     }
 
     /// Returns on terminal status (`complete`/`canceled`/`failed`) or task cancel.
+    /// Reconnects transiently-ended streams and relies on the watch channel's
+    /// initial value to recover the latest authoritative status.
     func streamLocalRuntimeStatus(
         onSnapshot: @Sendable @escaping (LocalRuntimeSnapshot) -> Void
     ) async throws {
-        let url = self.endpointURL("local-runtime/status")
-        var request = URLRequest(url: url)
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 0
+        var reconnectAttempt = 0
+        while !Task.isCancelled {
+            let url = self.endpointURL("local-runtime/status")
+            var request = URLRequest(url: url)
+            self.authorize(&request)
+            request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            request.timeoutInterval = 0
 
-        let (bytes, response) = try await self.session.bytes(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200
-        else {
-            throw DaemonError.invalidResponse
-        }
-
-        let decoder = JSONDecoder()
-        for try await line in bytes.lines {
-            if Task.isCancelled { break }
-            guard line.hasPrefix("data: ") else { continue }
-            let jsonStr = String(line.dropFirst(6))
-            guard let data = jsonStr.data(using: .utf8) else { continue }
             do {
-                let snapshot = try decoder.decode(LocalRuntimeSnapshot.self, from: data)
-                onSnapshot(snapshot)
-                if [.complete, .canceled, .failed].contains(snapshot.status) {
-                    break
+                let (bytes, response) = try await self.session.bytes(for: request)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200
+                else {
+                    throw DaemonError.invalidResponse
                 }
+
+                reconnectAttempt = 0
+                var receivedSnapshot = false
+                for try await line in bytes.lines {
+                    if Task.isCancelled {
+                        return
+                    }
+                    guard line.hasPrefix("data: ") else { continue }
+                    let jsonStr = String(line.dropFirst(6))
+                    guard let data = jsonStr.data(using: .utf8) else { continue }
+                    let snapshot = try JSONDecoder().decode(LocalRuntimeSnapshot.self, from: data)
+                    receivedSnapshot = true
+                    onSnapshot(snapshot)
+                    if [.complete, .canceled, .failed].contains(snapshot.status) {
+                        return
+                    }
+                }
+                if receivedSnapshot {
+                    reconnectAttempt = 0
+                }
+            } catch is CancellationError {
+                return
             } catch {
-                continue
+                reconnectAttempt += 1
+                if reconnectAttempt >= 10 {
+                    throw error
+                }
             }
+
+            reconnectAttempt += 1
+            let delay = min(pow(2, Double(max(0, reconnectAttempt - 1))), 15)
+            try await Task.sleep(for: .seconds(delay))
         }
     }
 
@@ -134,6 +167,7 @@ extension DaemonClient {
     ) async throws {
         let url = self.endpointURL("auth/copilot/login/events")
         var request = URLRequest(url: url)
+        self.authorize(&request)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 0
 
@@ -146,7 +180,9 @@ extension DaemonClient {
 
         let decoder = JSONDecoder()
         for try await line in bytes.lines {
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             guard line.hasPrefix("data: ") else { continue }
             let jsonStr = String(line.dropFirst(6))
             guard let data = jsonStr.data(using: .utf8) else { continue }

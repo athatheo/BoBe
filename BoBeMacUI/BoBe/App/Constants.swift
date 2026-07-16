@@ -2,11 +2,63 @@ import Foundation
 
 // Cross-language pairs are locked by check-cross-language-constants.sh.
 
+enum DaemonEndpoint: Sendable {
+    case managedLocal
+    case remote(baseURL: URL, bearerToken: String)
+
+    static func load(environment: [String: String] = ProcessInfo.processInfo.environment) -> Self {
+        guard let rawURL = environment["BOBE_DAEMON_URL"], !rawURL.isEmpty else {
+            return .managedLocal
+        }
+        guard let url = URL(string: rawURL),
+              url.scheme?.lowercased() == "https",
+              let host = url.host,
+              !host.isEmpty,
+              !Self.isLoopback(host),
+              url.user == nil,
+              url.password == nil,
+              url.query == nil,
+              url.fragment == nil,
+              let token = environment["BOBE_DAEMON_TOKEN"],
+              !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            fatalError("Remote BOBE_DAEMON_URL requires an https non-loopback URL and BOBE_DAEMON_TOKEN")
+        }
+        return .remote(baseURL: url, bearerToken: token)
+    }
+
+    var baseURL: URL {
+        switch self {
+        case .managedLocal:
+            return URL(string: "http://127.0.0.1:\(DaemonConfig.defaultPort)")
+                ?? URL(fileURLWithPath: "/")
+        case let .remote(baseURL, _):
+            return baseURL
+        }
+    }
+
+    var bearerToken: String? {
+        guard case let .remote(_, token) = self else { return nil }
+        return token
+    }
+
+    var managesLocalProcess: Bool {
+        if case .managedLocal = self { return true }
+        return false
+    }
+
+    private static func isLoopback(_ host: String) -> Bool {
+        let normalized = host.lowercased()
+        return normalized == "localhost" || normalized == "::1" || normalized.hasPrefix("127.")
+    }
+}
+
 enum DaemonConfig {
-    static let host = "127.0.0.1"
+    static let defaultHost = "127.0.0.1"
     /// Mirror: Rust `DEFAULT_DAEMON_PORT`.
-    static let port = 8766
-    static let baseURL = "http://\(host):\(port)"
+    static let defaultPort = 8766
+    static let endpoint = DaemonEndpoint.load()
+    static let baseURL = endpoint.baseURL.absoluteString
 }
 
 enum OllamaDefaults {
@@ -40,12 +92,18 @@ enum ToolCallStatusWire {
 /// debounce timer starts — the debounce is just a safety wait for trailing
 /// silence. The previous 1280ms balanced default (the model's published
 /// reference value) felt sluggish in practice; 800ms is the FluidAudio
-/// reference VAD-EOU value used by the Qwen3 path and matches what shipping
+/// reference VAD-EOU value used by the Nemotron path and matches what shipping
 /// voice agents like Whisper-based pipelines use.
 enum PauseSensitivityMs {
     static let tight: Int = 400
     static let balanced: Int = 800
     static let patient: Int = 1500
+}
+
+enum VoiceSttTuning {
+    /// Nemotron's trained 1.12s tier halves multilingual partial latency from
+    /// the 2.24s throughput default without using the most aggressive 560ms tier.
+    static let nemotronChunkMs = 1_120
 }
 
 /// Wire form for both `/voice/install/status` and `/local-runtime/status`.

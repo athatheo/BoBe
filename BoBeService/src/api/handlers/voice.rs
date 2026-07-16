@@ -7,13 +7,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::response::IntoResponse;
+use axum::extract::{Extension, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
+use crate::api::middleware::AllowedOrigins;
 use crate::app_state::AppState;
 use crate::voice::context::VoiceContext;
 use crate::voice::control::handle_control_text;
@@ -108,14 +110,23 @@ async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
     drop(ctx);
     drop(out_tx);
 
-    match tokio::time::timeout(WRITER_DRAIN_TIMEOUT, writer).await {
+    let mut writer = writer;
+    match tokio::time::timeout(WRITER_DRAIN_TIMEOUT, &mut writer).await {
         Ok(Ok(())) => {}
         Ok(Err(e)) if e.is_panic() => {
             error!(error = %e, "voice.ws_writer_panic");
         }
         Ok(Err(e)) if e.is_cancelled() => {}
         Ok(Err(e)) => warn!(error = %e, "voice.ws_writer_join_failed"),
-        Err(_) => warn!("voice.ws_writer_drain_timeout_abandoning"),
+        Err(_) => {
+            warn!("voice.ws_writer_drain_timeout_aborting");
+            writer.abort();
+            if let Err(e) = writer.await
+                && !e.is_cancelled()
+            {
+                warn!(error = %e, "voice.ws_writer_abort_join_failed");
+            }
+        }
     }
 }
 
@@ -152,7 +163,18 @@ fn spawn_keepalive(out_tx: mpsc::Sender<Message>) -> tokio::task::JoinHandle<()>
 pub(crate) async fn voice_stream(
     mut ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+    Extension(allowed_origins): Extension<AllowedOrigins>,
+    headers: HeaderMap,
+) -> Response {
+    // Native URLSession WebSocket requests omit Origin. Browser requests must
+    // match the explicit CORS allowlist to prevent cross-site WS hijacking.
+    if let Some(origin) = headers.get(header::ORIGIN)
+        && !allowed_origins.contains(origin)
+    {
+        warn!("security.voice_ws_origin_blocked");
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
     // Echo the chosen subprotocol per RFC 6455; unversioned clients still work.
     let selected = ws
         .requested_protocols()
@@ -162,6 +184,7 @@ pub(crate) async fn voice_stream(
         ws.set_selected_protocol(p);
     }
     ws.on_upgrade(move |socket| handle_socket(socket, state))
+        .into_response()
 }
 
 #[allow(
@@ -170,11 +193,7 @@ pub(crate) async fn voice_stream(
               async call also disallows match guards"
 )]
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
-    let Some(engines) = VoiceEngines::from_state(&state) else {
-        warn!("voice.engines_unavailable");
-        close_with_error(socket, "engines_unavailable", "voice models not installed").await;
-        return;
-    };
+    let engines = VoiceEngines::from_state(&state);
 
     // Snapshot at accept-time so a mid-session settings hot-swap doesn't retro-change Hello.
     let voice_defaults = VoiceDefaults::from_state(&state);

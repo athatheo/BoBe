@@ -1,5 +1,6 @@
+use std::future::Future;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use arc_swap::ArcSwap;
@@ -12,6 +13,7 @@ use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::state::Decision;
 use crate::runtime::triggers::{CaptureTrigger, CheckinTrigger, GoalTrigger};
+use crate::runtime::turn_admission::{TurnAdmission, TurnSource};
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::types::IndicatorType;
 
@@ -26,7 +28,7 @@ pub(crate) struct RuntimeSession {
     config: Arc<ArcSwap<Config>>,
     running: std::sync::atomic::AtomicBool,
     capture_enabled: std::sync::atomic::AtomicBool,
-    user_message_in_flight: Arc<AtomicBool>,
+    turn_admission: Arc<TurnAdmission>,
 }
 
 /// RAII gate for "is a user-driven turn in flight." Cleared on drop so a
@@ -50,7 +52,7 @@ impl RuntimeSession {
         cooldown_repo: Arc<SqliteCooldownRepo>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
-        user_message_in_flight: Arc<AtomicBool>,
+        turn_admission: Arc<TurnAdmission>,
     ) -> Self {
         Self {
             checkin_trigger: Mutex::new(checkin_trigger),
@@ -63,7 +65,7 @@ impl RuntimeSession {
             config,
             running: std::sync::atomic::AtomicBool::new(false),
             capture_enabled: std::sync::atomic::AtomicBool::new(false),
-            user_message_in_flight,
+            turn_admission,
         }
     }
 
@@ -81,6 +83,16 @@ impl RuntimeSession {
         let mut trigger = self.capture_trigger.lock().await;
         trigger.stop().await;
         info!("runtime_session.capture_stopped");
+    }
+
+    pub(crate) async fn apply_runtime_settings(&self) {
+        let config = self.config.load_full();
+        if config.capture.enabled {
+            self.start_capture().await;
+        } else {
+            self.stop_capture().await;
+        }
+        self.checkin_trigger.lock().await.reconfigure(&config);
     }
 
     pub(crate) async fn on_connection(&self) {
@@ -129,71 +141,100 @@ impl RuntimeSession {
             );
         }
 
-        let mut loop_counter: u64 = 0;
-        let heartbeat_interval = std::time::Duration::from_mins(5);
-        let mut last_heartbeat = Instant::now();
-        let mut last_goal_check = Instant::now();
-        let mut last_capture_time = Instant::now();
+        tokio::join!(
+            self.heartbeat_loop(),
+            self.checkin_loop(),
+            self.stale_conversation_loop(),
+            self.goal_loop(),
+            self.capture_loop(),
+        );
 
-        while self.running.load(std::sync::atomic::Ordering::Acquire) {
-            loop_counter += 1;
-            let cfg = self.config.load();
+        self.stop().await;
+    }
 
-            if last_heartbeat.elapsed() >= heartbeat_interval {
-                self.log_heartbeat(loop_counter).await;
-                last_heartbeat = Instant::now();
+    async fn heartbeat_loop(&self) {
+        let mut heartbeat = 0_u64;
+        while self.running.load(Ordering::Acquire) {
+            tokio::time::sleep(std::time::Duration::from_mins(5)).await;
+            if !self.running.load(Ordering::Acquire) {
+                return;
             }
+            heartbeat = heartbeat.saturating_add(1);
+            self.log_heartbeat(heartbeat).await;
+        }
+    }
 
-            run_trigger("checkin", std::time::Duration::from_mins(1), async {
-                let mut checkin = self.checkin_trigger.lock().await;
-                checkin.fire().await
-            })
+    async fn checkin_loop(&self) {
+        while self.running.load(Ordering::Acquire) {
+            Box::pin(run_trigger(
+                "checkin",
+                std::time::Duration::from_mins(1),
+                async {
+                    let mut checkin = self.checkin_trigger.lock().await;
+                    checkin.fire().await
+                },
+            ))
             .await;
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        }
+    }
 
+    async fn stale_conversation_loop(&self) {
+        while self.running.load(Ordering::Acquire) {
             if let Err(e) = self.close_stale_conversation_if_needed().await {
                 warn!(error = %e, "runtime_session.stale_check_failed");
             }
+            tokio::time::sleep(std::time::Duration::from_mins(1)).await;
+        }
+    }
 
-            let time_since_goal = last_goal_check.elapsed().as_secs_f64();
-            if time_since_goal >= cfg.goals.check_interval_seconds {
-                run_trigger(
+    async fn goal_loop(&self) {
+        let mut last_fire = Instant::now();
+        while self.running.load(Ordering::Acquire) {
+            let seconds = {
+                let configured = self.config.load().goals.check_interval_seconds;
+                if configured.is_finite() {
+                    configured.max(1.0)
+                } else {
+                    30.0
+                }
+            };
+            if last_fire.elapsed().as_secs_f64() >= seconds {
+                Box::pin(run_trigger(
                     "goal",
                     std::time::Duration::from_mins(5),
                     self.goal_trigger.fire(),
-                )
+                ))
                 .await;
-                last_goal_check = Instant::now();
+                last_fire = Instant::now();
             }
-
-            if self
-                .capture_enabled
-                .load(std::sync::atomic::Ordering::Acquire)
-            {
-                let time_since_capture = last_capture_time.elapsed().as_secs();
-                if time_since_capture >= cfg.capture.interval_seconds {
-                    let timed_out =
-                        run_trigger("capture", std::time::Duration::from_mins(5), async {
-                            let mut ct = self.capture_trigger.lock().await;
-                            ct.fire().await
-                        })
-                        .await;
-                    if timed_out {
-                        self.push_error_event("capture_trigger", "Capture trigger timed out");
-                    }
-                    last_capture_time = Instant::now();
-                }
-            }
-
-            // Sleep at the shortest configured cadence so a user-tuned
-            // 5-second capture actually fires every 5 seconds. Floor at 1s
-            // (avoid busy loop), ceiling at 60s (keep checkin scheduler
-            // resolution under a minute).
-            let goal_secs = cfg.goals.check_interval_seconds.max(1.0).round() as u64;
-            let sleep_secs = cfg.capture.interval_seconds.max(1).min(goal_secs).min(60);
-            tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
+            tokio::time::sleep(std::time::Duration::from_secs_f64(seconds.min(30.0))).await;
         }
+    }
 
-        self.stop().await;
+    async fn capture_loop(&self) {
+        let mut last_fire = Instant::now();
+        while self.running.load(Ordering::Acquire) {
+            let enabled = self.capture_enabled.load(Ordering::Acquire);
+            let seconds = self.config.load().capture.interval_seconds.max(1);
+            if enabled && last_fire.elapsed().as_secs() >= seconds {
+                let timed_out = Box::pin(run_trigger(
+                    "capture",
+                    std::time::Duration::from_mins(5),
+                    async {
+                        let mut capture = self.capture_trigger.lock().await;
+                        capture.fire().await
+                    },
+                ))
+                .await;
+                if timed_out {
+                    self.push_error_event("capture_trigger", "Capture trigger timed out");
+                }
+                last_fire = Instant::now();
+            }
+            let sleep_seconds = if enabled { seconds.min(5) } else { 30 };
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_seconds)).await;
+        }
     }
 
     async fn close_stale_conversation_if_needed(&self) -> Result<(), crate::error::AppError> {
@@ -241,13 +282,14 @@ impl RuntimeSession {
 
     /// Voice variant: text-delta observer runs in addition to SSE.
     /// `DeliveryMode::Immediate` makes barge-ins atomic without AbortGuard timing.
-    pub(crate) async fn handle_user_message_with_observer<F>(
+    pub(crate) async fn handle_user_message_with_observer<F, Fut>(
         &self,
         content: &str,
         message_id: &str,
         on_text_delta: F,
     ) where
-        F: FnMut(&str) + Send,
+        F: FnMut(String) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
     {
         self.message_handler
             .handle_message_with_observer(content, message_id, true, on_text_delta)
@@ -255,7 +297,9 @@ impl RuntimeSession {
     }
 
     pub(crate) fn try_begin_user_message(&self) -> Result<UserMessageGuard, &'static str> {
-        let guard = UserMessageGuard::try_acquire(Arc::clone(&self.user_message_in_flight))
+        let guard = self
+            .turn_admission
+            .try_admit(TurnSource::User)
             .ok_or("BoBe is still finishing the previous message")?;
 
         let indicator = self.event_queue.current_indicator();
@@ -279,7 +323,7 @@ impl RuntimeSession {
             indicator,
             capturing: self.capture_enabled.load(Ordering::Acquire),
             accepting_user_messages: indicator == IndicatorType::Idle
-                && !self.user_message_in_flight.load(Ordering::Acquire),
+                && self.turn_admission.is_idle(),
         }
     }
 
@@ -314,6 +358,7 @@ async fn run_trigger(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicBool;
 
     /// Single-flight correctness rests on Drop clearing the flag on every exit.
     #[test]

@@ -29,15 +29,11 @@ extension OverlayView {
             }
         }
         if newCount == 0 {
-            self.chatPresentation = .collapsed
+            self.setChatVisible(false)
             self.composerFeedback = nil
             self.dismissFloatingBubble()
         }
         self.lastMessageActivity = .now
-    }
-
-    func toggleChatFromBubble() {
-        self.toggleChatManually()
     }
 
     func toggleChatManually() {
@@ -49,21 +45,7 @@ extension OverlayView {
     }
 
     func openChatManually() {
-        // Pre-size the panel BEFORE flipping state so SwiftUI's next body
-        // evaluation renders the chat sections into a window that already
-        // has room. Relying on `.onChange(of: isChatVisible)` alone leaves
-        // a one-frame window where the new sections are drawn clipped
-        // inside the old collapsed frame (visible as a "small square
-        // stuck for a beat" stutter). Doing it inline in the action
-        // handler removes any dependency on SwiftUI's update ordering.
-        self.preflightExpandWindow()
-        self.setChatPresentation(.expanded(.manual))
-        self.dismissFloatingBubble()
-    }
-
-    func openChatAutomatically() {
-        self.preflightExpandWindow()
-        self.setChatPresentation(.expanded(.automatic))
+        self.setChatVisible(true)
         self.dismissFloatingBubble()
     }
 
@@ -88,7 +70,7 @@ extension OverlayView {
         // heard) with the chat collapsed, matching the floating-bubble
         // model. Previously we disconnected here, which silently killed
         // all audio whenever the user dismissed the chat panel.
-        self.setChatPresentation(.collapsed)
+        self.setChatVisible(false)
         // If there's a BoBe message in flight (currently streaming or just
         // arrived), surface it as the floating bubble so the user keeps
         // seeing the reply even after collapsing the chat. Otherwise
@@ -153,11 +135,6 @@ extension OverlayView {
         self.floatingBubbleAutoDismissTask = nil
     }
 
-    func setChatPresentation(_ presentation: ChatPresentation) {
-        guard self.chatPresentation != presentation else { return }
-        self.chatPresentation = presentation
-    }
-
     func scheduleResizeWindow() {
         self.resizeTask?.cancel()
         self.resizeTask = Task { @MainActor in
@@ -167,15 +144,23 @@ extension OverlayView {
         }
     }
 
-    /// Bypass the 40ms debounce. Called on `isChatVisible` transitions so the
-    /// NSPanel reaches its expanded floor BEFORE SwiftUI starts inserting the
-    /// chat / composer sections — otherwise the new content is briefly drawn
-    /// inside the old collapsed frame and looks "stuck in a small square"
-    /// until the next debounced resize catches up.
-    func resizeWindowImmediate() {
+    func setChatVisible(_ visible: Bool) {
+        guard self.isChatVisible != visible else { return }
         self.resizeTask?.cancel()
         self.resizeTask = nil
-        self.resizeWindow()
+        if visible {
+            self.preflightExpandWindow()
+        } else {
+            // Shrink while the expanded avatar is still rendered. Because the
+            // avatar is trailing-aligned, it remains inside the new bottom-
+            // right frame instead of disappearing for a render pass.
+            OverlayWindowManager.shared.resize(
+                width: WindowSizes.widthCollapsed,
+                height: WindowSizes.heightCollapsed
+            )
+        }
+        self.isChatVisible = visible
+        self.scheduleResizeWindow()
     }
 
     func resizeWindow() {

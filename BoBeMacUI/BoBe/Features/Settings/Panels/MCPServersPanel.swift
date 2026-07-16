@@ -9,15 +9,10 @@ struct MCPServersPanel: View {
     @State private var status: String?
     @State private var error: String?
     @State private var lastValidSecretMap: [String: [String]]?
-    @State private var expertMode = ExpertMode.shared
-    @State private var store = SettingsStore.shared
+    @Environment(ExpertMode.self) private var expertMode
+    @Environment(SettingsStore.self) private var store
     @State private var restartBannerDismissed = false
     @Environment(\.theme) private var theme
-
-    /// Daemon claims hot-apply but the MCP map is captured at boot — force a
-    /// restart banner locally so users know the toggle takes effect on the
-    /// next launch, not mid-session.
-    private static let deferToRestartFields: Set = ["mcp_enabled"]
 
     private var visibleRestartFields: Set<String> {
         self.restartBannerDismissed ? [] : self.store.restartFields
@@ -30,12 +25,8 @@ struct MCPServersPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text(L10n.tr("settings.mcp.title"))
-                    .font(.title2.bold())
-                    .foregroundStyle(self.theme.colors.text)
-
                 Text(L10n.tr("settings.mcp.description"))
-                    .font(.system(size: 12))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
 
                 if !self.visibleRestartFields.isEmpty {
@@ -61,7 +52,7 @@ struct MCPServersPanel: View {
 
                 if !self.expertMode.isEnabled {
                     Text(L10n.tr("settings.mcp.novice.lede"))
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
                         .padding(.bottom, 4)
                 }
@@ -123,14 +114,14 @@ struct MCPServersPanel: View {
 
                     if let status {
                         Text(status)
-                            .font(.system(size: 12))
-                            .foregroundStyle(self.theme.colors.secondary)
+                            .bobeTextStyle(.helper)
+                            .foregroundStyle(self.theme.colors.success)
                     }
 
                     if let error {
                         Text(error)
-                            .font(.system(size: 12))
-                            .foregroundStyle(self.theme.colors.primary)
+                            .bobeTextStyle(.helper)
+                            .foregroundStyle(self.theme.colors.error)
                     }
                 } else {
                     self.noviceEditorHidden
@@ -159,16 +150,15 @@ struct MCPServersPanel: View {
             label: L10n.tr("settings.mcp.enable"),
             description: L10n.tr("settings.mcp.enable.description")
         ) {
-            BobeToggle(isOn: self.mcpEnabledBinding)
+            BobeToggle(
+                isOn: self.mcpEnabledBinding,
+                accessibilityLabel: L10n.tr("settings.mcp.enable")
+            )
         }
     }
 
     private var mcpEnabledBinding: Binding<Bool> {
-        // Routes through SettingsStore so the toggle change syncs with other
-        // panels and the restart-required banner state. The store also
-        // tracks `mcp_enabled` in its `deferToRestartFields` so the banner
-        // fires immediately on touch.
-        self.store.binding(\.mcpEnabled, fallback: false, touched: "mcp_enabled")
+        self.store.binding(\.mcpEnabled, fallback: false)
     }
 
     /// Shown when Expert mode is off. Explains that there's a powerful
@@ -181,9 +171,13 @@ struct MCPServersPanel: View {
                     .font(.system(size: 12))
                     .foregroundStyle(self.theme.colors.textMuted)
                 Text(L10n.tr("settings.mcp.novice.editor_hidden"))
-                    .font(.system(size: 12))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
+            Button(L10n.tr("settings.window.search.enable_expert")) {
+                self.expertMode.setEnabled(true)
+            }
+            .bobeButton(.secondary, size: .small)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -207,12 +201,12 @@ struct MCPServersPanel: View {
                 HStack(spacing: 8) {
                     BobeSpinner(size: 12)
                     Text(L10n.tr("settings.mcp.loading"))
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
                 }
             } else if self.servers.isEmpty {
                 Text(L10n.tr("settings.mcp.discovery.empty"))
-                    .font(.system(size: 12))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
             } else {
                 LazyVStack(alignment: .leading, spacing: 6) {
@@ -220,14 +214,15 @@ struct MCPServersPanel: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 8) {
                                 Text(server.name)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .bobeTextStyle(.rowMeta)
+                                    .fontWeight(.semibold)
                                 Text(
                                     server.enabled
                                         ? L10n.tr("settings.mcp.discovery.status.enabled")
                                         : L10n.tr("settings.mcp.discovery.status.disabled")
                                 )
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(server.enabled ? self.theme.colors.secondary : self.theme.colors.textMuted)
+                                .foregroundStyle(server.enabled ? self.theme.colors.success : self.theme.colors.textMuted)
                                 self.statusBadge(for: server)
                             }
                             .foregroundStyle(self.theme.colors.text)
@@ -241,7 +236,7 @@ struct MCPServersPanel: View {
                             if let serverError = server.error, !serverError.isEmpty {
                                 Text(serverError)
                                     .font(.system(size: 10))
-                                    .foregroundStyle(self.theme.colors.primary)
+                                    .foregroundStyle(self.theme.colors.error)
                             }
                         }
                         .padding(8)
@@ -268,17 +263,17 @@ struct MCPServersPanel: View {
             case McpServerStatusWire.connected:
                 self.badge(
                     text: L10n.tr("settings.mcp.runtime.connected"),
-                    color: self.theme.colors.secondary
+                    color: self.theme.colors.success
                 )
             case McpServerStatusWire.failed:
                 self.badge(
                     text: L10n.tr("settings.mcp.runtime.failed"),
-                    color: self.theme.colors.primary
+                    color: self.theme.colors.error
                 )
             case McpServerStatusWire.needsAuth:
                 self.badge(
                     text: L10n.tr("settings.mcp.runtime.needs_auth"),
-                    color: self.theme.colors.tertiary
+                    color: self.theme.colors.warning
                 )
             case McpServerStatusWire.pending:
                 self.badge(

@@ -26,6 +26,10 @@ struct BobeMenuBarScene: Scene {
     /// rest of the context doesn't touch this scene's body.
     @State private var store = BobeStore.shared
 
+    init(store: BobeStore = .shared) {
+        self._store = State(initialValue: store)
+    }
+
     var body: some Scene {
         MenuBarExtra(content: { self.menuContent }, label: { self.barIcon })
             // `.menu` style: native NSMenu chrome, every shortcut wired
@@ -109,19 +113,26 @@ struct BobeMenuBarScene: Scene {
 
         Divider()
 
-        Button(self.overlayToggleLabel) {
-            OverlayWindowManager.shared.toggle()
-        }
-        .keyboardShortcut("b", modifiers: [.command, .shift])
+        if SetupWindowManager.shared.isOnboardingCompleted {
+            Button(self.overlayToggleLabel) {
+                OverlayWindowManager.shared.toggle()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
 
-        Button(self.captureToggleLabel) {
-            Task { _ = await self.store.toggleCapture() }
-        }
+            Button(self.captureToggleLabel) {
+                Task { _ = await self.store.toggleCapture() }
+            }
 
-        Button(L10n.tr("tray.settings")) {
-            SettingsWindowManager.shared.show()
+            Button(L10n.tr("tray.settings")) {
+                SettingsWindowManager.shared.show()
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        } else {
+            Button(L10n.tr("app.setup_incomplete.retry")) {
+                SetupWindowManager.shared.show()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
         }
-        .keyboardShortcut(",", modifiers: .command)
 
         // Nested submenu — locale picker. `Menu` works correctly in
         // `.menu` style. The localized labels follow the live override

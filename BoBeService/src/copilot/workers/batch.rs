@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::types::MessageOptions;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::copilot::error::WorkerError;
 use crate::copilot::types::{JobInput, JobOutput, WorkerClass};
@@ -13,18 +13,25 @@ pub(crate) struct BatchWorker {
     class: WorkerClass,
     session: Arc<Session>,
     submit_lock: Mutex<()>,
+    lifecycle: Arc<RwLock<()>>,
 }
 
 impl BatchWorker {
-    pub(crate) fn new(class: WorkerClass, session: Arc<Session>) -> Arc<Self> {
+    pub(crate) fn new(
+        class: WorkerClass,
+        session: Arc<Session>,
+        lifecycle: Arc<RwLock<()>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             class,
             session,
             submit_lock: Mutex::new(()),
+            lifecycle,
         })
     }
 
     pub(crate) async fn submit(&self, job: JobInput) -> Result<JobOutput, WorkerError> {
+        let _lifecycle = self.lifecycle.read().await;
         let _guard = self.submit_lock.lock().await;
 
         let prompt = format!(
@@ -70,8 +77,17 @@ impl BatchWorker {
         })
     }
 
-    pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
+    #[allow(
+        deprecated,
+        reason = "privacy purge must erase SDK session state, not merely disconnect"
+    )]
+    pub(crate) async fn destroy(&self) -> Result<(), WorkerError> {
         self.session.destroy().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
+        self.session.disconnect().await?;
         Ok(())
     }
 }

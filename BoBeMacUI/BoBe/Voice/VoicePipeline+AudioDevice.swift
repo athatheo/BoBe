@@ -24,9 +24,9 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "VoicePipeline.
 ///
 /// **Approach.** Two CoreAudio property listeners — one for input, one
 /// for output. Both debounce (HAL fires 2-3x per plug/unplug) and route
-/// to the same rebuild path. Output rebuilds are DEFERRED while TTS is
-/// audibly playing, because tearing down the engine mid-utterance would
-/// cut audio. Deferred rebuilds drain at the next `.listening` transition.
+/// to the same rebuild path. Rebuilds are deferred while a response is active,
+/// because tearing down the engine would cut playback and strand client-TTS
+/// completion acknowledgements.
 @MainActor
 extension VoicePipeline {
     // MARK: - Registration
@@ -50,8 +50,7 @@ extension VoicePipeline {
         )
     }
 
-    /// Distinguishes input vs output in log + behaviour. Input rebuilds
-    /// fire immediately. Output rebuilds defer through active TTS.
+    /// Distinguishes input vs output in logs.
     private enum DeviceKind: String {
         case input, output
     }
@@ -68,16 +67,21 @@ extension VoicePipeline {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        // Listener runs on the global concurrent queue per Apple's docs —
-        // we explicitly hop to MainActor for state mutation. The block is
-        // `@Sendable` to satisfy strict-concurrency checks; it captures
-        // only `weak self` (the pipeline singleton).
+        // Listener runs on the global concurrent queue per Apple's docs.
+        // The block MUST be `@Sendable`: it's declared inside a `@MainActor`
+        // extension, so without the annotation it inherits MainActor
+        // isolation and Swift's runtime inserts an executor assertion at the
+        // block's entry. CoreAudio invokes the block on its OWN queue, so
+        // that assertion trips (`dispatch_assert_queue` fail → EXC_BREAKPOINT)
+        // on every default-device change. `@Sendable` keeps the block
+        // nonisolated; we hop to MainActor explicitly for the state mutation.
+        // It captures only `weak self` (the pipeline singleton) and `kind`.
         let status = AudioObjectAddPropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
             &address,
             DispatchQueue.global(qos: .userInitiated)
-        ) { [weak self] _, _ in
-            Task { @MainActor [weak self] in
+        ) { @Sendable [weak self] _, _ in
+            Task { @MainActor in
                 self?.handleDefaultDeviceChange(kind: kind)
             }
         }
@@ -98,41 +102,48 @@ extension VoicePipeline {
     /// device transitions — shorter and you race the format-change phase;
     /// longer and the user notices a gap mid-utterance.
     ///
-    /// Output changes during active TTS are deferred via the
-    /// `pendingOutputDeviceRebuild` flag — the next `.listening` phase
-    /// drains them. Input changes always rebuild immediately because the
-    /// input path is silent until the next user utterance regardless.
     private func handleDefaultDeviceChange(kind: DeviceKind) {
         logger.info("voice: default-\(kind.rawValue, privacy: .public) device changed")
-        if kind == .output, self.audioStillPlaying() {
-            // Defer — tearing down the engine now would cut TTS mid-word.
-            logger.info("voice: deferring output-device rebuild — audio still playing")
-            self.pendingOutputDeviceRebuild = true
-            return
+        if self.audioRebuildMustWait {
+            logger.info(
+                "voice: deferring \(kind.rawValue, privacy: .public)-device rebuild — response active"
+            )
+            self.pendingAudioDeviceRebuild = true
         }
         self.scheduleDeviceChangeRebuild()
     }
 
-    /// Called by `applyPhase(.listening)` (in VoicePipeline.swift) when a
-    /// turn finishes. If an output-device change arrived during TTS, we
-    /// drain it now that the player is idle.
-    func drainPendingOutputDeviceRebuild() {
-        guard self.pendingOutputDeviceRebuild else { return }
-        self.pendingOutputDeviceRebuild = false
-        logger.info("voice: draining deferred output-device rebuild")
+    func drainPendingAudioDeviceRebuild() {
+        guard self.pendingAudioDeviceRebuild else { return }
+        logger.info("voice: response ended; reevaluating deferred audio-device rebuild")
         self.scheduleDeviceChangeRebuild()
     }
 
-    /// Common scheduling path. Cancels prior pending rebuilds and starts
-    /// the 250 ms debounce.
+    /// Common scheduling path. The debounce coalesces HAL notifications; the
+    /// loop then waits until neither the wire state nor the player owns audio.
     private func scheduleDeviceChangeRebuild() {
         self.deviceChangeReconfigureTask?.cancel()
         self.deviceChangeReconfigureTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard let self, !Task.isCancelled else { return }
+            while self.audioRebuildMustWait, !Task.isCancelled {
+                self.pendingAudioDeviceRebuild = true
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard !Task.isCancelled else { return }
+            self.pendingAudioDeviceRebuild = false
             self.rebuildAudioEngineForDeviceChange()
             self.deviceChangeReconfigureTask = nil
         }
+    }
+
+    private var audioRebuildMustWait: Bool {
+        self.state == .capturing
+            || self.state == .thinking
+            || self.state == .speaking
+            || self.state == .cancelling
+            || self.clientTtsActive
+            || self.audioStillPlaying()
     }
 
     /// Tear down + reconfigure the audio path in place. Does NOT touch

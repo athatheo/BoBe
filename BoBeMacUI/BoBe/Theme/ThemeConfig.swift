@@ -1,6 +1,8 @@
+import AppKit
 import SwiftUI
 
 enum ThemeId: String, CaseIterable, Sendable {
+    case system
     case bauhaus
     case bauhausPastel = "bauhaus-pastel"
     case cute
@@ -24,6 +26,10 @@ struct ThemeColors: Sendable {
     let avatarIris: Color
     let avatarEyeOutline: Color
     let avatarMouth: Color
+    let success: Color
+    let warning: Color
+    let error: Color
+    let destructive: Color
 }
 
 struct ThemeConfig: Identifiable, Sendable {
@@ -32,105 +38,129 @@ struct ThemeConfig: Identifiable, Sendable {
     }
 
     let themeId: ThemeId
-    let name: String
-    let description: String
+    let nameKey: String
+    let descriptionKey: String
     let isDark: Bool
     let colors: ThemeColors
+
+    var name: String {
+        L10n.tr(self.nameKey)
+    }
+
+    var description: String {
+        L10n.tr(self.descriptionKey)
+    }
 }
 
 let allThemes: [ThemeConfig] = [
     ThemeConfig(
         themeId: .bauhaus,
-        name: "Terracotta Dreams",
-        description: "Warm earthy tones",
+        nameKey: "theme.bauhaus.name",
+        descriptionKey: "theme.bauhaus.description",
         isDark: false,
         colors: ThemeColors(
-            primary: Color(hex: "C67B5C"),
-            secondary: Color(hex: "8B9A7D"),
-            tertiary: Color(hex: "A69080"),
+            primary: Color(hex: "94472E"),
+            secondary: Color(hex: "526A48"),
+            tertiary: Color(hex: "70584C"),
             background: Color(hex: "FAF7F2"),
-            surface: Color(hex: "FAF7F2"),
-            border: Color(hex: "E8DCC4"),
+            surface: Color(hex: "FFFDFC"),
+            border: Color(hex: "D8C9B4"),
             text: Color(hex: "3A3A3A"),
-            textMuted: Color(hex: "6B6B6B"),
+            textMuted: Color(hex: "62605D"),
             avatarFaceLight: Color(hex: "E8DCC4"),
             avatarFaceDark: Color(hex: "B8A99A"),
             avatarRing: Color(hex: "FAF7F2"),
             avatarIris: Color(hex: "A69080"),
             avatarEyeOutline: .white,
-            avatarMouth: Color(hex: "C67B5C")
+            avatarMouth: Color(hex: "94472E"),
+            success: Color(hex: "2F6F48"),
+            warning: Color(hex: "805A00"),
+            error: Color(hex: "B3261E"),
+            destructive: Color(hex: "B3261E")
         )
     ),
     ThemeConfig(
         themeId: .bauhausPastel,
-        name: "Soft Clay",
-        description: "Gentle muted warmth",
+        nameKey: "theme.bauhaus_pastel.name",
+        descriptionKey: "theme.bauhaus_pastel.description",
         isDark: false,
         colors: ThemeColors(
-            primary: Color(hex: "D4A59A"),
-            secondary: Color(hex: "A8B89F"),
-            tertiary: Color(hex: "C4B5A9"),
+            primary: Color(hex: "865046"),
+            secondary: Color(hex: "53694D"),
+            tertiary: Color(hex: "6B5C52"),
             background: Color(hex: "FDFBF8"),
-            surface: Color(hex: "FDFBF8"),
-            border: Color(hex: "EDE5D8"),
+            surface: Color(hex: "FFFFFF"),
+            border: Color(hex: "DED3C4"),
             text: Color(hex: "4A4A4A"),
-            textMuted: Color(hex: "7A7A7A"),
+            textMuted: Color(hex: "66625F"),
             avatarFaceLight: Color(hex: "EDE5D8"),
             avatarFaceDark: Color(hex: "C9BAA9"),
             avatarRing: Color(hex: "FDFBF8"),
             avatarIris: Color(hex: "B8A99A"),
             avatarEyeOutline: .white,
-            avatarMouth: Color(hex: "D4A59A")
+            avatarMouth: Color(hex: "865046"),
+            success: Color(hex: "2F6F48"),
+            warning: Color(hex: "805A00"),
+            error: Color(hex: "B3261E"),
+            destructive: Color(hex: "B3261E")
         )
     ),
     ThemeConfig(
         themeId: .cute,
-        name: "Bubblegum",
-        description: "Playful pink vibes",
+        nameKey: "theme.cute.name",
+        descriptionKey: "theme.cute.description",
         isDark: false,
         colors: ThemeColors(
-            primary: Color(hex: "E8879C"),
-            secondary: Color(hex: "7DBDA8"),
-            tertiary: Color(hex: "B8A4D4"),
+            primary: Color(hex: "A33E5A"),
+            secondary: Color(hex: "3D715F"),
+            tertiary: Color(hex: "66518A"),
             background: Color(hex: "FFF8FA"),
-            surface: Color(hex: "FFF8FA"),
-            border: Color(hex: "F5E0E5"),
+            surface: Color(hex: "FFFFFF"),
+            border: Color(hex: "E9CFD7"),
             text: Color(hex: "3D3D3D"),
-            textMuted: Color(hex: "6D6D6D"),
+            textMuted: Color(hex: "646062"),
             avatarFaceLight: Color(hex: "FFD4DC"),
             avatarFaceDark: Color(hex: "FFBAC8"),
             avatarRing: Color(hex: "FFF8FA"),
             avatarIris: Color(hex: "E8879C"),
             avatarEyeOutline: .white,
-            avatarMouth: Color(hex: "E8879C")
+            avatarMouth: Color(hex: "A33E5A"),
+            success: Color(hex: "2F6F48"),
+            warning: Color(hex: "805A00"),
+            error: Color(hex: "B3261E"),
+            destructive: Color(hex: "B3261E")
         )
     ),
     ThemeConfig(
         themeId: .cutePastel,
-        name: "Cotton Candy",
-        description: "Dreamy soft pastels",
+        nameKey: "theme.cute_pastel.name",
+        descriptionKey: "theme.cute_pastel.description",
         isDark: false,
         colors: ThemeColors(
-            primary: Color(hex: "F2A6B4"),
-            secondary: Color(hex: "A8D5C2"),
-            tertiary: Color(hex: "D4C4E8"),
+            primary: Color(hex: "963D56"),
+            secondary: Color(hex: "426B5B"),
+            tertiary: Color(hex: "62527B"),
             background: Color(hex: "FFFCFD"),
-            surface: Color(hex: "FFFCFD"),
-            border: Color(hex: "F8E8EC"),
+            surface: Color(hex: "FFFFFF"),
+            border: Color(hex: "EBD8DE"),
             text: Color(hex: "4D4D4D"),
-            textMuted: Color(hex: "7D7D7D"),
+            textMuted: Color(hex: "686466"),
             avatarFaceLight: Color(hex: "D8C4E8"),
             avatarFaceDark: Color(hex: "C4B0D8"),
             avatarRing: Color(hex: "FFFCFD"),
             avatarIris: Color(hex: "B8A4D4"),
             avatarEyeOutline: .white,
-            avatarMouth: Color(hex: "9A7AAA")
+            avatarMouth: Color(hex: "765988"),
+            success: Color(hex: "2F6F48"),
+            warning: Color(hex: "805A00"),
+            error: Color(hex: "B3261E"),
+            destructive: Color(hex: "B3261E")
         )
     ),
     ThemeConfig(
         themeId: .bauhausDark,
-        name: "Midnight Clay",
-        description: "Warm tones in the dark",
+        nameKey: "theme.bauhaus_dark.name",
+        descriptionKey: "theme.bauhaus_dark.description",
         isDark: true,
         colors: ThemeColors(
             primary: Color(hex: "D4926F"),
@@ -146,13 +176,17 @@ let allThemes: [ThemeConfig] = [
             avatarRing: Color(hex: "2A2A2A"),
             avatarIris: Color(hex: "3A3A3A"),
             avatarEyeOutline: .white,
-            avatarMouth: Color(hex: "3A3A3A")
+            avatarMouth: Color(hex: "3A3A3A"),
+            success: Color(hex: "82C995"),
+            warning: Color(hex: "E4B95A"),
+            error: Color(hex: "FF8A80"),
+            destructive: Color(hex: "FF8A80")
         )
     ),
     ThemeConfig(
         themeId: .cuteDark,
-        name: "Twilight Rose",
-        description: "Soft pink in the dark",
+        nameKey: "theme.cute_dark.name",
+        descriptionKey: "theme.cute_dark.description",
         isDark: true,
         colors: ThemeColors(
             primary: Color(hex: "F2A0B0"),
@@ -168,13 +202,34 @@ let allThemes: [ThemeConfig] = [
             avatarRing: Color(hex: "252528"),
             avatarIris: Color(hex: "3A3A3A"),
             avatarEyeOutline: .white,
-            avatarMouth: Color(hex: "8A4050")
+            avatarMouth: Color(hex: "8A4050"),
+            success: Color(hex: "82C995"),
+            warning: Color(hex: "E4B95A"),
+            error: Color(hex: "FF8A80"),
+            destructive: Color(hex: "FF8A80")
         )
     ),
 ]
 
+@MainActor
 func themeById(_ id: ThemeId) -> ThemeConfig {
-    allThemes.first { $0.themeId == id } ?? allThemes[0]
+    if id == .system {
+        return systemTheme()
+    }
+    return allThemes.first { $0.themeId == id } ?? allThemes[0]
+}
+
+@MainActor
+func systemTheme() -> ThemeConfig {
+    let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    let base = themeById(isDark ? .bauhausDark : .bauhaus)
+    return ThemeConfig(
+        themeId: .system,
+        nameKey: "theme.system.name",
+        descriptionKey: "theme.system.description",
+        isDark: isDark,
+        colors: base.colors
+    )
 }
 
 extension EnvironmentValues {

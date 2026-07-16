@@ -55,26 +55,33 @@ struct MessageInput: View {
                     }
 
                     HStack(alignment: .bottom, spacing: 8) {
-                        TextField(
-                            "",
-                            text: self.$text,
-                            prompt: Text(self.rotatingPlaceholder)
-                                .foregroundStyle(self.placeholderColor),
-                            axis: .vertical
-                        )
-                        .padding(EdgeInsets(top: 0, leading: 2, bottom: 6, trailing: 0))
-                        .textFieldStyle(.plain)
-                        .bobeTextStyle(.inputField)
-                        .lineSpacing(2)
-                        .foregroundStyle(self.inputTextColor)
-                        .tint(self.theme.colors.primary)
-                        .lineLimit(1 ... 4)
-                        .focused(self.$isFocused)
-                        .onSubmit { self.handleSubmit() }
-                        .onKeyPress(.escape) {
-                            self.onClose()
-                            return .handled
+                        ZStack(alignment: .leading) {
+                            if self.text.isEmpty {
+                                Text(self.rotatingPlaceholder)
+                                    .accessibilityHidden(true)
+                                    .bobeTextStyle(.inputField)
+                                    .foregroundStyle(self.placeholderColor)
+                                    .allowsHitTesting(false)
+                            }
+
+                            TextField("", text: self.$text, axis: .vertical)
+                                .accessibilityLabel(L10n.tr("overlay.input.composer.accessibility"))
+                                .accessibilityIdentifier("overlay.composer.field")
+                                .textFieldStyle(.plain)
+                                .bobeTextStyle(.inputField)
+                                .lineSpacing(2)
+                                .foregroundStyle(self.inputTextColor)
+                                .tint(self.theme.colors.primary)
+                                .lineLimit(1 ... 4)
+                                .focused(self.$isFocused)
+                                .onSubmit { self.handleSubmit() }
+                                .onKeyPress(.escape) {
+                                    self.onClose()
+                                    return .handled
+                                }
                         }
+                        .padding(EdgeInsets(top: 0, leading: 2, bottom: 6, trailing: 0))
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         if !self.isBusy {
                             Button(action: self.handleSubmit) {
@@ -92,6 +99,7 @@ struct MessageInput: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(L10n.tr("overlay.input.send.accessibility"))
+                            .accessibilityIdentifier("overlay.composer.send")
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
                             .disabled(!self.hasText)
@@ -118,6 +126,7 @@ struct MessageInput: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
+                        .accessibilityIdentifier("overlay.composer.close")
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                         .onHover { hovering in
@@ -167,8 +176,12 @@ struct MessageInput: View {
         self.hintTask = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(4))
-                if Task.isCancelled { break }
-                withAnimation(.easeInOut(duration: 0.25)) {
+                if Task.isCancelled {
+                    break
+                }
+                withAnimation(
+                    OverlayMotionRuntime.reduceMotion ? nil : .easeInOut(duration: 0.25)
+                ) {
                     self.hintIndex = (self.hintIndex + 1) % Self.hintKeys.count
                 }
             }

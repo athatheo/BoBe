@@ -75,8 +75,8 @@ struct BobeButtonStyle: ButtonStyle {
                 : self.hovered ? self.theme.colors.surface : .clear
         case .destructive:
             isPressed
-                ? self.theme.colors.primary.opacity(0.9)
-                : self.hovered ? self.theme.colors.primary.opacity(0.94) : self.theme.colors.primary
+                ? self.theme.colors.destructive.opacity(0.88)
+                : self.hovered ? self.theme.colors.destructive.opacity(0.94) : self.theme.colors.destructive
         }
     }
 
@@ -89,7 +89,7 @@ struct BobeButtonStyle: ButtonStyle {
         case .ghost:
             self.hovered ? self.theme.colors.border.opacity(0.7) : .clear
         case .destructive:
-            self.theme.colors.primary.opacity(isPressed ? 0.95 : 1)
+            self.theme.colors.destructive.opacity(isPressed ? 0.95 : 1)
         }
     }
 }

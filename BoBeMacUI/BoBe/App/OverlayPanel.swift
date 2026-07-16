@@ -3,10 +3,9 @@ import AppKit
 /// Passes clicks through transparent areas; only child views receive hits.
 final class PassthroughContentView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
-        let local = convert(point, from: superview)
-        guard bounds.contains(local) else { return nil }
+        guard self.bounds.contains(point) else { return nil }
         for child in subviews.reversed() {
-            let childPoint = child.convert(local, from: self)
+            let childPoint = child.convert(point, from: self)
             if let hit = child.hitTest(childPoint) {
                 return hit
             }
@@ -28,6 +27,8 @@ final class OverlayPanel: NSPanel {
         passthrough.autoresizingMask = [.width, .height]
         contentView = passthrough
 
+        title = "BoBe Overlay"
+        setAccessibilityLabel("BoBe Overlay")
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false

@@ -25,21 +25,22 @@ extension VoicePipeline {
                 guard self.task === currentTask else { return }
                 switch result {
                 case let .success(msg):
-                    self.handleIncoming(msg)
+                    await self.handleIncoming(msg)
                     self.receiveLoop()
                 case let .failure(err):
-                    self.lastError = "recv: \(err.localizedDescription)"
-                    logger.error("recv: \(err.localizedDescription, privacy: .public)")
-                    self.state = .failed(err.localizedDescription)
+                    let reason = err.localizedDescription
+                    self.lastError = "recv: \(reason)"
+                    logger.error("recv: \(reason, privacy: .public)")
+                    self.tearDownConnection(finalState: .failed(reason), sendAbort: false)
                 }
             }
         }
     }
 
-    private func handleIncoming(_ msg: URLSessionWebSocketTask.Message) {
+    private func handleIncoming(_ msg: URLSessionWebSocketTask.Message) async {
         switch msg {
         case let .string(text):
-            self.handleControlJson(text)
+            await self.handleControlJson(text)
         case let .data(bytes):
             self.handleAudioFrame(bytes)
         @unknown default:
@@ -47,7 +48,7 @@ extension VoicePipeline {
         }
     }
 
-    private func handleControlJson(_ text: String) {
+    private func handleControlJson(_ text: String) async {
         guard let data = text.data(using: .utf8) else { return }
         let decoded: ServerVoiceMessage
         do {
@@ -65,11 +66,17 @@ extension VoicePipeline {
             if !transcript.isEmpty {
                 BobeStore.shared.appendUserVoiceMessage(transcript)
             }
-        case .ttsEnd:
-            // Authoritative end-of-turn — daemon will follow with state(Listening).
+        case let .ttsEnd(turnId):
             self.partialTranscript = ""
+            await self.finishClientTtsTurn(turnId: turnId)
+        case let .ttsText(turnId, sequence, text):
+            await self.enqueueClientTts(turnId: turnId, sequence: sequence, text: text)
         case let .truncate(_, keepMs):
-            self.truncatePlayback(keepMs: keepMs)
+            if self.clientTtsActive {
+                self.cancelClientTtsTurn()
+            } else {
+                self.truncatePlayback(keepMs: keepMs)
+            }
         case let .error(code, message):
             self.lastError = "\(code): \(message)"
             logger.error("server: \(code, privacy: .public): \(message, privacy: .public)")
@@ -87,17 +94,24 @@ extension VoicePipeline {
     private func applyPhase(_ phase: VoicePhaseWire) {
         switch phase {
         case .idle:
-            if self.state != .idle { self.state = .idle }
+            if self.state != .idle {
+                self.state = .idle
+            }
             self.stopTtsLevelDecay()
         case .listening:
-            if self.state != .listening { self.state = .listening }
+            if self.clientTtsActive {
+                self.pendingServerListening = true
+                return
+            }
+            if self.state != .listening {
+                self.state = .listening
+            }
             self.stopTtsLevelDecay()
-            // Audio output is idle now — drain any output-device rebuild
-            // we deferred while TTS was playing. See
-            // `VoicePipeline+AudioDevice.drainPendingOutputDeviceRebuild`.
-            self.drainPendingOutputDeviceRebuild()
+            self.drainPendingAudioDeviceRebuild()
         case .thinking:
-            if self.state != .thinking { self.state = .thinking }
+            if self.state != .thinking {
+                self.state = .thinking
+            }
             self.stopTtsLevelDecay()
         case .speaking:
             // New turn — reset the per-turn schedule bookkeeping. Capture
@@ -153,8 +167,11 @@ extension VoicePipeline {
         do {
             try await task.send(.string(text))
         } catch {
-            self.lastError = "ws send text: \(error.localizedDescription)"
-            logger.error("ws send text: \(error.localizedDescription, privacy: .public)")
+            let reason = error.localizedDescription
+            self.lastError = "ws send text: \(reason)"
+            logger.error("ws send text: \(reason, privacy: .public)")
+            guard self.task === task else { return }
+            self.tearDownConnection(finalState: .failed(reason), sendAbort: false)
         }
     }
 }

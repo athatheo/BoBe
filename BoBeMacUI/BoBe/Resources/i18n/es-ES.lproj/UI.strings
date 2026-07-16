@@ -33,6 +33,10 @@
 "overlay.connection.disconnected" = "Desconectado";
 "overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "Cerrar entrada del chat";
+"overlay.input.placeholder.hint.notice" = "¿Qué debería notar BoBe?";
+"overlay.input.placeholder.hint.summarize" = "Resume lo que hay en pantalla";
+"overlay.input.placeholder.hint.goal" = "Ayúdame a avanzar con un objetivo";
+"overlay.input.placeholder.hint.feelings" = "Estoy atascado";
 "overlay.input.send.accessibility" = "Enviar mensaje";
 "overlay.input.waiting_for_capturing" = "Espera a que BoBe termine de capturar.";
 "overlay.input.waiting_for_reconnecting" = "Espera a que BoBe termine de reconectarse.";
@@ -202,7 +206,7 @@
 "settings.user_profiles.title" = "Perfiles de usuario";
 "settings.user_profiles.toggle.enable_accessibility" = "Activar perfil";
 "settings.window.check_updates" = "Buscar actualizaciones...";
-"settings.window.overview.footer" = "Usa la barra lateral para explorar todos los ajustes. Todo se ejecuta localmente en tu Mac.";
+"settings.window.overview.footer" = "Tus recuerdos y ajustes permanecen en este Mac. Los motores en la nube solo reciben el contexto necesario para responder.";
 "settings.window.overview.title" = "Cómo personalizar BoBe";
 "settings.window.sidebar_title" = "AJUSTES DE BOBE";
 "settings.window.title" = "Ajustes de BoBe";
@@ -217,9 +221,9 @@
 "setup.engine.local.subtitle" = "Runs on your Mac. Nothing leaves your computer. Works best with 32 GB+ memory.";
 "setup.engine.local.title" = "Run AI on this Mac";
 "setup.engine.title" = "How should BoBe think?";
-"setup.permissions.body" = "BoBe glances at your screen periodically so it can offer relevant help. Screenshots stay on this Mac.";
+"setup.permissions.body" = "El contexto de pantalla es opcional. Con un motor en la nube, las capturas habilitadas pueden enviarse a GitHub Copilot para responder; con IA local, permanecen en este Mac.";
 "setup.permissions.grant" = "Grant access";
-"setup.permissions.open_settings" = "Open System Settings";
+"setup.permissions.open_settings" = "Abrir Ajustes del Sistema";
 "setup.permissions.skip" = "Skip — set up later";
 "setup.permissions.title" = "Screen Recording";
 "setup.welcome.continue" = "Let's get set up";
@@ -351,3 +355,20 @@
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";
 /* TODO translate */ "tray.status.accessibility" = "BoBe status";
+
+"settings.unsaved.title" = "Cambios sin guardar";
+"settings.unsaved.message" = "¿Guardar los cambios antes de salir de este editor?";
+
+"settings.voice.install.failed.tts" = "The speech model installation failed. Retry the installation.";
+"settings.voice.install.failed_format" = "Voice installation failed: %@";
+"settings.voice.uninstall.failed_format" = "Could not remove the voice model: %@";
+"setup.voice.daemon_unreachable" = "The BoBe service is not reachable. Start it and try again.";
+
+"setup.voice.stt_label.waiting" = "Speech recognition: waiting…";
+"setup.voice.stt_label.downloading_format" = "Speech recognition: downloading %d MB (%d%% of %@)…";
+"setup.voice.stt_label.ready" = "Speech recognition: ready";
+"setup.voice.stt_label.failed_format" = "Speech recognition: failed. %@";
+"settings.voice.language" = "Language";
+"settings.voice.language.description" = "Which language BoBe listens for. English is the most reliable; other languages are still maturing.";
+
+"overlay.input.composer.accessibility" = "Mensaje para BoBe";

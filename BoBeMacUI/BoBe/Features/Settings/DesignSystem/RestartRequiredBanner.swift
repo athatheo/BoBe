@@ -10,12 +10,13 @@ struct RestartRequiredBanner: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(self.theme.colors.tertiary)
+                .foregroundStyle(self.theme.colors.warning)
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(L10n.tr("settings.shared.restart_banner.message"))
-                    .font(.system(size: 12, weight: .medium))
+                    .bobeTextStyle(.helper)
+                    .fontWeight(.medium)
                     .foregroundStyle(self.theme.colors.text)
 
                 if !self.fields.isEmpty {

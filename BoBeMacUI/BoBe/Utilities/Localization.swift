@@ -11,13 +11,25 @@ enum L10n {
 
     static func tr(_ key: String, _ args: CVarArg...) -> String {
         let bundle = lock.withLock { $0 } ?? Bundle.appResources
-        let format = NSLocalizedString(
+        var format = NSLocalizedString(
             key,
             tableName: "UI",
             bundle: bundle,
             value: key,
             comment: ""
         )
+        if format == key,
+           bundle.bundleURL != Bundle.appResources.bundleURL,
+           let englishURL = Bundle.appResources.url(forResource: "en", withExtension: "lproj"),
+           let englishBundle = Bundle(url: englishURL) {
+            format = NSLocalizedString(
+                key,
+                tableName: "UI",
+                bundle: englishBundle,
+                value: key,
+                comment: ""
+            )
+        }
         guard !args.isEmpty else { return format }
         return String(format: format, locale: .current, arguments: args)
     }

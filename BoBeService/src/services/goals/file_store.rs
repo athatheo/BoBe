@@ -48,7 +48,7 @@ impl GoalFileStore {
             }
 
             match tokio::fs::read_to_string(&path).await {
-                Ok(body) => match parse(&body) {
+                Ok(body) => match parse_for_path(&path, &body) {
                     Ok(doc) => goals.push(doc),
                     Err(e) => {
                         warn!(
@@ -79,20 +79,24 @@ impl GoalFileStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(AppError::Io(e)),
         };
-        match parse(&body) {
-            Ok(doc) => Ok(Some(doc)),
-            Err(e) => {
-                warn!(
-                    path = %path.display(),
-                    err = %e,
-                    "goal_file_store.parse_failed"
-                );
-                Err(AppError::Internal(format!(
-                    "could not parse goal file {}: {e}",
-                    path.display()
-                )))
-            }
-        }
+        parse_checked(&path, &body, id).map(Some)
+    }
+
+    pub(crate) async fn update<F>(&self, id: GoalId, mutate: F) -> Result<Option<GoalDoc>, AppError>
+    where
+        F: FnOnce(GoalDoc) -> GoalDoc,
+    {
+        let _guard = self.write_lock.lock().await;
+        let path = self.path_for(id);
+        let body = match tokio::fs::read_to_string(&path).await {
+            Ok(body) => body,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(AppError::Io(error)),
+        };
+        let doc = parse_checked(&path, &body, id)?;
+        let updated = mutate(doc);
+        write_doc(&self.dir, &path, &updated).await?;
+        Ok(Some(updated))
     }
 
     pub(crate) async fn save(&self, doc: &GoalDoc) -> Result<(), AppError> {
@@ -100,24 +104,89 @@ impl GoalFileStore {
         tokio::fs::create_dir_all(&self.dir).await?;
 
         let path = self.path_for(doc.id);
-        let body = to_md(doc);
-        let tmp = self.dir.join(format!(".{}.tmp", doc.id));
-        tokio::fs::write(&tmp, body).await?;
-        tokio::fs::rename(&tmp, &path).await?;
+        write_doc(&self.dir, &path, doc).await?;
         debug!(goal_id = %doc.id, "goal_file_store.saved");
         Ok(())
+    }
+
+    pub(crate) async fn delete_all(&self) -> Result<usize, AppError> {
+        let _guard = self.write_lock.lock().await;
+        let mut removed = 0;
+        let mut entries = match tokio::fs::read_dir(&self.dir).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(error) => return Err(AppError::Io(error)),
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            if entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "md")
+                && crate::util::durable_fs::durable_remove_file(&entry.path()).await?
+            {
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 
     /// Idempotent: returns `Ok(false)` when the file is already gone.
     pub(crate) async fn delete(&self, id: GoalId) -> Result<bool, AppError> {
         let _guard = self.write_lock.lock().await;
         let path = self.path_for(id);
-        match tokio::fs::remove_file(&path).await {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(AppError::Io(e)),
-        }
+        crate::util::durable_fs::durable_remove_file(&path).await
     }
+}
+
+fn parse_for_path(path: &std::path::Path, body: &str) -> Result<GoalDoc, AppError> {
+    let doc = parse(body).map_err(|error| {
+        AppError::Internal(format!(
+            "could not parse goal file {}: {error}",
+            path.display()
+        ))
+    })?;
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| {
+            AppError::Internal(format!(
+                "goal file has invalid filename: {}",
+                path.display()
+            ))
+        })?;
+    let filename_id = stem.parse::<GoalId>().map_err(|error| {
+        AppError::Internal(format!("goal filename is not an ID ({stem}): {error}"))
+    })?;
+    if doc.id != filename_id {
+        return Err(AppError::Internal(format!(
+            "goal filename ID {filename_id} does not match frontmatter ID {}",
+            doc.id
+        )));
+    }
+    Ok(doc)
+}
+
+fn parse_checked(
+    path: &std::path::Path,
+    body: &str,
+    expected: GoalId,
+) -> Result<GoalDoc, AppError> {
+    let doc = parse_for_path(path, body)?;
+    if doc.id != expected {
+        return Err(AppError::Internal(format!(
+            "goal request ID {expected} does not match frontmatter ID {}",
+            doc.id
+        )));
+    }
+    Ok(doc)
+}
+
+async fn write_doc(
+    _dir: &std::path::Path,
+    path: &std::path::Path,
+    doc: &GoalDoc,
+) -> Result<(), AppError> {
+    crate::util::durable_fs::atomic_write(path, to_md(doc).as_bytes()).await
 }
 
 #[cfg(test)]

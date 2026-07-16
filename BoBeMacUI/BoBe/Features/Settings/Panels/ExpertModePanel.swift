@@ -5,17 +5,13 @@ import SwiftUI
 /// novice users see a calm Settings window by default.
 struct ExpertModePanel: View {
     @Environment(\.theme) private var theme
-    @State private var expert = ExpertMode.shared
+    @Environment(ExpertMode.self) private var expert
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text(L10n.tr("settings.expert.title"))
-                    .font(.title2.bold())
-                    .foregroundStyle(self.theme.colors.text)
-
                 Text(L10n.tr("settings.expert.description"))
-                    .font(.system(size: 13))
+                    .bobeTextStyle(.settingsBody)
                     .foregroundStyle(self.theme.colors.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -31,7 +27,7 @@ struct ExpertModePanel: View {
                         BobeToggle(isOn: Binding(
                             get: { self.expert.isEnabled },
                             set: { self.expert.setEnabled($0) }
-                        ))
+                        ), accessibilityLabel: L10n.tr("settings.expert.toggle"))
                     }
                 }
 
@@ -41,7 +37,7 @@ struct ExpertModePanel: View {
                     description: nil
                 ) {
                     Text(L10n.tr("settings.expert.section.what_changes.list"))
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(4)

@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Engine fields hot-swap via daemon `WorkerRegistry::reload()`; no restart banner.
 struct EnginePanel: View {
-    @State var store = SettingsStore.shared
+    @Environment(SettingsStore.self) var store
+    @Environment(ExpertMode.self) var expertMode
     @State var availableModels: [ModelInfo] = []
     @State var modelsHint: String?
     /// Non-blocking notice from the daemon — auth needed, plan empty,
@@ -15,7 +16,6 @@ struct EnginePanel: View {
     /// entry's "unconfigured" badge slightly differently so users know.
     @State var modelsAreFallback = false
     @State var showingSignInSheet = false
-    @State var expertMode = ExpertMode.shared
     /// Cancelled in `.onDisappear` so the Terminal-sign-in poller doesn't
     /// keep writing into `store.auth` after the user closes Settings. Prior
     /// version leaked an unstructured Task that polled for the full 5 min.
@@ -30,10 +30,6 @@ struct EnginePanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(L10n.tr("settings.engine.title"))
-                    .bobeTextStyle(.windowTitle)
-                    .foregroundStyle(self.theme.colors.text)
-
                 Text(L10n.tr("settings.engine.description"))
                     .bobeTextStyle(.settingsBody)
                     .foregroundStyle(self.theme.colors.textMuted)
@@ -137,7 +133,7 @@ struct EnginePanel: View {
                 if auth.isAuthenticated {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(self.theme.colors.secondary)
+                            .foregroundStyle(self.theme.colors.success)
                         Text(L10n.tr("settings.engine.auth.signed_in"))
                             .bobeTextStyle(.settingsBody)
                             .fontWeight(.medium)
@@ -152,7 +148,7 @@ struct EnginePanel: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
                             Image(systemName: "key.horizontal")
-                                .foregroundStyle(self.theme.colors.tertiary)
+                                .foregroundStyle(self.theme.colors.warning)
                             Text(L10n.tr("settings.engine.auth.signed_out"))
                                 .bobeTextStyle(.settingsBody)
                                 .fontWeight(.medium)
@@ -173,6 +169,10 @@ struct EnginePanel: View {
                         }
                     }
                 }
+            } else if let authError = self.store.authError {
+                Label(authError, systemImage: "exclamationmark.triangle.fill")
+                    .bobeTextStyle(.body)
+                    .foregroundStyle(self.theme.colors.error)
             } else {
                 HStack(spacing: 8) {
                     BobeSpinner(size: 12)
@@ -227,7 +227,7 @@ struct EnginePanel: View {
                 if let hint = self.modelsHint {
                     HStack(spacing: 6) {
                         Image(systemName: "info.circle")
-                            .foregroundStyle(self.theme.colors.tertiary)
+                            .foregroundStyle(self.theme.colors.warning)
                         Text(hint)
                             .bobeTextStyle(.helper)
                             .foregroundStyle(self.theme.colors.textMuted)
@@ -384,7 +384,10 @@ struct EnginePanel: View {
                     ? L10n.tr("settings.engine.privacy.cloud.toggle.description")
                     : L10n.tr("settings.engine.privacy.local.toggle.description")
             ) {
-                BobeToggle(isOn: self.store.binding(\.providerOffline, fallback: true))
+                BobeToggle(
+                    isOn: self.store.binding(\.providerOffline, fallback: true),
+                    accessibilityLabel: L10n.tr("settings.engine.privacy.toggle")
+                )
             }
         }
     }

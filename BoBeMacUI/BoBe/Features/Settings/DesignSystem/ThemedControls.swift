@@ -109,7 +109,10 @@ struct BobeLinearProgressBar: View {
             }
         }
         .frame(height: self.height)
-        .animation(.easeInOut(duration: 0.25), value: self.clampedProgress)
+        .animation(
+            OverlayMotionRuntime.reduceMotion ? nil : .easeInOut(duration: 0.25),
+            value: self.clampedProgress
+        )
     }
 
     private var fillStyle: AnyShapeStyle {

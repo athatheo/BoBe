@@ -56,6 +56,22 @@ impl CheckinScheduler {
         parsed
     }
 
+    pub(crate) fn reconfigure(
+        &mut self,
+        times: &[String],
+        interval_minutes: Option<u64>,
+        jitter_minutes: u32,
+        enabled: bool,
+    ) {
+        self.times = Self::parse_times(times);
+        self.interval_minutes = interval_minutes;
+        self.jitter_minutes = jitter_minutes as i32;
+        self.enabled = enabled;
+        self.next_checkin = None;
+        self.next_interval_checkin = None;
+        info!(enabled, "checkin_scheduler.reconfigured");
+    }
+
     pub(crate) fn should_checkin(&mut self) -> bool {
         if !self.enabled {
             return false;

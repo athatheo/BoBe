@@ -88,6 +88,7 @@ struct SettingsWindow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedCategory: SettingsCategory?
     @State private var searchQuery = ""
+    @State private var editCoordinator = SettingsEditCoordinator.shared
     @State private var expertMode = ExpertMode.shared
     private let themeStore = ThemeStore.shared
     private let store = BobeStore.shared
@@ -124,6 +125,11 @@ struct SettingsWindow: View {
             .background(self.theme.colors.background)
         }
         .navigationSplitViewStyle(.balanced)
+        .environment(SettingsStore.shared)
+        .environment(ExpertMode.shared)
+        .environment(ThemeStore.shared)
+        .environment(VoicePipeline.shared)
+        .environment(VoiceTtsPreference.shared)
         .environment(\.theme, self.theme)
         .preferredColorScheme(self.theme.isDark ? .dark : .light)
         .background(self.theme.colors.background)
@@ -133,7 +139,23 @@ struct SettingsWindow: View {
         .onChange(of: self.reduceMotion, initial: true) { _, new in
             OverlayMotionRuntime.reduceMotion = new
         }
-        .id(self.store.localeOverride)
+        .confirmationDialog(
+            L10n.tr("settings.unsaved.title"),
+            isPresented: self.$editCoordinator.showsConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.tr("settings.shared.action.save")) {
+                Task { await self.editCoordinator.saveAndContinue() }
+            }
+            Button(L10n.tr("settings.shared.action.discard"), role: .destructive) {
+                self.editCoordinator.discardAndContinue()
+            }
+            Button(L10n.tr("settings.editor.action.cancel"), role: .cancel) {
+                self.editCoordinator.cancelTransition()
+            }
+        } message: {
+            Text(L10n.tr("settings.unsaved.message"))
+        }
     }
 
     private var settingsSidebar: some View {
@@ -197,7 +219,7 @@ struct SettingsWindow: View {
                     if !visible.isEmpty {
                         Section {
                             ForEach(visible) { category in
-                                Button { self.selectedCategory = category } label: {
+                                Button { self.requestCategory(category) } label: {
                                     self.sidebarRow(for: category)
                                 }
                                 .buttonStyle(.plain)
@@ -330,11 +352,15 @@ struct SettingsWindow: View {
         }
     }
 
+    private func requestCategory(_ category: SettingsCategory) {
+        self.editCoordinator.requestTransition { self.selectedCategory = category }
+    }
+
     @ViewBuilder
     private var settingsContent: some View {
         switch self.selectedCategory {
         case nil:
-            SettingsOverview(onNavigate: { self.selectedCategory = $0 })
+            SettingsOverview(onNavigate: self.requestCategory)
         case .souls:
             SoulsEditor()
         case .goals:

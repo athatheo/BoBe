@@ -17,9 +17,13 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
             // Re-host the view so the initial category takes effect even when
             // the window already exists.
             if let initialCategory {
-                window.contentViewController = NSHostingController(
-                    rootView: SettingsWindow(initialCategory: initialCategory)
-                )
+                SettingsEditCoordinator.shared.requestTransition {
+                    let frame = window.frame
+                    window.contentViewController = NSHostingController(
+                        rootView: SettingsWindow(initialCategory: initialCategory)
+                    )
+                    window.setFrame(frame, display: true)
+                }
             }
             return
         }
@@ -30,31 +34,51 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
         // Bumped a second time after user feedback that 1020x680 still felt
         // cramped — descriptions and pickers were still colliding when
         // resized down.
-        let width = min(max(screen.width * 0.72, 1200), 1500)
-        let height = min(max(screen.height * 0.78, 800), 1100)
+        let initialSize = Self.initialSize(for: screen)
 
         let window = BobeWindowFactory.make(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             title: L10n.tr("settings.window.title"),
             rootView: SettingsWindow(initialCategory: initialCategory)
         )
-        // Floor picked so descriptions never wrap into pickers and the right
-        // pane (Goals/Memories/Souls editors) still renders at full width.
-        window.minSize = NSSize(width: 1100, height: 720)
+        // Use the productive desktop floor when the display allows it, while
+        // still fitting smaller external displays instead of opening offscreen.
+        window.minSize = Self.minimumSize(for: screen)
         window.delegate = self
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         self.window = window
     }
 
+    static func initialSize(for screen: NSRect) -> NSSize {
+        let availableWidth = max(760, screen.width - 40)
+        let availableHeight = max(520, screen.height - 40)
+        return NSSize(
+            width: min(max(screen.width * 0.72, min(1200, availableWidth)), 1500, availableWidth),
+            height: min(max(screen.height * 0.78, min(800, availableHeight)), 1100, availableHeight)
+        )
+    }
+
+    static func minimumSize(for screen: NSRect) -> NSSize {
+        NSSize(
+            width: min(1100, max(760, screen.width - 40)),
+            height: min(720, max(520, screen.height - 40))
+        )
+    }
+
     func close() {
-        self.window?.orderOut(nil)
-        self.window = nil
+        SettingsEditCoordinator.shared.requestTransition { [weak self] in
+            self?.window?.delegate = nil
+            self?.window?.close()
+            self?.window = nil
+        }
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
+        SettingsEditCoordinator.shared.requestTransition {
+            sender.orderOut(nil)
+        }
         return false
     }
 

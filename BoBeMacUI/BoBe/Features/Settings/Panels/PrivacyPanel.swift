@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct PrivacyPanel: View {
+    private struct DataFlowPresentation {
+        let icon: String
+        let title: String
+        let body: String
+        let color: Color
+    }
+
     private let deleteKeyword = "DELETE"
 
     @State private var showDeleteControls = false
@@ -8,33 +15,103 @@ struct PrivacyPanel: View {
     @State private var isDeletingAll = false
     @State private var statusMessage: String?
     @State private var statusIsError = false
+    @Environment(SettingsStore.self) private var settingsStore
     @Environment(\.theme) private var theme
+
+    private var engineDataFlow: DataFlowPresentation {
+        switch self.settingsStore.settings?.engine {
+        case EngineKind.copilotCloud:
+            DataFlowPresentation(
+                icon: "cloud.fill",
+                title: L10n.tr("settings.privacy.data_flow.cloud.title"),
+                body: L10n.tr("settings.privacy.data_flow.cloud.body"),
+                color: self.theme.colors.warning
+            )
+        case EngineKind.local:
+            DataFlowPresentation(
+                icon: "desktopcomputer",
+                title: L10n.tr("settings.privacy.data_flow.local_engine.title"),
+                body: L10n.tr("settings.privacy.data_flow.local_engine.body"),
+                color: self.theme.colors.success
+            )
+        default:
+            DataFlowPresentation(
+                icon: "questionmark.circle",
+                title: L10n.tr("settings.privacy.data_flow.unknown_engine.title"),
+                body: L10n.tr("settings.privacy.data_flow.unknown_engine.body"),
+                color: self.theme.colors.textMuted
+            )
+        }
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 16))
+                            .foregroundStyle(self.theme.colors.primary)
+                        Text(L10n.tr("settings.privacy.data_flow.title"))
+                            .bobeTextStyle(.heading)
+                            .foregroundStyle(self.theme.colors.text)
+                    }
+
+                    Text(L10n.tr("settings.privacy.data_flow.description"))
+                        .bobeTextStyle(.settingsBody)
+                        .foregroundStyle(self.theme.colors.textMuted)
+
+                    self.dataFlowRow(
+                        icon: "internaldrive.fill",
+                        title: L10n.tr("settings.privacy.data_flow.local.title"),
+                        body: L10n.tr("settings.privacy.data_flow.local.body"),
+                        color: self.theme.colors.success
+                    )
+                    self.dataFlowRow(
+                        icon: self.engineDataFlow.icon,
+                        title: self.engineDataFlow.title,
+                        body: self.engineDataFlow.body,
+                        color: self.engineDataFlow.color
+                    )
+                    self.dataFlowRow(
+                        icon: "camera.viewfinder",
+                        title: L10n.tr("settings.privacy.data_flow.capture.title"),
+                        body: L10n.tr("settings.privacy.data_flow.capture.body"),
+                        color: self.theme.colors.warning
+                    )
+                    self.dataFlowRow(
+                        icon: "wrench.and.screwdriver.fill",
+                        title: L10n.tr("settings.privacy.data_flow.tools.title"),
+                        body: L10n.tr("settings.privacy.data_flow.tools.body"),
+                        color: self.theme.colors.tertiary
+                    )
+                }
+
+                Divider()
+
                 HStack(spacing: 8) {
                     Image(systemName: "externaldrive.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(self.theme.colors.primary)
                     Text(L10n.tr("settings.privacy.storage.title"))
-                        .font(.system(size: 16, weight: .semibold))
+                        .bobeTextStyle(.heading)
                         .foregroundStyle(self.theme.colors.text)
                 }
 
                 Text(L10n.tr("settings.privacy.storage.description"))
-                    .font(.system(size: 13))
+                    .bobeTextStyle(.settingsBody)
                     .foregroundStyle(self.theme.colors.textMuted)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L10n.tr("settings.privacy.storage.included.title"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .bobeTextStyle(.rowTitle)
                         .foregroundStyle(self.theme.colors.text)
                     Text(L10n.tr("settings.privacy.storage.included.list"))
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
                 }
                 .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
                         .fill(self.theme.colors.surface)
@@ -45,20 +122,20 @@ struct PrivacyPanel: View {
                     HStack(spacing: 8) {
                         Image(systemName: "trash.fill")
                             .font(.system(size: 15))
-                            .foregroundStyle(self.theme.colors.primary)
+                            .foregroundStyle(self.theme.colors.destructive)
                         Text(L10n.tr("settings.privacy.danger.title"))
-                            .font(.system(size: 14, weight: .semibold))
+                            .bobeTextStyle(.rowTitle)
                             .foregroundStyle(self.theme.colors.text)
                     }
 
                     Text(L10n.tr("settings.privacy.danger.description"))
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
 
                     if self.showDeleteControls {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(L10n.tr("settings.privacy.danger.confirm_prompt_format", self.deleteKeyword))
-                                .font(.system(size: 11, weight: .medium))
+                                .bobeTextStyle(.helper)
                                 .foregroundStyle(self.theme.colors.textMuted)
                             BobeTextField(placeholder: self.deleteKeyword, text: self.$deleteConfirmationText, width: 220)
 
@@ -76,7 +153,7 @@ struct PrivacyPanel: View {
                                 ) {
                                     Task { await self.deleteAllData() }
                                 }
-                                .bobeButton(.primary, size: .small)
+                                .bobeButton(.destructive, size: .small)
                                 .disabled(self.deleteConfirmationText != self.deleteKeyword || self.isDeletingAll)
 
                                 if self.isDeletingAll {
@@ -89,24 +166,57 @@ struct PrivacyPanel: View {
                             statusMessage = nil
                             self.showDeleteControls = true
                         }
-                        .bobeButton(.primary, size: .small)
+                        .bobeButton(.destructive, size: .small)
                     }
 
                     if let statusMessage {
                         Text(statusMessage)
-                            .font(.system(size: 11))
-                            .foregroundStyle(self.statusIsError ? self.theme.colors.primary : self.theme.colors.secondary)
+                            .bobeTextStyle(.helper)
+                            .foregroundStyle(self.statusIsError ? self.theme.colors.error : self.theme.colors.success)
                     }
                 }
                 .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
                         .fill(self.theme.colors.surface)
-                        .stroke(self.theme.colors.primary.opacity(0.25), lineWidth: 1)
+                        .stroke(self.theme.colors.destructive.opacity(0.35), lineWidth: 1)
                 )
             }
             .padding(24)
         }
+        .task { await self.settingsStore.loadIfNeeded() }
+    }
+
+    private func dataFlowRow(
+        icon: String,
+        title: String,
+        body: String,
+        color: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 18)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .bobeTextStyle(.rowTitle)
+                    .foregroundStyle(self.theme.colors.text)
+                Text(body)
+                    .bobeTextStyle(.helper)
+                    .foregroundStyle(self.theme.colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(self.theme.colors.surface)
+                .stroke(self.theme.colors.border, lineWidth: 1)
+        )
     }
 
     private func deleteAllData() async {
@@ -114,71 +224,15 @@ struct PrivacyPanel: View {
         self.isDeletingAll = true
         defer { isDeletingAll = false }
 
-        var errors: [String] = []
-
         do {
-            let goals = try await DaemonClient.shared.listGoals(includeArchived: true).goals
-            for goal in goals {
-                do {
-                    try await DaemonClient.shared.deleteGoal(goal.id)
-                } catch {
-                    errors.append(L10n.tr("settings.privacy.danger.error.goal_format", goal.id))
-                }
-            }
-        } catch {
-            errors.append(L10n.tr("settings.privacy.danger.error.goals"))
-        }
-
-        // Memory is one document; reset to skeleton — no per-row delete post-pivot.
-        do {
-            _ = try await DaemonClient.shared.updateMemory(memoryDefaultBody)
-        } catch {
-            errors.append(L10n.tr("settings.privacy.danger.error.memory"))
-        }
-
-        do {
-            let souls = try await DaemonClient.shared.listSouls().souls.filter { !$0.isDefault }
-            for soul in souls {
-                do {
-                    try await DaemonClient.shared.deleteSoul(soul.id)
-                } catch {
-                    errors.append(L10n.tr("settings.privacy.danger.error.soul_format", soul.name))
-                }
-            }
-        } catch {
-            errors.append(L10n.tr("settings.privacy.danger.error.souls"))
-        }
-
-        do {
-            let profiles = try await DaemonClient.shared.listUserProfiles().profiles
-                .filter { !$0.isDefault }
-            for profile in profiles {
-                do {
-                    try await DaemonClient.shared.deleteUserProfile(profile.id)
-                } catch {
-                    errors.append(L10n.tr("settings.privacy.danger.error.profile_format", profile.name))
-                }
-            }
-        } catch {
-            errors.append(L10n.tr("settings.privacy.danger.error.profiles"))
-        }
-
-        do {
-            _ = try await DaemonClient.shared.resetMCPConfig()
-        } catch {
-            errors.append(L10n.tr("settings.privacy.danger.error.mcp"))
-        }
-
-        self.showDeleteControls = false
-        self.deleteConfirmationText = ""
-        if errors.isEmpty {
+            let response = try await DaemonClient.shared.purgePersonalData()
+            self.showDeleteControls = false
+            self.deleteConfirmationText = ""
             self.statusIsError = false
-            self.statusMessage = L10n.tr("settings.privacy.danger.status.success")
-        } else {
+            self.statusMessage = response.message
+        } catch {
             self.statusIsError = true
-            let details = errors.prefix(4).joined(separator: ", ")
-            let suffix = errors.count > 4 ? L10n.tr("settings.privacy.danger.status.more_suffix") : ""
-            self.statusMessage = L10n.tr("settings.privacy.danger.status.partial_format", details, suffix)
+            self.statusMessage = error.localizedDescription
         }
     }
 }
@@ -187,6 +241,7 @@ struct PrivacyPanel: View {
     #Preview("Privacy Panel") {
         PrivacyPanel()
             .environment(\.theme, allThemes[0])
+            .environment(SettingsStore.shared)
             .frame(width: 600, height: 500)
     }
 #endif

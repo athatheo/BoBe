@@ -11,7 +11,7 @@ static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 pub(crate) fn init_tracing(config: &Config) {
     let filter =
         EnvFilter::try_new(&config.logging.level).unwrap_or_else(|_| EnvFilter::new("info"));
-    let file_writer = build_file_writer(config.logging.file.as_deref());
+    let file_writer = build_file_writer(&config.logging);
 
     if config.logging.json {
         if let Some(writer) = file_writer {
@@ -39,27 +39,8 @@ pub(crate) fn init_tracing(config: &Config) {
 }
 
 #[allow(clippy::print_stderr)] // tracing isn't initialized yet; stderr is the only option
-fn build_file_writer(log_file: Option<&str>) -> Option<NonBlocking> {
-    let path = log_file?.trim();
-    if path.is_empty() {
-        return None;
-    }
-
-    let file_path = PathBuf::from(path);
-    let Some(file_name_os) = file_path.file_name() else {
-        eprintln!("Invalid log_file path '{path}'; using stdout logging.");
-        return None;
-    };
-    let file_name = file_name_os.to_string_lossy().to_string();
-    if file_name.is_empty() {
-        eprintln!("Invalid log_file path '{path}'; using stdout logging.");
-        return None;
-    }
-
-    let dir = file_path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf);
+fn build_file_writer(config: &crate::config::LoggingConfig) -> Option<NonBlocking> {
+    let (dir, file_name) = daily_log_target(config)?;
 
     if let Err(err) = std::fs::create_dir_all(&dir) {
         eprintln!(
@@ -93,4 +74,22 @@ fn build_file_writer(log_file: Option<&str>) -> Option<NonBlocking> {
         eprintln!("Tracing worker guard was already initialized.");
     }
     Some(writer)
+}
+
+pub(crate) fn daily_log_target(config: &crate::config::LoggingConfig) -> Option<(PathBuf, String)> {
+    let path = config.file.as_deref()?.trim();
+    if path.is_empty() {
+        return None;
+    }
+
+    let file_path = crate::util::paths::expand_tilde(path);
+    let file_name = file_path.file_name()?.to_str()?.to_owned();
+    if file_name.is_empty() {
+        return None;
+    }
+    let directory = file_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf);
+    Some((directory, file_name))
 }

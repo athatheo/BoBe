@@ -12,6 +12,7 @@ final class SettingsDebouncer {
     static let toastSeconds: Double = 2.4
 
     private var saveTask: Task<Void, Never>?
+    private var pendingWork: (@MainActor () async -> Void)?
     private var toastTask: Task<Void, Never>?
 
     /// Cancel any pending persist, then run `work` after `debounceSeconds`.
@@ -19,10 +20,13 @@ final class SettingsDebouncer {
     /// cancelled before it fires — only the last touched value persists.
     func debounce(_ work: @escaping @MainActor () async -> Void) {
         self.saveTask?.cancel()
-        self.saveTask = Task { @MainActor in
+        self.pendingWork = work
+        self.saveTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Self.debounceSeconds))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let self, let work = self.pendingWork else { return }
+            self.pendingWork = nil
             await work()
+            self.saveTask = nil
         }
     }
 
@@ -45,12 +49,24 @@ final class SettingsDebouncer {
         self.toastTask = nil
     }
 
+    func flush() async {
+        guard let work = self.pendingWork else {
+            if let saveTask { await saveTask.value }
+            return
+        }
+        self.saveTask?.cancel()
+        self.saveTask = nil
+        self.pendingWork = nil
+        await work()
+    }
+
     /// Cancel a pending debounced save. Used when the caller needs to
     /// persist immediately (e.g. a user-initiated mode flip) and doesn't
     /// want the queued debounce to fire a redundant PATCH afterwards.
     func cancelPendingSave() {
         self.saveTask?.cancel()
         self.saveTask = nil
+        self.pendingWork = nil
     }
 
     /// Standard settings-PATCH flow shared across every panel:

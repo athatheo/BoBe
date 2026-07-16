@@ -2,6 +2,8 @@
 //! decodes audio. Session tracks the per-WS preferences from Hello plus
 //! the in-flight turn handle.
 
+use std::time::Instant;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::app_state::AppState;
@@ -18,17 +20,20 @@ pub(crate) use crate::constants::voice_wire::TTS_OUTPUT_SAMPLE_RATE;
 pub(crate) struct SessionVoiceConfig {
     pub(crate) voice_id: String,
     pub(crate) speed: f32,
+    pub(crate) client_tts: bool,
 }
 
 impl SessionVoiceConfig {
     pub(crate) fn new(
         voice_id: Option<String>,
         speed: Option<f32>,
+        tts_backend: Option<&str>,
         defaults: &VoiceDefaults,
     ) -> Self {
         Self {
             voice_id: voice_id.unwrap_or_else(|| defaults.persona.clone()),
             speed: speed.unwrap_or(defaults.speed).clamp(0.5, 2.0),
+            client_tts: tts_backend == Some("client_supertonic"),
         }
     }
 }
@@ -84,6 +89,8 @@ pub(crate) struct VoiceSession {
 pub(crate) struct TurnInFlight {
     pub(crate) turn_id: String,
     pub(crate) join: JoinHandle<()>,
+    pub(crate) started_at: Instant,
+    pub(crate) playback_complete: Option<oneshot::Sender<()>>,
 }
 
 impl VoiceSession {

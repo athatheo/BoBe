@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 import OSLog
 
 private let logger = Logger(subsystem: "com.bobe.app", category: "BackendService")
@@ -37,6 +38,8 @@ actor BackendService {
     private var state: ServiceState = .stopped
     private var stopping = false
     private var restartCount = 0
+    private var lifecycleGeneration: UInt64 = 0
+    private var restartTask: Task<Void, Never>?
     private let maxRestartAttempts = 3
     private let dataDir: URL
     private let pidFilePath: URL
@@ -92,20 +95,40 @@ actor BackendService {
     }
 
     func start() async throws {
+        guard DaemonConfig.endpoint.managesLocalProcess else {
+            self.transition(to: .starting)
+            _ = try await DaemonClient.shared.health()
+            self.transition(to: .ready)
+            return
+        }
         guard self.state != .starting, self.state != .ready else { return }
+        self.lifecycleGeneration &+= 1
+        self.restartTask?.cancel()
+        self.restartTask = nil
         self.stopping = false
 
         await self.cleanStalePID()
         try self.createDataDirIfNeeded()
 
         self.transition(to: .starting)
-        try await self.spawnAndWaitHealthy()
+        do {
+            try await self.spawnAndWaitHealthy()
+        } catch {
+            await self.stop()
+            throw error
+        }
     }
 
     func stop() async {
+        guard DaemonConfig.endpoint.managesLocalProcess else {
+            self.transition(to: .stopped)
+            return
+        }
+        self.lifecycleGeneration &+= 1
+        self.restartTask?.cancel()
+        self.restartTask = nil
         self.stopping = true
         if self.process == nil {
-            await self.cleanStalePID()
             self.cleanup()
             return
         }
@@ -161,7 +184,11 @@ actor BackendService {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: binaryPath)
-        proc.arguments = ["serve"]
+        proc.arguments = [
+            "serve",
+            "--host", DaemonConfig.defaultHost,
+            "--port", String(DaemonConfig.defaultPort),
+        ]
         proc.currentDirectoryURL = self.dataDir
 
         var env = ProcessInfo.processInfo.environment
@@ -189,12 +216,12 @@ actor BackendService {
             }
         }
 
-        if self.isPortInUse(DaemonConfig.port) {
+        if self.isPortInUse(DaemonConfig.defaultPort) {
             await self.cleanStalePID()
 
-            if self.isPortInUse(DaemonConfig.port) {
+            if self.isPortInUse(DaemonConfig.defaultPort) {
                 self.lastError =
-                    "Port \(DaemonConfig.port) is already in use by another application. "
+                    "Port \(DaemonConfig.defaultPort) is already in use by another application. "
                         + "Close the conflicting app or set BOBE_PORT to a different port."
                 throw BackendServiceError.healthCheckFailed
             }
@@ -212,7 +239,10 @@ actor BackendService {
 
         proc.terminationHandler = { [weak self] terminatedProc in
             Task { [weak self] in
-                await self?.handleExit(exitCode: Int(terminatedProc.terminationStatus))
+                await self?.handleExit(
+                    pid: terminatedProc.processIdentifier,
+                    exitCode: Int(terminatedProc.terminationStatus)
+                )
             }
         }
 
@@ -257,12 +287,27 @@ actor BackendService {
 
     // MARK: - Crash Recovery
 
-    private func handleExit(exitCode: Int) {
+    private func handleExit(pid: Int32, exitCode: Int) {
+        guard self.process?.processIdentifier == pid else {
+            logger.debug("Ignoring stale termination callback for PID \(pid)")
+            return
+        }
+        self.process = nil
+        try? FileManager.default.removeItem(at: self.pidFilePath)
+
         guard !self.stopping else { return }
 
         logger.warning("bobe backend exited unexpectedly (code: \(exitCode))")
+        if self.state == .starting {
+            self.transition(to: .stopped)
+            return
+        }
         self.transition(to: .crashed)
 
+        self.scheduleAutomaticRestart()
+    }
+
+    private func scheduleAutomaticRestart() {
         self.restartCount += 1
         if self.restartCount > self.maxRestartAttempts {
             logger.error("bobe backend failed \(self.maxRestartAttempts) times, giving up")
@@ -273,15 +318,34 @@ actor BackendService {
         let backoffSeconds = self.restartCount
         logger.info("Restarting bobe backend in \(backoffSeconds)s (attempt \(self.restartCount)/\(self.maxRestartAttempts))")
 
-        Task {
-            try? await Task.sleep(for: .seconds(backoffSeconds))
-            guard !self.stopping else { return }
+        let generation = self.lifecycleGeneration
+        self.restartTask?.cancel()
+        self.restartTask = Task { [weak self] in
             do {
-                try await self.spawnAndWaitHealthy()
+                try await Task.sleep(for: .seconds(backoffSeconds))
             } catch {
-                logger.error("Restart failed: \(error.localizedDescription, privacy: .public)")
-                self.transition(to: .fatal)
+                return
             }
+            guard let self else { return }
+            await self.runAutomaticRestart(generation: generation)
+        }
+    }
+
+    private func runAutomaticRestart(generation: UInt64) async {
+        guard generation == self.lifecycleGeneration, !self.stopping else { return }
+        do {
+            self.transition(to: .starting)
+            try await self.spawnAndWaitHealthy()
+            self.restartTask = nil
+        } catch {
+            logger.error("Restart failed: \(error.localizedDescription, privacy: .public)")
+            guard generation == self.lifecycleGeneration else { return }
+            if let proc = self.process, proc.isRunning {
+                proc.terminate()
+            }
+            self.process = nil
+            self.transition(to: .crashed)
+            self.scheduleAutomaticRestart()
         }
     }
 
@@ -295,8 +359,8 @@ actor BackendService {
         guard let pidStr = try? String(contentsOf: pidFilePath, encoding: .utf8),
               let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines))
         else {
-            if self.isPortInUse(DaemonConfig.port) {
-                logger.warning("Port \(DaemonConfig.port) is in use but no PID file exists — another process may be bound")
+            if self.isPortInUse(DaemonConfig.defaultPort) {
+                logger.warning("Port \(DaemonConfig.defaultPort) is in use but no PID file exists — another process may be bound")
             }
             return
         }
@@ -313,17 +377,17 @@ actor BackendService {
             logger.warning(
                 "PID file points to a different live process (PID: \(pid), path: \(path, privacy: .public)); refusing to terminate it"
             )
-            if self.isPortInUse(DaemonConfig.port) {
-                logger.warning("Port \(DaemonConfig.port) remains in use by another process")
+            if self.isPortInUse(DaemonConfig.defaultPort) {
+                logger.warning("Port \(DaemonConfig.defaultPort) remains in use by another process")
             }
         case .notRunning:
-            if self.isPortInUse(DaemonConfig.port) {
-                logger.warning("Port \(DaemonConfig.port) in use but PID \(pid) from PID file is not running — stale PID file")
+            if self.isPortInUse(DaemonConfig.defaultPort) {
+                logger.warning("Port \(DaemonConfig.defaultPort) in use but PID \(pid) from PID file is not running — stale PID file")
             }
         case .unverifiable:
             logger.warning("Could not verify PID \(pid) from PID file as bobe-daemon; refusing to terminate it")
-            if self.isPortInUse(DaemonConfig.port) {
-                logger.warning("Port \(DaemonConfig.port) remains in use by another process")
+            if self.isPortInUse(DaemonConfig.defaultPort) {
+                logger.warning("Port \(DaemonConfig.defaultPort) remains in use by another process")
             }
         }
         try? FileManager.default.removeItem(at: self.pidFilePath)
@@ -434,22 +498,19 @@ enum BackendServiceError: Error, LocalizedError {
     }
 }
 
-private final class StderrBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var lines: [String] = []
+private final class StderrBuffer: Sendable {
+    private let lines = OSAllocatedUnfairLock(initialState: [String]())
 
     func append(_ line: String) {
-        self.lock.lock()
-        defer { lock.unlock() }
-        self.lines.append(line)
-        if self.lines.count > stderrBufferMaxLines {
-            self.lines.removeFirst(self.lines.count - stderrBufferMaxLines)
+        self.lines.withLock { lines in
+            lines.append(line)
+            if lines.count > stderrBufferMaxLines {
+                lines.removeFirst(lines.count - stderrBufferMaxLines)
+            }
         }
     }
 
     var text: String {
-        self.lock.lock()
-        defer { lock.unlock() }
-        return self.lines.joined(separator: "\n")
+        self.lines.withLock { $0.joined(separator: "\n") }
     }
 }

@@ -146,9 +146,9 @@ pub(crate) async fn save_document(
 ) -> Result<McpConfigSaveResponse, AppError> {
     let (blocked_cmds, dangerous_keys) = blocked_and_dangerous(deps);
     let file = parse_and_validate(&body.raw_json, &blocked_cmds, &dangerous_keys)?;
-    let file = normalize_secrets(file, &body.secret_keys, Some(deps.secret_store.as_ref()))?;
 
     let guard = deps.mcp_config_lock.lock().await;
+    let file = normalize_secrets(file, &body.secret_keys, Some(deps.secret_store.as_ref()))?;
     let path = resolve_config_path(deps)?;
     let previous = mcp_config::load_mcp_config_file(&path).ok();
 
@@ -158,6 +158,16 @@ pub(crate) async fn save_document(
         cleanup_removed_secret_refs(deps.secret_store.as_ref(), prev, &file);
     }
 
+    let (sdk_servers, excluded_tools) = if deps.config.load().mcp.enabled {
+        let parsed =
+            mcp_config::parse_enabled_servers(file.clone(), &blocked_cmds, &dangerous_keys)?;
+        mcp_config::to_sdk_mcp_servers(parsed)
+    } else {
+        (github_copilot_sdk::IndexMap::new(), Vec::new())
+    };
+    deps.workers
+        .apply_mcp_config(sdk_servers, excluded_tools)
+        .await;
     drop(guard);
 
     let servers = build_runtime_summaries(deps.workers, &file).await;
@@ -188,6 +198,10 @@ pub(crate) async fn reset_document(
     if let Some(ref prev) = previous {
         cleanup_removed_secret_refs(deps.secret_store.as_ref(), prev, &empty);
     }
+
+    deps.workers
+        .apply_mcp_config(github_copilot_sdk::IndexMap::new(), Vec::new())
+        .await;
 
     Ok(McpConfigResetResponse {
         message: "MCP config reset".into(),
@@ -250,7 +264,26 @@ fn build_env_with_refs(
     let mut out = HashMap::with_capacity(env.len());
 
     for (key, value) in env {
-        if mcp_config::is_secret_ref(value) || value.trim().is_empty() || value.contains("${") {
+        if mcp_config::is_secret_ref(value) {
+            let account = mcp_config::secret_account(server_name, key);
+            let legacy = mcp_config::legacy_secret_account(server_name, key);
+            let referenced = value
+                .strip_prefix(mcp_config::SECRET_REF_PREFIX)
+                .unwrap_or_default();
+            if referenced == legacy
+                && let Some(store) = secret_store
+                && let Some(secret) = store.read(&legacy)
+            {
+                store.store(&account, &secret).map_err(|error| {
+                    AppError::Config(format!("Failed to migrate MCP secret '{key}': {error}"))
+                })?;
+                out.insert(key.clone(), mcp_config::secret_ref(&account));
+                continue;
+            }
+            out.insert(key.clone(), value.clone());
+            continue;
+        }
+        if value.trim().is_empty() || value.contains("${") {
             out.insert(key.clone(), value.clone());
             continue;
         }
@@ -290,25 +323,40 @@ async fn build_runtime_summaries(
 
     let mut summaries = Vec::with_capacity(entries.len());
     for (name, entry) in entries {
-        summaries.push(build_server_summary(name, entry, live_map.get(name)).await);
+        let live = live_map.get(name);
+        let tools = if live.is_some_and(|server| server.connected) {
+            workers.live_mcp_tools(name).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        summaries.push(build_server_summary(name, entry, live, tools));
     }
     summaries
 }
 
-async fn build_server_summary(
+fn build_server_summary(
     name: &str,
     entry: &McpServerEntry,
     live: Option<&mcp_live::ServerEntry>,
+    tools: Vec<github_copilot_sdk::rpc::McpTools>,
 ) -> McpServerSummary {
     let (mut env_keys, mut secret_env_keys) = env_metadata(entry);
     env_keys.sort();
     secret_env_keys.sort();
 
-    // Per-server tools/tool_count not exposed by SDK v0.1.0; leave defaulted.
     let (connected, status, error) = match live {
         Some(s) => (s.connected, Some(s.status.clone()), s.error.clone()),
         None => (false, None, None),
     };
+    let tools: Vec<McpToolMetadata> = tools
+        .into_iter()
+        .map(|tool| McpToolMetadata {
+            excluded: entry.excluded_tools.contains(&tool.name),
+            name: tool.name,
+            description: tool.description.unwrap_or_default(),
+        })
+        .collect();
+    let tool_count = tools.len();
 
     McpServerSummary {
         name: name.to_owned(),
@@ -317,8 +365,8 @@ async fn build_server_summary(
         enabled: entry.enabled,
         connected,
         status,
-        tool_count: 0,
-        tools: Vec::new(),
+        tool_count,
+        tools,
         excluded_tools: entry.excluded_tools.clone(),
         env_keys,
         secret_env_keys,
@@ -327,7 +375,8 @@ async fn build_server_summary(
 }
 
 mod mcp_live {
-    use github_copilot_sdk::generated::api_types::{McpServer, McpServerStatus};
+    use github_copilot_sdk::rpc::McpServer;
+    use github_copilot_sdk::session_events::McpServerStatus;
 
     pub(super) struct ServerEntry {
         pub(super) connected: bool,
@@ -368,7 +417,10 @@ fn load_mcp_file(deps: &McpConfigDeps<'_>) -> Result<(PathBuf, McpConfigFile), A
 
 fn resolve_config_path(deps: &McpConfigDeps<'_>) -> Result<PathBuf, AppError> {
     let cfg = deps.config.load();
-    mcp_config::ensure_mcp_config_exists(cfg.mcp.config_file.as_deref())
+    mcp_config::ensure_mcp_config_exists(
+        std::path::Path::new(&cfg.data_dir),
+        cfg.mcp.config_file.as_deref(),
+    )
 }
 
 fn blocked_and_dangerous(deps: &McpConfigDeps<'_>) -> (Vec<String>, Vec<String>) {

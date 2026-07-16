@@ -86,13 +86,15 @@ type EngineChangeListener = Box<dyn Fn(EngineChangeKind) + Send + Sync>;
 
 pub(crate) struct ConfigManager {
     config: Arc<ArcSwap<Config>>,
+    data_root: std::path::PathBuf,
     on_engine_change: std::sync::Mutex<Option<EngineChangeListener>>,
 }
 
 impl ConfigManager {
-    pub(crate) fn new(config: Arc<ArcSwap<Config>>) -> Self {
+    pub(crate) fn new(config: Arc<ArcSwap<Config>>, data_root: std::path::PathBuf) -> Self {
         Self {
             config,
+            data_root,
             on_engine_change: std::sync::Mutex::new(None),
         }
     }
@@ -147,7 +149,7 @@ impl ConfigManager {
             }
         }
 
-        if !toml_changes.is_empty() && !persistence::persist(&toml_changes) {
+        if !toml_changes.is_empty() && !persistence::persist(&self.data_root, &toml_changes) {
             result.persist_failed = true;
         }
 

@@ -10,6 +10,7 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
     static let shared = SetupWindowManager()
 
     static let onboardingCompletedKey = "bobe.onboarding_completed"
+    private static let openChatAfterOnboardingKey = "bobe.open_chat_after_onboarding"
 
     private var window: NSWindow?
 
@@ -21,9 +22,17 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
 
     func markOnboardingCompleted() {
         UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
+        UserDefaults.standard.set(true, forKey: Self.openChatAfterOnboardingKey)
     }
 
-    func show() {
+    func consumeOpenChatAfterOnboarding() -> Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: Self.openChatAfterOnboardingKey) else { return false }
+        defaults.removeObject(forKey: Self.openChatAfterOnboardingKey)
+        return true
+    }
+
+    func show(initialStep: WelcomeStep? = nil) {
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate()
@@ -34,7 +43,8 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
             onComplete: { [weak self] in
                 self?.markOnboardingCompleted()
                 NotificationCenter.default.post(name: .bobeWelcomeCompleted, object: nil)
-            }
+            },
+            initialStep: initialStep
         )
 
         let window = BobeWindowFactory.make(
@@ -51,12 +61,31 @@ final class SetupWindowManager: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        // Closing a document-animated NSWindow while its SwiftUI completion
+        // button is still unwinding can race AppKit's transform animation
+        // teardown. Hide first and detach the hosting tree; AppKit releases
+        // the now-empty window safely after the current event transaction.
         self.window?.orderOut(nil)
+        self.window?.contentViewController = nil
+        self.window?.delegate = nil
         self.window = nil
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
+        guard !self.isOnboardingCompleted else { return true }
+
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("app.setup_incomplete.title")
+        alert.informativeText = L10n.tr("app.setup_incomplete.message")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.tr("app.setup_incomplete.retry"))
+        alert.addButton(withTitle: L10n.tr("app.common.quit"))
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSApp.terminate(nil)
+        } else {
+            sender.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+        }
         return false
     }
 

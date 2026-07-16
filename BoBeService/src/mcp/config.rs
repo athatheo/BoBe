@@ -48,20 +48,27 @@ pub(crate) struct McpParsedServer {
     pub(crate) args: Vec<String>,
     pub(crate) env: HashMap<String, String>,
     pub(crate) timeout_seconds: f64,
+    pub(crate) excluded_tools: Vec<String>,
 }
 
-pub(crate) fn resolve_mcp_config_path(config_file: Option<&str>) -> Result<PathBuf, AppError> {
+pub(crate) fn resolve_mcp_config_path(
+    data_root: &Path,
+    config_file: Option<&str>,
+) -> Result<PathBuf, AppError> {
     if let Some(path) = config_file
         && !path.trim().is_empty()
     {
         return Ok(crate::util::paths::expand_tilde(path));
     }
 
-    Ok(crate::util::paths::bobe_data_dir().join("mcp.json"))
+    Ok(data_root.join("mcp.json"))
 }
 
-pub(crate) fn ensure_mcp_config_exists(config_file: Option<&str>) -> Result<PathBuf, AppError> {
-    let path = resolve_mcp_config_path(config_file)?;
+pub(crate) fn ensure_mcp_config_exists(
+    data_root: &Path,
+    config_file: Option<&str>,
+) -> Result<PathBuf, AppError> {
+    let path = resolve_mcp_config_path(data_root, config_file)?;
     if path.exists() {
         return Ok(path);
     }
@@ -87,13 +94,7 @@ pub(crate) fn save_mcp_config_file(path: &Path, config: &McpConfigFile) -> Resul
     }
 
     let content = serde_json::to_string_pretty(config)?;
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, format!("{content}\n"))?;
-
-    #[cfg(unix)]
-    fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
-
-    fs::rename(&tmp, path)?;
+    crate::util::durable_fs::atomic_write_sync(path, format!("{content}\n").as_bytes())?;
     #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     Ok(())
@@ -109,26 +110,39 @@ pub(crate) fn load_mcp_config(
 }
 
 pub(crate) fn to_sdk_mcp_servers(
-    servers: Vec<McpParsedServer>,
-) -> HashMap<String, github_copilot_sdk::types::McpServerConfig> {
+    mut servers: Vec<McpParsedServer>,
+) -> (
+    github_copilot_sdk::IndexMap<String, github_copilot_sdk::types::McpServerConfig>,
+    Vec<String>,
+) {
     use github_copilot_sdk::types::{McpServerConfig, McpStdioServerConfig};
 
-    servers
+    let mut excluded_tools: Vec<String> = servers
+        .iter()
+        .flat_map(|server| server.excluded_tools.iter().cloned())
+        .collect();
+    excluded_tools.sort();
+    excluded_tools.dedup();
+
+    // Deterministic order is model-visible and preserves provider prompt-cache
+    // hits across process restarts (SDK 1.0.7 migration).
+    servers.sort_by(|left, right| left.name.cmp(&right.name));
+    let map = servers
         .into_iter()
-        .map(|s| {
-            let timeout_ms = (s.timeout_seconds * 1000.0) as i64;
-            // `excluded_tools` ignored: SDK has no negation; needs live tool list (#31).
+        .map(|server| {
+            let timeout_ms = (server.timeout_seconds * 1000.0) as i64;
             let cfg = McpStdioServerConfig {
-                tools: vec!["*".into()],
+                tools: None,
                 timeout: Some(timeout_ms),
-                command: s.command,
-                args: s.args,
-                env: s.env,
-                cwd: None,
+                command: server.command,
+                args: server.args,
+                env: server.env,
+                working_directory: None,
             };
-            (s.name, McpServerConfig::Stdio(cfg))
+            (server.name, McpServerConfig::Stdio(cfg))
         })
-        .collect()
+        .collect();
+    (map, excluded_tools)
 }
 
 pub(crate) fn parse_enabled_servers(
@@ -163,6 +177,7 @@ pub(crate) fn parse_enabled_servers(
             args,
             env,
             timeout_seconds: entry.timeout_seconds,
+            excluded_tools: entry.excluded_tools,
         });
     }
     Ok(servers)
@@ -177,6 +192,16 @@ pub(crate) fn secret_ref(account: &str) -> String {
 }
 
 pub(crate) fn secret_account(server_name: &str, env_key: &str) -> String {
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    format!(
+        "mcp-v2-{}-{}",
+        encoded.encode(server_name.as_bytes()),
+        encoded.encode(env_key.as_bytes())
+    )
+}
+
+pub(crate) fn legacy_secret_account(server_name: &str, env_key: &str) -> String {
     format!(
         "mcp_{}_{}",
         sanitize_secret_component(server_name),
@@ -266,9 +291,62 @@ fn sanitize_secret_component(value: &str) -> String {
             out.push('_');
         }
     }
+
     if out.trim_matches('_').is_empty() {
         "value".into()
     } else {
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed_server(name: &str, excluded_tools: &[&str]) -> McpParsedServer {
+        McpParsedServer {
+            name: name.to_owned(),
+            command: "server".into(),
+            args: Vec::new(),
+            env: HashMap::new(),
+            timeout_seconds: 30.0,
+            excluded_tools: excluded_tools
+                .iter()
+                .map(|tool| (*tool).to_owned())
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn secret_accounts_preserve_component_boundaries() {
+        assert_ne!(secret_account("a_b", "c"), secret_account("a", "b_c"));
+        assert_ne!(
+            secret_account("a-b", "TOKEN"),
+            secret_account("a_b", "TOKEN")
+        );
+    }
+
+    #[test]
+    fn legacy_account_remains_available_for_migration() {
+        assert_eq!(
+            legacy_secret_account("Git Hub", "API-KEY"),
+            "mcp_git_hub_api_key"
+        );
+    }
+
+    #[test]
+    fn sdk_servers_and_exclusions_are_deterministic() {
+        let servers = vec![
+            parsed_server("zeta", &["write", "read"]),
+            parsed_server("alpha", &["read"]),
+        ];
+
+        let (mapped, excluded_tools) = to_sdk_mcp_servers(servers);
+
+        assert_eq!(
+            mapped.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["alpha", "zeta"]
+        );
+        assert_eq!(excluded_tools, ["read", "write"]);
     }
 }

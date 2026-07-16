@@ -9,6 +9,7 @@ struct ChatStack: View {
 
     @State private var isExpanded = false
     @State private var expandedBubbleIds: Set<String> = []
+    @State private var isNearBottom = true
     @Environment(\.theme) private var theme
 
     private static let maxCompactBubbles = 4
@@ -66,7 +67,7 @@ struct ChatStack: View {
     private var expandedView: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: true) {
-                VStack(spacing: 6) {
+                LazyVStack(spacing: 6) {
                     if self.messages.count > Self.maxCompactBubbles {
                         OverflowPill(count: 0, isExpanded: true) {
                             self.toggleExpanded()
@@ -80,9 +81,21 @@ struct ChatStack: View {
                         )
                         .id(message.id)
                     }
+                    GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: ChatBottomPreferenceKey.self,
+                            value: geometry.frame(in: .named("chatScroll")).maxY
+                        )
+                    }
+                    .frame(height: 1)
                 }
                 .padding(.vertical, 2)
             }
+            .coordinateSpace(name: "chatScroll")
+            .onPreferenceChange(ChatBottomPreferenceKey.self) { bottomY in
+                self.isNearBottom = bottomY <= self.maxViewportHeight + 48
+            }
+            .accessibilityIdentifier("overlay.chat.scroll")
             .frame(maxHeight: self.maxViewportHeight, alignment: .bottom)
             .scrollBounceBehavior(.basedOnSize)
             // Let bubble shadows escape the clip rect.
@@ -92,10 +105,10 @@ struct ChatStack: View {
                 self.scrollToBottom(proxy, animated: false)
             }
             .onChange(of: self.messages.last?.id) { _, _ in
-                self.scrollToBottom(proxy, animated: true)
+                if self.isNearBottom { self.scrollToBottom(proxy, animated: true) }
             }
             .onChange(of: self.messages.last?.content) { _, _ in
-                self.scrollToBottom(proxy, animated: true)
+                if self.isNearBottom { self.scrollToBottom(proxy, animated: true) }
             }
         }
     }
@@ -126,8 +139,18 @@ struct ChatStack: View {
     }
 
     private func effectiveCompactLineLimit(for message: ChatMessage) -> Int? {
-        if self.expandedBubbleIds.contains(message.id) { return nil }
+        if self.expandedBubbleIds.contains(message.id) {
+            return nil
+        }
         return Self.compactLineLimit
+    }
+}
+
+private struct ChatBottomPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -166,6 +189,7 @@ private struct OverflowPill: View {
         .contentShape(Capsule())
         .frame(maxWidth: .infinity, alignment: .center)
         .accessibilityLabel(self.label)
+        .accessibilityIdentifier(self.isExpanded ? "overlay.chat.collapse" : "overlay.chat.expand")
     }
 
     private var label: String {
@@ -223,7 +247,9 @@ struct ChatBubble: View {
 
     var body: some View {
         HStack {
-            if self.isUser { Spacer(minLength: 0) }
+            if self.isUser {
+                Spacer(minLength: 0)
+            }
 
             VStack(spacing: 0) {
                 if self.message.isStreaming {
@@ -329,7 +355,9 @@ struct ChatBubble: View {
                     )
             )
 
-            if !self.isUser { Spacer(minLength: 0) }
+            if !self.isUser {
+                Spacer(minLength: 0)
+            }
         }
         // Parse only when we actually need the AttributedString — i.e.
         // compact-mode rendering after streaming finishes. Streaming

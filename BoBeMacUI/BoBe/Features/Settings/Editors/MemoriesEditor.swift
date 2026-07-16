@@ -25,6 +25,9 @@ struct MemoriesEditor: View {
     @State private var status: String?
     @State private var statusIsError = false
     @State private var consolidationHintShown = false
+    @State private var editCoordinator = SettingsEditCoordinator.shared
+    @State private var editorMode: ContextEditorMode = .guided
+    @Environment(ExpertMode.self) private var expertMode
     @Environment(\.theme) private var theme
 
     private var isDirty: Bool {
@@ -56,8 +59,21 @@ struct MemoriesEditor: View {
             .padding(.bottom, 4)
 
             Text(L10n.tr("settings.memory.description"))
-                .font(.system(size: 12))
+                .bobeTextStyle(.helper)
                 .foregroundStyle(self.theme.colors.textMuted)
+
+            if self.expertMode.isEnabled {
+                Picker("", selection: self.$editorMode) {
+                    ForEach(ContextEditorMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .tint(self.theme.colors.primary)
+                .frame(width: 150)
+                .accessibilityLabel(L10n.tr("settings.context_editor.mode.accessibility"))
+            }
 
             self.editorBody
             self.byteGauge
@@ -67,6 +83,19 @@ struct MemoriesEditor: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task { await self.load() }
+        .onChange(of: self.isDirty, initial: true) { _, dirty in
+            self.editCoordinator.register(
+                isDirty: dirty,
+                save: { await self.save() },
+                discard: { self.text = self.savedText }
+            )
+        }
+        .onDisappear { self.editCoordinator.unregister() }
+        .onChange(of: self.expertMode.isEnabled) { _, enabled in
+            if !enabled {
+                self.editorMode = .guided
+            }
+        }
     }
 
     private var editorBody: some View {
@@ -75,18 +104,26 @@ struct MemoriesEditor: View {
                 HStack(spacing: 8) {
                     BobeSpinner(size: 14)
                     Text(L10n.tr("settings.memories.loading"))
-                        .font(.system(size: 13))
+                        .bobeTextStyle(.settingsBody)
                         .foregroundStyle(self.theme.colors.textMuted)
                 }
                 .frame(maxWidth: .infinity, minHeight: 360, alignment: .center)
             } else {
-                CodeEditor(text: self.$text, theme: self.theme, fontSize: 13)
-                    .frame(minHeight: 360, maxHeight: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(self.theme.colors.surface)
-                            .stroke(self.theme.colors.border, lineWidth: 1)
+                if self.expertMode.isEnabled, self.editorMode == .raw {
+                    CodeEditor(text: self.$text, theme: self.theme, fontSize: 13)
+                        .frame(minHeight: 360, maxHeight: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(self.theme.colors.surface)
+                                .stroke(self.theme.colors.border, lineWidth: 1)
+                        )
+                } else {
+                    GuidedMarkdownEditor(
+                        text: self.$text,
+                        fallbackTitle: L10n.tr("settings.memory.title")
                     )
+                    .frame(minHeight: 360, maxHeight: .infinity)
+                }
             }
         }
     }
@@ -119,7 +156,7 @@ struct MemoriesEditor: View {
     private var actionRow: some View {
         HStack(spacing: 8) {
             Button(L10n.tr("settings.memory.action.reload")) {
-                Task { await self.load(force: true) }
+                self.editCoordinator.requestTransition { Task { await self.load(force: true) } }
             }
             .bobeButton(.secondary, size: .small)
             .disabled(self.isLoading || self.isSaving)
@@ -135,7 +172,7 @@ struct MemoriesEditor: View {
             Button(self.isSaving
                 ? L10n.tr("settings.shared.action.saving")
                 : L10n.tr("settings.shared.action.save")) {
-                    Task { await self.save() }
+                    Task { _ = await self.save() }
                 }
                 .bobeButton(.primary, size: .small)
                 .disabled(!self.isDirty || self.isSaving)
@@ -146,7 +183,7 @@ struct MemoriesEditor: View {
     private var statusFooter: some View {
         if let status {
             Text(status)
-                .font(.system(size: 11))
+                .bobeTextStyle(.helper)
                 .foregroundStyle(self.statusIsError ? self.theme.colors.primary : self.theme.colors.secondary)
         } else if self.consolidationHintShown {
             HStack(spacing: 4) {
@@ -154,7 +191,7 @@ struct MemoriesEditor: View {
                     .font(.system(size: 11))
                     .foregroundStyle(self.theme.colors.tertiary)
                 Text(L10n.tr("settings.memory.consolidation_hint"))
-                    .font(.system(size: 11))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.tertiary)
             }
         }
@@ -181,7 +218,7 @@ struct MemoriesEditor: View {
         }
     }
 
-    private func save() async {
+    private func save() async -> Bool {
         self.isSaving = true
         defer { self.isSaving = false }
         let sentLength = self.text.utf8.count
@@ -193,9 +230,11 @@ struct MemoriesEditor: View {
             self.statusIsError = false
             self.status = L10n.tr("settings.memory.saved")
             self.consolidationHintShown = abs(resp.bytes - sentLength) > memoryConsolidationDeltaThreshold
+            return true
         } catch {
             self.status = error.localizedDescription
             self.statusIsError = true
+            return false
         }
     }
 }

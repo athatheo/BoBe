@@ -37,8 +37,11 @@ xcrun notarytool submit BoBe.dmg \
   --apple-id "your@apple.id" --team-id "TEAM_ID" \
   --password "app-specific-password" --wait
 
-# Staple the ticket
+# Staple and validate both distributable containers before creating the Sparkle ZIP
+xcrun stapler staple BoBe.app
+xcrun stapler validate BoBe.app
 xcrun stapler staple BoBe.dmg
+xcrun stapler validate BoBe.dmg
 ```
 
 ## Verification
@@ -46,7 +49,14 @@ xcrun stapler staple BoBe.dmg
 ```bash
 codesign --verify --deep --strict --verbose=2 BoBe.app   # valid on disk
 spctl --assess --type exec --verbose BoBe.app             # accepted
-xcrun stapler validate BoBe.dmg                           # staple check
+xcrun stapler validate BoBe.app                           # app staple check
+xcrun stapler validate BoBe.dmg                           # DMG staple check
+
+# After creating the Sparkle ZIP, verify the exact extracted payload
+rm -rf /tmp/bobe-sparkle-verify && mkdir -p /tmp/bobe-sparkle-verify
+ditto -x -k BoBe-X.Y.Z.zip /tmp/bobe-sparkle-verify
+codesign --verify --deep --strict --verbose=2 /tmp/bobe-sparkle-verify/BoBe.app
+xcrun stapler validate /tmp/bobe-sparkle-verify/BoBe.app
 ```
 
 ## Credentials (CI/CD)

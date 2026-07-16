@@ -53,6 +53,10 @@ pub(super) async fn extract_and_install(
         tokio::fs::create_dir_all(parent).await?;
     }
     tokio::fs::rename(&extracted, final_target).await?;
-    drop(tokio::fs::remove_file(archive).await);
+    if let Err(error) = tokio::fs::remove_file(archive).await
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::warn!(path = %archive.display(), error = %error, "voice_install.archive_cleanup_failed");
+    }
     Ok(())
 }

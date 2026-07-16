@@ -40,8 +40,8 @@ struct IndicatorPayload: Codable, Sendable {
     let message: String?
 }
 
-/// `sequence` is sent for ordering but the client doesn't re-order
-/// (deltas already arrive in order on a single SSE stream).
+/// On `done`, `delta` is the authoritative full assistant response rather
+/// than another incremental fragment.
 struct TextDeltaPayload: Codable, Sendable {
     let delta: String
     let done: Bool

@@ -38,6 +38,7 @@ struct GoalsEditor: View {
     @State var statusFilter: GoalStatus?
     @State var newTitle = ""
     @State var newPriority = 2
+    @State var editCoordinator = SettingsEditCoordinator.shared
     @Environment(\.theme) var theme
 
     static let priorityRange = 0 ... 5
@@ -83,6 +84,24 @@ struct GoalsEditor: View {
             Task { await self.loadGoals() }
         }
         .task { await self.loadGoals() }
+        .onChange(of: self.editorState.isDirty, initial: true) { _, dirty in
+            self.registerEditSession(isDirty: dirty)
+        }
+        .onDisappear { self.editCoordinator.unregister() }
+    }
+
+    func requestGoalSelection(_ id: String) {
+        self.editCoordinator.requestTransition { self.editorState.select(id) }
+    }
+
+    func registerEditSession(isDirty: Bool) {
+        self.editCoordinator.register(
+            isDirty: isDirty,
+            save: { await self.saveGoal() },
+            discard: {
+                if let goal = self.selectedGoal { self.draft = GoalDraft(goal) }
+            }
+        )
     }
 
     // MARK: - List pane
@@ -239,8 +258,9 @@ struct GoalsEditor: View {
             }
         }
         .overlay {
-            Button { self.editorState.select(goal.id) } label: { Color.clear }
+            Button { self.requestGoalSelection(goal.id) } label: { Color.clear }
                 .buttonStyle(.plain)
+                .accessibilityLabel("\(goal.title), \(Self.statusLabel(goal.status))")
         }
     }
 

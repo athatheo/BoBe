@@ -73,7 +73,9 @@ mod macos {
         kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecReturnData,
         kSecValueData,
     };
-    use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
+    use security_framework_sys::keychain_item::{
+        SecItemAdd, SecItemCopyMatching, SecItemDelete, SecItemUpdate,
+    };
     use tracing::{info, warn};
 
     // SAFETY: well-known Security framework symbol (macOS 10.15+); not always
@@ -113,16 +115,31 @@ mod macos {
             return Ok(());
         }
 
-        let _ignored = delete_secret(account);
-
-        let mut query = base_query(account);
+        let query = base_query(account);
         let value_data = CFData::from_buffer(value.as_bytes());
-        // SAFETY: kSecValueData is a valid Security framework key; CFData lives long enough.
+        let mut attributes = CFMutableDictionary::new();
+        // SAFETY: Security framework constants + CFData remain alive for the call.
         unsafe {
-            query.set(kSecValueData.cast(), value_data.as_CFTypeRef());
+            attributes.set(kSecValueData.cast(), value_data.as_CFTypeRef());
         }
-        // SAFETY: valid query dict; null second arg = don't return a persistent ref.
-        let status = unsafe { SecItemAdd(query.as_concrete_TypeRef(), std::ptr::null_mut()) };
+        // Updating first preserves the old secret if the operation fails.
+        // SAFETY: both dictionaries contain valid Security framework keys and live through the call.
+        let update_status = unsafe {
+            SecItemUpdate(
+                query.as_concrete_TypeRef(),
+                attributes.as_concrete_TypeRef(),
+            )
+        };
+        let status = if update_status == -25300 {
+            let mut add_query = base_query(account);
+            // SAFETY: the query and value data remain valid through SecItemAdd.
+            unsafe {
+                add_query.set(kSecValueData.cast(), value_data.as_CFTypeRef());
+                SecItemAdd(add_query.as_concrete_TypeRef(), std::ptr::null_mut())
+            }
+        } else {
+            update_status
+        };
 
         if status == 0 {
             info!(account, "secrets.stored");
@@ -200,7 +217,6 @@ mod macos {
 )]
 pub(crate) mod file {
     use std::collections::HashMap;
-    use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
 
@@ -234,22 +250,11 @@ pub(crate) mod file {
     }
 
     fn write_atomic(path: &Path, map: &HashMap<String, String>) -> Result<(), super::SecretError> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
         let bytes = serde_json::to_vec_pretty(map)?;
-        let tmp = path.with_extension("json.tmp");
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .mode(0o600)
-                .open(&tmp)?;
-            f.write_all(&bytes)?;
-        }
-        std::fs::rename(&tmp, path)?;
+        crate::util::durable_fs::atomic_write_sync(path, &bytes)
+            .map_err(|error| super::SecretError::Backend(error.to_string()))?;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         Ok(())
     }
 

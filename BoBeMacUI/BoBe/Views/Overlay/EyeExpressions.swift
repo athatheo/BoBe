@@ -224,8 +224,14 @@ struct SpeakingEyes: View {
             // restarting an easeOut curve mid-interpolation (which read
             // as judder). Longer than 80ms blurs syllable attacks; much
             // shorter and the value changes outpace the tween window.
-            .animation(.linear(duration: 0.08), value: self.displayLevel)
-            .animation(.easeInOut(duration: 0.45), value: self.fallbackBeat)
+            .animation(
+                OverlayMotionRuntime.reduceMotion ? nil : .linear(duration: 0.08),
+                value: self.displayLevel
+            )
+            .animation(
+                OverlayMotionRuntime.reduceMotion ? nil : .easeInOut(duration: 0.45),
+                value: self.fallbackBeat
+            )
         }
         .onChange(of: self.pipeline.ttsOutputLevel) { _, newLevel in
             self.displayLevel = CGFloat(newLevel)

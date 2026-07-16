@@ -32,9 +32,10 @@ enum ClientVoiceMessage: Codable {
         playbackRate: UInt32,
         voiceId: String?,
         speed: Float?,
-        language: String?
+        language: String?,
+        ttsBackend: String?
     )
-    case bargeIn(tsMs: UInt64, playbackMsPlayed: UInt64)
+    case bargeIn(tsMs: UInt64, playbackMsPlayed: UInt64, partialText: String?)
     case wake(phrase: String, score: Float, tsMs: UInt64)
     case playbackAck(chunkId: UInt64, playedMs: UInt64)
     case control(action: VoiceControlAction)
@@ -44,21 +45,25 @@ enum ClientVoiceMessage: Codable {
     /// Finalized transcript at end-of-utterance. Daemon admits the turn
     /// and runs the LLM + TTS pipeline.
     case transcriptFinal(turnId: String, text: String)
+    case ttsPlaybackStarted(turnId: String, synthesisMs: UInt64)
+    case ttsPlaybackComplete(turnId: String)
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case let .hello(sessionId, playbackRate, voiceId, speed, language):
+        case let .hello(sessionId, playbackRate, voiceId, speed, language, ttsBackend):
             try c.encode("hello", forKey: .type)
             try c.encode(sessionId, forKey: .sessionId)
             try c.encode(playbackRate, forKey: .playbackRate)
             try c.encodeIfPresent(voiceId, forKey: .voiceId)
             try c.encodeIfPresent(speed, forKey: .speed)
             try c.encodeIfPresent(language, forKey: .language)
-        case let .bargeIn(tsMs, playbackMsPlayed):
+            try c.encodeIfPresent(ttsBackend, forKey: .ttsBackend)
+        case let .bargeIn(tsMs, playbackMsPlayed, partialText):
             try c.encode("barge_in", forKey: .type)
             try c.encode(tsMs, forKey: .tsMs)
             try c.encode(playbackMsPlayed, forKey: .playbackMsPlayed)
+            try c.encodeIfPresent(partialText, forKey: .partialText)
         case let .wake(phrase, score, tsMs):
             try c.encode("wake", forKey: .type)
             try c.encode(phrase, forKey: .phrase)
@@ -79,6 +84,13 @@ enum ClientVoiceMessage: Codable {
             try c.encode("transcript_final", forKey: .type)
             try c.encode(turnId, forKey: .turnId)
             try c.encode(text, forKey: .text)
+        case let .ttsPlaybackStarted(turnId, synthesisMs):
+            try c.encode("tts_playback_started", forKey: .type)
+            try c.encode(turnId, forKey: .turnId)
+            try c.encode(synthesisMs, forKey: .synthesisMs)
+        case let .ttsPlaybackComplete(turnId):
+            try c.encode("tts_playback_complete", forKey: .type)
+            try c.encode(turnId, forKey: .turnId)
         }
     }
 
@@ -96,8 +108,10 @@ enum ClientVoiceMessage: Codable {
         case voiceId = "voice_id"
         case speed
         case language
+        case ttsBackend = "tts_backend"
         case tsMs = "ts_ms"
         case playbackMsPlayed = "playback_ms_played"
+        case partialText = "partial_text"
         case phrase
         case score
         case chunkId = "chunk_id"
@@ -105,6 +119,7 @@ enum ClientVoiceMessage: Codable {
         case action
         case turnId = "turn_id"
         case text
+        case synthesisMs = "synthesis_ms"
     }
 }
 
@@ -117,6 +132,7 @@ enum ServerVoiceMessage: Decodable {
     case state(phase: VoicePhaseWire, turnId: String)
     case transcriptFinal(turnId: String, text: String)
     case ttsEnd(turnId: String)
+    case ttsText(turnId: String, sequence: UInt64, text: String)
     case truncate(turnId: String, keepMs: UInt64)
     case error(code: String, message: String)
     case unknown(type: String)
@@ -142,6 +158,12 @@ enum ServerVoiceMessage: Decodable {
             )
         case "tts_end":
             self = try .ttsEnd(turnId: c.decode(String.self, forKey: .turnId))
+        case "tts_text":
+            self = try .ttsText(
+                turnId: c.decode(String.self, forKey: .turnId),
+                sequence: c.decode(UInt64.self, forKey: .sequence),
+                text: c.decode(String.self, forKey: .text)
+            )
         case "truncate":
             self = try .truncate(
                 turnId: c.decode(String.self, forKey: .turnId),
@@ -167,6 +189,7 @@ enum ServerVoiceMessage: Decodable {
         case message
         case voicePack = "voice_pack"
         case playbackRate = "playback_rate"
+        case sequence
     }
 }
 

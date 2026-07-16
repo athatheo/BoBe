@@ -1,13 +1,13 @@
 {
-  "originHash" : "06f3f373e1f97014f78107b4e954ef2c23cdf7e5f0f75eaa7cf785ea32713f2e",
+  "originHash" : "f96f94e483cd2eb521da5f267da46065af86fb9ae9e7d24a61ba8a0a0ca77f51",
   "pins" : [
     {
       "identity" : "fluidaudio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/FluidInference/FluidAudio.git",
       "state" : {
-        "revision" : "ce59fb14b8b8978b196f6a34282e20ea6762d164",
-        "version" : "0.14.5"
+        "revision" : "19600a485baa4998812e4654b70d2bab8f2c9949",
+        "version" : "0.15.5"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle",
       "state" : {
-        "revision" : "066e75a8b3e99962685d6a90cdd5293ebffd9261",
-        "version" : "2.9.1"
+        "revision" : "b6496a74a087257ef5e6da1c5b29a447a60f5bd7",
+        "version" : "2.9.4"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-concurrency-extras",
       "state" : {
-        "revision" : "5a3825302b1a0d744183200915a47b508c828e6f",
-        "version" : "1.3.2"
+        "revision" : "a90e2e40a7a840a853dd29e57cbef5dbb72c9d5b",
+        "version" : "1.4.0"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/gonzalezreal/textual",
       "state" : {
-        "revision" : "5b06b811c0f5313b6b84bbef98c635a630638c38",
-        "version" : "0.3.1"
+        "revision" : "01b51875a5406eefc95f52a058cb059e7bc94dc4",
+        "version" : "0.5.0"
       }
     }
   ],

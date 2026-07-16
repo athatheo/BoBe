@@ -161,7 +161,7 @@ impl OllamaInstallService {
         let binary_path = if needs_managed_binary {
             info!("ollama_install.runtime_missing_downloading");
             self.binary_manager
-                .ensure_managed_ollama(&runtime_tx)
+                .ensure_managed_ollama(&runtime_tx, cancel_rx.clone())
                 .await?
         } else {
             info!("ollama_install.runtime_present_skipping_download");
@@ -316,10 +316,9 @@ impl OllamaInstallService {
             }
         });
 
-        let cancel_check = move || *cancel_rx.borrow();
         let result = self
             .ollama_manager
-            .pull_model(name, &pull_tx, cancel_check)
+            .pull_model(name, &pull_tx, cancel_rx)
             .await;
         pump.abort();
         drop(pump.await);

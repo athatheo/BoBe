@@ -89,25 +89,20 @@ impl SqliteUserProfileRepo {
             return Ok(None);
         }
 
-        let mut sets = Vec::new();
-        if content.is_some() {
-            sets.push("content = ?");
+        let mut query = sqlx::QueryBuilder::new("UPDATE user_profiles SET ");
+        {
+            let mut set = query.separated(", ");
+            if let Some(content) = content {
+                set.push("content = ").push_bind_unseparated(content);
+            }
+            if let Some(enabled) = enabled {
+                set.push("enabled = ").push_bind_unseparated(enabled);
+            }
+            set.push("updated_at = ")
+                .push_bind_unseparated(chrono::Utc::now());
         }
-        if enabled.is_some() {
-            sets.push("enabled = ?");
-        }
-        sets.push("updated_at = ?");
-
-        let sql = format!("UPDATE user_profiles SET {} WHERE id = ?", sets.join(", "));
-        let mut q = sqlx::query(&sql);
-        if let Some(c) = content {
-            q = q.bind(c);
-        }
-        if let Some(e) = enabled {
-            q = q.bind(e);
-        }
-        q = q.bind(chrono::Utc::now()).bind(id);
-        q.execute(&self.pool).await?;
+        query.push(" WHERE id = ").push_bind(id);
+        query.build().execute(&self.pool).await?;
 
         info!(
             profile_id = %id,

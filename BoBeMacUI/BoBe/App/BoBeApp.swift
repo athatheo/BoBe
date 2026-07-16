@@ -7,13 +7,15 @@ private let logger = Logger(subsystem: "com.bobe.app", category: "App")
 @main
 struct BoBeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @State private var store = BobeStore.shared
+    @State private var voicePipeline = VoicePipeline.shared
 
     var body: some Scene {
         // The persistent menu-bar item lives as a declarative SwiftUI scene
         // now (`BobeMenuBarScene`) — replaces the previous TrayManager +
         // NSStatusItem duo. Sees locale overrides, state changes, and the
         // overlay-visibility flag through @Observable singletons.
-        BobeMenuBarScene()
+        BobeMenuBarScene(store: self.store)
 
         Settings {
             EmptyView()
@@ -21,7 +23,11 @@ struct BoBeApp: App {
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button(L10n.tr("tray.settings")) {
-                    SettingsWindowManager.shared.show()
+                    if SetupWindowManager.shared.isOnboardingCompleted {
+                        SettingsWindowManager.shared.show()
+                    } else {
+                        SetupWindowManager.shared.show()
+                    }
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
@@ -31,8 +37,16 @@ struct BoBeApp: App {
             // it appears in the conventional location for window-visibility
             // commands.
             CommandGroup(after: .toolbar) {
-                Button(L10n.tr("menu.view.toggle_overlay")) {
-                    OverlayWindowManager.shared.toggle()
+                Button(
+                    SetupWindowManager.shared.isOnboardingCompleted
+                        ? L10n.tr("menu.view.toggle_overlay")
+                        : L10n.tr("app.setup_incomplete.retry")
+                ) {
+                    if SetupWindowManager.shared.isOnboardingCompleted {
+                        OverlayWindowManager.shared.toggle()
+                    } else {
+                        SetupWindowManager.shared.show()
+                    }
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
             }
@@ -43,13 +57,13 @@ struct BoBeApp: App {
                 Button(L10n.tr("menu.voice.toggle_mic")) {
                     Task { @MainActor in
                         guard let url = URL(string: DaemonConfig.baseURL) else { return }
-                        await VoicePipeline.shared.toggle(daemonBaseURL: url)
+                        await self.voicePipeline.toggle(daemonBaseURL: url)
                     }
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
 
                 Button(L10n.tr("menu.voice.stop_speaking")) {
-                    VoicePipeline.shared.interrupt()
+                    self.voicePipeline.interrupt()
                 }
                 .keyboardShortcut(".", modifiers: .command)
             }
@@ -61,6 +75,7 @@ struct BoBeApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store: BobeStore
     private var isQuitting = false
+    private var isDuplicateInstance = false
     private var isStartingUp = true
 
     override init() {
@@ -73,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.store.applyPersistedLocale()
 
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
 
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let bundleMatches = NSRunningApplication.runningApplications(
@@ -91,16 +106,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let existing = candidates.first {
             logger.warning("Another BoBe instance detected (pid: \(existing.processIdentifier)) — activating it and exiting")
+            self.isDuplicateInstance = true
             existing.activate()
             NSApp.terminate(nil)
             return
         }
 
         moveToApplicationsIfNeeded()
-
-        Task { @MainActor in
-            self.setDockIcon()
-        }
 
         // Tray is now a declarative `MenuBarExtra` scene
         // (`BobeMenuBarScene`) registered in the App body — no AppDelegate
@@ -130,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if self.isDuplicateInstance { return .terminateNow }
         guard !self.isQuitting else { return .terminateNow }
         self.isQuitting = true
 
@@ -141,8 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             self.store.beginShutdown()
-
-            try? await Task.sleep(for: .milliseconds(600))
+            await SettingsStore.shared.flushPendingSave()
 
             // Stop power observers BEFORE BackendService.stop(): a
             // willSleep notification during the SIGTERM window would call
@@ -167,16 +179,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            OverlayWindowManager.shared.show()
+            if SetupWindowManager.shared.isOnboardingCompleted {
+                OverlayWindowManager.shared.show()
+            } else {
+                SetupWindowManager.shared.show()
+            }
         }
         return true
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        if OverlayWindowManager.shared.panel == nil, !self.isQuitting, !self.isStartingUp {
-            Task { @MainActor in
-                self.showOverlay()
+        guard !self.isQuitting, !self.isStartingUp else { return }
+        if SetupWindowManager.shared.isOnboardingCompleted {
+            if OverlayWindowManager.shared.panel == nil {
+                Task { @MainActor in self.showOverlay() }
             }
+        } else {
+            OverlayWindowManager.shared.close()
+            SetupWindowManager.shared.show()
         }
     }
 
@@ -185,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defer { self.isStartingUp = false }
         let isDev = ProcessInfo.processInfo.environment["BOBE_DEV"] != nil
 
-        if !isDev {
+        if DaemonConfig.endpoint.managesLocalProcess, !isDev {
             var serviceStarted = false
             var attempt = 0
             // Number of times the user clicked "Retry" after the first
@@ -218,6 +238,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         continue
                     }
                 }
+            }
+        } else if !DaemonConfig.endpoint.managesLocalProcess {
+            logger.info("Remote daemon mode: skipping local process management")
+            do {
+                try await BackendService.shared.start()
+            } catch {
+                logger.error("Remote backend unavailable: \(error.localizedDescription, privacy: .public)")
+                guard await self.showBackendErrorDialog(message: error.localizedDescription) else {
+                    NSApp.terminate(nil)
+                    return
+                }
+                await self.startApp()
+                return
             }
         } else {
             logger.info("Dev mode: skipping service management (run `bobe serve` manually)")
@@ -257,9 +290,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .modelsMissing, .failed:
             let readinessDesc = String(describing: pipeline.readiness)
             logger.warning(
-                "voice models missing post-onboarding — re-opening setup wizard (readiness=\(readinessDesc, privacy: .public))"
+                "voice models missing post-onboarding — re-opening voice setup (readiness=\(readinessDesc, privacy: .public))"
             )
-            SetupWindowManager.shared.show()
+            SetupWindowManager.shared.show(initialStep: .voiceSetup)
         case .ready, .preparing, .installing, .disabledByUser, .permissionMissing:
             return
         }
@@ -272,6 +305,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(\.theme, theme)
 
         OverlayWindowManager.shared.createPanel(with: overlayView)
+    }
+
+    @MainActor
+    private func showBackendErrorDialog(message: String) async -> Bool {
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("app.backend_error.title")
+        alert.informativeText = L10n.tr("app.backend_error.message_format", message)
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: L10n.tr("app.common.retry"))
+        alert.addButton(withTitle: L10n.tr("app.common.quit"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     @MainActor
@@ -301,15 +345,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: L10n.tr("app.common.retry"))
         alert.addButton(withTitle: L10n.tr("app.common.quit"))
         return alert.runModal() == .alertFirstButtonReturn
-    }
-
-    @MainActor
-    private func setDockIcon() {
-        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let iconName = isDark ? "bobe_app_dock_dark" : "bobe_app_dock_light"
-        if let iconURL = Bundle.appResources.url(forResource: iconName, withExtension: "png"),
-           let icon = NSImage(contentsOf: iconURL) {
-            NSApp.applicationIconImage = icon
-        }
     }
 }

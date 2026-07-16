@@ -46,6 +46,8 @@ impl Default for CheckinConfig {
 pub(crate) struct ConversationConfig {
     pub(crate) inactivity_timeout_seconds: u64,
     pub(crate) auto_close_minutes: u64,
+    pub(crate) closed_retention_days: u32,
+    pub(crate) closed_retention_count: u32,
 }
 
 impl Default for ConversationConfig {
@@ -53,6 +55,8 @@ impl Default for ConversationConfig {
         Self {
             inactivity_timeout_seconds: 30,
             auto_close_minutes: 10,
+            closed_retention_days: 90,
+            closed_retention_count: 1_000,
         }
     }
 }

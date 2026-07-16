@@ -25,6 +25,9 @@ use crate::voice::install_service::{
 pub(crate) struct InstallStatusResponse {
     /// Aggregate state across all models (running / complete / failed).
     pub status: InstallStatus,
+    /// Concrete terminal failure, when status is `failed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// Per-model progress entries, fixed order matching VoiceModelKind::all().
     pub models: Vec<ModelProgress>,
     /// Snapshot of on-disk presence — orthogonal to `status` because
@@ -51,6 +54,7 @@ pub(crate) async fn status(State(state): State<Arc<AppState>>) -> Json<InstallSt
     };
     Json(InstallStatusResponse {
         status: snap.status,
+        error: snap.error,
         models: snap.models,
         installed: presence,
     })

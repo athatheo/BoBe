@@ -28,30 +28,43 @@ struct VoiceSetupStepView: View {
         self.pipeline.readiness == .ready
     }
 
+    private var selectedTtsBackend: VoiceTtsBackend {
+        VoiceTtsPreference.shared.backend
+    }
+
+    private var visibleDaemonModels: [VoiceModelProgress] {
+        self.selectedTtsBackend == .serverKokoro ? (self.status?.models ?? []) : []
+    }
+
     private var sttLabel: String {
         switch self.pipeline.sttStatus {
         case .notLoaded: return L10n.tr("setup.voice.stt_label.waiting")
         case .downloading:
-            // FluidAudio doesn't expose progress, but we observe directory
-            // size vs the known target to give a real percent. Target +
-            // observer pair depend on which engine is loading (Parakeet
-            // ~600 MB for English, Qwen3 + VAD ~1.75 GB for everything else).
-            let isEnglish = self.pipeline.activeSttLanguage == "en"
-            let percent = isEnglish
-                ? FluidAudioModelPresence.observedPercent()
-                : FluidAudioQwen3ModelPresence.observedPercent()
-            let bytes = isEnglish
-                ? FluidAudioModelPresence.observedBytes()
-                : FluidAudioQwen3ModelPresence.observedBytes()
-            let mb = Int(bytes / 1_048_576)
-            let targetLabel = isEnglish ? "~600 MB" : "~1.75 GB"
+            let percent = self.pipeline.sttLoadProgress?.percent ?? 0
             return String(
-                format: L10n.tr("setup.voice.stt_label.downloading_format"),
-                mb, percent, targetLabel
+                format: L10n.tr("setup.voice.stt_label.progress_format"),
+                percent
             )
         case .ready: return L10n.tr("setup.voice.stt_label.ready")
         case let .failed(msg): return String(format: L10n.tr("setup.voice.stt_label.failed_format"), msg)
         }
+    }
+
+    private var sttModel: VoiceModelProgress {
+        let status = switch self.pipeline.sttStatus {
+        case .ready: "already installed"
+        case .downloading: "downloading"
+        case .failed: "failed"
+        case .notLoaded: "pending"
+        }
+        return VoiceModelProgress(
+            kind: "stt",
+            label: L10n.tr("setup.voice.model.stt"),
+            status: status,
+            bytesDownloaded: 0,
+            bytesTotal: nil,
+            percent: self.pipeline.sttLoadProgress?.percent
+        )
     }
 
     var body: some View {
@@ -101,16 +114,17 @@ struct VoiceSetupStepView: View {
 
     private var installPrompt: some View {
         VStack(spacing: 12) {
-            ForEach(self.status?.models ?? [], id: \.id) { model in
+            ForEach(self.visibleDaemonModels, id: \.id) { model in
                 VoiceModelRow(model: model)
             }
+            VoiceModelRow(model: self.sttModel)
         }
         .padding(.vertical, 8)
     }
 
     private var progressList: some View {
         VStack(spacing: 12) {
-            ForEach(self.status?.models ?? [], id: \.id) { model in
+            ForEach(self.visibleDaemonModels, id: \.id) { model in
                 VoiceModelRow(model: model)
             }
             HStack(spacing: 10) {
@@ -193,7 +207,7 @@ struct VoiceSetupStepView: View {
     private func refreshStatus() async {
         await self.pipeline.refreshDaemonState()
         guard let s = self.status else {
-            self.errorMessage = "Daemon not reachable"
+            self.errorMessage = L10n.tr("setup.voice.daemon_unreachable")
             self.phase = .failed
             return
         }
@@ -210,14 +224,10 @@ struct VoiceSetupStepView: View {
     }
 
     private func kickoff() async {
-        // Kick off both installs in parallel — daemon-side Kokoro download
-        // via /voice/install, client-side FluidAudio model via the Swift
-        // pipeline. The view-attached `.task` on `progressList` then drives
-        // `poll()` until both finish; that task gets free cancellation when
-        // the view disappears (e.g., user closes the wizard mid-install).
+        // Install the selected TTS backend and active client STT in parallel.
         Task { await self.pipeline.ensureSttLoaded() }
         do {
-            try await DaemonClient.shared.startVoiceInstall()
+            try await self.pipeline.prepareSelectedTts()
             self.phase = .installing
         } catch {
             self.errorMessage = error.localizedDescription
@@ -225,14 +235,14 @@ struct VoiceSetupStepView: View {
         }
     }
 
-    /// Cancel-everything: stop the daemon install AND let any in-flight
-    /// FluidAudio load finish in the background (the SDK doesn't expose a
-    /// cancel hook today; `Task.cancel()` does not interrupt the
-    /// HuggingFace download). Used both for the explicit Cancel button
-    /// and the STT-failed short-circuit so the user never sees a
-    /// partially-running install.
+    /// Cancel both download pipelines. FluidAudio 0.15's ModelHub preserves
+    /// valid cached files and resumable partial state.
     private func cancelAll() async {
-        try? await DaemonClient.shared.cancelVoiceInstall()
+        async let daemon: Void = {
+            try? await DaemonClient.shared.cancelVoiceInstall()
+        }()
+        async let stt: Void = self.pipeline.cancelSttLoading()
+        _ = await (daemon, stt)
     }
 
     private func poll() async {
@@ -249,7 +259,7 @@ struct VoiceSetupStepView: View {
             }
             await self.pipeline.refreshDaemonState()
             guard let s = self.status else {
-                self.errorMessage = "Daemon not reachable"
+                self.errorMessage = L10n.tr("setup.voice.daemon_unreachable")
                 self.phase = .failed
                 return
             }
@@ -259,7 +269,7 @@ struct VoiceSetupStepView: View {
             }
             switch s.status {
             case .failed:
-                self.errorMessage = L10n.tr("setup.voice.poll_failure")
+                self.errorMessage = s.error ?? L10n.tr("setup.voice.poll_failure")
                 self.phase = .failed; return
             case .canceled:
                 self.phase = .idle; return

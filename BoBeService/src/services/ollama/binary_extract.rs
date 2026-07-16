@@ -4,15 +4,28 @@ use std::path::Path;
 
 use tracing::info;
 
+use super::binary_download::ArchiveFormat;
 use crate::error::AppError;
 
 pub(crate) fn extract_ollama_archive(
     archive_path: &Path,
     output_path: &Path,
+    format: ArchiveFormat,
 ) -> Result<(), AppError> {
-    let file = std::fs::File::open(archive_path)?;
+    match format {
+        ArchiveFormat::TarGz => {
+            let file = std::fs::File::open(archive_path)?;
+            extract_from_tar(flate2::read::GzDecoder::new(file), output_path)
+        }
+        ArchiveFormat::TarZstd => {
+            let file = std::fs::File::open(archive_path)?;
+            let decoder = zstd::stream::read::Decoder::new(file)?;
+            extract_from_tar(decoder, output_path)
+        }
+    }
+}
 
-    let decoder = flate2::read::GzDecoder::new(file);
+fn extract_from_tar(decoder: impl std::io::Read, output_path: &Path) -> Result<(), AppError> {
     let mut archive = tar::Archive::new(decoder);
 
     if let Some(parent) = output_path.parent() {

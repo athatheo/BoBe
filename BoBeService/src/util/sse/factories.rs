@@ -101,8 +101,12 @@ pub(crate) fn tool_call_complete_event(
     )
 }
 
-pub(crate) fn end_of_turn_event(message_id: &str, sequence: usize) -> StreamBundle {
-    text_delta_event(message_id, "", sequence, true)
+pub(crate) fn end_of_turn_event(
+    message_id: &str,
+    sequence: usize,
+    full_response: &str,
+) -> StreamBundle {
+    text_delta_event(message_id, full_response, sequence, true)
 }
 
 pub(crate) fn heartbeat_event() -> StreamBundle {

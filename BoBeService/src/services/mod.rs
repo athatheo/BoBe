@@ -2,6 +2,7 @@ pub(crate) mod goals;
 pub(crate) mod mcp_config_service;
 pub(crate) mod ollama;
 pub(crate) mod souls_service;
+pub(crate) mod storage_retention;
 pub(crate) mod user_profile_service;
 
 use crate::error::AppError;

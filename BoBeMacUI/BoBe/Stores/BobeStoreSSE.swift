@@ -96,13 +96,14 @@ extension BobeStore {
             self.textDeltaFlushTask = nil
         }
 
-        self.streamingMessage += payload.delta
-
         if payload.done {
+            self.streamingMessage = payload.delta
             self.flushStreamingToUI(messageId: messageId)
             self.finalizeStreamingMessage()
             return
         }
+
+        self.streamingMessage += payload.delta
 
         // Task existence is the dirty flag — accumulated deltas flush on timer.
         if self.textDeltaFlushTask == nil {

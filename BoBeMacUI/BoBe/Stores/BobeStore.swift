@@ -9,6 +9,7 @@ let bobeStoreLogger = Logger(subsystem: "com.bobe.app", category: "BobeStore")
 @Observable @MainActor
 final class BobeStore {
     static let shared = BobeStore()
+    static let messageWindowCapacity = 200
 
     // MARK: - State
 
@@ -437,9 +438,20 @@ final class BobeStore {
         return true
     }
 
+    static func trimMessages(_ messages: inout [ChatMessage], capacity: Int = messageWindowCapacity) {
+        guard capacity >= 0, messages.count > capacity else { return }
+        let overflow = messages.count - capacity
+        let protectedIds = Set(messages.filter { $0.isPending || $0.isStreaming }.map(\.id))
+        let removable = messages.indices.filter { !protectedIds.contains(messages[$0].id) }
+        for index in removable.prefix(overflow).reversed() {
+            messages.remove(at: index)
+        }
+    }
+
     func updateState(_ block: (inout BobeContext) -> Void) {
         var ctx = self.context
         block(&ctx)
+        Self.trimMessages(&ctx.messages)
         ctx.stateType = deriveStateType(from: ctx)
         // Recompute the derived bobe-message flag once per mutation rather
         // than walking the array on every body eval that reads it (the

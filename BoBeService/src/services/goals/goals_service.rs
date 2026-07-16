@@ -70,44 +70,45 @@ impl GoalsService {
         why_it_matters: Option<String>,
         notes: Option<String>,
     ) -> Result<Option<GoalDoc>, AppError> {
-        let Some(mut doc) = self.store.get(id).await? else {
-            return Ok(None);
-        };
+        let updated = self
+            .store
+            .update(id, move |mut doc| {
+                let mut changed = false;
+                if let Some(t) = title {
+                    doc.title = t;
+                    changed = true;
+                }
+                if let Some(s) = status {
+                    doc.status = s;
+                    changed = true;
+                }
+                if let Some(p) = priority {
+                    doc.priority = p;
+                    changed = true;
+                }
+                if let Some(s) = summary {
+                    doc.summary = s;
+                    changed = true;
+                }
+                if let Some(w) = why_it_matters {
+                    doc.why_it_matters = w;
+                    changed = true;
+                }
+                if let Some(n) = notes {
+                    doc.notes = n;
+                    changed = true;
+                }
+                if changed {
+                    doc.updated_at = Utc::now();
+                }
+                doc
+            })
+            .await?;
 
-        let mut changed = false;
-        if let Some(t) = title {
-            doc.title = t;
-            changed = true;
+        if updated.is_some() {
+            info!(goal_id = %id, "goals_service.updated");
         }
-        if let Some(s) = status {
-            doc.status = s;
-            changed = true;
-        }
-        if let Some(p) = priority {
-            doc.priority = p;
-            changed = true;
-        }
-        if let Some(s) = summary {
-            doc.summary = s;
-            changed = true;
-        }
-        if let Some(w) = why_it_matters {
-            doc.why_it_matters = w;
-            changed = true;
-        }
-        if let Some(n) = notes {
-            doc.notes = n;
-            changed = true;
-        }
-
-        if !changed {
-            return Ok(Some(doc));
-        }
-
-        doc.updated_at = Utc::now();
-        self.store.save(&doc).await?;
-        info!(goal_id = %id, "goals_service.updated");
-        Ok(Some(doc))
+        Ok(updated)
     }
 
     pub(crate) async fn set_status(
@@ -117,6 +118,10 @@ impl GoalsService {
     ) -> Result<Option<GoalDoc>, AppError> {
         self.update(id, None, Some(status), None, None, None, None)
             .await
+    }
+
+    pub(crate) async fn delete_all(&self) -> Result<usize, AppError> {
+        self.store.delete_all().await
     }
 
     pub(crate) async fn delete(&self, id: GoalId) -> Result<bool, AppError> {

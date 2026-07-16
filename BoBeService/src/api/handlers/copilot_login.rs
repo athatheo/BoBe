@@ -28,10 +28,8 @@ use crate::error::AppError;
 pub(crate) async fn start_login(
     State(state): State<Arc<AppState>>,
 ) -> Result<StatusCode, AppError> {
-    // Make sure the SDK has extracted the bundled CLI; `embeddedcli::path()`
-    // returns Some only after `Client::start()` has run at least once.
-    // Bind the client to a name so its destructor doesn't fire eagerly
-    // (let _ would trip clippy::let_underscore_drop on the Arc<Client>).
+    // Start the SDK first so extraction and integrity validation run before
+    // the login process is launched.
     let _client = state
         .runtime
         .workers
@@ -42,7 +40,7 @@ pub(crate) async fn start_login(
             AppError::Internal(format!("copilot_login.start: client start failed: {e}"))
         })?;
 
-    let cli_path = github_copilot_sdk::embeddedcli::path().ok_or_else(|| {
+    let cli_path = github_copilot_sdk::install_bundled_cli().ok_or_else(|| {
         AppError::Internal("copilot_login.start: bundled CLI path unavailable".to_string())
     })?;
 
@@ -61,19 +59,9 @@ pub(crate) async fn events(
     let Some(rx) = state.auth.copilot_login.subscribe().await else {
         return Err((StatusCode::NOT_FOUND, "no login session in flight"));
     };
-    // On `Completed`, force-reload the cached SDK client so subsequent
-    // spawns pick up the freshly-written Keychain token instead of the
-    // pre-auth (auth_type=none) one. Wrap in a side-effect on the stream.
-    let workers = Arc::clone(&state.runtime.workers);
-    let stream = WatchStream::new(rx).then(move |phase| {
-        let workers = Arc::clone(&workers);
-        async move {
-            if matches!(phase, crate::copilot::login::LoginPhase::Completed) {
-                workers.client_handle().stop().await;
-            }
-            let payload = serde_json::to_string(&phase).unwrap_or_else(|_| "{}".into());
-            Ok::<_, Infallible>(Event::default().event("login").data(payload))
-        }
+    let stream = WatchStream::new(rx).map(|phase| {
+        let payload = serde_json::to_string(&phase).unwrap_or_else(|_| "{}".into());
+        Ok::<_, Infallible>(Event::default().event("login").data(payload))
     });
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }

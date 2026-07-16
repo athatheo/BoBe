@@ -60,17 +60,13 @@ enum KokoroVoices {
 }
 
 /// Languages exposed in the Settings → Voice picker. English uses
-/// FluidAudio Parakeet EOU; everything else uses Qwen3-ASR (multilingual)
-/// + Silero VAD. The architecture-doc matrix lists 6 BCP-47 codes;
-/// Korean/Japanese still surface "(coming soon)" since they haven't
-/// been QA'd against the Qwen3 pipeline yet.
+/// FluidAudio Parakeet EOU; everything else uses Nemotron multilingual
+/// streaming ASR + Silero VAD.
 enum VoiceLanguages {
     /// BCP-47 codes. Order surfaces shipping languages first.
     static let all: [String] = ["en", "zh", "es", "el", "ko", "ja"]
 
-    /// Languages that have a working STT engine wired up. Everything else
-    /// falls through to "(coming soon)" in the picker.
-    static let shipping: Set = ["en", "zh", "es", "el"]
+    static let shipping: Set = Set(VoiceLanguages.all)
 
     static func displayName(for code: String) -> String {
         let base: String = switch code {

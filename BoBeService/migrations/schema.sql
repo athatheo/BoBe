@@ -7,14 +7,8 @@
 -- souls + user profiles (small structured docs the UI manages by name),
 -- and cooldown tracking.
 
--- Drop dead tables left over from earlier installs.
-DROP TABLE IF EXISTS goal_plan_steps;
-DROP TABLE IF EXISTS goal_plans;
-DROP TABLE IF EXISTS goals;
-DROP TABLE IF EXISTS memories;
-DROP TABLE IF EXISTS observations;
-DROP TABLE IF EXISTS learning_state;
-DROP TABLE IF EXISTS agent_jobs;
+-- Legacy narrative tables are migrated by bootstrap::legacy_migration before
+-- they are dropped exactly once. Never put destructive statements here.
 
 -- Conversations (chat session log — a daily/inactivity-rotated thread).
 CREATE TABLE IF NOT EXISTS conversations (

@@ -3,8 +3,9 @@
 //! on cache + lifecycle, while the per-class model/provider math and the
 //! post-create `mode.set` RPC live next to one another.
 
-use github_copilot_sdk::generated::api_types::{ModeSetRequest, SessionMode};
+use github_copilot_sdk::rpc::ModeSetRequest;
 use github_copilot_sdk::session::Session;
+use github_copilot_sdk::session_events::SessionMode;
 use github_copilot_sdk::types::ProviderConfig;
 
 use crate::config::EngineConfig;
@@ -21,9 +22,7 @@ pub(super) fn session_extras_for_class(
     let model = match class {
         WorkerClass::Chat => cfg.provider_chat_model.clone(),
         WorkerClass::Vision => cfg.provider_vision_model.clone(),
-        WorkerClass::Goals | WorkerClass::Decide | WorkerClass::Consolidate => {
-            cfg.provider_batch_model.clone()
-        }
+        WorkerClass::Goals | WorkerClass::Consolidate => cfg.provider_batch_model.clone(),
     };
 
     let provider = if cfg.engine == crate::models::engine_kind::EngineKind::Local {

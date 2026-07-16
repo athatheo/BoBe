@@ -119,6 +119,7 @@ struct ErrorEyes: View {
                 .opacity(self.frownVisible ? 1 : 0.3)
         }
         .task {
+            guard OverlayMotionRuntime.shouldAnimate else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1.5))
                 withAnimation(.easeInOut(duration: 0.3)) { self.frownVisible.toggle() }

@@ -53,6 +53,9 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
     @State private var editorState = SettingsEditorState<E.ID>()
     @State private var editorContent = ""
     @State private var newName = ""
+    @State private var editCoordinator = SettingsEditCoordinator.shared
+    @State private var editorMode: ContextEditorMode = .guided
+    @Environment(ExpertMode.self) private var expertMode
     @Environment(\.theme) private var theme
 
     let strings: EntityEditorStrings
@@ -81,6 +84,10 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
             }
         }
         .task { await self.loadEntities() }
+        .onChange(of: self.editorState.isDirty, initial: true) { _, dirty in
+            self.registerEditSession(isDirty: dirty)
+        }
+        .onDisappear { self.editCoordinator.unregister() }
     }
 
     // MARK: - Panes
@@ -153,25 +160,34 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
         BobeSelectableRow(
             isSelected: self.editorState.selectedId == entity.id,
             content: {
-                VStack(alignment: .leading) {
-                    HStack(spacing: 4) {
-                        Text(entity.name)
-                            .bobeTextStyle(.rowTitle)
-                        if entity.isDefault {
-                            Text(L10n.tr("settings.editor.badge.default"))
-                                .bobeTextStyle(.badge)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Capsule().fill(self.theme.colors.primary.opacity(0.2)))
-                                .foregroundStyle(self.theme.colors.primary)
+                Button {
+                    self.requestSelection(entity.id)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            HStack(spacing: 4) {
+                                Text(entity.name)
+                                    .bobeTextStyle(.rowTitle)
+                                if entity.isDefault {
+                                    Text(L10n.tr("settings.editor.badge.default"))
+                                        .bobeTextStyle(.badge)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(self.theme.colors.primary.opacity(0.2)))
+                                        .foregroundStyle(self.theme.colors.primary)
+                                }
+                            }
+                            Text(String(entity.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
+                                .bobeTextStyle(.rowMeta)
+                                .foregroundStyle(self.theme.colors.textMuted)
+                                .lineLimit(1)
                         }
+                        Spacer()
                     }
-                    Text(String(entity.content.prefix(60)).replacingOccurrences(of: "\n", with: " "))
-                        .bobeTextStyle(.rowMeta)
-                        .foregroundStyle(self.theme.colors.textMuted)
-                        .lineLimit(1)
                 }
-                Spacer()
+                .buttonStyle(.plain)
+                .accessibilityLabel(entity.name)
+
                 BobeToggle(
                     isOn: Binding(
                         get: { entity.enabled },
@@ -181,10 +197,6 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
                 )
             }
         )
-        .overlay {
-            Button { self.editorState.select(entity.id) } label: { Color.clear }
-                .buttonStyle(.plain)
-        }
     }
 
     private func detailPane(for entity: E) -> some View {
@@ -211,6 +223,19 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
                 }
                 Spacer()
 
+                if self.expertMode.isEnabled {
+                    Picker("", selection: self.$editorMode) {
+                        ForEach(ContextEditorMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .tint(self.theme.colors.primary)
+                    .frame(width: 150)
+                    .accessibilityLabel(L10n.tr("settings.context_editor.mode.accessibility"))
+                }
+
                 if !entity.isDefault {
                     self.deleteControls(for: entity)
                 }
@@ -219,18 +244,32 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
                     isDirty: self.editorState.isDirty,
                     isSaving: self.editorState.isSaving,
                     onDiscard: self.discardChanges,
-                    onSave: self.saveEntity
+                    onSave: { Task { _ = await self.saveEntity() } }
                 )
             }
 
-            CodeEditor(text: self.$editorContent, theme: self.theme, fontSize: 13)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(self.theme.colors.surface)
-                        .stroke(self.theme.colors.border, lineWidth: 1)
-                )
+            Group {
+                if self.expertMode.isEnabled, self.editorMode == .raw {
+                    CodeEditor(text: self.$editorContent, theme: self.theme, fontSize: 13)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(self.theme.colors.surface)
+                                .stroke(self.theme.colors.border, lineWidth: 1)
+                        )
+                } else {
+                    GuidedMarkdownEditor(
+                        text: self.$editorContent,
+                        fallbackTitle: entity.name
+                    )
+                }
+            }
                 .onChange(of: self.editorContent) { _, _ in
                     self.editorState.setDirty(self.editorContent != self.selectedEntity?.content)
+                }
+                .onChange(of: self.expertMode.isEnabled) { _, enabled in
+                    if !enabled {
+                        self.editorMode = .guided
+                    }
                 }
 
             if let errorMessage = self.editorState.errorMessage {
@@ -244,7 +283,7 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
         if self.editorState.showDeleteConfirmation {
             HStack(spacing: 6) {
                 Text(L10n.tr("settings.editor.delete.confirm"))
-                    .font(.system(size: 12))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.primary)
                 Button(L10n.tr("settings.editor.delete.yes")) {
                     self.deleteEntity(entity)
@@ -307,25 +346,25 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
         }
     }
 
-    private func saveEntity() {
-        guard let id = self.editorState.selectedId else { return }
+    private func saveEntity() async -> Bool {
+        guard let id = self.editorState.selectedId else { return false }
         if let message = self.actions.validate(self.editorContent) {
             self.editorState.setError(EntityValidationError(message: message))
-            return
+            return false
         }
         self.editorState.setSaving(true)
-        Task {
-            defer { self.editorState.setSaving(false) }
-            do {
-                let request = self.actions.buildUpdateRequest(self.editorContent)
-                let updated = try await self.actions.update(id, request)
-                if let idx = self.entities.firstIndex(where: { $0.id == id }) {
-                    self.entities[idx] = updated
-                }
-                self.editorState.setDirty(false)
-            } catch {
-                self.editorState.setError(error)
+        defer { self.editorState.setSaving(false) }
+        do {
+            let request = self.actions.buildUpdateRequest(self.editorContent)
+            let updated = try await self.actions.update(id, request)
+            if let idx = self.entities.firstIndex(where: { $0.id == id }) {
+                self.entities[idx] = updated
             }
+            self.editorState.setDirty(false)
+            return true
+        } catch {
+            self.editorState.setError(error)
+            return false
         }
     }
 
@@ -356,6 +395,18 @@ struct EntityListEditor<E: EditableEntity, CR: Sendable, UR: Sendable>: View {
                 self.editorState.setError(error)
             }
         }
+    }
+
+    private func requestSelection(_ id: E.ID) {
+        self.editCoordinator.requestTransition { self.editorState.select(id) }
+    }
+
+    private func registerEditSession(isDirty: Bool) {
+        self.editCoordinator.register(
+            isDirty: isDirty,
+            save: { await self.saveEntity() },
+            discard: self.discardChanges
+        )
     }
 
     private func discardChanges() {

@@ -18,6 +18,10 @@ use crate::voice::telemetry::{CTR_BARGE_IN_FALSE, CTR_BARGE_IN_SUCCESS};
 /// and get dropped as false barge-ins.
 pub(crate) const MIN_WORDS_FOR_BARGE_IN: usize = 3;
 
+pub(crate) fn has_barge_in_evidence(partial: &str) -> bool {
+    partial.split_whitespace().count() >= MIN_WORDS_FOR_BARGE_IN
+}
+
 /// Shared abort body for all "stop this turn" paths (RMS barge-in,
 /// cancel phrase, explicit Abort/Reset control). Assumes the caller has
 /// already authorized the abort — does NOT enforce MinWords.
@@ -37,7 +41,7 @@ pub(crate) async fn abort_active_turn(
         reason,
         "voice.abort_active_turn"
     );
-    let TurnInFlight { turn_id, join } = turn;
+    let TurnInFlight { turn_id, join, .. } = turn;
     join.abort();
     drop(join.await);
     send_json(
@@ -62,7 +66,7 @@ pub(crate) async fn handle_barge_in(
 ) {
     let Some(s) = session.as_mut() else { return };
     let word_count = s.last_partial_text.split_whitespace().count();
-    if s.current_turn.is_some() && word_count < MIN_WORDS_FOR_BARGE_IN {
+    if s.current_turn.is_some() && !has_barge_in_evidence(&s.last_partial_text) {
         metrics::counter!(CTR_BARGE_IN_FALSE).increment(1);
         debug!(
             words = word_count,
@@ -78,4 +82,16 @@ pub(crate) async fn handle_barge_in(
     metrics::counter!(CTR_BARGE_IN_SUCCESS).increment(1);
     let keep_ms = played_ms.max(s.last_acked_played_ms);
     abort_active_turn(s, ctx, keep_ms, "barge_in").await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_barge_in_evidence;
+
+    #[test]
+    fn acoustic_barge_in_requires_three_words() {
+        assert!(!has_barge_in_evidence(""));
+        assert!(!has_barge_in_evidence("uh huh"));
+        assert!(has_barge_in_evidence("please stop now"));
+    }
 }

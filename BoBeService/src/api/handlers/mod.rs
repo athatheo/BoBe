@@ -8,6 +8,7 @@ pub(crate) mod health;
 pub(crate) mod local_runtime;
 pub(crate) mod memories;
 pub(crate) mod metrics;
+pub(crate) mod privacy;
 pub(crate) mod settings;
 pub(crate) mod souls;
 pub(crate) mod tools_mcp;

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
@@ -12,20 +11,19 @@ const VISION_FAILURE_COOLDOWN: Duration = Duration::from_mins(3);
 use crate::config::Config;
 use crate::db::SqliteCooldownRepo;
 use crate::runtime::capture_learner::CaptureLearner;
-use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::proactive_generator::ProactiveGenerator;
-use crate::runtime::state::{Decision, TriggerContext, TriggerType};
+use crate::runtime::state::Decision;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::{indicator_event, trigger_error_event};
 use crate::util::sse::types::IndicatorType;
 
+use crate::runtime::turn_admission::{TurnAdmission, TurnSource};
 use crate::util::atomic_flag_guard::AtomicFlagGuard;
 
 pub(crate) struct CaptureTrigger {
     screen_capture: Arc<ScreenCapture>,
     capture_learner: Arc<CaptureLearner>,
-    decision_engine: Arc<DecisionEngine>,
     generator: Arc<ProactiveGenerator>,
     cooldown_repo: Arc<SqliteCooldownRepo>,
     event_queue: Arc<EventQueue>,
@@ -36,7 +34,7 @@ pub(crate) struct CaptureTrigger {
     /// capture trigger's indicator pushes (`ScreenCapture` → `Thinking`
     /// → `Idle`) overwrote whatever indicator a concurrent voice or
     /// text turn had set, leaving the Swift store out of sync.
-    user_message_in_flight: Arc<AtomicBool>,
+    turn_admission: Arc<TurnAdmission>,
     enabled: bool,
     context_count: usize,
     vision_failure_count: u32,
@@ -49,22 +47,20 @@ impl CaptureTrigger {
     pub(crate) fn new(
         screen_capture: Arc<ScreenCapture>,
         capture_learner: Arc<CaptureLearner>,
-        decision_engine: Arc<DecisionEngine>,
         generator: Arc<ProactiveGenerator>,
         cooldown_repo: Arc<SqliteCooldownRepo>,
         event_queue: Arc<EventQueue>,
         config: Arc<ArcSwap<Config>>,
-        user_message_in_flight: Arc<AtomicBool>,
+        turn_admission: Arc<TurnAdmission>,
     ) -> Self {
         Self {
             screen_capture,
             capture_learner,
-            decision_engine,
             generator,
             cooldown_repo,
             event_queue,
             config,
-            user_message_in_flight,
+            turn_admission,
             enabled: false,
             context_count: 0,
             vision_failure_count: 0,
@@ -91,7 +87,7 @@ impl CaptureTrigger {
     /// CAS the shared in-flight flag; returns a guard that releases on drop.
     /// `None` means another turn is already running — caller should skip.
     fn try_acquire_in_flight(&self) -> Option<AtomicFlagGuard> {
-        AtomicFlagGuard::try_acquire(Arc::clone(&self.user_message_in_flight))
+        self.turn_admission.try_admit(TurnSource::Capture)
     }
 
     fn vision_breaker_open(&mut self) -> bool {
@@ -150,21 +146,15 @@ impl CaptureTrigger {
 
         self.event_queue
             .push(indicator_event(IndicatorType::Thinking, None));
-        let context = TriggerContext {
-            trigger_type: TriggerType::Capture,
-            context_text: description,
-        };
-
-        let decision = self.decision_engine.decide(&context).await;
+        let decision = self
+            .generator
+            .generate_proactive_response(
+                cfg.conversation.auto_close_minutes as i64,
+                Some(description),
+            )
+            .await;
         self.event_queue
             .push(indicator_event(IndicatorType::Idle, None));
-
-        if decision == Decision::Engage {
-            self.generator
-                .generate_proactive_response(cfg.conversation.auto_close_minutes as i64, None)
-                .await;
-        }
-
         decision
     }
 

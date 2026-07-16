@@ -50,12 +50,16 @@ pub(crate) struct Config {
 
 impl Config {
     pub(crate) fn load() -> Result<Self, crate::error::AppError> {
-        let data_dir = crate::util::paths::bobe_data_dir();
-        let config_path = data_dir.join("config.toml");
-        let data_dir_str = data_dir.to_string_lossy().into_owned();
+        let bootstrap_data_dir = crate::util::paths::bobe_data_dir();
+        let config_path = bootstrap_data_dir.join("config.toml");
+        let data_dir_str = bootstrap_data_dir.to_string_lossy().into_owned();
 
+        // `BOBE_DATA_DIR` chooses both the config file and canonical data root.
+        // A TOML `data_dir` may relocate stores after bootstrap. The nested
+        // `BOBE_DATABASE__URL` remains the explicit database override.
         let defaults = Self {
             data_dir: data_dir_str,
+            database: DatabaseConfig { url: String::new() },
             ..Self::default()
         };
 
@@ -66,7 +70,12 @@ impl Config {
             .extract()
             .map_err(|e| crate::error::AppError::Config(e.to_string()))?;
 
-        if config.database.url.contains('~') {
+        config.data_dir = crate::util::paths::expand_tilde(&config.data_dir)
+            .to_string_lossy()
+            .into_owned();
+        if config.database.url.trim().is_empty() {
+            config.database.url = format!("sqlite:{}/data/bobrust.db", config.data_dir);
+        } else if config.database.url.contains('~') {
             config.database.url = crate::util::paths::expand_tilde(&config.database.url)
                 .to_string_lossy()
                 .into_owned();

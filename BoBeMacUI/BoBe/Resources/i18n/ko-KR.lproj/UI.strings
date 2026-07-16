@@ -33,6 +33,10 @@
 "overlay.connection.disconnected" = "연결 끊김";
 "overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "채팅 입력 닫기";
+"overlay.input.placeholder.hint.notice" = "BoBe가 무엇을 알아차리면 좋을까요?";
+"overlay.input.placeholder.hint.summarize" = "화면 내용을 요약해 줘";
+"overlay.input.placeholder.hint.goal" = "목표를 진전시키도록 도와줘";
+"overlay.input.placeholder.hint.feelings" = "막힌 느낌이에요";
 "overlay.input.send.accessibility" = "메시지 보내기";
 "overlay.input.waiting_for_capturing" = "BoBe가 인식을 마칠 때까지 기다려 주세요.";
 "overlay.input.waiting_for_reconnecting" = "BoBe가 재연결을 마칠 때까지 기다려 주세요.";
@@ -202,9 +206,9 @@
 "settings.user_profiles.title" = "사용자 프로필";
 "settings.user_profiles.toggle.enable_accessibility" = "프로필 활성화";
 "settings.window.check_updates" = "업데이트 확인...";
-"settings.window.overview.footer" = "사이드바에서 모든 설정을 둘러보세요. 모든 기능은 Mac에서 로컬로 실행돼요.";
+"settings.window.overview.footer" = "기억과 설정은 이 Mac에 보관됩니다. 클라우드 엔진에는 답변에 필요한 컨텍스트만 전송됩니다.";
 "settings.window.overview.title" = "BoBe 설정 방법";
-"settings.window.sidebar_title" = "BOBE 튜닝";
+"settings.window.sidebar_title" = "BOBE 설정";
 "settings.window.title" = "BoBe 설정";
 
 "setup.done.body" = "BoBe is ready. You can change everything in Settings later.";
@@ -217,9 +221,9 @@
 "setup.engine.local.subtitle" = "Runs on your Mac. Nothing leaves your computer. Works best with 32 GB+ memory.";
 "setup.engine.local.title" = "Run AI on this Mac";
 "setup.engine.title" = "How should BoBe think?";
-"setup.permissions.body" = "BoBe glances at your screen periodically so it can offer relevant help. Screenshots stay on this Mac.";
+"setup.permissions.body" = "화면 컨텍스트는 선택 사항입니다. 클라우드 엔진을 사용하면 활성화된 캡처가 답변을 위해 GitHub Copilot으로 전송될 수 있으며, 로컬 AI에서는 이 Mac에만 남습니다.";
 "setup.permissions.grant" = "Grant access";
-"setup.permissions.open_settings" = "Open System Settings";
+"setup.permissions.open_settings" = "시스템 설정 열기";
 "setup.permissions.skip" = "Skip — set up later";
 "setup.permissions.title" = "Screen Recording";
 "setup.welcome.continue" = "Let's get set up";
@@ -351,3 +355,20 @@
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";
 /* TODO translate */ "tray.status.accessibility" = "BoBe status";
+
+"settings.unsaved.title" = "저장하지 않은 변경 사항";
+"settings.unsaved.message" = "이 편집기를 나가기 전에 변경 사항을 저장할까요?";
+
+"settings.voice.install.failed.tts" = "The speech model installation failed. Retry the installation.";
+"settings.voice.install.failed_format" = "Voice installation failed: %@";
+"settings.voice.uninstall.failed_format" = "Could not remove the voice model: %@";
+"setup.voice.daemon_unreachable" = "The BoBe service is not reachable. Start it and try again.";
+
+"setup.voice.stt_label.waiting" = "Speech recognition: waiting…";
+"setup.voice.stt_label.downloading_format" = "Speech recognition: downloading %d MB (%d%% of %@)…";
+"setup.voice.stt_label.ready" = "Speech recognition: ready";
+"setup.voice.stt_label.failed_format" = "Speech recognition: failed. %@";
+"settings.voice.language" = "Language";
+"settings.voice.language.description" = "Which language BoBe listens for. English is the most reliable; other languages are still maturing.";
+
+"overlay.input.composer.accessibility" = "BoBe에게 메시지 보내기";

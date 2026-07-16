@@ -10,7 +10,7 @@ import Observation
 /// - `VoicePanel` (model codenames, daemon URLs)
 /// - `MCPServersPanel` (raw JSON editor)
 /// - `EnginePanel` (strict offline, Sign in via Terminal fallback)
-/// - `SettingsWindow` (Advanced sidebar entry visibility)
+/// - context editors (guided versus raw Markdown)
 ///
 /// Default: **off** (novice). Surfacing one knob is cheaper than asking
 /// a new user to wade through fifteen.

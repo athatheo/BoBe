@@ -1,4 +1,64 @@
+import Observation
 import SwiftUI
+
+@MainActor
+@Observable
+final class SettingsEditCoordinator {
+    static let shared = SettingsEditCoordinator()
+
+    private(set) var isDirty = false
+    var showsConfirmation = false
+    private var saveAction: (() async -> Bool)?
+    private var discardAction: (() -> Void)?
+    private var pendingTransition: (() -> Void)?
+
+    private init() {}
+
+    func register(isDirty: Bool, save: @escaping () async -> Bool, discard: @escaping () -> Void) {
+        self.isDirty = isDirty
+        self.saveAction = save
+        self.discardAction = discard
+    }
+
+    func unregister() {
+        guard !self.showsConfirmation else { return }
+        self.isDirty = false
+        self.saveAction = nil
+        self.discardAction = nil
+    }
+
+    func requestTransition(_ transition: @escaping () -> Void) {
+        guard self.isDirty else {
+            transition()
+            return
+        }
+        self.pendingTransition = transition
+        self.showsConfirmation = true
+    }
+
+    func saveAndContinue() async {
+        guard let saveAction, await saveAction() else { return }
+        self.finishTransition()
+    }
+
+    func discardAndContinue() {
+        self.discardAction?()
+        self.finishTransition()
+    }
+
+    func cancelTransition() {
+        self.pendingTransition = nil
+        self.showsConfirmation = false
+    }
+
+    private func finishTransition() {
+        let transition = self.pendingTransition
+        self.pendingTransition = nil
+        self.showsConfirmation = false
+        self.isDirty = false
+        transition?()
+    }
+}
 
 struct SettingsEditorState<SelectionID: Hashable>: Equatable {
     var selectedId: SelectionID?

@@ -4,9 +4,9 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::config::manager::ConfigManager;
+use crate::runtime::behavior_context::BehaviorContext;
 use crate::runtime::capture_learner::CaptureLearner;
 use crate::runtime::conversation_service::ConversationService;
-use crate::runtime::decision_engine::DecisionEngine;
 use crate::runtime::message_handler::MessageHandler;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
@@ -63,7 +63,7 @@ pub(crate) async fn wire(
         &repos.conversation_repo,
     )));
 
-    let goal_file_store = GoalFileStore::new(crate::util::paths::bobe_data_dir().join("goals"));
+    let goal_file_store = GoalFileStore::new(std::path::Path::new(&config.data_dir).join("goals"));
     let goals_service = Arc::new(GoalsService::new(Arc::clone(&goal_file_store)));
 
     let souls_service = Arc::new(SoulsService::new(Arc::clone(&repos.soul_repo)));
@@ -71,15 +71,14 @@ pub(crate) async fn wire(
         &repos.user_profile_repo,
     )));
 
+    let behavior_context = BehaviorContext::new(
+        Arc::clone(&souls_service),
+        Arc::clone(&user_profile_service),
+    );
+
     let capture_learner = Arc::new(CaptureLearner::new(
         Arc::clone(&workers),
         workers.memory_file(),
-    ));
-
-    let decision_engine = Arc::new(DecisionEngine::new(
-        Arc::clone(&workers),
-        Arc::clone(&conversation_service),
-        Arc::clone(config_arc),
     ));
 
     let proactive_generator = Arc::new(ProactiveGenerator::new(
@@ -87,25 +86,22 @@ pub(crate) async fn wire(
         Arc::clone(&conversation_service),
         Arc::clone(&infra.event_queue),
         Arc::clone(&repos.cooldown_repo),
+        Arc::clone(&behavior_context),
+        Arc::clone(config_arc),
     ));
 
     let screen_capture = Arc::new(ScreenCapture::new());
 
-    // Pre-create the single-flight gate so both CaptureTrigger and
-    // RuntimeSession use the SAME Arc. The capture trigger CAS-acquires
-    // this at the top of fire() so its indicator pushes can't race with a
-    // concurrent text- or voice-turn's IndicatorGuard.
-    let user_message_in_flight = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let turn_admission = crate::runtime::turn_admission::TurnAdmission::new();
 
     let capture_trigger = CaptureTrigger::new(
         Arc::clone(&screen_capture),
         capture_learner,
-        Arc::clone(&decision_engine),
         Arc::clone(&proactive_generator),
         Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
-        Arc::clone(&user_message_in_flight),
+        Arc::clone(&turn_admission),
     );
 
     let checkin_trigger = CheckinTrigger::new(
@@ -119,15 +115,16 @@ pub(crate) async fn wire(
         Arc::clone(&conversation_service),
         Arc::clone(&repos.cooldown_repo),
         Arc::clone(config_arc),
+        Arc::clone(&turn_admission),
     );
 
     let goal_trigger = Arc::new(GoalTrigger::new(
         Arc::clone(&goals_service),
-        decision_engine,
         Arc::clone(&proactive_generator),
         Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
+        Arc::clone(&turn_admission),
     ));
 
     let runtime_session = Arc::new(RuntimeSession::new(
@@ -139,15 +136,19 @@ pub(crate) async fn wire(
             Arc::clone(&conversation_service),
             Arc::clone(&repos.cooldown_repo),
             Arc::clone(&infra.event_queue),
+            behavior_context,
         )),
         Arc::clone(&conversation_service),
         Arc::clone(&repos.cooldown_repo),
         Arc::clone(&infra.event_queue),
         Arc::clone(config_arc),
-        user_message_in_flight,
+        turn_admission,
     ));
 
-    let config_manager = Arc::new(ConfigManager::new(Arc::clone(config_arc)));
+    let config_manager = Arc::new(ConfigManager::new(
+        Arc::clone(config_arc),
+        std::path::PathBuf::from(&config.data_dir),
+    ));
 
     Wired {
         souls_service,

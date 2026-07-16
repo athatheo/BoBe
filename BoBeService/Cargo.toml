@@ -83,52 +83,58 @@ strip = "symbols"
 overflow-checks = true
 
 [dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 async-stream = "0.3.6"
-arc-swap = "1.9.1"
+arc-swap = "1.9.2"
 async-trait = "0.1.89"
 axum = { version = "0.8.9", features = ["macros", "ws"] }
-chrono = { version = "0.4.44", features = ["serde"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
+chrono = { version = "0.4.45", features = ["serde"] }
 clap = { version = "4.6.1", features = ["derive"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
-toml_edit = "0.25.3"
+toml_edit = "0.25.12"
 futures = "0.3.32"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-# `default-features = false` strips sqlx-mysql and sqlx-postgres from the
-# dep tree — the project only uses SQLite, and the mysql crate transitively
-# pulled `rsa 0.9.10` (RUSTSEC-2023-0071, Marvin timing attack, no upstream
-# fix). Explicit feature list keeps macros + migrate that the default set
-# would have provided.
-sqlx = { version = "0.8.6", default-features = false, features = [
+serde_json = "1.0.150"
+secrecy = { version = "0.10", features = ["serde"] }
+# SQLite only. TLS and migration-runner features are intentionally omitted:
+# schema application uses `raw_sql`, while `macros` is needed by model derives.
+sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
-    "tls-rustls",
     "sqlite",
     "uuid",
     "chrono",
     "macros",
-    "migrate",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.52.3", features = ["full"] }
-tokio-stream = "0.1.18"
+tokio = { version = "1.52.3", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "net",
+    "process",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
+tokio-stream = { version = "0.1.18", features = ["sync"] }
 # `rt` feature exposes `CancellationToken` (the modern shutdown
 # coordination primitive that replaces our previous `broadcast::Sender<()>`
 # pattern). 0.7.18's feature naming is unusual — there is no `sync`
 # feature even though the type lives under `tokio_util::sync::`.
 tokio-util = { version = "0.7", features = ["rt"] }
-tower-http = { version = "0.6.10", features = ["cors", "timeout"] }
+tower-http = { version = "0.7.0", features = ["cors", "timeout"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 tracing-appender = "0.2.5"
-uuid = { version = "1.23.1", features = ["v4", "serde"] }
-dirs = "6.0.0"
-which = "8.0.2"
+uuid = { version = "1.23.4", features = ["v4", "serde"] }
+which = "8.0.4"
 libc = "0.2.186"
 base64 = "0.22.1"
-rand = "0.10.1"
-mdns-sd = { version = "0.19.1", features = ["async"] }
-dashmap = "6.1.0"
+rand = "0.10.2"
+mdns-sd = { version = "0.20.1", features = ["async"] }
+dashmap = "6.2.1"
 tower = { version = "0.5.3", features = ["timeout", "limit"] }
 # Streaming HTTP client. Used for two purposes:
 #   1. Querying the user's Ollama install on `:11434` for available
@@ -138,43 +144,52 @@ tower = { version = "0.5.3", features = ["timeout", "limit"] }
 # rustls keeps us off OpenSSL; `stream` lets us consume responses
 # incrementally for the download path. (reqwest 0.13 renamed the
 # `rustls-tls` feature to plain `rustls`.)
-reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "stream", "json"] }
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "rustls-no-provider",
+    "stream",
+    "json",
+] }
+rustls = { version = "0.23.41", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
 # Archive handling for the Ollama install path (Phase 5a). The
 # `ollama-darwin.tgz` release tarball ships gzip-compressed.
 flate2 = "1.1.9"
-tar = "0.4.45"
+tar = "0.4.46"
+zstd = "0.13.3"
 # bz2 because sherpa-onnx model releases ship as .tar.bz2 not gzip.
 bzip2 = "0.6.1"
 # Official GitHub Copilot SDK (Rust). Programmatic Copilot CLI control via
 # JSON-RPC over stdio. Spawns + manages the CLI process per Client. We use one
 # shared Client across the daemon and create one Session per worker class.
 #
-# `embedded-cli` feature bundles the Copilot CLI binary into our binary at
-# build time (downloaded + verified against SHA256SUMS, zstd-compressed,
-# extracted lazily to ~/.cache/github-copilot-sdk-{ver}/copilot on first use).
-# The version is pinned via .cargo/config.toml `[env] COPILOT_CLI_VERSION`.
-github-copilot-sdk = { version = "0.1", features = ["embedded-cli"] }
-# Voice stack — STT (Moonshine) + TTS (Kokoro) via the official sherpa-onnx
-# Rust bindings (the upstream `sherpa-rs` crate is deprecated as of 2026).
-# `tts` enables the Kokoro/Vits TTS modules; `download-binaries` pulls a
-# prebuilt sherpa-onnx native dylib at build time, skipping CMake-from-source
-# and cutting cold build from ~20m to seconds. The Opus codec dep is added
-# with the /voice/stream WS handler; the speech module itself is codec-agnostic.
-sherpa-onnx = "1.13"
+# `bundled-cli` embeds a verified Copilot CLI binary and extracts it lazily
+# on first use. SDK 1.0 revalidates cached extraction and repairs partial or
+# quarantined installs automatically.
+# Preview adopted deliberately: 1.0.7 uses deterministic IndexMap-backed
+# model-visible tool/MCP schemas, restoring provider prompt-cache hits.
+github-copilot-sdk = { version = "=1.0.7-preview.1", features = ["bundled-cli"] }
+# Stable server-side Kokoro rollback backend. Client STT/VAD and experimental
+# Supertonic TTS run in Swift/FluidAudio; sherpa remains until client TTS meets
+# the production benchmark and compatibility gates.
+sherpa-onnx = "1.13.4"
 # Opus codec for the /voice/stream WS — 20ms frames, VOIP profile, ~24kbps.
 # Vendors libopus through cmake; needs CMAKE_POLICY_VERSION_MINIMUM=3.5 in env
 # to build on toolchains where cmake's minimum-required version is enforced.
-opus = "0.3"
+# Maintained libopus 1.6.1 bindings. Replaces `opus`/`audiopus_sys`, which is
+# unmaintained (RUSTSEC-2026-0150) and no longer builds with CMake 4.
+opusic-c = "1.6.1"
 # Markdown stripping before Kokoro TTS — Kokoro speaks **asterisks** and
 # `backticks` literally otherwise. Used by speech::markdown_strip with
 # precompiled LazyLock regex set.
-regex = "1.12.3"
-# Voice telemetry. Lightweight facade + Prometheus exporter for the per-stage
-# histograms (stt_ms, tts_ttfb_ms, e2e_ms, barge_in_success_rate, etc.) the
-# voice SLO dashboard needs. Recorder is installed at bootstrap and served
-# via the daemon's existing axum router under GET /metrics.
+regex = "1.13.0"
+# Voice telemetry: LLM TTFT, first-sentence, per-sentence synthesis,
+# transcript-to-first-audio, total-turn latency, barge-in and fillers.
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
+sha2 = { version = "0.10.9", default-features = false }
 
 # macOS-only: Keychain access via the Security framework (Data Protection
 # Keychain). Linux uses a file-based `FileSecretStore` fallback.

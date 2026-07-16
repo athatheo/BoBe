@@ -38,7 +38,7 @@ extension GoalsEditor {
                             BobeMenuPicker(
                                 selection: self.$draft.priority,
                                 options: Self.priorityOptions,
-                                label: { L10n.tr("settings.goals.priority.label_format", $0) },
+                                label: { Self.priorityLabel($0) },
                                 width: 140
                             )
                         }
@@ -91,7 +91,7 @@ extension GoalsEditor {
                             isDirty: self.editorState.isDirty,
                             isSaving: self.editorState.isSaving,
                             onDiscard: { self.draft = GoalDraft(goal) },
-                            onSave: self.saveGoal
+                            onSave: { Task { _ = await self.saveGoal() } }
                         )
                     }
 
@@ -114,12 +114,13 @@ extension GoalsEditor {
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .bobeTextStyle(.rowMeta)
+                .fontWeight(.semibold)
                 .foregroundStyle(self.theme.colors.text)
             content()
             if let hint {
                 Text(hint)
-                    .font(.system(size: 11))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
         }
@@ -142,7 +143,7 @@ extension GoalsEditor {
                     .background(Capsule().fill(self.theme.colors.tertiary.opacity(0.15)))
             }
 
-            Text(L10n.tr("settings.goals.priority.label_format", self.draft.priority))
+            Text(Self.priorityLabel(self.draft.priority))
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(self.priorityColor(self.draft.priority))
                 .padding(.horizontal, 6)
@@ -212,14 +213,12 @@ extension GoalsEditor {
         .bobeButton(.secondary, size: .small)
     }
 
+    static func priorityLabel(_ priority: Int) -> String {
+        L10n.tr("settings.goals.priority.\(min(max(priority, 0), 5))")
+    }
+
     func proseEditor(text: Binding<String>, minHeight: CGFloat) -> some View {
-        CodeEditor(text: text, theme: self.theme, fontSize: 13)
-            .frame(minHeight: minHeight)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(self.theme.colors.surface)
-                    .stroke(self.theme.colors.border, lineWidth: 1)
-            )
+        BobeProseEditor(text: text, minHeight: minHeight)
     }
 
     func aiCuratedSection(title: String, icon: String, body: String) -> some View {
@@ -231,12 +230,12 @@ extension GoalsEditor {
         ) {
             if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(L10n.tr("settings.goals.section.ai_empty"))
-                    .font(.system(size: 12))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted.opacity(0.8))
                     .italic()
             } else {
                 Text(body)
-                    .font(.system(size: 13))
+                    .bobeTextStyle(.settingsBody)
                     .foregroundStyle(self.theme.colors.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
@@ -249,7 +248,7 @@ extension GoalsEditor {
             if self.editorState.showDeleteConfirmation {
                 HStack(spacing: 6) {
                     Text(L10n.tr("settings.editor.delete.confirm"))
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.primary)
                     Button(L10n.tr("settings.editor.delete.yes")) {
                         self.deleteGoal(goal)

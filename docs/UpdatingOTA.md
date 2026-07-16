@@ -9,7 +9,7 @@ BoBe is not "just a Rust release":
 - Rust builds `bobe-daemon`,
 - Swift builds `BoBe`,
 - the release bundles both into `BoBe.app`,
-- then signs, notarizes, packages, and publishes update metadata around that bundle.
+- then signs, notarizes, packages, and prepares update metadata around that bundle.
 
 ## System overview
 
@@ -21,11 +21,13 @@ The intended artifact chain is:
 4. sign the embedded daemon,
 5. sign the app bundle,
 6. build and sign the DMG,
-7. notarize and staple the DMG,
-8. create a Sparkle ZIP from the signed app,
-9. sign the Sparkle ZIP,
-10. generate an appcast from the staged ZIP set,
-11. upload the ZIP first, then atomically publish the appcast.
+7. notarize the DMG,
+8. staple and validate both `BoBe.app` and the DMG,
+9. create a Sparkle ZIP from the stapled app,
+10. extract the ZIP and verify its app signature and staple,
+11. sign the Sparkle ZIP,
+12. generate an appcast from the staged ZIP,
+13. optionally create a GitHub Release and a website deployment PR for the appcast.
 
 ## Trust boundaries
 
@@ -34,7 +36,7 @@ There are two different automation lanes and they must stay separate.
 | Lane | Trigger | Secrets | Purpose |
 | --- | --- | --- | --- |
 | Public vetting CI | PRs and normal pushes | None | Deterministic validation and dependency/supply-chain checks |
-| Protected release workflow | Manual dispatch / trusted release refs | Environment-scoped release secrets | Build, sign, notarize, and optionally publish Sparkle updates |
+| Protected release workflow | Manual dispatch / trusted release refs | Environment-scoped release secrets | Build, sign, notarize, and optionally create release/deployment PR artifacts |
 
 ## Configuration (already done)
 
@@ -51,9 +53,9 @@ Use two separate automation lanes:
   - runs deterministic validation and supply-chain checks,
   - never signs or publishes artifacts.
 - **Protected release workflow**
-  - macOS-only,
+  - uses macOS for signing/notarization and Ubuntu for release/PR orchestration,
   - guarded by GitHub environment approval,
-  - has access to signing, notarization, Sparkle, and publish credentials,
+  - has access to signing, notarization, Sparkle, and website-PR credentials,
   - rebuilds from the trusted release ref instead of promoting untrusted PR artifacts.
 
 ## How public vetting CI should work
@@ -101,42 +103,40 @@ Responsibilities:
 - run:
   - `just release`
   - `just notarize-api-key`
-  - `just staple`
+  - `just staple` (staples and validates the app and DMG)
   - `just sparkle-zip`
+  - extract the ZIP and verify `codesign` and `stapler validate` on its app
   - `just sparkle-sign-update`
 - upload the signed DMG and signed Sparkle ZIP as GitHub artifacts,
 - delete the temporary keychain and key material at the end.
 
-### 2. `publish-update`
+### 2. `create-appcast-deployment-pr`
 
 Environment: `release-publish`
 
 Responsibilities:
 
-- download the already signed release artifacts,
-- materialize only the update-host publish credential,
-- sync existing remote ZIPs,
-- regenerate the appcast from the remote ZIP set plus the new ZIP,
-- upload the ZIP first,
-- upload `appcast.xml.next`,
-- atomically rename it into place,
-- verify the public URLs,
-- delete the temporary publish key.
+- download and checksum the already signed release artifacts,
+- create or update the GitHub Release assets,
+- copy the generated appcast into a branch in the website repository,
+- create a pull request for review and deployment by the website's actual process.
 
 Important notes:
 
-- The current workflow auto-publishes the **Sparkle ZIP and appcast** when `publish_update=true`.
-- The signed DMG is currently produced and stored as an artifact, but not automatically uploaded to a public distribution endpoint by this workflow.
-- Release jobs must rebuild from the trusted release ref; they must not sign or publish artifacts produced by PR jobs or fork contexts.
+- `create_appcast_deployment_pr=true` does **not** publish the appcast or prove that the public feed changed.
+- Merge and deployment permissions/processes for the website are outside this repository and are not assumed by the workflow.
+- Verify the public feed only after that PR has actually been merged and deployed. Any optional probe should use short network timeouts and must not wait indefinitely.
+- Release jobs rebuild from the trusted release ref; they do not sign artifacts produced by PR jobs or fork contexts.
 
 ## Release Process
 
 ```bash
-# 1. Build, sign, notarize as usual
-just build X.Y.Z
-just sign "Developer ID Application"
+# 1. Build, sign, notarize, staple, and validate
+just release X.Y.Z "Developer ID Application"
+just notarize-api-key X.Y.Z /path/to/AuthKey.p8 KEY_ID ISSUER_ID
+just staple X.Y.Z
 
-# 2. Create + sign Sparkle update archive
+# 2. Create + sign Sparkle update archive from the stapled app
 just sparkle-zip X.Y.Z
 just sparkle-sign-update X.Y.Z /path/to/sparkle-private-key
 
@@ -166,27 +166,25 @@ Recommended maintainer flow:
 2. Choose the trusted release ref/tag.
 3. Run the `Release` workflow with:
    - `version=X.Y.Z`
-   - `publish_update=false` if you want a sign/notarize-only dry run first.
+   - `create_appcast_deployment_pr=false` for a sign/notarize-only run.
 4. Approve the `release-signing` environment when GitHub prompts for it.
 5. Inspect the signed DMG and ZIP artifacts.
-6. When ready to publish the OTA update:
-   - rerun the workflow with `publish_update=true`, or
-   - run it that way from the start if you want a one-pass release.
+6. When ready, rerun with `create_appcast_deployment_pr=true` (or select it initially) to create the GitHub Release and website appcast deployment PR.
 7. Approve the `release-publish` environment when prompted.
-8. Verify:
-   - appcast contents,
-   - ZIP reachability,
-   - local Sparkle update behavior,
-   - any external/manual DMG publication you still do outside GitHub Actions.
+8. Review and merge the website PR through that repository's deployment process.
+9. Only after deployment, verify with bounded requests such as:
+   - `curl --fail --location --connect-timeout 5 --max-time 20 https://bobebot.com/updates/macos/appcast.xml`
+   - ZIP reachability at the GitHub Release URL,
+   - local Sparkle update behavior.
 
 ## Failure behavior
 
 The intended safety properties are:
 
-- if signing or notarization fails, nothing is published;
-- if ZIP upload fails, the appcast is not updated;
-- if appcast generation/upload fails, users should not be pointed at a broken new update;
-- because the appcast is swapped only after the ZIP is in place, clients should either see the old release or a complete new one.
+- if signing or notarization fails, no release or deployment PR is created;
+- if app/DMG staple validation or extracted-ZIP verification fails, packaging stops;
+- with respect to the appcast, a successful workflow only creates its deployment PR; it does not establish that the website merged or deployed it;
+- clients continue seeing the prior feed until the website's reviewed deployment completes.
 
 ## CI-friendly notarization
 
@@ -217,13 +215,9 @@ Split release secrets so one workflow compromise does not expose everything at o
 
 ### `release-publish`
 
-- `WEBSITE_DEPLOY_TOKEN` (fine-grained PAT with `contents: write` and `pull_requests: write` on `johnkozaris/BoBeWebsite`)
-- `UPDATE_HOST` (reserved for future direct deploy)
-- `UPDATE_PATH`
-- `UPDATE_USER`
-- `UPDATE_SSH_KEY_B64`
+- `WEBSITE_DEPLOY_TOKEN` (fine-grained PAT with permission to push a branch and open a pull request on `johnkozaris/BoBeWebsite`)
 
-If the update host supports OIDC or another short-lived credential flow, prefer that over static SSH credentials.
+The website repository's merge and deployment authorization remain separate and are not evidenced by this token.
 
 ## Recommended GitHub repo settings
 
@@ -247,7 +241,7 @@ These settings are not stored in the repository and must be configured manually 
 - **Commit**: `SUFeedURL`, `SUPublicEDKey`, release scripts
 - **Never commit**: Sparkle private key, code-signing certificates, notarization API keys, deploy keys, or keychain exports
 - **Protect**: workflow files, release scripts, and OTA docs with the same care as source code
-- **Publish order**: upload the ZIP first, then publish the appcast
+- **Deployment order**: publish release assets before merging/deploying an appcast that references them
 - **Cleanup**: CI should materialize keys only at runtime and delete them after use
 
 ## What still needs manual GitHub setup

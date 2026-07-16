@@ -24,7 +24,7 @@ struct StopButton: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Stop BoBe")
+            .accessibilityLabel(L10n.tr("menu.voice.stop_speaking"))
             .help("Stop BoBe (barge in)")
             .frame(width: 36, height: 36)
             .contentShape(Circle())

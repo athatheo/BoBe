@@ -3,7 +3,7 @@
 //! (per-tool cached fillers). Kept here so hooks don't need to depend
 //! on the api::handlers::voice module.
 
-use opus::{Application, Channels, Encoder as OpusEncoder};
+use opusic_c::{Application, Bitrate, Channels, Encoder as OpusEncoder, SampleRate};
 use tracing::warn;
 
 /// 24kbps VoIP profile, matches the WS protocol commitment in voice.rs.
@@ -13,15 +13,26 @@ const TTS_OPUS_BITRATE_BPS: i32 = 24_000;
 /// sample rate. Returns `None` and warns on failure; callers fall through
 /// silently rather than crash the turn.
 pub(crate) fn make_opus_encoder(sample_rate: u32) -> Option<OpusEncoder> {
-    let mut encoder = match OpusEncoder::new(sample_rate, Channels::Mono, Application::Voip) {
-        Ok(e) => e,
-        Err(e) => {
-            warn!(error = %e, "voice.opus_encoder_failed");
+    let sample_rate = match sample_rate {
+        8_000 => SampleRate::Hz8000,
+        12_000 => SampleRate::Hz12000,
+        16_000 => SampleRate::Hz16000,
+        24_000 => SampleRate::Hz24000,
+        48_000 => SampleRate::Hz48000,
+        other => {
+            warn!(sample_rate = other, "voice.opus_unsupported_sample_rate");
             return None;
         }
     };
-    if let Err(e) = encoder.set_bitrate(opus::Bitrate::Bits(TTS_OPUS_BITRATE_BPS)) {
-        warn!(error = %e, "voice.opus_bitrate_failed");
+    let mut encoder = match OpusEncoder::new(Channels::Mono, sample_rate, Application::Voip) {
+        Ok(e) => e,
+        Err(e) => {
+            warn!(error = ?e, "voice.opus_encoder_failed");
+            return None;
+        }
+    };
+    if let Err(e) = encoder.set_bitrate(Bitrate::Value(TTS_OPUS_BITRATE_BPS as u32)) {
+        warn!(error = ?e, "voice.opus_bitrate_failed");
     }
     Some(encoder)
 }
@@ -41,18 +52,14 @@ pub(crate) fn encode_pcm_with(
         if input.len() < frame_samples {
             input.resize(frame_samples, 0.0);
         }
-        let pcm_i16: Vec<i16> = input
-            .iter()
-            .map(|&s| (s.clamp(-1.0, 1.0) * 32_767.0) as i16)
-            .collect();
         let mut out = vec![0_u8; 1500];
-        match encoder.encode(&pcm_i16, &mut out) {
+        match encoder.encode_float_to_slice(&input, &mut out) {
             Ok(n) => {
                 out.truncate(n);
                 frames.push(out);
             }
             Err(e) => {
-                warn!(error = %e, "voice.opus_encode_failed");
+                warn!(error = ?e, "voice.opus_encode_failed");
                 break;
             }
         }
@@ -64,7 +71,7 @@ pub(crate) fn encode_pcm_with(
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
     use super::*;
-    use opus::{Channels, Decoder as OpusDecoder};
+    use opusic_c::{Channels, Decoder as OpusDecoder, SampleRate};
 
     #[test]
     fn encoder_produces_frames_for_24khz_voice() {
@@ -97,12 +104,12 @@ mod tests {
         let mut encoder = make_opus_encoder(24_000).expect("encoder");
         let frames = encode_pcm_with(&mut encoder, &pcm, 24_000);
 
-        let mut decoder = OpusDecoder::new(24_000, Channels::Mono).expect("decoder");
-        let mut decoded_pcm: Vec<i16> = Vec::with_capacity(pcm.len());
-        let mut scratch = vec![0_i16; sr / 50];
+        let mut decoder = OpusDecoder::new(Channels::Mono, SampleRate::Hz24000).expect("decoder");
+        let mut decoded_pcm: Vec<u16> = Vec::with_capacity(pcm.len());
+        let mut scratch = vec![0_u16; sr / 50];
         for frame in &frames {
             let n = decoder
-                .decode(frame, &mut scratch, false)
+                .decode_to_slice(frame, &mut scratch, false)
                 .expect("decode succeeds");
             decoded_pcm.extend_from_slice(&scratch[..n]);
         }
@@ -112,7 +119,7 @@ mod tests {
         let out_rms_i = decoded_pcm
             .iter()
             .map(|&s| {
-                let f = f32::from(s) / 32_767.0;
+                let f = f32::from(s as i16) / 32_767.0;
                 f * f
             })
             .sum::<f32>()

@@ -2,7 +2,7 @@ import CoreGraphics
 import SwiftUI
 
 struct BehaviorPanel: View {
-    @State private var store = SettingsStore.shared
+    @Environment(SettingsStore.self) private var store
     @State private var newCheckinTime: Date = Calendar.current.date(
         bySettingHour: 9, minute: 0, second: 0, of: .now
     ) ?? .now
@@ -82,10 +82,10 @@ struct BehaviorPanel: View {
             if !CGPreflightScreenCaptureAccess() {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(self.theme.colors.tertiary)
+                        .foregroundStyle(self.theme.colors.warning)
                     Text(L10n.tr("settings.behavior.capture.permission_missing"))
                         .bobeTextStyle(.helper)
-                        .foregroundStyle(self.theme.colors.tertiary)
+                        .foregroundStyle(self.theme.colors.warning)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Button(L10n.tr("setup.permissions.open_settings")) {
@@ -122,6 +122,9 @@ struct BehaviorPanel: View {
                                 .foregroundStyle(self.theme.colors.textMuted)
                         }
                         .bobeButton(.ghost, size: .mini)
+                        .accessibilityLabel(
+                            L10n.tr("settings.behavior.checkins.remove_time_accessibility_format", time)
+                        )
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -194,11 +197,14 @@ struct BehaviorPanel: View {
             SettingsRow(
                 label: L10n.tr("settings.behavior.goals.check_interval"),
                 description: L10n.tr("settings.behavior.goals.check_interval.description"),
-                suffix: L10n.tr("settings.units.seconds")
+                suffix: L10n.tr("settings.units.minutes")
             ) {
                 DebouncedNumberInput(
-                    value: self.store.intBinding(\.goalCheckIntervalSeconds, fallback: 300),
-                    range: 60 ... 7200
+                    value: self.store.durationMinutesBinding(
+                        \.goalCheckIntervalSeconds,
+                        fallbackSeconds: 300
+                    ),
+                    range: 1 ... 120
                 )
             }
         }

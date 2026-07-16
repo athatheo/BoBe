@@ -1,6 +1,22 @@
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: cargo
+    directory: /BoBeService
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: swift
+    directory: /BoBeMacUI
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

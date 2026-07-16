@@ -77,6 +77,7 @@ impl LoginPhase {
 /// code rather than a blank screen until the next CLI line lands.
 pub(crate) struct LoginCoordinator {
     inner: Mutex<Option<Session>>,
+    on_completed: Arc<dyn Fn() + Send + Sync>,
 }
 
 struct Session {
@@ -89,9 +90,10 @@ struct Session {
 }
 
 impl LoginCoordinator {
-    pub(crate) fn new() -> Arc<Self> {
+    pub(crate) fn new(on_completed: Arc<dyn Fn() + Send + Sync>) -> Arc<Self> {
         Arc::new(Self {
             inner: Mutex::new(None),
+            on_completed,
         })
     }
 
@@ -125,8 +127,11 @@ impl LoginCoordinator {
         });
         drop(guard);
 
+        let on_completed = Arc::clone(&self.on_completed);
         tokio::spawn(async move {
-            run_login(cli_path, phase_tx, cancel_rx).await;
+            if run_login(cli_path, phase_tx, cancel_rx).await {
+                on_completed();
+            }
             // Session stays in place so `subscribe()` returns the terminal
             // phase to late-joiners; a future `start()` replaces it.
         });
@@ -165,7 +170,7 @@ async fn run_login(
     cli_path: PathBuf,
     phase_tx: watch::Sender<LoginPhase>,
     mut cancel_rx: oneshot::Receiver<()>,
-) {
+) -> bool {
     // Spawn `script -q /dev/null <cli> login` so the Node CLI sees a PTY
     // on stdout. Without this the CLI's `process.stdout.isTTY` check
     // short-circuits the prompts and we'd never get the device code.
@@ -187,7 +192,7 @@ async fn run_login(
             let _ignored = phase_tx.send(LoginPhase::Failed {
                 message: format!("spawn {} failed: {e}", cli_path.display()),
             });
-            return;
+            return false;
         }
     };
 
@@ -197,7 +202,7 @@ async fn run_login(
         });
         // Best-effort wait so we don't leak; kill_on_drop will also fire.
         let _ignored = child.wait().await;
-        return;
+        return false;
     };
     let mut reader = BufReader::new(stdout).lines();
 
@@ -268,18 +273,19 @@ async fn run_login(
                     message: format!("wait failed: {e}"),
                 });
             }
-            return;
+            return false;
         }
     };
 
     // If we already moved to a terminal phase (cancel raced ahead), stop.
     if phase_tx.borrow().is_terminal() {
-        return;
+        return false;
     }
 
     if status.success() {
         info!("copilot_login: CLI exited 0; token written to macOS Keychain");
         let _ignored = phase_tx.send(LoginPhase::Completed);
+        true
     } else {
         let exit_label = status
             .code()
@@ -287,6 +293,7 @@ async fn run_login(
         let message = last_line.unwrap_or_else(|| format!("sign-in failed (exit {exit_label})"));
         warn!(?status, %message, "copilot_login: CLI exited non-zero");
         let _ignored = phase_tx.send(LoginPhase::Failed { message });
+        false
     }
 }
 

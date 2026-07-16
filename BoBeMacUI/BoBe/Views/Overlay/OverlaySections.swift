@@ -213,11 +213,10 @@ extension OverlayView {
         .padding(.trailing, 12)
         .padding(.bottom, 8)
         .padding(.top, 0)
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .contentShape(Rectangle())
         .onHover { isHovering in
-            withAnimation(.easeOut(duration: 0.15)) {
-                self.avatarAreaHovered = isHovering
-            }
+            self.avatarAreaHovered = isHovering
         }
         // Single .animation keyed off a composite token instead of three
         // stacked `.animation(value:)` modifiers. With the stack, only the
@@ -226,7 +225,10 @@ extension OverlayView {
         // the floating bubble), the bubble id change effectively got the
         // wrong animation. Composite-token keying lets one transaction
         // cover all three transitions.
-        .animation(.easeOut(duration: 0.2), value: self.avatarAnimationToken)
+        .animation(
+            OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: self.avatarAnimationToken
+        )
         .zIndex(3)
     }
 
@@ -279,7 +281,7 @@ extension OverlayView {
         // 32pt diameter satellite buttons. Chat toggle at 10:30, mic
         // at 7:30 (clockwise from 12 = 315° and 225°). The math runs
         // entirely on `AvatarMetrics.cardSize` — no column dependencies.
-        let satSize: CGFloat = 32
+        let satSize = AvatarMetrics.satelliteSize
         let chatOffset = AvatarMetrics.rimOffset(angleFrom12: 315, satelliteSize: satSize)
         let micOffset = AvatarMetrics.rimOffset(angleFrom12: 225, satelliteSize: satSize)
 
@@ -288,7 +290,7 @@ extension OverlayView {
         // headroom so the bubble nestles tight against the avatar.
         let topInset: CGFloat = self.isChatVisible ? 18 : 4
         let leadingPad: CGFloat = 16
-        let clusterHeight: CGFloat = self.isChatVisible ? 164 : 148
+        let clusterHeight = AvatarMetrics.columnHeight + topInset
 
         return AvatarView(
             stateType: self.avatarStateType,
@@ -308,16 +310,17 @@ extension OverlayView {
             // calibrated for. AvatarView's internal status-label padding
             // shifts both the card AND this anchor by the same amount.
             ZStack(alignment: .topLeading) {
-                if self.showChatToggleSatellite {
-                    ChatToggleButton(isActive: self.isChatVisible, action: self.toggleChatFromBubble)
-                        .offset(chatOffset)
-                        .transition(.opacity)
-                }
-                if self.showMicSatellite {
-                    MicButton()
-                        .offset(micOffset)
-                        .transition(.opacity)
-                }
+                ChatToggleButton(isActive: self.isChatVisible, action: self.toggleChatManually)
+                    .focused(self.$focusedSatellite, equals: .chat)
+                    .offset(chatOffset)
+                    .opacity(self.showChatToggleSatellite || self.focusedSatellite == .chat ? 1 : 0)
+                    .allowsHitTesting(self.showChatToggleSatellite || self.focusedSatellite == .chat)
+
+                MicButton()
+                    .focused(self.$focusedSatellite, equals: .microphone)
+                    .offset(micOffset)
+                    .opacity(self.showMicSatellite || self.focusedSatellite == .microphone ? 1 : 0)
+                    .allowsHitTesting(self.showMicSatellite || self.focusedSatellite == .microphone)
             }
             .frame(
                 width: AvatarMetrics.cardSize,
@@ -329,9 +332,18 @@ extension OverlayView {
         .padding(.top, topInset)
         .padding(.leading, leadingPad)
         .frame(width: 148, height: clusterHeight, alignment: .topLeading)
-        .animation(.easeOut(duration: 0.15), value: self.showChatToggleSatellite)
-        .animation(.easeOut(duration: 0.15), value: self.showMicSatellite)
-        .animation(.easeOut(duration: 0.2), value: self.isChatVisible)
+        .animation(
+            OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.15),
+            value: self.showChatToggleSatellite
+        )
+        .animation(
+            OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.15),
+            value: self.showMicSatellite
+        )
+        .animation(
+            OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: self.isChatVisible
+        )
     }
 }
 

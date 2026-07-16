@@ -38,22 +38,4 @@ enum FluidAudioModelPresence {
         }
         return true
     }
-
-    /// Approximate full install size. FluidAudio doesn't expose this as
-    /// metadata so the value is observed-empirically — see what an actual
-    /// completed install weighs in the SDK's tests. Used as the denominator
-    /// for download progress until the SDK adds a progress callback.
-    static let approximateTotalBytes: UInt64 = 600_000_000
-
-    /// Best-effort progress bytes observed via filesystem polling. Counts
-    /// every file under the variant's parent dir so partial downloads, the
-    /// `.mlpackage`/`.mlmodelc` pairs, and metadata JSONs all contribute.
-    /// Returns 0 when the dir doesn't exist yet.
-    static func observedBytes() -> UInt64 {
-        let root = FluidAudioCache.root.appendingPathComponent(
-            "parakeet-eou-streaming",
-            isDirectory: true
-        )
-        return FluidAudioCache.directorySizeBytes(at: root)
-    }
 }

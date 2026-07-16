@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct AppearancePanel: View {
-    private let themeStore = ThemeStore.shared
+    @Environment(ThemeStore.self) private var themeStore
     @Environment(\.theme) private var theme
+
+    private var selectableThemes: [ThemeConfig] {
+        [systemTheme()] + allThemes
+    }
 
     var body: some View {
         ScrollView {
@@ -12,12 +16,12 @@ struct AppearancePanel: View {
                         .font(.system(size: 16))
                         .foregroundStyle(self.theme.colors.primary)
                     Text(L10n.tr("settings.appearance.theme.title"))
-                        .font(.system(size: 16, weight: .semibold))
+                        .bobeTextStyle(.heading)
                         .foregroundStyle(self.theme.colors.text)
                 }
 
                 Text(L10n.tr("settings.appearance.theme.description"))
-                    .font(.system(size: 13))
+                    .bobeTextStyle(.settingsBody)
                     .foregroundStyle(self.theme.colors.textMuted)
 
                 LazyVGrid(
@@ -27,7 +31,7 @@ struct AppearancePanel: View {
                         GridItem(.flexible(), spacing: 16),
                     ], spacing: 16
                 ) {
-                    ForEach(allThemes) { themeConfig in
+                    ForEach(self.selectableThemes) { themeConfig in
                         ThemeCard(
                             themeConfig: themeConfig,
                             isSelected: themeConfig.themeId == self.themeStore.themeId,
@@ -95,7 +99,8 @@ struct ThemeCard: View {
 
                 HStack(spacing: 4) {
                     Text(self.themeConfig.name)
-                        .font(.system(size: 12, weight: .semibold))
+                        .bobeTextStyle(.rowMeta)
+                        .fontWeight(.semibold)
                         .foregroundStyle(self.themeConfig.colors.text)
                     if self.isSelected {
                         Image(systemName: "checkmark")
@@ -126,7 +131,7 @@ struct ThemeCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel(L10n.tr("settings.appearance.theme.accessibility_format", self.themeConfig.name))
         .accessibilityAddTraits(self.isSelected ? .isSelected : [])
-        .scaleEffect(self.isHovered ? 1.02 : 1.0)
+        .scaleEffect(self.isHovered && !OverlayMotionRuntime.reduceMotion ? 1.02 : 1.0)
         .animation(OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.15), value: self.isHovered)
         .onHover { self.isHovered = $0 }
     }
@@ -149,6 +154,7 @@ private struct ClosedEyeArc: View {
     #Preview("Appearance Panel") {
         AppearancePanel()
             .environment(\.theme, allThemes[0])
+            .environment(ThemeStore.shared)
             .frame(width: 600, height: 500)
     }
 

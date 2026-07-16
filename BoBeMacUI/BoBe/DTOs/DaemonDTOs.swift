@@ -239,10 +239,11 @@ enum CopilotLoginPhase: Equatable {
     case completed
     case failed(message: String)
     case canceled
+    case unsupported(phase: String)
 
     var isTerminal: Bool {
         switch self {
-        case .completed, .failed, .canceled: true
+        case .completed, .failed, .canceled, .unsupported: true
         default: false
         }
     }
@@ -279,11 +280,7 @@ extension CopilotLoginPhase: Decodable {
         case "canceled":
             self = .canceled
         default:
-            throw DecodingError.dataCorruptedError(
-                forKey: .phase,
-                in: container,
-                debugDescription: "Unknown CopilotLoginPhase: \(phase)"
-            )
+            self = .unsupported(phase: phase)
         }
     }
 }

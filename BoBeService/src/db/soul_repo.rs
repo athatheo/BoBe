@@ -86,37 +86,26 @@ impl SqliteSoulRepo {
             return Ok(None);
         }
 
-        let mut sets = Vec::new();
-        if content.is_some() {
-            sets.push("content = ?");
+        let mut query = sqlx::QueryBuilder::new("UPDATE souls SET ");
+        {
+            let mut set = query.separated(", ");
+            if let Some(content) = content {
+                set.push("content = ").push_bind_unseparated(content);
+            }
+            if let Some(enabled) = enabled {
+                set.push("enabled = ").push_bind_unseparated(enabled);
+            }
+            if let Some(is_default) = is_default {
+                set.push("is_default = ").push_bind_unseparated(is_default);
+            }
+            if let Some(name) = name {
+                set.push("name = ").push_bind_unseparated(name);
+            }
+            set.push("updated_at = ")
+                .push_bind_unseparated(chrono::Utc::now());
         }
-        if enabled.is_some() {
-            sets.push("enabled = ?");
-        }
-        if is_default.is_some() {
-            sets.push("is_default = ?");
-        }
-        if name.is_some() {
-            sets.push("name = ?");
-        }
-        sets.push("updated_at = ?");
-
-        let sql = format!("UPDATE souls SET {} WHERE id = ?", sets.join(", "));
-        let mut q = sqlx::query(&sql);
-        if let Some(c) = content {
-            q = q.bind(c);
-        }
-        if let Some(e) = enabled {
-            q = q.bind(e);
-        }
-        if let Some(d) = is_default {
-            q = q.bind(d);
-        }
-        if let Some(n) = name {
-            q = q.bind(n);
-        }
-        q = q.bind(chrono::Utc::now()).bind(id);
-        q.execute(&self.pool).await?;
+        query.push(" WHERE id = ").push_bind(id);
+        query.build().execute(&self.pool).await?;
 
         info!(
             soul_id = %id,

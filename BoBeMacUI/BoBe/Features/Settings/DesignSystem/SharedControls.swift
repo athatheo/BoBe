@@ -2,11 +2,11 @@ import SwiftUI
 
 struct BobeToggle: View {
     @Binding var isOn: Bool
-    var accessibilityLabel: String?
+    let accessibilityLabel: String
     @Environment(\.theme) private var theme
 
-    init(isOn: Binding<Bool>, accessibilityLabel: String? = nil) {
-        _isOn = isOn
+    init(isOn: Binding<Bool>, accessibilityLabel: String) {
+        self._isOn = isOn
         self.accessibilityLabel = accessibilityLabel
     }
 
@@ -14,9 +14,9 @@ struct BobeToggle: View {
         Toggle("", isOn: self.$isOn)
             .labelsHidden()
             .toggleStyle(.switch)
-            .tint(self.theme.colors.secondary)
+            .tint(self.theme.colors.success)
             .controlSize(.small)
-            .accessibilityLabel(Text(self.accessibilityLabel ?? L10n.tr("settings.shared.toggle.enabled")))
+            .accessibilityLabel(Text(self.accessibilityLabel))
     }
 }
 
@@ -81,15 +81,15 @@ struct SettingsErrorBanner: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(self.theme.colors.primary)
+                .foregroundStyle(self.theme.colors.error)
             Text(self.message)
                 .bobeTextStyle(.body)
-                .foregroundStyle(self.theme.colors.primary)
+                .foregroundStyle(self.theme.colors.error)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.primary.opacity(0.08))
+            RoundedRectangle(cornerRadius: 8).fill(self.theme.colors.error.opacity(0.08))
         )
     }
 }
@@ -103,10 +103,10 @@ struct SettingsSavedToast: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(self.theme.colors.secondary)
+                .foregroundStyle(self.theme.colors.success)
             Text(self.message)
                 .bobeTextStyle(.helper)
-                .foregroundStyle(self.theme.colors.secondary)
+                .foregroundStyle(self.theme.colors.success)
             Spacer()
         }
         .transition(.opacity)
@@ -371,7 +371,7 @@ struct CollapsibleSection<Content: View>: View {
     #Preview("BobeToggle") {
         @Previewable @State var isOn = true
         HStack(spacing: 20) {
-            BobeToggle(isOn: $isOn)
+            BobeToggle(isOn: $isOn, accessibilityLabel: "Example toggle")
             Text(isOn ? "On" : "Off")
         }
         .environment(\.theme, allThemes[0])
@@ -382,7 +382,7 @@ struct CollapsibleSection<Content: View>: View {
         @Previewable @State var toggle = true
         VStack(spacing: 16) {
             SettingsRow(label: "Enable Feature", description: "A helpful description") {
-                BobeToggle(isOn: $toggle)
+                BobeToggle(isOn: $toggle, accessibilityLabel: "Enable feature")
             }
             SettingsRow(label: "Token Limit", suffix: "tokens") {
                 Text("4096")

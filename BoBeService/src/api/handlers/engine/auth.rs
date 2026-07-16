@@ -22,8 +22,7 @@ pub(crate) struct AuthStatusResponse {
 pub(crate) async fn get_auth_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AuthStatusResponse>, AppError> {
-    // `Client::start` extracts the bundled CLI as a side effect; required
-    // before `embeddedcli::path()` returns Some.
+    // `Client::start` verifies the bundled CLI and starts the JSON-RPC server.
     let client = state
         .runtime
         .workers
@@ -38,9 +37,7 @@ pub(crate) async fn get_auth_status(
         .map_err(|e| AppError::Internal(format!("auth_status: get_auth_status failed: {e}")))?;
 
     let cli_path =
-        github_copilot_sdk::embeddedcli::path().map(|p| p.to_string_lossy().into_owned());
-    let cli_version =
-        github_copilot_sdk::embeddedcli::bundled_version().map(std::string::ToString::to_string);
+        github_copilot_sdk::install_bundled_cli().map(|p| p.to_string_lossy().into_owned());
 
     Ok(Json(AuthStatusResponse {
         is_authenticated: status.is_authenticated,
@@ -49,6 +46,6 @@ pub(crate) async fn get_auth_status(
         login: status.login,
         status_message: status.status_message,
         cli_path,
-        cli_version,
+        cli_version: None,
     }))
 }

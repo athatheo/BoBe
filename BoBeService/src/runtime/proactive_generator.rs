@@ -1,18 +1,24 @@
 //! Same SSE pipe as user chat; empty agent response = no-op (not persisted).
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
+use arc_swap::ArcSwap;
 use chrono::Utc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::copilot::registry::WorkerRegistry;
 use crate::copilot::types::{ChatPrompt, JobInput};
 use crate::db::SqliteCooldownRepo;
 use crate::error::AppError;
 use crate::models::conversation::Conversation;
+use crate::runtime::behavior_context::BehaviorContext;
 use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::response_streamer::stream_chat_delta_response;
+use crate::runtime::state::Decision;
+use crate::util::atomic_flag_guard::AtomicFlagGuard;
 use crate::util::sse::event_queue::EventQueue;
 use crate::util::sse::factories::conversation_closed_event;
 use crate::util::sse::indicator_guard::IndicatorGuard;
@@ -24,11 +30,23 @@ const PROACTIVE_TRIGGER_PROMPT: &str = "[bobe.proactive_check] \
      produce a short proactive message. If a message would not add value right \
      now, reply with an empty message — no apology, no preamble.";
 
+fn inactivity_timeout_elapsed(
+    now: chrono::DateTime<Utc>,
+    last_user_at: chrono::DateTime<Utc>,
+    timeout_seconds: u64,
+) -> bool {
+    now.signed_duration_since(last_user_at).num_seconds()
+        >= i64::try_from(timeout_seconds).unwrap_or(i64::MAX)
+}
+
 pub(crate) struct ProactiveGenerator {
     workers: Arc<WorkerRegistry>,
     conversation: Arc<ConversationService>,
     event_queue: Arc<EventQueue>,
     cooldown_repo: Arc<SqliteCooldownRepo>,
+    behavior_context: Arc<BehaviorContext>,
+    config: Arc<ArcSwap<Config>>,
+    in_flight: Arc<AtomicBool>,
 }
 
 impl ProactiveGenerator {
@@ -37,12 +55,17 @@ impl ProactiveGenerator {
         conversation: Arc<ConversationService>,
         event_queue: Arc<EventQueue>,
         cooldown_repo: Arc<SqliteCooldownRepo>,
+        behavior_context: Arc<BehaviorContext>,
+        config: Arc<ArcSwap<Config>>,
     ) -> Self {
         Self {
             workers,
             conversation,
             event_queue,
             cooldown_repo,
+            behavior_context,
+            config,
+            in_flight: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -50,7 +73,29 @@ impl ProactiveGenerator {
         &self,
         auto_close_minutes: i64,
         context_summary: Option<String>,
-    ) {
+    ) -> Decision {
+        match self.conversation.latest_user_turn_at().await {
+            Ok(Some(last_user_at))
+                if !inactivity_timeout_elapsed(
+                    Utc::now(),
+                    last_user_at,
+                    self.config.load().conversation.inactivity_timeout_seconds,
+                ) =>
+            {
+                tracing::debug!("proactive_generator.user_active");
+                return Decision::Idle;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                warn!(%error, "proactive_generator.admission_failed");
+                return Decision::Idle;
+            }
+        }
+
+        let Some(_in_flight) = AtomicFlagGuard::try_acquire(Arc::clone(&self.in_flight)) else {
+            tracing::debug!("proactive_generator.already_in_flight");
+            return Decision::Idle;
+        };
         let (target, _previous_summary) = self.ensure_conversation(auto_close_minutes).await;
         let target = match self
             .conversation
@@ -66,11 +111,11 @@ impl ProactiveGenerator {
 
         let Some(target_conversation) = target else {
             warn!("proactive_generator.missing_target_conversation");
-            return;
+            return Decision::Idle;
         };
 
         self.generate_response(&target_conversation, context_summary)
-            .await;
+            .await
     }
 
     async fn ensure_conversation(
@@ -85,11 +130,19 @@ impl ProactiveGenerator {
             .flatten();
 
         if let Some(ref conv) = existing {
-            if let Ok(turns) = self.conversation.get_conversation_turns(conv.id, 100).await
-                && conv.is_stale(auto_close_minutes, &turns)
-            {
+            let last_user_at = self
+                .conversation
+                .last_user_turn_at(conv.id)
+                .await
+                .ok()
+                .flatten();
+            if conv.is_stale_since(auto_close_minutes, last_user_at) {
+                let old_turn_count = self
+                    .conversation
+                    .get_conversation_turns(conv.id, 100)
+                    .await
+                    .map_or(0, |turns| turns.len() as u32);
                 let old_id = conv.id.to_string();
-                let old_turn_count = turns.len() as u32;
                 let (new_conv, summary) = self.transition_conversation(conv).await;
                 self.event_queue.push(conversation_closed_event(
                     &old_id,
@@ -115,7 +168,7 @@ impl ProactiveGenerator {
         &self,
         target_conversation: &Conversation,
         context_summary: Option<String>,
-    ) {
+    ) -> Decision {
         self.event_queue.set_indicator(IndicatorType::Streaming);
         // RAII: covers normal completion, error return, AND mid-flight
         // task abort (e.g., shutdown). Without this guard a panic or
@@ -141,19 +194,21 @@ impl ProactiveGenerator {
             Err(e) => {
                 error!(error = %e, "proactive_generator.chat_failed");
                 self.conversation.discard_proactive_stream(conversation_id);
-                return;
+                return Decision::Idle;
             }
         };
 
-        if result.full_response.trim().is_empty() {
+        let decision = if result.full_response.trim().is_empty() {
             self.conversation.discard_proactive_stream(conversation_id);
+            Decision::Idle
         } else {
             self.persist_proactive_response(&result, target_conversation)
                 .await;
             if result.success {
                 self.record_engagement().await;
             }
-        }
+            Decision::Engage
+        };
 
         if !result.success {
             warn!(
@@ -161,6 +216,7 @@ impl ProactiveGenerator {
                 "proactive_generator.stream_incomplete"
             );
         }
+        decision
     }
 
     async fn send_proactive_via_chat(
@@ -170,6 +226,7 @@ impl ProactiveGenerator {
         conversation_id: crate::models::ids::ConversationId,
     ) -> Result<crate::runtime::response_streamer::StreamResult, AppError> {
         let worker = self.workers.chat().await?;
+        let prompt_text = self.behavior_context.prepend_to(prompt_text).await;
         let chat_stream = worker
             .send(ChatPrompt::text(prompt_text))
             .await
@@ -182,7 +239,10 @@ impl ProactiveGenerator {
                 &self.event_queue,
                 Some(msg_id),
                 move |delta| {
-                    conversation.push_proactive_stream_delta(conversation_id, delta);
+                    let conversation = Arc::clone(&conversation);
+                    async move {
+                        conversation.push_proactive_stream_delta(conversation_id, &delta);
+                    }
                 },
             )
             .await,
@@ -302,5 +362,41 @@ impl ProactiveGenerator {
                 None
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::inactivity_timeout_elapsed;
+    use chrono::{Duration, Utc};
+
+    #[test]
+    fn inactivity_timeout_blocks_recent_user_response() {
+        let now = Utc::now();
+        assert!(!inactivity_timeout_elapsed(
+            now,
+            now - Duration::seconds(29),
+            30
+        ));
+    }
+
+    #[test]
+    fn inactivity_timeout_allows_at_boundary() {
+        let now = Utc::now();
+        assert!(inactivity_timeout_elapsed(
+            now,
+            now - Duration::seconds(30),
+            30
+        ));
+    }
+
+    #[test]
+    fn inactivity_timeout_blocks_future_user_response() {
+        let now = Utc::now();
+        assert!(!inactivity_timeout_elapsed(
+            now,
+            now + Duration::seconds(1),
+            30
+        ));
     }
 }

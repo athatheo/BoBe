@@ -32,6 +32,7 @@ final class SettingsStore {
     /// Auth status fetched alongside the engine pane. Independent of the
     /// settings blob (separate `/auth/status` endpoint).
     private(set) var auth: AuthStatusResponse?
+    private(set) var authError: String?
 
     /// Latest persist error (load error, PATCH error). Cleared by the next
     /// successful save. Panels render this as a banner.
@@ -128,10 +129,10 @@ final class SettingsStore {
         let task = Task<Void, Never> { @MainActor in
             do {
                 self.auth = try await DaemonClient.shared.getAuthStatus()
+                self.authError = nil
             } catch {
-                // Auth probe is best-effort. Don't surface as a banner —
-                // EnginePanel renders an explicit "checking" state when
-                // `auth == nil` and a separate "signed out" CTA otherwise.
+                self.auth = nil
+                self.authError = error.localizedDescription
                 logger.debug("auth load failed: \(error.localizedDescription, privacy: .public)")
             }
         }
@@ -184,6 +185,9 @@ final class SettingsStore {
         await self.debouncer.runPersist(
             setError: { [weak self] in self?.error = $0 },
             setSaved: { [weak self] in self?.savedMessage = $0 },
+            onSuccess: {
+                VoicePipeline.shared.applySettings(currentSettings)
+            },
             build: { req in
                 // Snapshot every field — daemon ignores nils, so a "patch-all"
                 // request is fine and avoids field-key bookkeeping at every
@@ -198,13 +202,13 @@ final class SettingsStore {
                 req.goalCheckIntervalSeconds = currentSettings.goalCheckIntervalSeconds
                 req.mcpEnabled = currentSettings.mcpEnabled
                 req.engine = currentSettings.engine
-                req.providerBaseUrl = currentSettings.providerBaseUrl
-                req.providerChatModel = currentSettings.providerChatModel
-                req.providerBatchModel = currentSettings.providerBatchModel
-                req.providerVisionModel = currentSettings.providerVisionModel
-                req.providerChatReasoning = currentSettings.providerChatReasoning
-                req.providerBatchReasoning = currentSettings.providerBatchReasoning
-                req.providerVisionReasoning = currentSettings.providerVisionReasoning
+                req.providerBaseUrl = PatchField(currentSettings.providerBaseUrl)
+                req.providerChatModel = PatchField(currentSettings.providerChatModel)
+                req.providerBatchModel = PatchField(currentSettings.providerBatchModel)
+                req.providerVisionModel = PatchField(currentSettings.providerVisionModel)
+                req.providerChatReasoning = PatchField(currentSettings.providerChatReasoning)
+                req.providerBatchReasoning = PatchField(currentSettings.providerBatchReasoning)
+                req.providerVisionReasoning = PatchField(currentSettings.providerVisionReasoning)
                 req.providerOffline = currentSettings.providerOffline
                 req.voiceEnabled = currentSettings.voiceEnabled
                 req.voicePersona = currentSettings.voicePersona
@@ -243,7 +247,6 @@ final class SettingsStore {
         "checkin_enabled",
         "checkin_times",
         "checkin_jitter_minutes",
-        "mcp_enabled",
     ]
 
     // MARK: - Bindings
@@ -294,7 +297,29 @@ final class SettingsStore {
         )
     }
 
+    func durationMinutesBinding(
+        _ keyPath: WritableKeyPath<DaemonSettings, Double>,
+        fallbackSeconds: @autoclosure @escaping () -> Int,
+        touched: String? = nil
+    ) -> Binding<Int> {
+        Binding(
+            get: {
+                let seconds = self.settings?[keyPath: keyPath] ?? Double(fallbackSeconds())
+                return max(1, Int((seconds / 60).rounded()))
+            },
+            set: { [self] minutes in
+                self.update(touched: touched) {
+                    $0[keyPath: keyPath] = Double(minutes * 60)
+                }
+            }
+        )
+    }
+
     // MARK: - Lifecycle
+
+    func flushPendingSave() async {
+        await self.debouncer.flush()
+    }
 
     /// Called by a panel's `.onDisappear` to drain any pending toast clear
     /// without dropping the in-flight persist. The persist task itself is

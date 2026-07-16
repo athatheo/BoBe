@@ -26,9 +26,9 @@
 
 ## TL;DR
 
-1. **One agent loop**: stay on `github-copilot-sdk` (Rust). It's bundled into BoBe via the `embedded-cli` feature so users never have to install Copilot CLI separately. No second SDK.
+1. **One agent loop**: stay on `github-copilot-sdk` (Rust). It's bundled into BoBe via the `bundled-cli` feature so users never have to install Copilot CLI separately. No second SDK.
 2. **Two engine modes**: `copilot_cloud` (default) and `local` (Ollama). User picks at first-launch wizard; configurable later in Settings → Engine. **Hot-swap** — `ConfigManager` notifies `WorkerRegistry::reload()` on engine changes; the next worker access re-spawns the CLI against the new config. No daemon restart.
-3. **One shared Copilot CLI subprocess in either mode**. Per-session `model` + `provider` overrides via `SessionConfig::with_model` / `with_provider` (verified in `github-copilot-sdk` 0.1.0 source). The two-CLI plan was based on an incorrect "model is process-fixed" assumption — reading the SDK confirmed model is *session*-fixed.
+3. **One shared Copilot CLI subprocess in either mode**. Per-session `model` + `provider` overrides via `SessionConfig::with_model` / `with_provider` (verified in `github-copilot-sdk` 1.0.6).
 4. **Per-class model slots**: chat (user-facing dialogue), batch (goals / decide / consolidate autopilot jobs), vision (capture pipeline). Five worker classes, three model slots — Decide / Goals / Consolidate share the batch slot.
 5. **Local runtime is downloaded on demand, not bundled**: Ollama (~200 MB) and the Qwen models (~10 GB total) are fetched the first time the user picks local mode. Existing Ollama on `:11434` is detected and reused.
 6. **BoBe never proxies inference**: daemon configures the SDK's `SessionConfig` per worker. SDK + spawned CLI handle every actual call. No in-process HTTP shim, no FFI, no proxy.
@@ -69,7 +69,7 @@ a9c4a03 swiftui(privacy)        — split off PrivacyPanel, drop GoalWorkerPanel
 
 ### Phase 0 — Bundle Copilot CLI
 
-`BoBeService/Cargo.toml`: `github-copilot-sdk = { version = "0.1", features = ["embedded-cli"] }`. New `BoBeService/.cargo/config.toml` pins `COPILOT_CLI_VERSION = "1.0.44"`. Build downloads the macOS Copilot CLI tarball, verifies SHA-256, zstd-19 compresses (~60 MB), `include_bytes!`s into the daemon binary. At runtime the SDK extracts to `~/.cache/github-copilot-sdk-{ver}/copilot` lazily, hash-verified, cached in a `OnceLock`. Dropped the `which copilot` probe + install-instructions branch from welcome wizard step 2 — the binary is now always available. 6 dead `setup.copilot.*` keys pruned across 9 locales.
+`BoBeService/Cargo.toml` pins `github-copilot-sdk 1.0.6` with `bundled-cli`. The SDK embeds a verified platform archive, extracts lazily, and revalidates cached installations so partial or quarantined binaries are repaired automatically.
 
 ### Phase 1 — Engine + provider settings DTO
 
@@ -77,14 +77,14 @@ a9c4a03 swiftui(privacy)        — split off PrivacyPanel, drop GoalWorkerPanel
 
 ### Foundation — schema rev + hot-swap + per-session BYOK
 
-Verified the SDK source (`~/.cargo/registry/.../github-copilot-sdk-0.1.0/src/types.rs`): `SessionConfig.provider: Option<ProviderConfig>` + `SessionConfig.model: Option<String>` are first-class fields, with `with_model` / `with_provider` builders. That collapses the two-CLI-subprocess plan: one shared CLI hosts all five sessions, each configured per-class.
+Verified in SDK 1.0.6: create and resume configs both accept model/provider overrides, allowing one shared CLI to host all five per-class sessions.
 
 Schema rev: `provider_text_model` → `provider_chat_model` + `provider_batch_model`. Vision keeps its own slot. Three model knobs map to five worker classes:
 - **Chat** → `provider_chat_model`
 - **Vision** → `provider_vision_model`
 - **Goals / Decide / Consolidate** → `provider_batch_model`
 
-Hot-swap mechanism: all `engine.*` keys move from `STATIC_FIELDS` to `HOT_SWAP_FIELDS`. `ConfigManager` gains an `EngineChangeListener` callback hook; bootstrap wires it to `WorkerRegistry::reload()`. `ClientHandle` and the worker session caches switch from `OnceCell` to `Mutex<Option<Arc<…>>>` so they can be drained and rebuilt. `reload()` shuts down cached sessions, stops the CLI, **and forgets on-disk session IDs** — because `ResumeSessionConfig` has no `model` field, the only safe way to honor a model swap is fresh-create.
+Hot-swap mechanism: all `engine.*` keys live in `HOT_SWAP_FIELDS`. Provider/engine changes hard-reload and forget incompatible sessions; model-only changes disconnect workers but preserve IDs, then resume with the new model.
 
 `session_extras_for_class(cfg, class)` resolves `(model, provider)` per worker class from the live `EngineConfig` snapshot at session-create time. Cloud mode sets only `model`; local mode sets both.
 
@@ -192,20 +192,18 @@ The decision to stay on `github-copilot-sdk` is a Layer-2 + Layer-3 decision (we
 
 ### Bundling and the `github-copilot-sdk` Rust crate
 
-**The Rust SDK has an `embedded-cli` Cargo feature that bundles the Copilot CLI binary at build time** (filed via [issue #248](https://github.com/github/copilot-sdk/issues/248), Steve Sanderson's [confirmation comment](https://github.com/github/copilot-sdk/issues/248#issuecomment-3813716744)). The mechanism:
+**The Rust SDK has a `bundled-cli` Cargo feature that bundles the Copilot CLI binary at build time.** The mechanism:
 
-1. `Cargo.toml` enables `features = ["embedded-cli"]` (pulls `sha2` + `zstd` deps)
-2. `.cargo/config.toml` sets `[env] COPILOT_CLI_VERSION = "X.Y.Z"`
-3. The SDK's [`build.rs`](https://github.com/github/copilot-sdk/blob/main/rust/build.rs) downloads `copilot-{platform}-{arch}.{tar.gz|zip}` from `github.com/github/copilot-cli/releases/download/v{VERSION}/`
-4. Verifies SHA-256 against the matching `SHA256SUMS.txt`
-5. zstd-19 compresses, `include_bytes!`s as `CLI_BYTES` with `CLI_HASH` and `CLI_VERSION` constants
-6. Sets `cfg(has_bundled_cli)`
+1. `Cargo.toml` enables `features = ["bundled-cli"]`.
+2. The SDK build embeds the supported platform archive and its integrity metadata.
+3. Runtime resolution checks `COPILOT_CLI_PATH`, then the bundled extraction.
+4. Cached binaries receive an integrity re-check and are re-extracted when partial or corrupt.
 
-At runtime, [`embeddedcli.rs`](https://github.com/github/copilot-sdk/blob/main/rust/src/embeddedcli.rs) lazily extracts to `~/.cache/github-copilot-sdk-{ver}/copilot` on first call to `path()`. Hash-verified post-extraction. Cached in a `OnceLock`. The [`resolve.rs`](https://github.com/github/copilot-sdk/blob/main/rust/src/resolve.rs) order is: `COPILOT_CLI_PATH` env override → bundled extraction → PATH search.
+At runtime, `install_bundled_cli()` exposes the verified extracted path for login and diagnostics.
 
 Targets supported: macos-arm64, macos-x64, linux-x64, linux-arm64, windows-x64, windows-arm64.
 
-**This shipped in cross-language SDK preview 0.1.23-preview.1.** As of 2026-05-10 the latest Rust release is `rust-v0.1.0` on the monorepo (released 2026-05-06).
+BoBe currently pins Rust SDK 1.0.6.
 
 ### BYOK env vars in Copilot CLI
 
@@ -354,16 +352,16 @@ For Hacker News, `https://hn.algolia.com/api/v1/search?query=X&tags=story` retur
 | Decision | Rationale |
 |---|---|
 | **Stay on `github-copilot-sdk`** as the only agent loop | Mature, MS-maintained. Skills + hooks + autopilot + MCP + tool dispatch already integrated and tested in BoBe. Switching loops would mean re-implementing infrastructure we just built (~3K lines). |
-| **Bundle the CLI binary** via `embedded-cli` feature | No "is Copilot CLI installed?" failure mode. Wizard step 2 simplified. Sandboxed-app-vs-shell PATH discrepancies eliminated. ~60 MB binary growth is acceptable. |
+| **Bundle the CLI binary** via `bundled-cli` feature | No "is Copilot CLI installed?" failure mode. Cached extraction is integrity-checked and self-repairing. |
 | **Two engine modes** (`copilot_cloud` default, `local`) | Cleanest split: one user choice, daemon configures CLI accordingly. Auth, model, base-URL all derive from this single discriminator. |
 | **Ollama as the local runtime** | Community standard for Pi, OpenCode, Aider, Goose. Native multi-model + smart scheduler + model registry (`ollama pull`). Bundling Ollama matches the muscle memory of the entire local-AI tutorial ecosystem. |
 | **Download Ollama on demand** (don't bundle) | Bundling forces lockstep version pinning with our releases, inflates every BoBe download by ~250 MB even for cloud-only users, and complicates the .app's third-party-binary story. Pre-pivot pattern from `main` already shows how to do this cleanly. |
 | **Detect existing Ollama on `:11434`** before spawning ours | Power users who already run Ollama see no second copy. Their `~/.ollama/models` cache is reused — models they've previously pulled don't re-download. |
-| **Two Copilot CLI subprocesses in local mode** | BYOK fixes `COPILOT_MODEL` at process spawn; we want per-role flexibility. The two CLIs *can* point at the same model (default, lower RAM) or different models (better text quality at 7B). Architecture supports both. |
+| **One shared Copilot CLI subprocess** | SDK 1.0 supports per-session model/provider configuration and model overrides on resume. |
 | **Default models**: Qwen 2.5 7B Instruct + Qwen 2.5-VL 7B | Both ~5 GB at Q4_K_M. Total local-mode footprint ~10 GB models + ~10 GB resident. Strong text quality + strong vision. *Could default to a single VL model for ~5 GB total* — see open question below. |
 | **`Attachment::Blob` for images** (in-memory base64) | Already what BoBe uses. SDK passes via JSON-RPC pipe to CLI subprocess; CLI base64-decodes and forwards to the multimodal API. No disk roundtrip needed. |
 | **BoBe never proxies inference calls** | Daemon sets env vars at Client construction, period. SDK + spawned CLI handle every call to GitHub or Ollama. Less code, fewer failure modes. |
-| **Restart-required for engine + provider fields** | Spawned CLI captures `COPILOT_PROVIDER_*` env at boot. Standard pattern via `STATIC_FIELDS` + `RestartRequiredBanner`. |
+| **Hot-swap engine + provider fields** | Config changes rebuild the client; model-only changes preserve resumable session IDs. |
 
 ### What we rejected and why
 
@@ -388,7 +386,7 @@ For Hacker News, `https://hn.algolia.com/api/v1/search?query=X&tags=story` retur
 ┌──────────────────────────────────────────────────────────────────┐
 │ BoBe daemon (Rust binary, ~120 MB after stripping)               │
 │                                                                  │
-│   github-copilot-sdk (with embedded-cli feature)                 │
+│   github-copilot-sdk 1.0.6 (with bundled-cli feature)            │
 │   ├─ extracts copilot CLI to ~/.cache/github-copilot-sdk-{ver}/  │
 │   ├─ ONE shared Client + ONE CLI subprocess                      │
 │   └─ Per-session model + provider via SessionConfig.with_model   │

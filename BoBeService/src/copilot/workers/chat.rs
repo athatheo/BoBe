@@ -1,13 +1,19 @@
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use async_stream::stream;
 use futures::Stream;
+use github_copilot_sdk::rpc::MetadataContextHeaviestMessagesRequest;
 use github_copilot_sdk::session::Session;
-use github_copilot_sdk::subscription::RecvError;
+use github_copilot_sdk::session_events::{
+    AssistantMessageData, AssistantMessageDeltaData, SessionErrorData, SessionEventType,
+    ToolExecutionCompleteData, ToolExecutionStartData,
+};
+use github_copilot_sdk::subscription::RecvErrorKind;
 use github_copilot_sdk::types::{DeliveryMode, MessageOptions, SessionEvent, SetModelOptions};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
+use tokio::task::JoinHandle;
 
 use crate::copilot::error::WorkerError;
 use crate::copilot::types::{ChatDelta, ChatPrompt};
@@ -23,6 +29,9 @@ pub(crate) struct CopilotChatWorker {
     /// Last effort we sent via set_model; skip the redundant RPC if the
     /// new send wants the same effort. None = never called set_model.
     last_effort: Arc<Mutex<Option<&'static str>>>,
+    completed_turns: Arc<AtomicU64>,
+    context_diagnostics_task: Arc<Mutex<Option<JoinHandle<()>>>>,
+    lifecycle: Arc<RwLock<()>>,
 }
 
 /// Without this, a dropped stream leaks an in-flight turn — wasted tokens + residual events.
@@ -48,16 +57,40 @@ impl Drop for AbortGuard {
 }
 
 impl CopilotChatWorker {
-    pub(crate) fn new(session: Arc<Session>, model: Option<String>) -> Arc<Self> {
+    pub(crate) fn new(
+        session: Arc<Session>,
+        model: Option<String>,
+        lifecycle: Arc<RwLock<()>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             session,
             submit_lock: Arc::new(Mutex::new(())),
             model,
             last_effort: Arc::new(Mutex::new(None)),
+            completed_turns: Arc::new(AtomicU64::new(0)),
+            context_diagnostics_task: Arc::new(Mutex::new(None)),
+            lifecycle,
         })
     }
 
+    #[allow(
+        deprecated,
+        reason = "privacy purge must erase SDK session state, not merely disconnect"
+    )]
+    pub(crate) async fn destroy(&self) -> Result<(), WorkerError> {
+        if let Some(task) = self.context_diagnostics_task.lock().await.take() {
+            task.abort();
+            drop(task.await);
+        }
+        self.session.destroy().await?;
+        Ok(())
+    }
+
     pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
+        if let Some(task) = self.context_diagnostics_task.lock().await.take() {
+            task.abort();
+            drop(task.await);
+        }
         // disconnect (not destroy) preserves on-disk state for resume within the same date.
         self.session.disconnect().await?;
         Ok(())
@@ -78,6 +111,9 @@ impl CopilotChatWorker {
         let model = self.model.clone();
         let last_effort = Arc::clone(&self.last_effort);
         let voice_mode = prompt.voice_mode;
+        let completed_turns = Arc::clone(&self.completed_turns);
+        let context_diagnostics_task = Arc::clone(&self.context_diagnostics_task);
+        let lifecycle = Arc::clone(&self.lifecycle);
 
         let abort_guard = AbortGuard {
             session: Arc::clone(&session),
@@ -86,6 +122,7 @@ impl CopilotChatWorker {
         let completed = Arc::clone(&abort_guard.completed);
 
         let s = stream! {
+            let _lifecycle = lifecycle.read_owned().await;
             let _abort_on_drop = abort_guard;
             let _guard = lock.lock_owned().await;
 
@@ -144,6 +181,17 @@ impl CopilotChatWorker {
                     Ok(event) => {
                         if let Some(delta) = event_to_delta(&event) {
                             let stop = matches!(delta, ChatDelta::Done | ChatDelta::Error(_));
+                            if matches!(delta, ChatDelta::Done) {
+                                let completed =
+                                    completed_turns.fetch_add(1, Ordering::AcqRel) + 1;
+                                if completed.is_multiple_of(10) {
+                                    schedule_context_diagnostics(
+                                        Arc::clone(&session),
+                                        Arc::clone(&context_diagnostics_task),
+                                    )
+                                    .await;
+                                }
+                            }
                             yield delta;
                             if stop {
                                 completed.store(true, Ordering::Release);
@@ -151,8 +199,9 @@ impl CopilotChatWorker {
                             }
                         }
                     }
+
                     Err(e) => {
-                        if let RecvError::Lagged(skipped) = &e {
+                        if let RecvErrorKind::Lagged(skipped) = e.kind() {
                             tracing::warn!(
                                 skipped = skipped.skipped(),
                                 "chat subscription lagged — events dropped"
@@ -171,6 +220,61 @@ impl CopilotChatWorker {
     }
 }
 
+async fn schedule_context_diagnostics(
+    session: Arc<Session>,
+    slot: Arc<Mutex<Option<JoinHandle<()>>>>,
+) {
+    let previous = {
+        let mut guard = slot.lock().await;
+        if guard.as_ref().is_some_and(|task| !task.is_finished()) {
+            return;
+        }
+        guard.take()
+    };
+    if let Some(previous) = previous {
+        drop(previous.await);
+    }
+
+    let task = tokio::spawn(async move {
+        let query = async {
+            let attribution = session.rpc().metadata().get_context_attribution().await?;
+            let heaviest = session
+                .rpc()
+                .metadata()
+                .get_context_heaviest_messages(MetadataContextHeaviestMessagesRequest {
+                    limit: Some(3),
+                })
+                .await?;
+            Ok::<_, github_copilot_sdk::Error>((attribution, heaviest))
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(5), query).await {
+            Ok(Ok((attribution, heaviest))) => {
+                let compactions = attribution
+                    .context_attribution
+                    .as_ref()
+                    .map_or(0, |context| context.compactions.count);
+                let largest_message_tokens = heaviest
+                    .messages
+                    .first()
+                    .map_or(0, |message| message.tokens);
+                tracing::info!(
+                    total_tokens = heaviest.total_tokens,
+                    compactions,
+                    largest_message_tokens,
+                    "chat.context_diagnostics"
+                );
+            }
+            Ok(Err(error)) => {
+                tracing::debug!(err = %error, "chat.context_diagnostics_unavailable");
+            }
+            Err(_) => {
+                tracing::debug!("chat.context_diagnostics_timeout");
+            }
+        }
+    });
+    *slot.lock().await = Some(task);
+}
+
 fn build_message_options(prompt: ChatPrompt) -> Result<MessageOptions, std::io::Error> {
     let mut attachments = Vec::with_capacity(prompt.attachments.len());
     for att in prompt.attachments {
@@ -187,95 +291,51 @@ fn build_message_options(prompt: ChatPrompt) -> Result<MessageOptions, std::io::
     Ok(opts)
 }
 
-/// Typed SDK event payloads. Each variant matches one `event.event_type`
-/// arm in `event_to_delta`. `serde(default)` rescues *missing* fields
-/// (empty string / false) — type-mismatched fields or a non-object
-/// `event.data` still fail decode and drop the event via `.ok()?`. In
-/// practice the SDK always sends `Value::Object` for these event types,
-/// and `response_streamer` already filters empty deltas downstream.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MessageDeltaPayload {
-    #[serde(default)]
-    delta_content: String,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MessagePayload {
-    #[serde(default)]
-    content: String,
-    output_tokens: Option<u64>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolStartPayload {
-    #[serde(default)]
-    tool_call_id: String,
-    #[serde(default)]
-    tool_name: String,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolCompletePayload {
-    #[serde(default)]
-    tool_call_id: String,
-    #[serde(default)]
-    tool_name: String,
-    #[serde(default)]
-    success: bool,
-}
-
-#[derive(serde::Deserialize)]
-struct SessionErrorPayload {
-    message: Option<String>,
-}
-
 fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
-    let payload = || event.data.clone();
-    match event.event_type.as_str() {
-        "assistant.message_delta" => {
-            let p: MessageDeltaPayload = serde_json::from_value(payload()).ok()?;
-            // Empty delta = nothing to emit. Differs slightly from the old
-            // `.and_then(.as_str).map(...)` which would emit Some("") for a
-            // present-but-empty field, but `response_streamer` filters empty
-            // text anyway, so consumers see the same behavior.
+    match event.parsed_type() {
+        SessionEventType::AssistantMessageDelta => {
+            let p = event.typed_data::<AssistantMessageDeltaData>()?;
             if p.delta_content.is_empty() {
                 None
             } else {
                 Some(ChatDelta::MessageDelta(p.delta_content))
             }
         }
-        "assistant.message" => {
-            let p: MessagePayload = serde_json::from_value(payload()).ok()?;
+        SessionEventType::AssistantMessage => {
+            let p = event.typed_data::<AssistantMessageData>()?;
             Some(ChatDelta::MessageComplete {
                 content: p.content,
-                output_tokens: p.output_tokens,
+                output_tokens: p
+                    .output_tokens
+                    .and_then(|tokens| u64::try_from(tokens).ok()),
             })
         }
-        "tool.execution_start" => {
-            let p: ToolStartPayload = serde_json::from_value(payload()).ok()?;
+        SessionEventType::ToolExecutionStart => {
+            let p = event.typed_data::<ToolExecutionStartData>()?;
             Some(ChatDelta::ToolStart {
                 id: p.tool_call_id,
                 name: p.tool_name,
             })
         }
-        "tool.execution_complete" => {
-            let p: ToolCompletePayload = serde_json::from_value(payload()).ok()?;
+        SessionEventType::ToolExecutionComplete => {
+            let p = event.typed_data::<ToolExecutionCompleteData>()?;
+            let name = event
+                .data
+                .get("toolName")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .or_else(|| p.tool_description.map(|tool| tool.name))
+                .unwrap_or_default();
             Some(ChatDelta::ToolComplete {
                 id: p.tool_call_id,
-                name: p.tool_name,
+                name,
                 success: p.success,
             })
         }
-        "session.idle" => Some(ChatDelta::Done),
-        "session.error" => {
-            let p: SessionErrorPayload = serde_json::from_value(payload()).ok()?;
-            Some(ChatDelta::Error(
-                p.message.unwrap_or_else(|| "session error".into()),
-            ))
+        SessionEventType::SessionIdle => Some(ChatDelta::Done),
+        SessionEventType::SessionError => {
+            let p = event.typed_data::<SessionErrorData>()?;
+            Some(ChatDelta::Error(p.message))
         }
         _ => None,
     }

@@ -26,13 +26,15 @@ enum BobeWindowFactory {
             defer: false
         )
         window.title = title
-        window.center()
+        window.isRestorable = false
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
         window.animationBehavior = animationBehavior
         window.backgroundColor = NSColor(theme.colors.background)
         window.contentViewController = NSHostingController(rootView: rootView)
+        window.setContentSize(contentRect.size)
+        window.center()
         return window
     }
 }

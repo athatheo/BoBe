@@ -35,6 +35,14 @@ pub(crate) async fn stream_events(
             let event = tokio::time::timeout(Duration::from_secs(1), queue.pop()).await;
 
             if let Ok(bundle) = event {
+                if !cm.is_active_connection(&conn_id_inner).await {
+                    queue.requeue_front(bundle);
+                    tracing::info!(
+                        connection_id = %conn_id_inner,
+                        "sse.connection_replaced_after_pop"
+                    );
+                    break;
+                }
                 cm.track_indicator(&bundle).await;
 
                 let sse_data = match serde_json::to_string(&bundle) {

@@ -10,6 +10,7 @@ use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::Decision;
 use crate::runtime::triggers::checkin_scheduler::CheckinScheduler;
+use crate::runtime::turn_admission::{TurnAdmission, TurnSource};
 
 pub(crate) struct CheckinTrigger {
     scheduler: CheckinScheduler,
@@ -17,6 +18,7 @@ pub(crate) struct CheckinTrigger {
     conversation: Arc<ConversationService>,
     cooldown_repo: Arc<SqliteCooldownRepo>,
     config: Arc<ArcSwap<Config>>,
+    turn_admission: Arc<TurnAdmission>,
 }
 
 impl CheckinTrigger {
@@ -26,6 +28,7 @@ impl CheckinTrigger {
         conversation: Arc<ConversationService>,
         cooldown_repo: Arc<SqliteCooldownRepo>,
         config: Arc<ArcSwap<Config>>,
+        turn_admission: Arc<TurnAdmission>,
     ) -> Self {
         Self {
             scheduler,
@@ -33,10 +36,24 @@ impl CheckinTrigger {
             conversation,
             cooldown_repo,
             config,
+            turn_admission,
         }
     }
 
+    pub(crate) fn reconfigure(&mut self, config: &Config) {
+        self.scheduler.reconfigure(
+            config.checkin_times_vec(),
+            config.checkin.interval_minutes,
+            config.checkin.jitter_minutes,
+            config.checkin.enabled,
+        );
+    }
+
     pub(crate) async fn fire(&mut self) -> Decision {
+        let Some(_turn) = self.turn_admission.try_admit(TurnSource::Checkin) else {
+            debug!("checkin_trigger.turn_busy");
+            return Decision::Idle;
+        };
         if !self.scheduler.should_checkin() {
             return Decision::Idle;
         }
@@ -71,7 +88,8 @@ impl CheckinTrigger {
         }
 
         info!("checkin_trigger.started");
-        self.generator
+        let decision = self
+            .generator
             .generate_proactive_response(
                 cfg.conversation.auto_close_minutes as i64,
                 Some("Scheduled check-in".into()),
@@ -80,7 +98,7 @@ impl CheckinTrigger {
         self.scheduler.mark_checkin_done();
         info!("checkin_trigger.complete");
 
-        Decision::Engage
+        decision
     }
 
     pub(crate) fn get_next_checkin_time(&mut self) -> Option<DateTime<Utc>> {

@@ -30,18 +30,23 @@ impl VoiceEnginesSnapshot {
 /// installs don't yank engines from an in-flight turn.
 #[derive(Clone)]
 pub(crate) struct VoiceEngines {
-    pub(crate) tts: Arc<dyn TtsEngine>,
+    /// Optional because client-side Supertonic sessions do not require Kokoro.
+    pub(crate) tts: Option<Arc<dyn TtsEngine>>,
     /// Pre-rendered filler library, populated at bootstrap. `None` when TTS
     /// engine isn't loaded; turn still works, just silent during gaps.
     pub(crate) fillers: Option<Arc<FillerLibrary>>,
 }
 
 impl VoiceEngines {
-    pub(crate) fn from_state(state: &AppState) -> Option<Self> {
+    pub(crate) fn from_state(state: &AppState) -> Self {
         let snap = state.voice.voice_engines.load();
-        Some(Self {
-            tts: Arc::clone(snap.tts.as_ref()?),
+        Self {
+            tts: snap.tts.as_ref().map(Arc::clone),
             fillers: snap.filler_library.as_ref().map(Arc::clone),
-        })
+        }
+    }
+
+    pub(crate) fn supports_server_tts(&self) -> bool {
+        self.tts.is_some()
     }
 }

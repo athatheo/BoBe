@@ -12,11 +12,11 @@ struct VoiceModelRow: View {
             VoiceModelStatusIcon(status: self.model.status)
                 .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text(self.model.label.capitalized)
-                    .font(.system(size: 13))
+                Text(self.displayName)
+                    .bobeTextStyle(.settingsBody)
                     .foregroundStyle(self.theme.colors.text)
                 Text(self.localizedStatus)
-                    .font(.system(size: 11))
+                    .bobeTextStyle(.helper)
                     .foregroundStyle(self.theme.colors.textMuted)
             }
             Spacer()
@@ -27,7 +27,14 @@ struct VoiceModelRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(self.model.label.capitalized): \(self.localizedStatus)")
+        .accessibilityLabel("\(self.displayName): \(self.localizedStatus)")
+    }
+
+    private var displayName: String {
+        if self.model.kind == VoiceWire.modelKindTts {
+            return L10n.tr("setup.voice.model.tts")
+        }
+        return self.model.label.capitalized
     }
 
     /// Map daemon-side status strings to localized labels. Daemon strings come
@@ -58,7 +65,7 @@ struct VoiceModelStatusIcon: View {
             switch self.status {
             case "installed", "already installed":
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(self.theme.colors.secondary)
+                    .foregroundStyle(self.theme.colors.success)
             case "downloading":
                 ProgressView()
                     .progressViewStyle(.circular)

@@ -21,6 +21,7 @@ jobs:
     outputs:
       rust: ${{ steps.check.outputs.rust }}
       swift: ${{ steps.check.outputs.swift }}
+      workflows: ${{ steps.check.outputs.workflows }}
     steps:
       - name: Check changed paths
         id: check
@@ -34,16 +35,21 @@ jobs:
           if [ "$EVENT_NAME" = "push" ]; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "swift=true" >> "$GITHUB_OUTPUT"
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
           echo "rust=false" >> "$GITHUB_OUTPUT"
           echo "swift=false" >> "$GITHUB_OUTPUT"
-          if echo "$FILES" | grep -qE '^(BoBeService/|\.github/workflows/ci\.yml)'; then
+          echo "workflows=false" >> "$GITHUB_OUTPUT"
+          if echo "$FILES" | grep -qE '^(BoBeService/|\.github/workflows/|justfile$|scripts/|Cargo\.lock$|BoBeService/Cargo\.lock$)'; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$FILES" | grep -qE '^(BoBeMacUI/|\.github/workflows/ci\.yml)'; then
+          if echo "$FILES" | grep -qE '^(BoBeMacUI/|\.github/workflows/|justfile$|scripts/|Package\.resolved$|BoBeMacUI/Package\.resolved$)'; then
             echo "swift=true" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$FILES" | grep -qE '^(\.github/workflows/|justfile$|scripts/|Cargo\.lock$|Package\.resolved$|BoBeService/Cargo\.lock$|BoBeMacUI/Package\.resolved$)'; then
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
           fi
 
   rust-checks:
@@ -103,6 +109,97 @@ jobs:
 
       - name: Unused dependencies
         run: cd BoBeService && cargo machete
+
+  rust-linux:
+    name: Rust locked checks (Ubuntu)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential clang cmake libssl-dev libsqlite3-dev pkg-config
+
+      - name: Set up stable Rust toolchain
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
+        with:
+          toolchain: stable
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            BoBeService/target/
+          key: v1-cargo-${{ runner.os }}-stable-${{ hashFiles('BoBeService/Cargo.lock') }}
+          restore-keys: v1-cargo-${{ runner.os }}-stable-
+
+      - name: Cargo check
+        run: cd BoBeService && cargo check --locked
+
+      - name: Cargo build
+        run: cd BoBeService && cargo build --locked
+
+      - name: Cargo test
+        env:
+          CARGO_INCREMENTAL: "0"
+        run: cd BoBeService && cargo test --locked
+
+  rust-msrv:
+    name: Rust 1.94 MSRV check
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential clang cmake libssl-dev libsqlite3-dev pkg-config
+
+      - name: Set up Rust 1.94
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
+        with:
+          toolchain: "1.94.0"
+
+      - name: Check with the minimum supported Rust version
+        run: cd BoBeService && cargo check --locked
+
+  workflow-validation:
+    name: Workflow and shell syntax
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Validate workflow YAML syntax
+        run: |
+          ruby -e 'require "yaml"; ARGV.each { |path| Psych.parse_file(path) }' \
+            .github/workflows/*.yml
+
+      - name: Validate repository shell script syntax
+        run: |
+          while IFS= read -r -d '' script; do
+            bash -n "$script"
+          done < <(find scripts -type f -name '*.sh' -print0 2>/dev/null)
 
   swift-checks:
     name: Swift checks

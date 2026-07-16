@@ -27,7 +27,7 @@ expect_match() {
 
 # DEFAULT_DAEMON_PORT
 rust_port=$(grep -E 'DEFAULT_DAEMON_PORT: u16 =' "$RUST" | sed -E 's/.*= ([0-9]+);.*/\1/')
-swift_port=$(grep -E 'static let port = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
+swift_port=$(grep -E 'static let defaultPort = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
 expect_match "daemon port" "$rust_port" "$swift_port"
 
 # DEFAULT_OLLAMA_BASE_URL

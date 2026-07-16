@@ -33,6 +33,10 @@
 "overlay.connection.disconnected" = "未接続";
 "overlay.conversation.ending" = "Conversation ended — clearing in a moment";
 "overlay.input.close.accessibility" = "チャット入力を閉じる";
+"overlay.input.placeholder.hint.notice" = "BoBeに何に気づいてほしい？";
+"overlay.input.placeholder.hint.summarize" = "画面の内容を要約して";
+"overlay.input.placeholder.hint.goal" = "目標を前に進めるのを手伝って";
+"overlay.input.placeholder.hint.feelings" = "行き詰まっています";
 "overlay.input.send.accessibility" = "メッセージを送信";
 "overlay.input.waiting_for_capturing" = "BoBe が認識を終えるまで待ってください。";
 "overlay.input.waiting_for_reconnecting" = "BoBe が再接続を終えるまで待ってください。";
@@ -202,9 +206,9 @@
 "settings.user_profiles.title" = "ユーザープロファイル";
 "settings.user_profiles.toggle.enable_accessibility" = "プロファイルを有効化";
 "settings.window.check_updates" = "アップデートを確認...";
-"settings.window.overview.footer" = "サイドバーからすべての設定を確認できます。すべてMac上でローカル実行されます。";
+"settings.window.overview.footer" = "記憶と設定はこのMacに保存されます。クラウドエンジンには回答に必要なコンテキストだけが送信されます。";
 "settings.window.overview.title" = "BoBeの設定方法";
-"settings.window.sidebar_title" = "BOBE チューニング";
+"settings.window.sidebar_title" = "BOBE 設定";
 "settings.window.title" = "BoBe 設定";
 
 "setup.done.body" = "BoBe is ready. You can change everything in Settings later.";
@@ -217,9 +221,9 @@
 "setup.engine.local.subtitle" = "Runs on your Mac. Nothing leaves your computer. Works best with 32 GB+ memory.";
 "setup.engine.local.title" = "Run AI on this Mac";
 "setup.engine.title" = "How should BoBe think?";
-"setup.permissions.body" = "BoBe glances at your screen periodically so it can offer relevant help. Screenshots stay on this Mac.";
+"setup.permissions.body" = "画面コンテキストは任意です。クラウドエンジンでは、有効にしたキャプチャが回答のためGitHub Copilotに送信される場合があります。ローカルAIではこのMac内に留まります。";
 "setup.permissions.grant" = "Grant access";
-"setup.permissions.open_settings" = "Open System Settings";
+"setup.permissions.open_settings" = "システム設定を開く";
 "setup.permissions.skip" = "Skip — set up later";
 "setup.permissions.title" = "Screen Recording";
 "setup.welcome.continue" = "Let's get set up";
@@ -351,3 +355,20 @@
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";
 /* TODO translate */ "tray.status.accessibility" = "BoBe status";
+
+"settings.unsaved.title" = "未保存の変更";
+"settings.unsaved.message" = "このエディタを離れる前に変更を保存しますか？";
+
+"settings.voice.install.failed.tts" = "The speech model installation failed. Retry the installation.";
+"settings.voice.install.failed_format" = "Voice installation failed: %@";
+"settings.voice.uninstall.failed_format" = "Could not remove the voice model: %@";
+"setup.voice.daemon_unreachable" = "The BoBe service is not reachable. Start it and try again.";
+
+"setup.voice.stt_label.waiting" = "Speech recognition: waiting…";
+"setup.voice.stt_label.downloading_format" = "Speech recognition: downloading %d MB (%d%% of %@)…";
+"setup.voice.stt_label.ready" = "Speech recognition: ready";
+"setup.voice.stt_label.failed_format" = "Speech recognition: failed. %@";
+"settings.voice.language" = "Language";
+"settings.voice.language.description" = "Which language BoBe listens for. English is the most reliable; other languages are still maturing.";
+
+"overlay.input.composer.accessibility" = "BoBeへのメッセージ";

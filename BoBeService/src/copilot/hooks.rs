@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use github_copilot_sdk::hooks::{
-    HookEvent, HookOutput, PostToolUseOutput, PreToolUseOutput, SessionHooks, SessionStartOutput,
+    HookEvent, HookOutput, PreToolUseOutput, SessionHooks, SessionStartOutput,
     UserPromptSubmittedOutput,
 };
 
@@ -27,12 +27,6 @@ const VOICE_TONE_HINT: &str = concat!(
     "Spell out abbreviations as words. ",
     "If you can't help, suggest an alternative instead of refusing.",
 );
-
-/// Tool results above this serialized-char length get truncated for voice
-/// turns — reading a 5kB file dump aloud is a UX disaster. ~800 chars ≈ 200
-/// tokens, which is the rule-of-thumb summary threshold used in the
-/// Anthropic cookbook PostToolUse pattern.
-const VOICE_TOOL_RESULT_TRUNCATE_CHARS: usize = 800;
 
 /// If a second PreToolUse fires within this window of the first, switch
 /// the second tool's filler from per-tool to compound ("Looking into a
@@ -65,6 +59,7 @@ pub(crate) struct BobeHooks {
     /// few things" instead of stacked per-tool phrases. Mutex avoids the
     /// AtomicU64-wall-clock pitfall (NTP jump = false burst).
     last_pretool_at: Mutex<Option<Instant>>,
+    injected_memory_revision: AtomicU64,
 }
 
 impl BobeHooks {
@@ -78,6 +73,7 @@ impl BobeHooks {
             memory_file,
             voice,
             last_pretool_at: Mutex::new(None),
+            injected_memory_revision: AtomicU64::new(0),
         })
     }
 
@@ -92,6 +88,8 @@ impl SessionHooks for BobeHooks {
         match event {
             HookEvent::SessionStart { ctx, .. } => match self.memory_file.read().await {
                 Ok(body) => {
+                    self.injected_memory_revision
+                        .store(self.memory_file.revision(), Ordering::Release);
                     tracing::debug!(
                         class = %self.class.name(),
                         session = %ctx.session_id,
@@ -126,6 +124,25 @@ impl SessionHooks for BobeHooks {
                 if self.voice.voice_turn_active.load(Ordering::Acquire) {
                     context.push_str("\n\n");
                     context.push_str(VOICE_TONE_HINT);
+                }
+                let revision = self.memory_file.revision();
+                let injected = self.injected_memory_revision.load(Ordering::Acquire);
+                if revision != injected {
+                    match self.memory_file.read().await {
+                        Ok(body) => {
+                            context.push_str("\n\n[memory refresh]\n");
+                            context.push_str(&body);
+                            self.injected_memory_revision
+                                .store(revision, Ordering::Release);
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                class = %self.class.name(),
+                                err = %error,
+                                "memory refresh read failed"
+                            );
+                        }
+                    }
                 }
                 HookOutput::UserPromptSubmitted(UserPromptSubmittedOutput {
                     additional_context: Some(context),
@@ -190,47 +207,6 @@ impl SessionHooks for BobeHooks {
                 HookOutput::None
             }
 
-            HookEvent::PostToolUse { input, ctx } => {
-                // For voice turns: replace long tool results with a short
-                // marker so Kokoro doesn't read file dumps / search-result
-                // walls aloud. Text turns get the original result.
-                if !self.voice.voice_turn_active.load(Ordering::Acquire) {
-                    return HookOutput::None;
-                }
-                let result_str = input.tool_result.to_string();
-                if result_str.len() <= VOICE_TOOL_RESULT_TRUNCATE_CHARS {
-                    return HookOutput::None;
-                }
-                let head: String = result_str
-                    .chars()
-                    .take(VOICE_TOOL_RESULT_TRUNCATE_CHARS)
-                    .collect();
-                tracing::debug!(
-                    session = %ctx.session_id,
-                    tool = %input.tool_name,
-                    original_chars = result_str.len(),
-                    "voice.post_tool_summary"
-                );
-                // Include tool_name + the original `success`-shaped fields
-                // when present so the LLM keeps semantic context past the
-                // truncation boundary; mid-JSON cut inside `head` is
-                // expected.
-                let success = input
-                    .tool_result
-                    .get("success")
-                    .and_then(serde_json::Value::as_bool);
-                HookOutput::PostToolUse(PostToolUseOutput {
-                    modified_result: Some(serde_json::json!({
-                        "tool_name": input.tool_name,
-                        "summary": format!("{head}…"),
-                        "success": success,
-                        "truncated_for_voice": true,
-                        "original_chars": result_str.len(),
-                    })),
-                    ..Default::default()
-                })
-            }
-
             HookEvent::ErrorOccurred { input, ctx } => {
                 tracing::warn!(
                     class = %self.class.name(),
@@ -260,7 +236,8 @@ mod tests {
         HookEvent::UserPromptSubmitted {
             input: UserPromptSubmittedInput {
                 timestamp: 0,
-                cwd: PathBuf::from("/tmp"),
+                session_id: "test-session".into(),
+                working_directory: PathBuf::from("/tmp"),
                 prompt: "hello".into(),
             },
             ctx: HookContext {

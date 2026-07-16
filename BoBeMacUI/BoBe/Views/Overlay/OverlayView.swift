@@ -1,11 +1,16 @@
 import AppKit
 import SwiftUI
 
+enum OverlaySatelliteFocus: Hashable {
+    case chat
+    case microphone
+}
+
 struct OverlayView: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @State var store: BobeStore
     @State var themeStore: ThemeStore
-    @State var chatPresentation: ChatPresentation = .collapsed
+    @State var isChatVisible = false
     @State var draftMessage = ""
     @State var lastMessageActivity: Date = .now
     @State var measuredContentSize: CGSize = .zero
@@ -42,6 +47,7 @@ struct OverlayView: View {
     /// satellite is actively in use (mic listening, chat open) so the
     /// affordance is never accidentally hidden under the user's hand.
     @State var avatarAreaHovered = false
+    @FocusState var focusedSatellite: OverlaySatelliteFocus?
 
     init(store: BobeStore, themeStore: ThemeStore = .shared) {
         self._store = State(initialValue: store)
@@ -74,16 +80,15 @@ struct OverlayView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .environment(\.theme, self.themeStore.currentTheme)
+        .task {
+            if SetupWindowManager.shared.consumeOpenChatAfterOnboarding() {
+                await Task.yield()
+                self.openChatManually()
+            }
+        }
         .onChange(of: self.store.messages.count) { oldCount, newCount in
             self.handleMessagesChange(oldCount: oldCount, newCount: newCount)
             self.scheduleResizeWindow()
-        }
-        .onChange(of: self.isChatVisible) { _, _ in
-            // Resize the NSPanel synchronously so the new sections render
-            // INTO the expanded frame rather than the old collapsed one.
-            // The `calculateWindowSize` floors handle the case where
-            // measuredContentSize hasn't caught up yet.
-            self.resizeWindowImmediate()
         }
         .onChange(of: self.store.toolExecutions.count) { _, _ in
             self.scheduleResizeWindow()
@@ -140,7 +145,9 @@ struct OverlayView: View {
             // A fresh bubble arrived while a dismiss was scheduled —
             // cancel the timer so the new message gets its own full
             // window starting when BoBe stops talking again.
-            if newId != nil { self.cancelFloatingBubbleAutoDismiss() }
+            if newId != nil {
+                self.cancelFloatingBubbleAutoDismiss()
+            }
         }
         .onAppear {
             self.scheduleResizeWindow()
@@ -154,10 +161,6 @@ struct OverlayView: View {
     }
 
     // MARK: - Derived State
-
-    var isChatVisible: Bool {
-        self.chatPresentation.isExpanded
-    }
 
     var hasUnreadMessages: Bool {
         !self.store.messages.isEmpty && !self.isChatVisible
@@ -234,7 +237,9 @@ struct OverlayView: View {
     /// owns them (it has the actionable Restart button). Routing them
     /// through both surfaces caused double-rendering when chat was closed.
     var bubbleMode: AvatarStatusBubble.Mode {
-        if self.isChatVisible { return .hidden }
+        if self.isChatVisible {
+            return .hidden
+        }
         // Live STT supersedes BoBe status — the user is mid-utterance and
         // the highest-value feedback is showing the words being heard.
         let pipeline = VoicePipeline.shared
@@ -244,7 +249,9 @@ struct OverlayView: View {
         // BoBe-content modes — actual reply takes precedence over status,
         // because content > status (you'd rather see the answer than a
         // "Thinking..." spinner).
-        if let msg = self.floatingBubbleMessage { return .bobeMessage(msg) }
+        if let msg = self.floatingBubbleMessage {
+            return .bobeMessage(msg)
+        }
 
         // Status modes — anything BoBe is actively doing that the user
         // should be aware of. Order is "most blocking first."
@@ -329,23 +336,6 @@ struct OverlayView: View {
         // during streaming where the overlay re-evaluates often.
         self.store.context.hasBobeMessage ? WindowSizes.heightChatViewportMin : 0
     }
-}
-
-enum ChatPresentation: Equatable {
-    case collapsed
-    case expanded(ChatPresentationSource)
-
-    var isExpanded: Bool {
-        if case .expanded = self {
-            return true
-        }
-        return false
-    }
-}
-
-enum ChatPresentationSource: Equatable {
-    case automatic
-    case manual
 }
 
 enum OverlayContentSizePreferenceKey: PreferenceKey {

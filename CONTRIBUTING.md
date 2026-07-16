@@ -6,12 +6,13 @@ Thanks for your interest in contributing! BoBe is an open-source project and we 
 
 ### Prerequisites
 
-- **macOS 14+** (Sonoma)
-- **Rust 1.93+** (edition 2024)
+- **macOS 15+** (Sequoia)
+- **Rust 1.94+** (edition 2024)
 - **Xcode 16+** with Swift 6.0
 - **[just](https://github.com/casey/just)** task runner
 - **[Ollama](https://ollama.ai)** for local LLM inference (or an OpenAI/Azure API key)
 - **SwiftLint** for Swift linting
+- **XcodeGen** for Xcode UI-test project generation
 
 ### Setup
 
@@ -23,7 +24,7 @@ cd Bobe
 just check
 ```
 
-`just check` runs: `cargo fmt --check`, `cargo clippy`, `cargo test`, `cargo deny check`, `cargo machete`, `swiftlint`, and `swift build`.
+`just check` runs: `cargo fmt --check`, `cargo clippy`, `cargo test`, `cargo deny check`, `cargo machete`, `swiftlint`, `swift build`, `swift test`, and runtime-artifact validation.
 
 `just check-ci` is the stricter CI-facing variant: it uses `--locked` for Cargo resolution.
 
@@ -68,6 +69,7 @@ The **Swift app** is a native macOS overlay — a floating avatar with chat bubb
 | `just format-swift` | Format Swift sources with SwiftFormat |
 | `just check-swift-format` | Lint Swift formatting without rewriting files |
 | `just xcode` | Regenerate Xcode project files via XcodeGen |
+| `just ui-test` | Generate the Xcode project and run macOS UI regression tests |
 | `just sparkle-zip 1.0.0` | Create Sparkle update zip from `build/BoBe.app` |
 | `just sparkle-sign-update 1.0.0 /path/to/sparkle-private-key` | Sign Sparkle zip archive with private Sparkle key |
 | `just sparkle-generate-appcast build/sparkle https://example.com/updates /path/to/sparkle-private-key` | Generate/update Sparkle `appcast.xml` |
@@ -95,6 +97,7 @@ swift build -c release     # Release build
 swiftlint lint --quiet     # Swift lint checks
 swiftformat --lint BoBe    # Formatting check
 swiftformat BoBe           # Apply formatting
+cd .. && just ui-test      # macOS onboarding/settings UI tests
 ```
 
 ## Project Structure
@@ -126,6 +129,7 @@ BoBeMacUI/                    # Swift macOS app (BoBe.app)
   BoBe/App/                   # App delegate, overlay panel, tray
   BoBe/Features/Settings/     # Settings panels (AI model, behavior, etc.)
   BoBe/Models/                # API DTOs, entity types
+  BoBeUITests/                # macOS onboarding/settings regression tests
   BoBe/Services/              # Backend lifecycle, HTTP + SSE client
   BoBe/Stores/                # Observable state stores
   BoBe/Theme/                 # Theme configuration
@@ -138,7 +142,7 @@ docs/                         # Additional documentation
 
 ### Rust
 
-- **Edition 2024**, MSRV 1.93, `unsafe_code = "deny"`
+- **Edition 2024**, MSRV 1.94, `unsafe_code = "deny"`
 - **Clippy pedantic** enabled with justified allows (see `Cargo.toml`)
 - Errors via `thiserror`, handlers return `Result<T, AppError>` — no `unwrap()`/`expect()` outside tests
 - LLM prompts: per-class SKILL.md in `copilot/skills/` (loaded by the SDK via `SessionConfig::skill_directories`); inline system-message hints in `copilot/hooks.rs` and `copilot/workers/chat.rs`
@@ -148,7 +152,7 @@ docs/                         # Additional documentation
 
 ### Swift
 
-- Swift 6.0, macOS 14+ target
+- Swift 6.0, macOS 15+ target
 - **SwiftLint** enforced (see `BoBeMacUI/.swiftlint.yml`)
 - `sorted_imports` required, `force_unwrapping` discouraged
 - Split large views into focused subviews

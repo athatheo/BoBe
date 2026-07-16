@@ -4,13 +4,9 @@ use tracing::{debug, warn};
 
 use super::types::WorkerClass;
 
-const DECIDE_SKILL_MD: &str = include_str!("skills/decide.md");
 const CHAT_SKILL_MD: &str = include_str!("skills/chat.md");
 
-const SHIPPED_SKILLS: &[(WorkerClass, &str)] = &[
-    (WorkerClass::Decide, DECIDE_SKILL_MD),
-    (WorkerClass::Chat, CHAT_SKILL_MD),
-];
+const SHIPPED_SKILLS: &[(WorkerClass, &str)] = &[(WorkerClass::Chat, CHAT_SKILL_MD)];
 
 /// Idempotent: never overwrites existing SKILL.md so users can edit in place.
 ///

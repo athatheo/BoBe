@@ -1,26 +1,30 @@
-# Build-time configuration for the BoBe daemon.
+# Disk-saving build profile overrides for the Rust daemon embedded beside the
+# Swift executable in the macOS app bundle.
+# See: https://doc.rust-lang.org/cargo/reference/profiles.html
 #
-# `[env]` here is consumed by all build scripts in the workspace (including
-# the github-copilot-sdk crate's build.rs). Setting COPILOT_CLI_VERSION
-# triggers the SDK's `embedded-cli` feature to download the matching
-# Copilot CLI release from
-# `github.com/github/copilot-cli/releases/download/v{VERSION}/`,
-# verify its SHA-256, zstd-compress it, and embed it as include_bytes!
-# in the resulting BoBe binary.
+# Background: default `cargo build` writes ~500MB static archives because rustc
+# emits full DWARF debug info for every codegen unit, including all transitive
+# dependencies. With ~3000 .o members per .a, DWARF is ~87% of file size.
+# These overrides cut that to ~10-15% with negligible loss of debugger fidelity.
 #
-# The runtime resolver (rust/src/resolve.rs in the SDK) extracts the
-# bundled binary lazily to ~/.cache/github-copilot-sdk-{VERSION}/copilot
-# on first call, falling back to PATH lookup only if the bundle is
-# disabled or extraction fails.
-#
-# Bumping this version is a deliberate action — diff the upstream
-# changelog at https://github.com/github/copilot-cli/releases before
-# moving forward.
+# Release builds are UNAFFECTED — only [profile.dev] is overridden. Shipping
+# artifacts produced by `cargo build --release` keep their defaults (no debug).
 
-[env]
-COPILOT_CLI_VERSION = "1.0.44"
-# `opus` crate vendors libopus through CMake; the bundled CMakeLists requires
-# cmake_minimum_required >= 3.5, which newer cmake distributions (4.x) refuse
-# unless either the project bumps that line OR you pass this policy override.
-# Set centrally so `cargo build` / `cargo test` work out of the box.
-CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+[profile.dev]
+# Emit only the line-number table, not full type/variable DWARF.
+# Backtraces, panic locations, and lldb/gdb breakpoints by file:line still work.
+# Trade-off: no local-variable inspection at lldb breakpoints (rare in Swift+Rust
+# workflows — you almost never sit in lldb across the FFI boundary anyway).
+debug = "line-tables-only"
+
+# Bundle-safe debug info packaging. Produces a dSYM next to the daemon binary
+# instead of leaving DWARF scattered across dependency object files.
+split-debuginfo = "packed"
+
+[profile.dev.package."*"]
+# Third-party deps (NOT workspace members): no debug info at all.
+# Eliminates ~95% of the DWARF mass — most .o files in your .a are tokio,
+# rustls, sqlite, windows-sys, serde, etc. Backtraces still show dep function
+# names (from the symbol table), just no file:line for dep frames.
+# You will not be able to source-step into a dependency. That is fine.
+debug = false

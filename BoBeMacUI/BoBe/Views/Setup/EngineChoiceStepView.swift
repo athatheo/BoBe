@@ -99,7 +99,7 @@ private struct EngineChoiceCard: View {
                         .bobeTextStyle(.setupHeading)
                         .foregroundStyle(self.theme.colors.text)
                     Text(self.subtitle)
-                        .font(.system(size: 12))
+                        .bobeTextStyle(.helper)
                         .foregroundStyle(self.theme.colors.textMuted)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -108,7 +108,8 @@ private struct EngineChoiceCard: View {
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(self.theme.colors.primary)
                         Text(self.bestFor)
-                            .font(.system(size: 11, weight: .medium))
+                            .bobeTextStyle(.helper)
+                            .fontWeight(.medium)
                             .foregroundStyle(self.theme.colors.primary)
                     }
                     .padding(.top, 2)

@@ -64,6 +64,12 @@ struct TypewriterText: View {
     /// is scoped to `.task(id: text)` so cancellation comes free with the
     /// next text change.
     private func runTyping(to target: String) async {
+        if OverlayMotionRuntime.reduceMotion {
+            self.displayed = target
+            self.isTyping = false
+            self.cursorVisible = true
+            return
+        }
         // Append mode: if the new target extends the currently-displayed
         // prefix, keep what we've typed and type only the tail. Otherwise
         // reset and type the whole new target.

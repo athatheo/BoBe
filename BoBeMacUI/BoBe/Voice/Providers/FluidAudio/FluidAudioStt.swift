@@ -27,11 +27,20 @@ actor FluidAudioStt: VoiceSttEngine {
     private let commitLayer = PunctuationCommitLayer()
     /// Hoisted so the FluidAudio callbacks (which fire on FluidAudio's
     /// executor) can bounce into our actor and forward in order.
-    private var savedOnPartial: (@Sendable (String) -> Void)?
-    private var savedOnEou: (@Sendable (String) -> Void)?
+    private var savedOnPartial: (@Sendable (String) async -> Void)?
+    private var savedOnEou: (@Sendable (String) async -> Void)?
+    private var callbackContinuation: AsyncStream<VoiceSttCallbackEvent>.Continuation?
+    private var callbackTask: Task<Void, Never>?
+    private let inputFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 16_000,
+        channels: 1,
+        interleaved: false
+    )
 
-    /// Variant tuning — `.ms320` is the balanced default. The 160ms variant
-    /// is lowest-latency; 1280ms is highest-throughput.
+    /// `.ms320` is the measured M4 default: it preserved the reference phrase
+    /// exactly and completed faster than `.ms160`, which introduced two word
+    /// errors in the same real-audio benchmark. EOU debounce is independent.
     /// `eouDebounceMs` defaults to the `PauseSensitivityMs.balanced` value
     /// (800ms) so unconfigured callers match the user-facing "Balanced"
     /// preset. The init default is rarely used in practice: `VoiceReadiness`
@@ -59,7 +68,7 @@ actor FluidAudioStt: VoiceSttEngine {
     /// callback fires from FluidAudio's executor land in arrival order.
     private func handleRawPartial(_ text: String) async {
         let update = await self.commitLayer.processPartialText(text)
-        self.savedOnPartial?(update.totalText)
+        await self.savedOnPartial?(update.totalText)
     }
 
     /// EOU equivalent — flushes the commit layer; prefers its committed
@@ -67,16 +76,21 @@ actor FluidAudioStt: VoiceSttEngine {
     private func handleRawEou(_ text: String) async {
         let update = await self.commitLayer.processEOU()
         let final = update.committedText.isEmpty ? text : update.committedText
-        self.savedOnEou?(final)
+        await self.manager?.reset()
+        await self.commitLayer.reset()
+        await self.savedOnEou?(final)
     }
 
     /// Load the model (downloads from HuggingFace on first run, then caches
     /// to `~/Library/Application Support/FluidAudio/Models/`). Idempotent
     /// and concurrent-safe — N callers cause one download.
     func loadModels(
-        onPartial: @escaping @Sendable (String) -> Void,
-        onEou: @escaping @Sendable (String) -> Void
+        onPartial: @escaping @Sendable (String) async -> Void,
+        onEou: @escaping @Sendable (String) async -> Void,
+        onProgress: @escaping @Sendable (VoiceSttLoadProgress) -> Void
     ) async throws {
+        self.savedOnPartial = onPartial
+        self.savedOnEou = onEou
         if self.loaded { return }
         if let existing = self.loadTask {
             try await existing.value
@@ -90,7 +104,8 @@ actor FluidAudioStt: VoiceSttEngine {
                 chunkSize: chunkSize,
                 debounceMs: debounceMs,
                 onPartial: onPartial,
-                onEou: onEou
+                onEou: onEou,
+                onProgress: onProgress
             )
         }
         self.loadTask = task
@@ -98,6 +113,7 @@ actor FluidAudioStt: VoiceSttEngine {
             try await task.value
         } catch {
             self.loadTask = nil
+            self.stopCallbackForwarding()
             throw error
         }
     }
@@ -106,8 +122,9 @@ actor FluidAudioStt: VoiceSttEngine {
     private func performLoad(
         chunkSize: StreamingChunkSize,
         debounceMs: Int,
-        onPartial: @escaping @Sendable (String) -> Void,
-        onEou: @escaping @Sendable (String) -> Void
+        onPartial: @escaping @Sendable (String) async -> Void,
+        onEou: @escaping @Sendable (String) async -> Void,
+        onProgress: @escaping @Sendable (VoiceSttLoadProgress) -> Void
     ) async throws {
         // Build StreamingEouAsrManager directly so we can pass the user's
         // pause-sensitivity-derived `eouDebounceMs` — the variant factory
@@ -122,26 +139,48 @@ actor FluidAudioStt: VoiceSttEngine {
         // reordering partials → out-of-order commit-layer state.
         self.savedOnPartial = onPartial
         self.savedOnEou = onEou
+        let callbackContinuation = self.startCallbackForwarding()
         await mgr.setPartialCallback { [weak self] text in
-            Task { await self?.handleRawPartial(text) }
+            guard self != nil else { return }
+            callbackContinuation.yield(.partial(text))
         }
         await mgr.setEouCallback { [weak self] text in
-            Task { await self?.handleRawEou(text) }
+            guard self != nil else { return }
+            callbackContinuation.yield(.endOfUtterance(text))
         }
-        try await mgr.loadModels()
+        try await mgr.loadModels(
+            progressHandler: { onProgress(voiceSttProgress($0)) }
+        )
         self.manager = mgr
         self.loaded = true
         self.loadTask = nil
         self.logger.info("FluidAudioStt loaded chunk=\(chunkSize.durationMs)ms eou=\(debounceMs)ms")
     }
 
-    /// Append one PCM buffer (any format — FluidAudio resamples internally
-    /// to 16kHz mono Float32) and drive a processing pass.
-    /// `sending` parameter so AVAudioPCMBuffer (non-Sendable) can cross the
-    /// actor boundary safely — the caller transfers ownership.
-    func acceptAudio(_ buffer: sending AVAudioPCMBuffer) async throws {
+    func cancelLoading() async {
+        guard let task = self.loadTask else { return }
+        task.cancel()
+        _ = try? await task.value
+        self.loadTask = nil
+    }
+
+    func acceptSamples(_ samples: [Float]) async throws {
         guard let mgr = self.manager else {
             throw FluidAudioSttError.notLoaded
+        }
+        guard let inputFormat,
+              let buffer = AVAudioPCMBuffer(
+                  pcmFormat: inputFormat,
+                  frameCapacity: AVAudioFrameCount(samples.count)
+              ),
+              let data = buffer.floatChannelData?[0]
+        else {
+            throw FluidAudioSttError.audioBufferCreationFailed
+        }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { source in
+            guard let base = source.baseAddress else { return }
+            data.update(from: base, count: source.count)
         }
         try await mgr.appendAudio(buffer)
         try await mgr.processBufferedAudio()
@@ -165,15 +204,46 @@ actor FluidAudioStt: VoiceSttEngine {
     /// Tear down — release model memory. Cannot be reused without a fresh
     /// `loadModels` call.
     func cleanup() async {
+        await self.cancelLoading()
+        self.stopCallbackForwarding()
         guard let mgr = self.manager else { return }
         await mgr.cleanup()
         self.manager = nil
         self.loaded = false
     }
+
+    private func startCallbackForwarding() -> AsyncStream<VoiceSttCallbackEvent>.Continuation {
+        self.stopCallbackForwarding()
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: VoiceSttCallbackEvent.self,
+            bufferingPolicy: .bufferingNewest(16)
+        )
+        self.callbackContinuation = continuation
+        self.callbackTask = Task { [weak self] in
+            for await event in stream {
+                guard let self, !Task.isCancelled else { return }
+                switch event {
+                case let .partial(text):
+                    await self.handleRawPartial(text)
+                case let .endOfUtterance(text):
+                    await self.handleRawEou(text)
+                }
+            }
+        }
+        return continuation
+    }
+
+    private func stopCallbackForwarding() {
+        self.callbackContinuation?.finish()
+        self.callbackContinuation = nil
+        self.callbackTask?.cancel()
+        self.callbackTask = nil
+    }
 }
 
 enum FluidAudioSttError: Error {
     case notLoaded
+    case audioBufferCreationFailed
 }
 
 /// Cross-actor write helper for the EOU debounce. FluidAudio exposes

@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use github_copilot_sdk::{Client, ClientOptions};
+use github_copilot_sdk::{Client, ClientMode, ClientOptions};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -54,6 +54,12 @@ impl ClientHandle {
 /// Only sets `COPILOT_OFFLINE` in local mode; cloud mode requires network access.
 fn client_options_from_config(config: &Config) -> ClientOptions {
     let mut opts = ClientOptions::default();
+    opts.mode = ClientMode::Empty;
+    opts.working_directory = crate::util::paths::bobe_data_dir();
+    opts.base_directory = Some(std::env::home_dir().map_or_else(
+        || crate::util::paths::bobe_data_dir().join("copilot"),
+        |home| home.join(".copilot"),
+    ));
     if config.engine.engine == crate::models::engine_kind::EngineKind::Local
         && config.engine.provider_offline
     {

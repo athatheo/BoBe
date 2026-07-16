@@ -8,11 +8,12 @@ let package = Package(
         .macOS(.v15)
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.1"),
-        .package(url: "https://github.com/gonzalezreal/textual", from: "0.3.1"),
-        // FluidAudio — Apple Silicon ANE Parakeet/Qwen3 ASR + Silero VAD.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.4"),
+        .package(url: "https://github.com/gonzalezreal/textual", from: "0.5.0"),
+        // FluidAudio — Apple Silicon ANE Parakeet/Nemotron ASR + Silero VAD.
         // Mode B client-side speech recognition.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.14.5"),
+        // Exact pin: FluidAudio is pre-1.0 and minor releases remove APIs.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5"),
     ],
     targets: [
         .executableTarget(
@@ -31,6 +32,12 @@ let package = Package(
             ],
             swiftSettings: [
                 .define("SPM_BUILD")
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "@executable_path/../Frameworks",
+                ])
             ]
         ),
         .testTarget(

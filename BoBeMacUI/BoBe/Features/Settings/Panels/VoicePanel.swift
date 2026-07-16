@@ -7,18 +7,17 @@ import SwiftUI
 /// All fields hot-swap (no daemon restart). Voice toggle takes effect at the
 /// next `/voice/stream` connect. Persona/speed apply on the next turn.
 struct VoicePanel: View {
-    @State private var pipeline = VoicePipeline.shared
-    @State private var store = SettingsStore.shared
+    @Environment(VoicePipeline.self) private var pipeline
+    @Environment(SettingsStore.self) private var store
+    @Environment(ExpertMode.self) private var expertMode
+    @State private var ttsPreference = VoiceTtsPreference.shared
     @State private var isReinstalling = false
     /// Install-side errors live separate from `store.error` (which is the
     /// settings persist channel). Reinstall failures don't belong in the
     /// settings-save banner — they're a transient daemon-RPC concern.
     @State private var installError: String?
+    @State private var clientTtsInstalled = FluidAudioSupertonicModelPresence.isInstalled()
     @State private var statusPollTask: Task<Void, Never>?
-    /// Tick that increments every 500ms while a FluidAudio download is in
-    /// flight, forcing the parakeet card to recompute its observed-percent.
-    @State private var sttProgressTick: Int = 0
-    @State private var sttProgressTask: Task<Void, Never>?
     @Environment(\.theme) private var theme
 
     /// Install snapshot — pulled from the central `VoicePipeline` observable
@@ -30,10 +29,6 @@ struct VoicePanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(L10n.tr("settings.voice.title"))
-                    .bobeTextStyle(.windowTitle)
-                    .foregroundStyle(self.theme.colors.text)
-
                 Text(L10n.tr("settings.voice.description"))
                     .bobeTextStyle(.settingsBody)
                     .foregroundStyle(self.theme.colors.textMuted)
@@ -80,13 +75,9 @@ struct VoicePanel: View {
         }
         .onDisappear {
             self.statusPollTask?.cancel()
-            self.sttProgressTask?.cancel()
             // Let any in-flight persist drain in the background — closing
             // Settings mid-edit must not silently drop the last keystroke.
             self.store.cancelToast()
-        }
-        .onChange(of: self.pipeline.sttStatus) { _, newValue in
-            self.startSttProgressTickerIfNeeded(for: newValue)
         }
     }
 
@@ -96,20 +87,21 @@ struct VoicePanel: View {
         CollapsibleSection(
             title: L10n.tr("settings.voice.section.preferences"),
             icon: "waveform",
-            description: L10n.tr("settings.voice.description")
+            description: nil
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 SettingsRow(
                     label: L10n.tr("settings.voice.enabled"),
                     description: L10n.tr("settings.voice.enabled.description")
                 ) {
-                    BobeToggle(isOn: self.store.binding(\.voiceEnabled, fallback: true))
+                    BobeToggle(
+                        isOn: self.store.binding(\.voiceEnabled, fallback: true),
+                        accessibilityLabel: L10n.tr("settings.voice.enabled")
+                    )
                 }
 
-                // Language picker — drives client-side engine selection.
-                // English uses FluidAudio Parakeet EOU today; other languages
-                // are visible but marked "coming soon" until Qwen3-ASR wiring
-                // lands (per the language matrix in docs/voice-architecture.md).
+                // English uses Parakeet EOU; every other listed language uses
+                // Nemotron's full multilingual streaming model.
                 SettingsRow(
                     label: L10n.tr("settings.voice.language"),
                     description: L10n.tr("settings.voice.language.description")
@@ -146,6 +138,28 @@ struct VoicePanel: View {
                     )
                 }
 
+                if self.expertMode.isEnabled {
+                    SettingsRow(
+                        label: L10n.tr("settings.voice.tts_backend"),
+                        description: L10n.tr("settings.voice.tts_backend.description")
+                    ) {
+                        BobeMenuPicker(
+                            selection: Binding(
+                                get: { self.ttsPreference.backend.rawValue },
+                                set: { raw in
+                                    guard let backend = VoiceTtsBackend(rawValue: raw) else { return }
+                                    self.ttsPreference.setBackend(backend)
+                                }
+                            ),
+                            options: VoiceTtsBackend.allCases.map(\.rawValue),
+                            label: {
+                                VoiceTtsBackend(rawValue: $0)?.label ?? $0
+                            },
+                            width: 240
+                        )
+                    }
+                }
+
                 SettingsRow(
                     label: L10n.tr("settings.voice.speed"),
                     description: L10n.tr("settings.voice.speed.description")
@@ -172,7 +186,10 @@ struct VoicePanel: View {
                     label: L10n.tr("settings.voice.partial_caption"),
                     description: L10n.tr("settings.voice.partial_caption.description")
                 ) {
-                    BobeToggle(isOn: self.store.binding(\.voiceShowPartialCaption, fallback: true))
+                    BobeToggle(
+                        isOn: self.store.binding(\.voiceShowPartialCaption, fallback: true),
+                        accessibilityLabel: L10n.tr("settings.voice.partial_caption")
+                    )
                 }
             }
         }
@@ -185,14 +202,30 @@ struct VoicePanel: View {
             description: self.modelsSummary
         ) {
             VStack(alignment: .leading, spacing: 14) {
+                if self.expertMode.isEnabled,
+                   self.ttsPreference.backend == .clientSupertonic {
+                    VoiceModelCard(
+                        name: L10n.tr("settings.voice.model.supertonic.name"),
+                        purpose: L10n.tr("settings.voice.model.supertonic.purpose"),
+                        sizeHint: L10n.tr("settings.voice.model.supertonic.size"),
+                        location: "~/.cache/fluidaudio/Models/supertonic-3/",
+                        status: self.clientTtsInstalled ? .installed : .missing,
+                        daemonProgress: nil,
+                        onInstall: { await self.prepareClientTts() },
+                        onUninstall: nil
+                    )
+                }
+
                 // Daemon-side TTS (Kokoro). Friendly name by default, codename in Expert.
                 VoiceModelCard(
-                    name: ExpertMode.shared.isEnabled
+                    name: self.expertMode.isEnabled
                         ? L10n.tr("settings.voice.model.tts.name_expert")
                         : L10n.tr("settings.voice.model.tts.name"),
                     purpose: L10n.tr("settings.voice.model.tts.purpose"),
                     sizeHint: L10n.tr("settings.voice.model.tts.size"),
-                    location: "~/.bobe/models/kokoro-multi-lang-v1_0/",
+                    location: self.expertMode.isEnabled
+                        ? "~/.bobe/models/kokoro-multi-lang-v1_0/"
+                        : nil,
                     status: self.kokoroStatus,
                     daemonProgress: self.installStatus?.models.first(where: { $0.kind == VoiceWire.modelKindTts }),
                     onInstall: { await self.installSingle(daemon: true) },
@@ -201,33 +234,50 @@ struct VoicePanel: View {
 
                 // Client-side STT — English (FluidAudio Parakeet EOU).
                 VoiceModelCard(
-                    name: ExpertMode.shared.isEnabled
+                    name: self.expertMode.isEnabled
                         ? L10n.tr("settings.voice.model.stt_en.name_expert")
                         : L10n.tr("settings.voice.model.stt_en.name"),
                     purpose: L10n.tr("settings.voice.model.stt_en.purpose"),
                     sizeHint: L10n.tr("settings.voice.model.stt_en.size"),
-                    location: "~/Library/Application Support/FluidAudio/Models/parakeet-eou-streaming/",
+                    location: self.expertMode.isEnabled
+                        ? "~/Library/Application Support/FluidAudio/Models/parakeet-eou-streaming/"
+                        : nil,
                     status: self.parakeetStatus,
                     daemonProgress: nil,
-                    onInstall: { await self.installSingle(daemon: false) },
-                    onUninstall: { await self.uninstall(path: "~/Library/Application Support/FluidAudio/Models/parakeet-eou-streaming/") }
+                    onInstall: { await self.installSingle(daemon: false, language: "en") },
+                    onUninstall: {
+                        await self.uninstall(
+                            path: "~/Library/Application Support/FluidAudio/Models/parakeet-eou-streaming/",
+                            sttLanguage: "en"
+                        )
+                    }
                 )
 
-                // Client-side STT — Mandarin (FluidAudio Qwen3-ASR + VAD).
-                // Card is always visible so the user can see the install
-                // weight before switching languages; only consumed when
-                // `voice.stt_language` is non-English (Qwen3 covers them all).
+                // Client-side STT — multilingual Nemotron + Silero VAD.
                 VoiceModelCard(
-                    name: ExpertMode.shared.isEnabled
+                    name: self.expertMode.isEnabled
                         ? L10n.tr("settings.voice.model.stt_multi.name_expert")
                         : L10n.tr("settings.voice.model.stt_multi.name"),
                     purpose: L10n.tr("settings.voice.model.stt_multi.purpose"),
                     sizeHint: L10n.tr("settings.voice.model.stt_multi.size"),
-                    location: "~/Library/Application Support/FluidAudio/Models/qwen3-asr-0.6b-coreml/",
-                    status: self.qwen3Status,
+                    location: self.expertMode.isEnabled
+                        ? "~/Library/Application Support/FluidAudio/Models/nemotron-multilingual/"
+                        : nil,
+                    status: self.nemotronStatus,
                     daemonProgress: nil,
-                    onInstall: { await self.installSingle(daemon: false) },
-                    onUninstall: { await self.uninstall(path: "~/Library/Application Support/FluidAudio/Models/qwen3-asr-0.6b-coreml/") }
+                    onInstall: {
+                        let language = self.store.settings?.voiceSttLanguage ?? "zh"
+                        await self.installSingle(
+                            daemon: false,
+                            language: language == "en" ? "zh" : language
+                        )
+                    },
+                    onUninstall: {
+                        await self.uninstall(
+                            path: "~/Library/Application Support/FluidAudio/Models/nemotron-multilingual/",
+                            sttLanguage: "zh"
+                        )
+                    }
                 )
 
                 // Explain where models live — the FluidAudio library caches
@@ -235,17 +285,19 @@ struct VoicePanel: View {
                 // convention (not configurable today); Kokoro lives under
                 // `~/.bobe/` because we control that one. Surface this so
                 // the user isn't surprised by the split layout.
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 10))
-                        .foregroundStyle(self.theme.colors.textMuted)
-                    Text(L10n.tr("settings.voice.section.models.location_note"))
-                        .bobeTextStyle(.helper)
-                        .foregroundStyle(self.theme.colors.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
+                if self.expertMode.isEnabled {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 10))
+                            .foregroundStyle(self.theme.colors.textMuted)
+                        Text(L10n.tr("settings.voice.section.models.location_note"))
+                            .bobeTextStyle(.helper)
+                            .foregroundStyle(self.theme.colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
 
                 // Global reinstall — restarts both pipelines in parallel.
                 HStack(spacing: 8) {
@@ -287,65 +339,47 @@ struct VoicePanel: View {
             )
         }
         if progress.status == "failed" {
-            return .failed(progress.status)
+            return .failed(self.installStatus?.error ?? progress.status)
         }
         return .missing
     }
 
     private var parakeetStatus: VoiceModelCard.Status {
-        // Reading `sttProgressTick` forces re-render during downloads so
-        // the observed-bytes percent updates live without depending on the
-        // @Observable system to fire (which it won't — fs polling isn't
-        // an observable signal).
-        _ = self.sttProgressTick
-        return self.cardStatus(for: FluidAudioModelPresence.self)
+        self.cardStatus(for: FluidAudioModelPresence.self, language: "en")
     }
 
-    private var qwen3Status: VoiceModelCard.Status {
-        _ = self.sttProgressTick
-        // When the user has a non-English language selected, the pipeline's
-        // sttStatus tracks Qwen3 directly; under English, the pipeline is
-        // running Parakeet so we fall back to bare disk presence.
+    private var nemotronStatus: VoiceModelCard.Status {
+        self.cardStatus(for: FluidAudioNemotronModelPresence.self, language: "zh")
+    }
+
+    private func cardStatus<P: FluidAudioPresence>(
+        for presence: P.Type,
+        language: String
+    ) -> VoiceModelCard.Status {
+        let wantsEnglish = language == "en"
         let activeLanguage = self.store.settings?.voiceSttLanguage ?? "en"
-        if activeLanguage != "en" {
-            return self.cardStatus(for: FluidAudioQwen3ModelPresence.self)
-        }
-        return FluidAudioQwen3ModelPresence.isInstalled() ? .installed : .missing
-    }
+        let activeMatches = (activeLanguage == "en") == wantsEnglish
+        let downloadMatches = self.pipeline.sttDownloadLanguage.map {
+            ($0 == "en") == wantsEnglish
+        } ?? false
 
-    private func cardStatus<P: FluidAudioPresence>(for presence: P.Type) -> VoiceModelCard.Status {
-        switch self.pipeline.sttStatus {
-        case .ready: .installed
-        case .downloading:
-            .downloading(
-                bytesDownloaded: P.observedBytes(),
-                bytesTotal: P.approximateTotalBytes,
-                percent: P.observedPercent()
+        if downloadMatches {
+            return .downloading(
+                bytesDownloaded: 0,
+                bytesTotal: nil,
+                percent: self.pipeline.sttLoadProgress?.percent
             )
-        case let .failed(msg): .failed(msg)
-        case .notLoaded:
-            P.isInstalled() ? .installed : .missing
         }
-    }
-
-    /// Start (or stop) the 500ms tick that drives the FluidAudio
-    /// download-progress recompute. Idempotent — starting twice is a no-op,
-    /// the .notLoaded/.ready/.failed cases cancel the task.
-    private func startSttProgressTickerIfNeeded(for status: VoicePipeline.SttStatus) {
-        switch status {
-        case .downloading:
-            if self.sttProgressTask != nil { return }
-            self.sttProgressTask = Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    if Task.isCancelled { return }
-                    self.sttProgressTick &+= 1
-                }
+        if activeMatches {
+            switch self.pipeline.sttStatus {
+            case .ready: return .installed
+            case let .failed(message): return .failed(message)
+            case .downloading:
+                return .downloading(bytesDownloaded: 0, bytesTotal: nil, percent: nil)
+            case .notLoaded: break
             }
-        case .ready, .failed, .notLoaded:
-            self.sttProgressTask?.cancel()
-            self.sttProgressTask = nil
         }
+        return P.isInstalled() ? .installed : .missing
     }
 
     private var modelsSummary: String {
@@ -356,9 +390,12 @@ struct VoicePanel: View {
             // Partial when one side is on disk; missing otherwise. Surface
             // through underlying signals so the label is honest rather than
             // collapsing to a single "in progress" word.
-            let daemonReady = self.installStatus?.installed.allPresent ?? false
+            let selectedTtsReady = switch self.ttsPreference.backend {
+            case .serverKokoro: self.installStatus?.installed.tts ?? false
+            case .clientSupertonic: self.clientTtsInstalled
+            }
             let sttReady = self.pipeline.sttStatus == .ready
-            if daemonReady || sttReady {
+            if selectedTtsReady || sttReady {
                 return L10n.tr("settings.voice.partial_label")
             }
             return L10n.tr("settings.voice.missing_label")
@@ -372,6 +409,17 @@ struct VoicePanel: View {
     private func loadAll() async {
         await self.store.loadIfNeeded()
         await self.pipeline.refreshDaemonState()
+        self.clientTtsInstalled = FluidAudioSupertonicModelPresence.isInstalled()
+    }
+
+    private func prepareClientTts() async {
+        do {
+            try await self.pipeline.clientTtsEngine.prepare()
+            self.clientTtsInstalled = true
+            self.installError = nil
+        } catch {
+            self.installError = error.localizedDescription
+        }
     }
 
     private func refreshInstallStatus() async {
@@ -386,12 +434,12 @@ struct VoicePanel: View {
         defer { self.isReinstalling = false }
         self.installError = nil
         do {
-            try await DaemonClient.shared.startVoiceInstall()
+            try await self.pipeline.prepareSelectedTts()
         } catch {
             self.installError = error.localizedDescription
             return
         }
-        // Also kick the client-side STT (Parakeet or Qwen3 depending on the
+        // Also kick the client-side STT (Parakeet or Nemotron depending on the
         // selected language) so a "Reinstall all" actually touches both
         // sides. FluidAudio's loadModels is idempotent — already-present
         // models return fast; missing ones re-download.
@@ -399,7 +447,7 @@ struct VoicePanel: View {
             await self.pipeline.ensureSttLoaded()
         }
         // Poll until terminal so the model rows update live. 5min ceiling
-        // covers slow-network installs of the larger Qwen3 bundle;
+        // covers slow-network installs of the larger multilingual bundle;
         // daemon-side single-flight makes a second click safely no-op.
         self.statusPollTask?.cancel()
         self.statusPollTask = Task {
@@ -418,13 +466,13 @@ struct VoicePanel: View {
     /// when only Kokoro is missing only fetches Kokoro). Client path runs
     /// FluidAudio's loadModels, which downloads the active-language STT
     /// engine to the FluidAudio cache directory.
-    private func installSingle(daemon: Bool) async {
+    private func installSingle(daemon: Bool, language: String? = nil) async {
         self.installError = nil
         do {
             if daemon {
                 try await DaemonClient.shared.startVoiceInstall()
             } else {
-                await self.pipeline.ensureSttLoaded()
+                await self.pipeline.ensureSttLoaded(for: language)
             }
         } catch {
             self.installError = error.localizedDescription
@@ -437,7 +485,10 @@ struct VoicePanel: View {
     /// status flips to `.missing` on the next refresh — no special
     /// endpoint needed. Idempotent: nonexistent path is a successful
     /// no-op.
-    private func uninstall(path: String) async {
+    private func uninstall(path: String, sttLanguage: String? = nil) async {
+        if let sttLanguage {
+            await self.pipeline.unloadSttModel(for: sttLanguage)
+        }
         let expanded = NSString(string: path).expandingTildeInPath
         let url = URL(fileURLWithPath: expanded, isDirectory: true)
         if FileManager.default.fileExists(atPath: url.path) {

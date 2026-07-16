@@ -90,12 +90,11 @@ impl FillerLibrary {
         });
         let results = futures::future::join_all(futs).await;
         let mut inner = HashMap::new();
-        for (kind, phrase, result) in results {
+        for (kind, _phrase, result) in results {
             match result {
                 Ok(Ok(pcm)) => {
                     info!(
                         kind = ?kind,
-                        phrase,
                         samples = pcm.len(),
                         "voice.filler_rendered"
                     );

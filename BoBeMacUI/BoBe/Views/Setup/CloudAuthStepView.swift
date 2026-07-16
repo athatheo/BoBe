@@ -71,7 +71,7 @@ struct CloudAuthStepView: View {
             VStack(spacing: 10) {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(self.theme.colors.secondary)
+                    .foregroundStyle(self.theme.colors.success)
                 Text(L10n.tr("setup.cloud_auth.signed_in"))
                     .bobeTextStyle(.setupHeading)
                     .foregroundStyle(self.theme.colors.text)
@@ -89,7 +89,7 @@ struct CloudAuthStepView: View {
             VStack(spacing: 10) {
                 Image(systemName: "key.horizontal")
                     .font(.system(size: 32))
-                    .foregroundStyle(self.theme.colors.tertiary)
+                    .foregroundStyle(self.theme.colors.warning)
                 Text(L10n.tr("setup.cloud_auth.signed_out"))
                     .bobeTextStyle(.setupHeading)
                     .foregroundStyle(self.theme.colors.text)
@@ -100,13 +100,13 @@ struct CloudAuthStepView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(20)
-            .background(self.cardBackground(color: self.theme.colors.tertiary.opacity(0.5)))
+            .background(self.cardBackground(color: self.theme.colors.warning.opacity(0.5)))
 
         case let .error(message):
             VStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(self.theme.colors.primary)
+                    .foregroundStyle(self.theme.colors.error)
                 Text(L10n.tr("setup.cloud_auth.error"))
                     .bobeTextStyle(.setupHeading)
                     .foregroundStyle(self.theme.colors.text)
@@ -117,7 +117,7 @@ struct CloudAuthStepView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(20)
-            .background(self.cardBackground(color: self.theme.colors.primary.opacity(0.5)))
+            .background(self.cardBackground(color: self.theme.colors.error.opacity(0.5)))
         }
     }
 

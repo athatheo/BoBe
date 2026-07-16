@@ -8,28 +8,43 @@ private final class OverlayHostingView<Content: View>: NSHostingView<Content> {
 }
 
 @MainActor
-final class OverlayWindowManager {
+final class OverlayWindowManager: NSObject, NSWindowDelegate {
     static let shared = OverlayWindowManager()
 
     private(set) var panel: OverlayPanel?
 
-    private init() {}
+    private static let anchorXKey = "bobe.overlay.anchor_x"
+    private static let anchorYKey = "bobe.overlay.anchor_y"
+
+    override private init() {}
 
     func createPanel(with rootView: some View) {
-        if panel != nil { self.close() }
+        if panel != nil {
+            self.close()
+        }
 
-        let screen = NSScreen.main ?? NSScreen.screens[0]
+        let savedAnchor = self.savedAnchor
+        let screen = savedAnchor.flatMap { anchor in
+            NSScreen.screens.first { $0.visibleFrame.insetBy(dx: -40, dy: -40).contains(anchor) }
+        } ?? NSScreen.main ?? NSScreen.screens[0]
         let screenFrame = screen.visibleFrame
         let initialWidth = WindowSizes.widthCollapsed
         let initialHeight = WindowSizes.heightCollapsed
 
-        let origin = NSPoint(
-            x: screenFrame.maxX - initialWidth - WindowSizes.margin,
+        let defaultAnchor = NSPoint(
+            x: screenFrame.maxX - WindowSizes.margin,
             y: screenFrame.minY + WindowSizes.margin
+        )
+        let anchor = savedAnchor ?? defaultAnchor
+        let origin = Self.clampedOrigin(
+            for: anchor,
+            screenFrame: screenFrame,
+            size: NSSize(width: initialWidth, height: initialHeight)
         )
         let rect = NSRect(origin: origin, size: NSSize(width: initialWidth, height: initialHeight))
 
         let panel = OverlayPanel(contentRect: rect)
+        panel.delegate = self
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.masksToBounds = false
 
@@ -99,5 +114,46 @@ final class OverlayWindowManager {
     func close() {
         self.panel?.close()
         self.panel = nil
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        guard let movedPanel = notification.object as? OverlayPanel,
+              movedPanel == self.panel
+        else { return }
+        self.saveAnchor(for: movedPanel)
+    }
+
+    private var savedAnchor: NSPoint? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: Self.anchorXKey) != nil,
+              defaults.object(forKey: Self.anchorYKey) != nil
+        else { return nil }
+        return NSPoint(
+            x: defaults.double(forKey: Self.anchorXKey),
+            y: defaults.double(forKey: Self.anchorYKey)
+        )
+    }
+
+    private func saveAnchor(for panel: NSPanel) {
+        let defaults = UserDefaults.standard
+        defaults.set(panel.frame.maxX, forKey: Self.anchorXKey)
+        defaults.set(panel.frame.minY, forKey: Self.anchorYKey)
+    }
+
+    static func clampedOrigin(
+        for anchor: NSPoint,
+        screenFrame: NSRect,
+        size: NSSize
+    ) -> NSPoint {
+        NSPoint(
+            x: min(
+                max(anchor.x - size.width, screenFrame.minX + WindowSizes.margin),
+                screenFrame.maxX - size.width - WindowSizes.margin
+            ),
+            y: min(
+                max(anchor.y, screenFrame.minY + WindowSizes.margin),
+                screenFrame.maxY - size.height - WindowSizes.margin
+            )
+        )
     }
 }

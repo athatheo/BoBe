@@ -17,16 +17,7 @@ private struct DaemonErrorBody: Decodable {
 actor DaemonClient {
     static let shared = DaemonClient()
 
-    let baseURL: URL = {
-        if let url = URL(string: DaemonConfig.baseURL) {
-            return url
-        }
-        // Fallback only fires if `DaemonConfig.baseURL` ever stops parsing.
-        // Both URL strings come from the same `DaemonConfig.{host,port}` so
-        // this is unreachable today; left as defense in depth.
-        logger.error("Invalid daemon base URL, falling back to localhost")
-        return URL(string: DaemonConfig.baseURL) ?? URL(fileURLWithPath: "/")
-    }()
+    let baseURL = DaemonConfig.endpoint.baseURL
 
     let session: URLSession
     /// Dedicated session for the SSE long-poll. Keeping it separate from
@@ -84,6 +75,12 @@ actor DaemonClient {
         self.encoder = JSONEncoder()
     }
 
+    func authorize(_ request: inout URLRequest) {
+        if let token = DaemonConfig.endpoint.bearerToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+    }
+
     // MARK: - SSE Connection
 
     func connectSSE(
@@ -114,6 +111,7 @@ actor DaemonClient {
     private func runSSELoop() async {
         let url = self.endpointURL("events")
         var request = URLRequest(url: url)
+        self.authorize(&request)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         // Set explicitly large rather than 0 (which inherits the session
         // default request timeout). The session default of 60s would be
@@ -196,6 +194,7 @@ actor DaemonClient {
     ) async throws -> Data {
         let url = self.endpointURL(path)
         var request = URLRequest(url: url)
+        self.authorize(&request)
         request.httpMethod = method
         request.timeoutInterval = self.fetchTimeout
 

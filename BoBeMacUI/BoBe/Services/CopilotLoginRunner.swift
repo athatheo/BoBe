@@ -22,6 +22,13 @@ final class CopilotLoginRunner {
         case completed
         case failed(message: String)
         case canceled
+
+        var isTerminal: Bool {
+            switch self {
+            case .completed, .failed, .canceled: true
+            case .idle, .preparing, .awaitingUser, .polling: false
+            }
+        }
     }
 
     private(set) var state: State = .idle
@@ -34,7 +41,9 @@ final class CopilotLoginRunner {
         // Avoid double-start: if we already have an in-flight stream, just
         // re-attach (subscribing late returns the watch channel's current
         // value, so the UI never lands on a blank sheet).
-        if self.streamTask != nil { return }
+        if self.streamTask != nil {
+            return
+        }
 
         self.state = .preparing
         self.didCopyCode = false
@@ -51,19 +60,35 @@ final class CopilotLoginRunner {
                 return
             }
 
-            do {
-                try await client.streamCopilotLogin { [weak self] phase in
-                    Task { @MainActor [weak self] in
-                        self?.apply(phase: phase)
+            var reconnectAttempt = 0
+            while !Task.isCancelled {
+                do {
+                    try await client.streamCopilotLogin { [weak self] phase in
+                        Task { @MainActor [weak self] in
+                            self?.apply(phase: phase)
+                        }
+                    }
+                    if self.state.isTerminal {
+                        break
+                    }
+                } catch {
+                    self.logger.warning("streamCopilotLogin error: \(error.localizedDescription, privacy: .public)")
+                    if let auth = try? await client.getAuthStatus(), auth.isAuthenticated {
+                        self.state = .completed
+                        break
                     }
                 }
-            } catch {
-                self.logger.warning("streamCopilotLogin error: \(error.localizedDescription, privacy: .public)")
-                if case .failed = self.state {} else if case .completed = self.state {} else if case .canceled = self.state {} else {
-                    self.state = .failed(message: error.localizedDescription)
-                }
+                reconnectAttempt += 1
+                let delay = min(Double(reconnectAttempt), 5)
+                try? await Task.sleep(for: .seconds(delay))
             }
             self.streamTask = nil
+            switch self.state {
+            case .preparing, .awaitingUser, .polling:
+                self.state = .failed(message: L10n.tr("setup.cloud_auth.error.stream_ended"))
+            case .idle, .completed, .failed, .canceled:
+                break
+            }
         }
     }
 
@@ -142,6 +167,10 @@ final class CopilotLoginRunner {
             self.state = .failed(message: message)
         case .canceled:
             self.state = .canceled
+        case let .unsupported(phase):
+            self.state = .failed(
+                message: L10n.tr("setup.cloud_auth.error.unsupported_phase_format", phase)
+            )
         }
     }
 }

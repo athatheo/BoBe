@@ -30,7 +30,7 @@ struct DaemonSettings: Codable, Sendable {
     var voiceSttLanguage: String
     /// Kebab-case enum mirroring Rust `PauseSensitivity`: `"tight"`,
     /// `"balanced"`, `"patient"`. Drives the FluidAudio EOU debounce
-    /// (Parakeet built-in + Qwen3 VAD-driven silence timer) — same ms
+    /// (Parakeet built-in + Nemotron VAD-driven silence timer) — same ms
     /// value flows to both engines.
     var voicePauseSensitivity: String
     /// Whether the overlay shows the live partial-transcript caption while
@@ -65,7 +65,28 @@ struct DaemonSettings: Codable, Sendable {
     }
 }
 
-struct SettingsUpdateRequest: Codable, Sendable {
+enum PatchField<Value: Codable & Sendable>: Sendable {
+    case unchanged
+    case value(Value)
+    case clear
+
+    init(_ value: Value?) {
+        self = value.map(Self.value) ?? .clear
+    }
+
+    func encode(to container: inout KeyedEncodingContainer<SettingsUpdateRequest.CodingKeys>, forKey key: SettingsUpdateRequest.CodingKeys) throws {
+        switch self {
+        case .unchanged:
+            break
+        case let .value(value):
+            try container.encode(value, forKey: key)
+        case .clear:
+            try container.encodeNil(forKey: key)
+        }
+    }
+}
+
+struct SettingsUpdateRequest: Encodable, Sendable {
     var captureEnabled: Bool?
     var captureIntervalSeconds: Int?
     var checkinEnabled: Bool?
@@ -76,13 +97,13 @@ struct SettingsUpdateRequest: Codable, Sendable {
     var goalCheckIntervalSeconds: Double?
     var mcpEnabled: Bool?
     var engine: String?
-    var providerBaseUrl: String?
-    var providerChatModel: String?
-    var providerBatchModel: String?
-    var providerVisionModel: String?
-    var providerChatReasoning: String?
-    var providerBatchReasoning: String?
-    var providerVisionReasoning: String?
+    var providerBaseUrl: PatchField<String> = .unchanged
+    var providerChatModel: PatchField<String> = .unchanged
+    var providerBatchModel: PatchField<String> = .unchanged
+    var providerVisionModel: PatchField<String> = .unchanged
+    var providerChatReasoning: PatchField<String> = .unchanged
+    var providerBatchReasoning: PatchField<String> = .unchanged
+    var providerVisionReasoning: PatchField<String> = .unchanged
     var providerOffline: Bool?
     var voiceEnabled: Bool?
     var voicePersona: String?
@@ -116,6 +137,34 @@ struct SettingsUpdateRequest: Codable, Sendable {
         case voiceSttLanguage = "voice_stt_language"
         case voicePauseSensitivity = "voice_pause_sensitivity"
         case voiceShowPartialCaption = "voice_show_partial_caption"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(self.captureEnabled, forKey: .captureEnabled)
+        try container.encodeIfPresent(self.captureIntervalSeconds, forKey: .captureIntervalSeconds)
+        try container.encodeIfPresent(self.checkinEnabled, forKey: .checkinEnabled)
+        try container.encodeIfPresent(self.checkinTimes, forKey: .checkinTimes)
+        try container.encodeIfPresent(self.checkinJitterMinutes, forKey: .checkinJitterMinutes)
+        try container.encodeIfPresent(self.conversationInactivityTimeoutSeconds, forKey: .conversationInactivityTimeoutSeconds)
+        try container.encodeIfPresent(self.conversationAutoCloseMinutes, forKey: .conversationAutoCloseMinutes)
+        try container.encodeIfPresent(self.goalCheckIntervalSeconds, forKey: .goalCheckIntervalSeconds)
+        try container.encodeIfPresent(self.mcpEnabled, forKey: .mcpEnabled)
+        try container.encodeIfPresent(self.engine, forKey: .engine)
+        try self.providerBaseUrl.encode(to: &container, forKey: .providerBaseUrl)
+        try self.providerChatModel.encode(to: &container, forKey: .providerChatModel)
+        try self.providerBatchModel.encode(to: &container, forKey: .providerBatchModel)
+        try self.providerVisionModel.encode(to: &container, forKey: .providerVisionModel)
+        try self.providerChatReasoning.encode(to: &container, forKey: .providerChatReasoning)
+        try self.providerBatchReasoning.encode(to: &container, forKey: .providerBatchReasoning)
+        try self.providerVisionReasoning.encode(to: &container, forKey: .providerVisionReasoning)
+        try container.encodeIfPresent(self.providerOffline, forKey: .providerOffline)
+        try container.encodeIfPresent(self.voiceEnabled, forKey: .voiceEnabled)
+        try container.encodeIfPresent(self.voicePersona, forKey: .voicePersona)
+        try container.encodeIfPresent(self.voiceSpeed, forKey: .voiceSpeed)
+        try container.encodeIfPresent(self.voiceSttLanguage, forKey: .voiceSttLanguage)
+        try container.encodeIfPresent(self.voicePauseSensitivity, forKey: .voicePauseSensitivity)
+        try container.encodeIfPresent(self.voiceShowPartialCaption, forKey: .voiceShowPartialCaption)
     }
 }
 

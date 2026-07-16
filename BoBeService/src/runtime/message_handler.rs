@@ -1,5 +1,6 @@
 //! We persist user turn + final assistant turn; SDK owns context/history/tools.
 
+use std::future::Future;
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -11,6 +12,7 @@ use crate::db::SqliteCooldownRepo;
 use crate::error::AppError;
 use crate::models::ids::ConversationId;
 use crate::models::types::TurnRole;
+use crate::runtime::behavior_context::BehaviorContext;
 use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::response_streamer::stream_chat_delta_response;
 use crate::util::sse::event_queue::EventQueue;
@@ -22,6 +24,7 @@ pub(crate) struct MessageHandler {
     conversation: Arc<ConversationService>,
     cooldown_repo: Arc<SqliteCooldownRepo>,
     event_queue: Arc<EventQueue>,
+    behavior_context: Arc<BehaviorContext>,
 }
 
 impl MessageHandler {
@@ -30,19 +33,21 @@ impl MessageHandler {
         conversation: Arc<ConversationService>,
         cooldown_repo: Arc<SqliteCooldownRepo>,
         event_queue: Arc<EventQueue>,
+        behavior_context: Arc<BehaviorContext>,
     ) -> Self {
         Self {
             workers,
             conversation,
             cooldown_repo,
             event_queue,
+            behavior_context,
         }
     }
 
     /// Default text-chat entry point. The observer is a no-op so SSE deltas
     /// are the only consumer of token text.
     pub(crate) async fn handle_message(&self, content: &str, message_id: &str) {
-        self.handle_message_with_observer(content, message_id, false, |_: &str| {})
+        self.handle_message_with_observer(content, message_id, false, |_| async {})
             .await;
     }
 
@@ -50,14 +55,15 @@ impl MessageHandler {
     /// SSE delivery. Voice uses this to pipe the same tokens into a sentence
     /// buffer for Kokoro TTS and passes `voice_mode=true` so the SDK send
     /// rides `DeliveryMode::Immediate` (atomic server-side interrupt).
-    pub(crate) async fn handle_message_with_observer<F>(
+    pub(crate) async fn handle_message_with_observer<F, Fut>(
         &self,
         content: &str,
         message_id: &str,
         voice_mode: bool,
         on_text_delta: F,
     ) where
-        F: FnMut(&str) + Send,
+        F: FnMut(String) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
     {
         if let Err(e) = self
             .cooldown_repo
@@ -97,7 +103,7 @@ impl MessageHandler {
         }
     }
 
-    async fn respond_to_message<F>(
+    async fn respond_to_message<F, Fut>(
         &self,
         msg_id: &str,
         user_content: &str,
@@ -105,7 +111,8 @@ impl MessageHandler {
         voice_mode: bool,
         on_text_delta: F,
     ) where
-        F: FnMut(&str) + Send,
+        F: FnMut(String) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
     {
         self.event_queue.set_indicator(IndicatorType::Streaming);
         // RAII: ensures Indicator returns to Idle on every exit path —
@@ -129,7 +136,7 @@ impl MessageHandler {
         self.persist_response(&result, conversation_id).await;
     }
 
-    async fn send_via_chat_worker<F>(
+    async fn send_via_chat_worker<F, Fut>(
         &self,
         user_content: &str,
         msg_id: &str,
@@ -137,13 +144,15 @@ impl MessageHandler {
         on_text_delta: F,
     ) -> Result<crate::runtime::response_streamer::StreamResult, AppError>
     where
-        F: FnMut(&str) + Send,
+        F: FnMut(String) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
     {
         let worker = self.workers.chat().await?;
+        let contextualized = self.behavior_context.prepend_to(user_content).await;
         let prompt = if voice_mode {
-            ChatPrompt::voice(user_content)
+            ChatPrompt::voice(contextualized)
         } else {
-            ChatPrompt::text(user_content)
+            ChatPrompt::text(contextualized)
         };
         let chat_stream = worker
             .send(prompt)

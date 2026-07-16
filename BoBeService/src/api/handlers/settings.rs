@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::app_state::AppState;
+use crate::bootstrap::mcp_loader::load_mcp_servers_for_sdk;
 use crate::config::PauseSensitivity;
 use crate::error::AppError;
 use crate::models::engine_kind::EngineKind;
@@ -41,6 +42,20 @@ pub(crate) struct SettingsResponse {
     pub(crate) voice_show_partial_caption: bool,
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) enum NullablePatch<T> {
+    #[default]
+    Unchanged,
+    Value(T),
+    Clear,
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for NullablePatch<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Option::<T>::deserialize(deserializer).map(|value| value.map_or(Self::Clear, Self::Value))
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct SettingsUpdateRequest {
     pub(crate) capture_enabled: Option<bool>,
@@ -53,13 +68,20 @@ pub(crate) struct SettingsUpdateRequest {
     pub(crate) goal_check_interval_seconds: Option<f64>,
     pub(crate) mcp_enabled: Option<bool>,
     pub(crate) engine: Option<EngineKind>,
-    pub(crate) provider_base_url: Option<String>,
-    pub(crate) provider_chat_model: Option<String>,
-    pub(crate) provider_batch_model: Option<String>,
-    pub(crate) provider_vision_model: Option<String>,
-    pub(crate) provider_chat_reasoning: Option<String>,
-    pub(crate) provider_batch_reasoning: Option<String>,
-    pub(crate) provider_vision_reasoning: Option<String>,
+    #[serde(default)]
+    pub(crate) provider_base_url: NullablePatch<String>,
+    #[serde(default)]
+    pub(crate) provider_chat_model: NullablePatch<String>,
+    #[serde(default)]
+    pub(crate) provider_batch_model: NullablePatch<String>,
+    #[serde(default)]
+    pub(crate) provider_vision_model: NullablePatch<String>,
+    #[serde(default)]
+    pub(crate) provider_chat_reasoning: NullablePatch<String>,
+    #[serde(default)]
+    pub(crate) provider_batch_reasoning: NullablePatch<String>,
+    #[serde(default)]
+    pub(crate) provider_vision_reasoning: NullablePatch<String>,
     pub(crate) provider_offline: Option<bool>,
     pub(crate) voice_enabled: Option<bool>,
     pub(crate) voice_persona: Option<String>,
@@ -135,13 +157,29 @@ pub(crate) async fn update_settings(
     collect_opt!(goal_check_interval_seconds);
     collect_opt!(mcp_enabled);
     collect_opt!(engine);
-    collect_opt!(provider_base_url);
-    collect_opt!(provider_chat_model);
-    collect_opt!(provider_batch_model);
-    collect_opt!(provider_vision_model);
-    collect_opt!(provider_chat_reasoning);
-    collect_opt!(provider_batch_reasoning);
-    collect_opt!(provider_vision_reasoning);
+    macro_rules! collect_nullable {
+        ($field:ident) => {
+            match &body.$field {
+                NullablePatch::Unchanged => {}
+                NullablePatch::Value(value) => {
+                    changes.insert(
+                        stringify!($field).to_owned(),
+                        serde_json::to_value(value).unwrap_or_default(),
+                    );
+                }
+                NullablePatch::Clear => {
+                    changes.insert(stringify!($field).to_owned(), serde_json::Value::Null);
+                }
+            }
+        };
+    }
+    collect_nullable!(provider_base_url);
+    collect_nullable!(provider_chat_model);
+    collect_nullable!(provider_batch_model);
+    collect_nullable!(provider_vision_model);
+    collect_nullable!(provider_chat_reasoning);
+    collect_nullable!(provider_batch_reasoning);
+    collect_nullable!(provider_vision_reasoning);
     collect_opt!(provider_offline);
     collect_opt!(voice_enabled);
     collect_opt!(voice_persona);
@@ -166,9 +204,42 @@ pub(crate) async fn update_settings(
         }));
     }
 
+    // Serialize global MCP toggles with MCP document saves so concurrent
+    // requests cannot leave the registry map behind the final config value.
+    let mcp_config_guard = if body.mcp_enabled.is_some() {
+        Some(state.infra.mcp_config_lock.lock().await)
+    } else {
+        None
+    };
+    let previous_mcp_enabled = state.config().mcp.enabled;
+
     // Persist writes are sync std::fs; yield the worker so other handlers
     // don't block on disk while config.toml is rewritten.
     let result = tokio::task::block_in_place(|| state.infra.config_manager.update(&changes));
+
+    let current_config = (**state.config()).clone();
+    if mcp_toggle_changed(previous_mcp_enabled, current_config.mcp.enabled) {
+        let mcp = load_mcp_servers_for_sdk(&current_config);
+        state
+            .runtime
+            .workers
+            .apply_mcp_config(mcp.servers, mcp.excluded_tools)
+            .await;
+    }
+    drop(mcp_config_guard);
+
+    if result.applied_fields.iter().any(|field| {
+        matches!(
+            field.as_str(),
+            "capture_enabled"
+                | "capture_interval_seconds"
+                | "checkin_enabled"
+                | "checkin_times"
+                | "checkin_jitter_minutes"
+        )
+    }) {
+        state.runtime.runtime_session.apply_runtime_settings().await;
+    }
 
     tracing::info!(
         applied = ?result.applied_fields,
@@ -186,6 +257,10 @@ pub(crate) async fn update_settings(
     }))
 }
 
+fn mcp_toggle_changed(previous: bool, current: bool) -> bool {
+    previous != current
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "tests panic on precondition failures")]
 mod tests {
@@ -193,6 +268,14 @@ mod tests {
 
     // Every test below proves bad wire input is rejected at decode time (400),
     // not silently coerced.
+
+    #[test]
+    fn mcp_registry_reload_only_follows_toggle_transitions() {
+        assert!(!mcp_toggle_changed(false, false));
+        assert!(!mcp_toggle_changed(true, true));
+        assert!(mcp_toggle_changed(false, true));
+        assert!(mcp_toggle_changed(true, false));
+    }
 
     #[test]
     fn engine_kind_decodes_snake_case_variants() {
@@ -233,6 +316,24 @@ mod tests {
         assert!(req.engine.is_none());
         assert!(req.capture_enabled.is_none());
         assert!(req.voice_speed.is_none());
+    }
+
+    #[test]
+    fn nullable_provider_patch_distinguishes_missing_value_and_clear() {
+        let missing: SettingsUpdateRequest = serde_json::from_str("{}").expect("decode missing");
+        assert_eq!(missing.provider_base_url, NullablePatch::Unchanged);
+
+        let value: SettingsUpdateRequest =
+            serde_json::from_str(r#"{"provider_base_url":"http://localhost:11434/v1"}"#)
+                .expect("decode value");
+        assert_eq!(
+            value.provider_base_url,
+            NullablePatch::Value("http://localhost:11434/v1".to_owned())
+        );
+
+        let clear: SettingsUpdateRequest =
+            serde_json::from_str(r#"{"provider_base_url":null}"#).expect("decode clear");
+        assert_eq!(clear.provider_base_url, NullablePatch::Clear);
     }
 
     #[test]

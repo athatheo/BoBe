@@ -24,44 +24,61 @@ extension VoicePipeline {
     }
 
     /// Resolve the active STT engine from the effective language. English
-    /// → Parakeet; everything else → Qwen3 (which is multilingual).
+    /// → Parakeet; everything else → Nemotron multilingual.
     var activeStt: any VoiceSttEngine {
-        switch self.effectiveLanguage {
-        case "en": self.parakeetStt
-        default: self.qwen3Stt
-        }
+        self.sttEngine(for: self.effectiveLanguage)
+    }
+
+    func sttEngine(for language: String) -> any VoiceSttEngine {
+        language == "en" ? self.parakeetStt : self.nemotronStt
     }
 
     /// Presence-check the active language's model bundle. Mirrors the
     /// `activeStt` switch so the readiness check matches what
     /// `ensureSttLoaded()` will load.
     var activeModelIsInstalled: Bool {
-        switch self.effectiveLanguage {
+        self.modelIsInstalled(for: self.effectiveLanguage)
+    }
+
+    func modelIsInstalled(for language: String) -> Bool {
+        switch language {
         case "en": FluidAudioModelPresence.isInstalled()
-        default: FluidAudioQwen3ModelPresence.isInstalled()
+        default: FluidAudioNemotronModelPresence.isInstalled()
         }
     }
 
     /// Aggregated readiness folded from the four underlying observable
     /// inputs. See `VoiceReadiness` for case priority.
     public var readiness: VoiceReadiness {
-        if self.voiceEnabled == false { return .disabledByUser }
+        if self.voiceEnabled == false {
+            return .disabledByUser
+        }
         if self.permission == .denied || self.permission == .restricted {
             return .permissionMissing
         }
         guard let snapshot = self.installSnapshot, self.voiceEnabled == true else {
             return .preparing
         }
-        if case let .failed(msg) = self.sttStatus { return .failed(msg) }
+        if case let .failed(msg) = self.sttStatus {
+            return .failed(msg)
+        }
         // `clientSttStatus` here is whichever engine the active language
-        // routes to (Parakeet for English, Qwen3 for everything else) —
+        // routes to (Parakeet for English, Nemotron for everything else) —
         // both engines write through to `sttStatus`.
         let daemonTtsDownloading = snapshot.isRunning
-        let daemonTtsReady = snapshot.installed.allPresent
+            && VoiceTtsPreference.shared.backend == .serverKokoro
+        let selectedTtsReady = switch VoiceTtsPreference.shared.backend {
+        case .serverKokoro: snapshot.installed.tts
+        case .clientSupertonic: FluidAudioSupertonicModelPresence.isInstalled()
+        }
         let clientSttDownloading = self.sttStatus == .downloading
         let clientSttReady = self.sttStatus == .ready
-        if daemonTtsDownloading || clientSttDownloading { return .installing }
-        if daemonTtsReady, clientSttReady { return .ready }
+        if daemonTtsDownloading || clientSttDownloading {
+            return .installing
+        }
+        if selectedTtsReady, clientSttReady {
+            return .ready
+        }
         return .modelsMissing
     }
 
@@ -84,21 +101,7 @@ extension VoicePipeline {
                 self.installSnapshot = installRes
             }
             if let settingsRes {
-                self.voiceEnabled = settingsRes.voiceEnabled
-                self.showPartialCaption = settingsRes.voiceShowPartialCaption
-                self.voicePersona = settingsRes.voicePersona
-                self.voiceSpeed = settingsRes.voiceSpeed
-                let lang = settingsRes.voiceSttLanguage
-                if !lang.isEmpty {
-                    self.activeSttLanguage = lang
-                }
-                let delayMs = Self.eouDelayMs(for: settingsRes.voicePauseSensitivity)
-                let qwen3 = self.qwen3Stt
-                let parakeet = self.parakeetStt
-                Task {
-                    await qwen3.setEouDelayMs(delayMs)
-                    await parakeet.setEouDebounceMs(delayMs)
-                }
+                self.applySettings(settingsRes)
             }
         }
         self.refreshDaemonTask = task
@@ -106,9 +109,32 @@ extension VoicePipeline {
         self.refreshDaemonTask = nil
     }
 
+    func applySettings(_ settings: DaemonSettings) {
+        self.voiceEnabled = settings.voiceEnabled
+        self.showPartialCaption = settings.voiceShowPartialCaption
+        self.voicePersona = settings.voicePersona
+        self.voiceSpeed = settings.voiceSpeed
+        let language = settings.voiceSttLanguage
+        if !language.isEmpty, language != self.activeSttLanguage {
+            self.activeSttLanguage = language
+            self.sttStatus = self.loadedLanguages.contains(language)
+                || self.modelIsInstalled(for: language) ? .ready : .notLoaded
+        }
+        let delayMs = Self.eouDelayMs(for: settings.voicePauseSensitivity)
+        let nemotron = self.nemotronStt
+        let parakeet = self.parakeetStt
+        Task {
+            await nemotron.setEouDelayMs(delayMs)
+            await parakeet.setEouDebounceMs(delayMs)
+        }
+        if !settings.voiceEnabled, self.state != .idle {
+            self.disconnect()
+        }
+    }
+
     /// Map the daemon's `voice.pause_sensitivity` string to an EOU debounce
     /// (ms). Same value flows to both engines: Parakeet's built-in EOU
-    /// debounce, and the Qwen3 wrapper's VAD-driven silence timer.
+    /// debounce, and the Nemotron wrapper's VAD-driven silence timer.
     /// Concrete values live in `Constants.PauseSensitivityMs` so the drift
     /// script can lock them to Rust `constants::pause_sensitivity_ms::*`.
     /// The 800ms balanced default trims ~480ms vs. Parakeet's published

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::types::MessageOptions;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::copilot::error::WorkerError;
@@ -19,14 +19,16 @@ pub(crate) struct VisionWorker {
     session: Arc<Session>,
     submit_lock: Mutex<()>,
     turn_timeout: Duration,
+    lifecycle: Arc<RwLock<()>>,
 }
 
 impl VisionWorker {
-    pub(crate) fn new(session: Arc<Session>) -> Arc<Self> {
+    pub(crate) fn new(session: Arc<Session>, lifecycle: Arc<RwLock<()>>) -> Arc<Self> {
         Arc::new(Self {
             session,
             submit_lock: Mutex::new(()),
             turn_timeout: WorkerClass::Vision.turn_timeout(),
+            lifecycle,
         })
     }
 
@@ -35,6 +37,7 @@ impl VisionWorker {
         question: &str,
         image: ChatAttachment,
     ) -> Result<VisionAnswer, WorkerError> {
+        let _lifecycle = self.lifecycle.read().await;
         let _guard = self.submit_lock.lock().await;
         let request_id = Uuid::new_v4();
 
@@ -65,8 +68,17 @@ impl VisionWorker {
         })
     }
 
-    pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
+    #[allow(
+        deprecated,
+        reason = "privacy purge must erase SDK session state, not merely disconnect"
+    )]
+    pub(crate) async fn destroy(&self) -> Result<(), WorkerError> {
         self.session.destroy().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
+        self.session.disconnect().await?;
         Ok(())
     }
 }

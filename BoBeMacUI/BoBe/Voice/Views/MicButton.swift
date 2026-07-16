@@ -17,14 +17,14 @@ struct MicButton: View {
                 // avatar rim.
                 Circle()
                     .fill(self.background)
-                    .frame(width: 32, height: 32)
+                    .frame(width: AvatarMetrics.satelliteSize, height: AvatarMetrics.satelliteSize)
 
                 // White stroke ring just like ChatToggleButton — gives
                 // the satellite a clear outer edge against the dark
                 // avatar rim and any background behind the overlay.
                 Circle()
                     .stroke(self.theme.colors.background, lineWidth: 2)
-                    .frame(width: 32, height: 32)
+                    .frame(width: AvatarMetrics.satelliteSize, height: AvatarMetrics.satelliteSize)
 
                 Image(systemName: self.icon)
                     .font(.system(size: 12, weight: .bold))
@@ -47,7 +47,10 @@ struct MicButton: View {
                         )
                         .rotationEffect(.degrees(-90))
                         .frame(width: 36, height: 36)
-                        .animation(.easeOut(duration: 0.25), value: displayed)
+                        .animation(
+                            OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.25),
+                            value: displayed
+                        )
                         .accessibilityElement()
                         .accessibilityLabel(L10n.tr("overlay.input.mic.install_progress.accessibility"))
                         .accessibilityValue(
@@ -77,8 +80,9 @@ struct MicButton: View {
         .buttonStyle(.plain)
         .shadow(color: self.theme.colors.text.opacity(0.10), radius: 3, y: 1)
         .accessibilityLabel(self.accessibilityLabel)
+        .accessibilityIdentifier("overlay.avatar.mic-toggle")
         .help(self.tooltip)
-        .frame(width: 32, height: 32)
+        .frame(width: AvatarMetrics.satelliteSize, height: AvatarMetrics.satelliteSize)
         .contentShape(Circle())
         .disabled(self.isDisabled)
         .task {
@@ -87,7 +91,7 @@ struct MicButton: View {
             )
             // Pull settings first so the pipeline's activeSttLanguage is
             // current — the presence check below routes to the right engine
-            // (Parakeet for English, Qwen3 for everything else).
+            // (Parakeet for English, Nemotron for everything else).
             await self.pipeline.refreshDaemonState()
             // Filesystem presence check — cheap, doesn't need mic permission
             // or active load. Fixes a chicken-and-egg where the mic showed
@@ -219,10 +223,7 @@ struct MicButton: View {
             await self.pipeline.ensureSttLoaded()
         }
         Task {
-            // Errors are absorbed: pipeline.lastError has no setter from
-            // this scope, and the next readiness refresh flips back to
-            // .modelsMissing if install didn't take.
-            try? await DaemonClient.shared.startVoiceInstall()
+            try? await self.pipeline.prepareSelectedTts()
             // Poll until install resolves so the badge/icon picks up the
             // state change without waiting on the user's next interaction.
             self.schedulePoll()
@@ -246,8 +247,12 @@ struct MicButton: View {
             for _ in 0 ..< 60 where !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 await self.pipeline.refreshDaemonState()
-                if !self.needsSetup { break }
-                if case .failed = self.pipeline.readiness { break }
+                if !self.needsSetup {
+                    break
+                }
+                if case .failed = self.pipeline.readiness {
+                    break
+                }
             }
         }
     }
@@ -264,7 +269,9 @@ struct MicButton: View {
         if self.pipeline.readiness == .permissionMissing {
             return "mic.slash.circle.fill"
         }
-        if self.needsSetup { return "wrench.and.screwdriver.fill" }
+        if self.needsSetup {
+            return "wrench.and.screwdriver.fill"
+        }
         return switch self.pipeline.state {
         case .idle, .failed: "mic.slash.fill"
         case .connecting, .thinking, .speaking, .cancelling, .listening, .capturing: "mic.fill"
@@ -288,7 +295,9 @@ struct MicButton: View {
     }
 
     private var background: Color {
-        if self.needsSetup { return self.theme.colors.border.opacity(0.7) }
+        if self.needsSetup {
+            return self.theme.colors.border.opacity(0.7)
+        }
         return switch self.pipeline.state {
         // ON — mic is open and audio is flowing. The listening vs capturing
         // distinction now lives entirely on the avatar's turbulent presence
@@ -302,7 +311,9 @@ struct MicButton: View {
     }
 
     private var foreground: Color {
-        if self.needsSetup { return self.theme.colors.textMuted }
+        if self.needsSetup {
+            return self.theme.colors.textMuted
+        }
         return switch self.pipeline.state {
         case .capturing, .speaking, .listening, .thinking: self.theme.colors.background
         case .idle:

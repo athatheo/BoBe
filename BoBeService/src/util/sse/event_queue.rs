@@ -49,6 +49,13 @@ impl EventQueue {
         }
     }
 
+    pub(crate) fn requeue_front(&self, event: StreamBundle) {
+        let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
+        queue.push_front(event);
+        drop(queue);
+        self.notify.notify_waiters();
+    }
+
     pub(crate) fn current_indicator(&self) -> IndicatorType {
         *lock_or_recover(&self.current_indicator, "event_queue.current_indicator")
     }

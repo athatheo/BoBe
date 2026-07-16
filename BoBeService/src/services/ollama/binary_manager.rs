@@ -1,4 +1,4 @@
-//! No SHA pin — Ollama's `latest` release lacks stable SHA256SUMS; trust = GitHub HTTPS.
+//! Managed Ollama binary lifecycle.
 
 use super::binary_download as download;
 use super::binary_extract as extract;
@@ -48,6 +48,7 @@ impl BinaryManager {
     pub(crate) async fn ensure_managed_ollama(
         &self,
         progress_tx: &watch::Sender<DownloadProgress>,
+        cancel_rx: watch::Receiver<bool>,
     ) -> Result<PathBuf, AppError> {
         if let Some(path) = self.find_managed_ollama() {
             progress_tx
@@ -66,7 +67,9 @@ impl BinaryManager {
             .ok_or_else(|| AppError::Config("Invalid binary path".into()))?;
         std::fs::create_dir_all(parent)?;
 
-        let archive_path = self.data_dir.join("ollama").join("ollama-darwin.tgz");
+        let artifact =
+            download::current_artifact().map_err(|message| AppError::Config(message.into()))?;
+        let archive_path = self.data_dir.join("ollama").join(artifact.archive_name);
 
         progress_tx
             .send(DownloadProgress {
@@ -76,22 +79,27 @@ impl BinaryManager {
             })
             .ok();
 
-        download::download_ollama(&self.http_client, &archive_path, |current, total| {
-            let percent = total.map(|t| {
-                if t > 0 {
-                    ((current as f64 / t as f64) * 90.0).min(100.0) as u8
-                } else {
-                    0
-                }
-            });
-            progress_tx
-                .send(DownloadProgress {
-                    current_bytes: current,
-                    total_bytes: total,
-                    percent,
-                })
-                .ok();
-        })
+        download::download_ollama(
+            &self.http_client,
+            &archive_path,
+            cancel_rx,
+            |current, total| {
+                let percent = total.map(|t| {
+                    if t > 0 {
+                        ((current as f64 / t as f64) * 90.0).min(100.0) as u8
+                    } else {
+                        0
+                    }
+                });
+                progress_tx
+                    .send(DownloadProgress {
+                        current_bytes: current,
+                        total_bytes: total,
+                        percent,
+                    })
+                    .ok();
+            },
+        )
         .await?;
 
         progress_tx
@@ -102,7 +110,9 @@ impl BinaryManager {
             })
             .ok();
 
-        if let Err(error) = extract::extract_ollama_archive(&archive_path, &target_path) {
+        if let Err(error) =
+            extract::extract_ollama_archive(&archive_path, &target_path, artifact.format)
+        {
             let _ignored = std::fs::remove_file(&archive_path);
             let _ignored = std::fs::remove_file(&target_path);
             return Err(error);
@@ -186,6 +196,11 @@ mod tests {
         dir
     }
 
+    fn test_client() -> Arc<reqwest::Client> {
+        crate::util::tls::install_crypto_provider().expect("TLS provider should install");
+        Arc::new(reqwest::Client::new())
+    }
+
     #[tokio::test]
     async fn validate_ollama_binary_accepts_executable() {
         let dir = temp_dir("valid");
@@ -201,7 +216,7 @@ mod tests {
             std::fs::set_permissions(&binary_path, perms).expect("permissions should be set");
         }
 
-        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        let manager = BinaryManager::new(&dir, test_client());
         manager
             .validate_ollama_binary(&binary_path)
             .await
@@ -219,7 +234,7 @@ mod tests {
             std::fs::set_permissions(&binary_path, perms).expect("permissions should be set");
         }
 
-        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        let manager = BinaryManager::new(&dir, test_client());
         let error = manager
             .validate_ollama_binary(&binary_path)
             .await
@@ -231,7 +246,7 @@ mod tests {
     #[test]
     fn find_managed_ollama_returns_none_for_fresh_data_dir() {
         let dir = temp_dir("find-absent");
-        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        let manager = BinaryManager::new(&dir, test_client());
         assert_eq!(manager.find_managed_ollama(), None);
     }
 
@@ -242,7 +257,7 @@ mod tests {
         std::fs::create_dir_all(&bin_dir).expect("bin dir should be created");
         std::fs::write(bin_dir.join("ollama"), "fake").expect("fake binary should be written");
 
-        let manager = BinaryManager::new(&dir, Arc::new(reqwest::Client::new()));
+        let manager = BinaryManager::new(&dir, test_client());
         let result = manager.find_managed_ollama();
         assert!(result.is_some());
         assert_eq!(

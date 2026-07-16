@@ -1,5 +1,5 @@
 //! Batch job IO — input + structured output shape used by the
-//! batch worker classes (Goals, Decide, Consolidate). The opaque
+//! batch worker classes (Goals, Consolidate). The opaque
 //! `serde_json::Value` for `input`/`output` is intentional: each
 //! caller defines its own JSON schema.
 
