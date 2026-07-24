@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use tokio::sync::{Mutex, watch};
 use tracing::{info, warn};
 
@@ -29,12 +29,30 @@ pub(crate) struct PullProgress {
 #[derive(Debug, Deserialize)]
 struct TagsResponse {
     #[serde(default)]
-    models: Vec<TagInfo>,
+    models: Vec<InstalledModel>,
 }
 
 #[derive(Debug, Deserialize)]
-struct TagInfo {
-    name: String,
+pub(crate) struct InstalledModel {
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) details: Option<InstalledModelDetails>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct InstalledModelDetails {
+    #[serde(default, deserialize_with = "deserialize_vec_or_default")]
+    pub(crate) families: Vec<String>,
+    #[serde(default)]
+    pub(crate) family: Option<String>,
+}
+
+fn deserialize_vec_or_default<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<Vec<T>>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,24 +279,9 @@ impl OllamaManager {
     }
 
     pub(crate) async fn list_installed_models(&self) -> Result<Vec<String>, AppError> {
-        let url = format!("{}/api/tags", self.base_url);
-        let resp = self
-            .http_client
-            .get(&url)
-            .timeout(HEALTH_TIMEOUT)
-            .send()
-            .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("ollama tags: {e}")))?;
-
-        if !resp.status().is_success() {
-            return Err(AppError::ServiceUnavailable(format!(
-                "ollama tags returned {}",
-                resp.status()
-            )));
-        }
-
-        let tags: TagsResponse = resp.json().await?;
-        Ok(tags.models.into_iter().map(|m| m.name).collect())
+        let models =
+            fetch_installed_models(&self.http_client, &self.base_url, HEALTH_TIMEOUT).await?;
+        Ok(models.into_iter().map(|model| model.name).collect())
     }
 
     /// `http://host/v1` → `http://host` for Ollama's native API root.
@@ -288,6 +291,33 @@ impl OllamaManager {
             .trim_end_matches("/v1")
             .to_string()
     }
+}
+
+pub(crate) async fn fetch_installed_models(
+    client: &reqwest::Client,
+    provider_url: &str,
+    timeout: Duration,
+) -> Result<Vec<InstalledModel>, AppError> {
+    let root = OllamaManager::root_from_provider_url(provider_url);
+    let response = client
+        .get(format!("{root}/api/tags"))
+        .timeout(timeout)
+        .send()
+        .await
+        .map_err(|error| AppError::ServiceUnavailable(format!("ollama tags: {error}")))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::ServiceUnavailable(format!(
+            "ollama tags returned {}",
+            response.status()
+        )));
+    }
+
+    let tags: TagsResponse = response
+        .json()
+        .await
+        .map_err(|error| AppError::ServiceUnavailable(format!("ollama tags parse: {error}")))?;
+    Ok(tags.models)
 }
 
 async fn wait_for_cancel(cancel_rx: &mut watch::Receiver<bool>) {
@@ -309,13 +339,14 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use axum::Router;
     use axum::body::Bytes;
-    use axum::routing::post;
+    use axum::routing::{get, post};
+    use axum::{Json, Router};
+    use serde_json::json;
     use tokio::net::TcpListener;
     use tokio::sync::{Notify, watch};
 
-    use super::{OllamaManager, PullProgress};
+    use super::{OllamaManager, PullProgress, fetch_installed_models};
 
     #[tokio::test]
     async fn stalled_model_pull_cancels_without_another_chunk() {
@@ -373,7 +404,7 @@ mod tests {
             .expect("pull task should join")
             .expect_err("pull should be canceled");
 
-        assert!(matches!(error, crate::error::AppError::Canceled(_)));
+        std::assert_matches!(error, crate::error::AppError::Canceled(_));
         release_stream.notify_waiters();
         server.abort();
         drop(server.await);
@@ -393,5 +424,58 @@ mod tests {
             OllamaManager::root_from_provider_url("http://127.0.0.1:11434"),
             "http://127.0.0.1:11434"
         );
+    }
+
+    #[tokio::test]
+    async fn installed_models_include_details_from_native_tags_endpoint() {
+        crate::util::tls::install_crypto_provider().expect("TLS provider should install");
+        let app = Router::new().route(
+            "/api/tags",
+            get(|| async {
+                Json(json!({
+                    "models": [{
+                        "name": "qwen-vl",
+                        "details": {
+                            "family": "qwen",
+                            "families": ["qwen", "vision"]
+                        }
+                    }, {
+                        "name": "legacy-model",
+                        "details": {
+                            "family": null,
+                            "families": null
+                        }
+                    }]
+                }))
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test server should bind");
+        let address = listener.local_addr().expect("test address should exist");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("test server should run");
+        });
+
+        let models = fetch_installed_models(
+            &reqwest::Client::new(),
+            &format!("http://{address}/v1"),
+            Duration::from_secs(1),
+        )
+        .await
+        .expect("tags response should decode");
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].name, "qwen-vl");
+        let details = models[0].details.as_ref().expect("details should exist");
+        assert_eq!(details.family.as_deref(), Some("qwen"));
+        assert_eq!(details.families, ["qwen", "vision"]);
+        let legacy_details = models[1].details.as_ref().expect("details should exist");
+        assert_eq!(legacy_details.family, None);
+        assert!(legacy_details.families.is_empty());
+        server.abort();
+        drop(server.await);
     }
 }

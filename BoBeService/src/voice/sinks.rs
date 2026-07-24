@@ -1,17 +1,16 @@
-//! Single-slot voice sink. WS handler installs on connect; hooks push
-//! filler PCM. Single-flight via UserMessageGuard. Per-install generation
-//! tag prevents an older guard's drop from clearing a newer slot.
+//! Single active-turn voice sink. The admitted turn installs its endpoint
+//! output; hooks can never target an idle connection or a different endpoint.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use axum::extract::ws::Message;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::RwLock;
 use tracing::warn;
 
 use crate::speech::protocol::{FLAG_FILLER, encode_tts_frame};
 use crate::voice::filler_library::{FillerKind, FillerLibrary};
 use crate::voice::opus::{encode_pcm_with, make_opus_encoder};
+use crate::voice::output::VoiceOutput;
 
 pub(crate) struct VoiceSink {
     inner: RwLock<Option<SinkSlot>>,
@@ -20,7 +19,7 @@ pub(crate) struct VoiceSink {
 }
 
 struct SinkSlot {
-    sender: mpsc::Sender<Message>,
+    output: VoiceOutput,
     generation: u64,
 }
 
@@ -39,32 +38,21 @@ impl VoiceSink {
     }
 
     /// Drop clears the slot; mid-turn disconnects make later hook fires no-op.
-    pub(crate) async fn install(self: &Arc<Self>, sink: mpsc::Sender<Message>) -> SinkGuard {
+    pub(crate) async fn install(self: &Arc<Self>, output: VoiceOutput) -> SinkGuard {
         let generation = self.next_generation.fetch_add(1, Ordering::AcqRel);
-        *self.inner.write().await = Some(SinkSlot {
-            sender: sink,
-            generation,
-        });
+        *self.inner.write().await = Some(SinkSlot { output, generation });
         SinkGuard {
             slot: Arc::clone(self),
             generation,
         }
     }
 
-    pub(crate) async fn get(&self) -> Option<mpsc::Sender<Message>> {
+    pub(crate) async fn get(&self) -> Option<VoiceOutput> {
         self.inner
             .read()
             .await
             .as_ref()
-            .map(|slot| slot.sender.clone())
-    }
-
-    /// WS-handler cleanup path; Drop covers panic-unwind.
-    pub(crate) async fn uninstall_if_current(&self, generation: u64) {
-        let mut guard = self.inner.write().await;
-        if guard.as_ref().is_some_and(|s| s.generation == generation) {
-            *guard = None;
-        }
+            .map(|slot| slot.output.clone())
     }
 }
 
@@ -72,7 +60,7 @@ impl VoiceSink {
 /// preserves newer installs. Prefer explicit `uninstall_if_current`.
 pub(crate) struct SinkGuard {
     slot: Arc<VoiceSink>,
-    pub(crate) generation: u64,
+    generation: u64,
 }
 
 impl Drop for SinkGuard {
@@ -90,7 +78,7 @@ impl Drop for SinkGuard {
 
 /// 20ms Opus frames with `FLAG_FILLER`. No-op if disconnected / library missing.
 pub(crate) async fn emit_filler(sink: &VoiceSink, library: &FillerLibrary, kind: FillerKind) {
-    let Some(tx) = sink.get().await else {
+    let Some(output) = sink.get().await else {
         return;
     };
     let Some(pcm) = library.get(kind) else {
@@ -104,7 +92,7 @@ pub(crate) async fn emit_filler(sink: &VoiceSink, library: &FillerLibrary, kind:
     for packet in encode_pcm_with(&mut encoder, &pcm, sample_rate) {
         let framed = encode_tts_frame(chunk_id, FLAG_FILLER, &packet);
         chunk_id = chunk_id.saturating_add(1);
-        if tx.send(Message::Binary(framed.into())).await.is_err() {
+        if !output.audio(framed).await {
             warn!("voice.sink_emit_send_failed");
             return;
         }
@@ -141,11 +129,11 @@ mod tests {
     async fn newer_install_survives_older_guard_drop() {
         let sink = Arc::new(VoiceSink::new());
 
-        let (tx_a, _rx_a) = mpsc::channel(8);
-        let guard_a = sink.install(tx_a).await;
+        let (output_a, _rx_a) = VoiceOutput::channel(8);
+        let guard_a = sink.install(output_a).await;
 
-        let (tx_b, _rx_b) = mpsc::channel(8);
-        let _guard_b = sink.install(tx_b).await;
+        let (output_b, _rx_b) = VoiceOutput::channel(8);
+        let _guard_b = sink.install(output_b).await;
 
         // Simulate the older guard's late drop racing the newer install.
         drop(guard_a);

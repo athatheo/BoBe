@@ -69,6 +69,14 @@ final class BobeStore {
         self.context.messages
     }
 
+    /// The most recent assistant message received through the live SSE stream.
+    /// Canonical history reloads intentionally do not update this value.
+    private(set) var latestLiveBobeMessageId: String?
+
+    func recordLiveBobeMessage(_ messageId: String) {
+        self.latestLiveBobeMessageId = messageId
+    }
+
     var failedSendRecoveries: [FailedSendRecovery] {
         self.context.failedSendRecoveries
     }
@@ -93,16 +101,8 @@ final class BobeStore {
         self.context.softWarning
     }
 
-    var indicatorMessage: String? {
-        self.context.indicatorMessage
-    }
-
     var conversationEnding: Bool {
         self.context.conversationEnding
-    }
-
-    var canSendMessage: Bool {
-        self.context.daemonConnected && self.context.acceptingUserMessages
     }
 
     var isInitialConnectionPending: Bool {
@@ -141,6 +141,9 @@ final class BobeStore {
     var conversationClearTask: Task<Void, Never>?
     var textDeltaFlushTask: Task<Void, Never>?
     var captureStartupTask: Task<Void, Never>?
+    var conversationReloadGeneration: UInt64 = 0
+    var conversationMutationRevision: UInt64 = 0
+    var streamMutationRevision: UInt64 = 0
     private var appNapActivity: NSObjectProtocol?
     private var backendObserverTask: Task<Void, Never>?
     private var sleepWakeObservers: [NSObjectProtocol] = []
@@ -214,20 +217,17 @@ final class BobeStore {
         Task {
             await self.client.connectSSE(
                 onEvent: { [weak self] bundle in
-                    Task { @MainActor in
-                        self?.processBundle(bundle)
-                    }
+                    await self?.processBundle(bundle)
                 },
                 onConnectionChange: { [weak self] connected in
-                    Task { @MainActor in
-                        self?.handleConnectionChange(connected)
-                    }
+                    await self?.handleConnectionChange(connected)
                 }
             )
         }
     }
 
     func disconnect() {
+        self.conversationReloadGeneration &+= 1
         self.textDeltaFlushTask?.cancel()
         self.lastMessageTimer?.cancel()
         self.conversationClearTask?.cancel()
@@ -338,10 +338,10 @@ final class BobeStore {
         }
     }
 
-    func sendMessage(_ content: String) async {
+    func sendMessage(_ content: String, requestId: UUID = UUID()) async {
         self.cancelConversationClear()
         let userMessage = ChatMessage(
-            id: "user-\(Int(Date.now.timeIntervalSince1970 * 1000))",
+            id: "user-\(requestId.uuidString.lowercased())",
             sender: .user,
             content: content,
             isPending: true
@@ -353,22 +353,36 @@ final class BobeStore {
         }
 
         do {
-            try await self.client.sendMessage(content)
+            let response = try await self.client.sendMessage(content, requestId: requestId)
             self.updateState { ctx in
-                Self.markMessageSent(userMessage.id, messages: &ctx.messages)
+                if response.replayed {
+                    Self.removeMessage(userMessage.id, messages: &ctx.messages)
+                } else {
+                    Self.markMessageSent(userMessage.id, messages: &ctx.messages)
+                }
                 // Optimistic lock — closes SSE-vs-daemon indicator race.
-                ctx.acceptingUserMessages = false
+                ctx.acceptingUserMessages = response.requestStatus == "completed"
+            }
+            if response.replayed {
+                await self.reloadCanonicalConversation()
             }
         } catch {
-            // 409 = daemon busy; retry banner suffices, skip red banner.
+            // Admission conflicts are transient; unsafe replay conflicts are terminal.
             let isBusy409 = Self.isBusy409(error)
+            let unsafeReplayMessage = Self.unsafeReplayMessage(error)
             bobeStoreLogger.error("sendMessage failed: \(error.localizedDescription)")
             self.updateState { ctx in
                 Self.removeMessage(userMessage.id, messages: &ctx.messages)
                 ctx.failedSendRecoveries.append(
-                    FailedSendRecovery(id: userMessage.id, content: content)
+                    FailedSendRecovery(
+                        id: userMessage.id,
+                        content: content,
+                        requestId: requestId,
+                        canRetry: unsafeReplayMessage == nil,
+                        failureMessage: unsafeReplayMessage
+                    )
                 )
-                if !isBusy409 {
+                if !isBusy409, unsafeReplayMessage == nil {
                     ctx.errorMessage = error.localizedDescription
                     ctx.daemonError = false
                 }
@@ -378,10 +392,20 @@ final class BobeStore {
     }
 
     private static func isBusy409(_ error: any Error) -> Bool {
-        if case let DaemonError.httpError(statusCode, _, _) = error {
+        if case let DaemonError.httpError(statusCode, message, code) = error {
             return statusCode == 409
+                && code == "CONFLICT"
+                && message.localizedCaseInsensitiveContains("BoBe")
         }
         return false
+    }
+
+    private static func unsafeReplayMessage(_ error: any Error) -> String? {
+        if case let DaemonError.httpError(_, message, code) = error,
+           code == "REQUEST_REPLAY_UNSAFE" {
+            return message
+        }
+        return nil
     }
 
     func dismissFailedSendRecovery(_ recoveryId: String) {
@@ -394,12 +418,13 @@ final class BobeStore {
         guard let recovery = self.context.failedSendRecoveries.first(where: { $0.id == recoveryId }) else {
             return
         }
+        guard recovery.canRetry else { return }
 
         self.updateState { ctx in
             ctx.failedSendRecoveries.removeAll { $0.id == recoveryId }
         }
 
-        await self.sendMessage(recovery.content)
+        await self.sendMessage(recovery.content, requestId: recovery.requestId)
     }
 
     func clearMessages() {
@@ -409,6 +434,7 @@ final class BobeStore {
             $0.lastMessage = nil
             $0.currentMessage = ""
         }
+        self.latestLiveBobeMessageId = nil
         self.streamingMessage = ""
         self.streamingMessageId = nil
     }
@@ -452,11 +478,16 @@ final class BobeStore {
         var ctx = self.context
         block(&ctx)
         Self.trimMessages(&ctx.messages)
+        if ctx.messages != self.context.messages {
+            self.conversationMutationRevision &+= 1
+        }
         ctx.stateType = deriveStateType(from: ctx)
-        // Recompute the derived bobe-message flag once per mutation rather
+        // Recompute the derived displayable-message flag once per mutation rather
         // than walking the array on every body eval that reads it (the
         // overlay's `chatViewportFloorHeight` is the hot path).
-        ctx.hasBobeMessage = ctx.messages.contains(where: { $0.sender == .bobe })
+        ctx.hasDisplayableBobeMessage = ctx.messages.contains(where: {
+            $0.sender == .bobe && $0.belongsInConversationTrace
+        })
         self.context = ctx
     }
 }

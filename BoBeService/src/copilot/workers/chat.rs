@@ -26,9 +26,10 @@ pub(crate) struct CopilotChatWorker {
     /// voice, medium for text). `None` means the SDK picked its default —
     /// in that case we skip set_model and the default effort applies.
     model: Option<String>,
+    text_reasoning_effort: Option<String>,
     /// Last effort we sent via set_model; skip the redundant RPC if the
     /// new send wants the same effort. None = never called set_model.
-    last_effort: Arc<Mutex<Option<&'static str>>>,
+    last_effort: Arc<Mutex<Option<String>>>,
     completed_turns: Arc<AtomicU64>,
     context_diagnostics_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     lifecycle: Arc<RwLock<()>>,
@@ -60,30 +61,19 @@ impl CopilotChatWorker {
     pub(crate) fn new(
         session: Arc<Session>,
         model: Option<String>,
+        text_reasoning_effort: Option<String>,
         lifecycle: Arc<RwLock<()>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             session,
             submit_lock: Arc::new(Mutex::new(())),
             model,
+            text_reasoning_effort,
             last_effort: Arc::new(Mutex::new(None)),
             completed_turns: Arc::new(AtomicU64::new(0)),
             context_diagnostics_task: Arc::new(Mutex::new(None)),
             lifecycle,
         })
-    }
-
-    #[allow(
-        deprecated,
-        reason = "privacy purge must erase SDK session state, not merely disconnect"
-    )]
-    pub(crate) async fn destroy(&self) -> Result<(), WorkerError> {
-        if let Some(task) = self.context_diagnostics_task.lock().await.take() {
-            task.abort();
-            drop(task.await);
-        }
-        self.session.destroy().await?;
-        Ok(())
     }
 
     pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
@@ -99,6 +89,11 @@ impl CopilotChatWorker {
     pub(crate) fn session(&self) -> Arc<Session> {
         Arc::clone(&self.session)
     }
+
+    pub(crate) async fn abort(&self) -> Result<(), WorkerError> {
+        self.session.abort().await?;
+        Ok(())
+    }
 }
 
 impl CopilotChatWorker {
@@ -109,6 +104,7 @@ impl CopilotChatWorker {
         let session = Arc::clone(&self.session);
         let lock = Arc::clone(&self.submit_lock);
         let model = self.model.clone();
+        let text_reasoning_effort = self.text_reasoning_effort.clone();
         let last_effort = Arc::clone(&self.last_effort);
         let voice_mode = prompt.voice_mode;
         let completed_turns = Arc::clone(&self.completed_turns);
@@ -129,12 +125,11 @@ impl CopilotChatWorker {
             let mut events = session.subscribe();
 
             // Tune reasoning_effort per turn — low for voice (TTFT-critical),
-            // medium for text (default). Skipped when model is None (SDK
-            // default applies) or when the effort hasn't changed since the
-            // last send (avoids a ~30ms RPC per turn for back-to-back same-
-            // mode sends).
+            // configured value or medium for text. Skipped when model is None
+            // or when the effort hasn't changed since the last send.
             if let Some(model_name) = model.as_deref() {
-                let want_effort: &'static str = if voice_mode { "low" } else { "medium" };
+                let want_effort =
+                    desired_reasoning_effort(voice_mode, text_reasoning_effort.as_deref());
                 // Read-only check first; only mark the slot updated AFTER
                 // set_model succeeds. Caching the effort BEFORE the await
                 // strands the worker on the wrong effort if set_model
@@ -147,7 +142,7 @@ impl CopilotChatWorker {
                     let opts = SetModelOptions::default().with_reasoning_effort(want_effort);
                     match session.set_model(model_name, Some(opts)).await {
                         Ok(()) => {
-                            *last_effort.lock().await = Some(want_effort);
+                            *last_effort.lock().await = Some(want_effort.to_owned());
                         }
                         Err(e) => {
                             tracing::warn!(
@@ -178,27 +173,25 @@ impl CopilotChatWorker {
 
             loop {
                 match events.recv().await {
-                    Ok(event) => {
-                        if let Some(delta) = event_to_delta(&event) {
-                            let stop = matches!(delta, ChatDelta::Done | ChatDelta::Error(_));
-                            if matches!(delta, ChatDelta::Done) {
-                                let completed =
-                                    completed_turns.fetch_add(1, Ordering::AcqRel) + 1;
-                                if completed.is_multiple_of(10) {
-                                    schedule_context_diagnostics(
-                                        Arc::clone(&session),
-                                        Arc::clone(&context_diagnostics_task),
-                                    )
-                                    .await;
-                                }
-                            }
-                            yield delta;
-                            if stop {
-                                completed.store(true, Ordering::Release);
-                                return;
+                    Ok(event) if let Some(delta) = event_to_delta(&event) => {
+                        let stop = matches!(delta, ChatDelta::Done | ChatDelta::Error(_));
+                        if matches!(delta, ChatDelta::Done) {
+                            let completed = completed_turns.fetch_add(1, Ordering::AcqRel) + 1;
+                            if completed.is_multiple_of(10) {
+                                schedule_context_diagnostics(
+                                    Arc::clone(&session),
+                                    Arc::clone(&context_diagnostics_task),
+                                )
+                                .await;
                             }
                         }
+                        yield delta;
+                        if stop {
+                            completed.store(true, Ordering::Release);
+                            return;
+                        }
                     }
+                    Ok(_) => {}
 
                     Err(e) => {
                         if let RecvErrorKind::Lagged(skipped) = e.kind() {
@@ -289,6 +282,14 @@ fn build_message_options(prompt: ChatPrompt) -> Result<MessageOptions, std::io::
         opts = opts.with_mode(DeliveryMode::Immediate);
     }
     Ok(opts)
+}
+
+fn desired_reasoning_effort(voice_mode: bool, configured_text: Option<&str>) -> &str {
+    if voice_mode {
+        "low"
+    } else {
+        configured_text.unwrap_or("medium")
+    }
 }
 
 fn event_to_delta(event: &SessionEvent) -> Option<ChatDelta> {
@@ -430,7 +431,7 @@ mod tests {
     #[test]
     fn idle_signals_done_and_error_signals_error() {
         let idle = ev("session.idle", json!({}));
-        assert!(matches!(event_to_delta(&idle), Some(ChatDelta::Done)));
+        std::assert_matches!(event_to_delta(&idle), Some(ChatDelta::Done));
 
         let error = ev(
             "session.error",
@@ -484,5 +485,12 @@ mod tests {
         let prompt = ChatPrompt::text("hello there");
         let opts = build_message_options(prompt).unwrap();
         assert_eq!(opts.mode, None);
+    }
+
+    #[test]
+    fn configured_text_reasoning_preserves_low_latency_voice() {
+        assert_eq!(desired_reasoning_effort(false, Some("high")), "high");
+        assert_eq!(desired_reasoning_effort(true, Some("high")), "low");
+        assert_eq!(desired_reasoning_effort(false, None), "medium");
     }
 }

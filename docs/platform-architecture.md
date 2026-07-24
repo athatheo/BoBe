@@ -1,9 +1,9 @@
 # BoBe Platform Architecture
 
-> **Status:** Product and architecture direction under active exploration  
-> **Date:** July 15, 2026  
-> **Implemented system:** See [BoBe Implementation Architecture](architecture.md)  
-> **Detailed physical-device design:** See [Physical BoBe](physical-bobe.md). Its current Mac-hub, loopback-only and PCM-first prototype topology predates this broader platform exploration and must be reconciled before either transport is treated as the final endpoint specification.
+> **Status:** Product and architecture direction under active exploration
+> **Date:** July 17, 2026
+> **Implemented system:** See [BoBe Implementation Architecture](architecture.md)
+> **Detailed physical-device design:** See [Physical BoBe](physical-bobe.md). The external WB-12 repository owns the BodyLink media profile; this document remains authoritative for runtime placement, identity, routing, and multi-surface privacy. An opt-in one-device PTT vertical slice is implemented, while product enrollment and physical validation remain incomplete.
 
 ## 1. Why this document exists
 
@@ -640,7 +640,7 @@ A disconnected toy should never imply that full BoBe is available. It can still:
 
 Storing raw ambient audio for later upload should not be the default. Any offline queue needs bounds, encryption where sensitive, expiry, sequence identifiers and user-visible semantics.
 
-Detailed board choices, acoustic echo cancellation, camera policy and embodiment behavior remain delegated to [Physical BoBe](physical-bobe.md). Its endpoint topology, pairing and wire-format sections represent the earlier Mac-hub/PCM-first prototype and are not authoritative for the broader hosted/self-hosted direction until Phase 0 reconciliation chooses one protocol owner.
+Detailed board choices, acoustic echo cancellation, camera policy and embodiment behavior remain delegated to [Physical BoBe](physical-bobe.md). The first reference body is now the recovered WonderBoy WB-12 in `espBobeToy`; its BodyLink document owns the implemented minor-1 device wire profile, while this document remains authoritative for runtime placement, routing and multi-surface privacy.
 
 ## 13. Device transport
 
@@ -659,23 +659,22 @@ The platform should not collapse every connection into one API.
 
 A toy should not receive the broad bearer credential currently used by the Mac settings application.
 
-### 13.2 Initial endpoint protocol questions
+### 13.2 First endpoint protocol decision — July 17, 2026
 
-The earlier Physical BoBe prototype specifies a Mac `Network.framework` hub with TLS-protected length-prefixed, PCM-first LAN media. This platform exploration considers a direct runtime endpoint with compressed media, potentially over WebSocket. Those are competing prototype directions, not one settled contract.
+The first WB-12 milestone uses one persistent BodyLink WebSocket over authenticated TLS:
 
-The first transport experiment must determine:
+- JSON text frames for bounded semantic control;
+- binary media frames with protocol, kind, flags, stream, sequence and monotonic timestamp;
+- PCM16LE mono, 16 kHz microphone and 24 kHz speaker, 20 ms frames;
+- explicit playback credit and played-sample acknowledgements;
+- push-to-talk and honest half-duplex;
+- no wake word, camera, ambient audio persistence or full-duplex AEC.
 
-- whether the Mac remains a required local gateway or the endpoint connects to the active personal runtime;
-- PCM versus Opus after measuring bandwidth, CPU, latency and audio quality;
-- WebSocket versus a lower-level framed transport;
-- JSON versus CBOR control messages;
-- sequence, correlation and turn identifier requirements;
-- playback acknowledgements;
-- bounded buffering and backpressure;
-- explicit busy/retry responses;
-- reconnect and state resynchronization.
+PCM is a bring-up profile, not a permanent WAN decision. It costs about 32 KB/s uplink and 48 KB/s downlink and makes board/audio failures directly inspectable. Opus is the next negotiated profile only after measured LAN reliability, latency, CPU and audio quality. WebRTC remains a later remote/mobile option; MQTT is not the primary conversational media path.
 
-Phase 0 must assign one document as the final endpoint protocol authority after these measurements. Until then, neither this candidate nor the earlier PCM-first design is a final wire specification.
+The endpoint connects to the active personal runtime's scoped body gateway. In the implemented managed-Mac slice, Swift FluidAudio acts as the correlated STT and Opus-decoding adapter. It is replaceable and has no routing authority: it does not open a second persistent `/voice/stream`, assign turns, or choose an endpoint. The daemon assigns the authoritative turn, invokes the same conversation/agent loop and targets text/audio/face output through the initiating endpoint's immutable route.
+
+The protocol must distinguish stable device identity, boot incarnation, connection generation, request, turn, voice lease and media stream. A body connection does not itself own voice; many bodies and the Mac may remain connected while one expiring turn lease participates in the existing shared admission gate.
 
 ### 13.3 MQTT consideration
 
@@ -792,7 +791,7 @@ Yes, in a bounded sense:
 
 But the current BoBe runtime cannot move unchanged:
 
-- the GitHub Copilot SDK starts a separate bundled CLI process;
+- the GitHub Copilot SDK starts a separate signed CLI helper process;
 - current login and process handling assume desktop/server facilities;
 - mobile sandbox and executable-code rules differ;
 - broad filesystem, shell and MCP tools need new permission and isolation designs;
@@ -1211,11 +1210,11 @@ Phases are capability gates, not calendar commitments.
 
 - Accept or amend the one-owner/one-authority invariant.
 - Mark current versus proposed behavior consistently.
-- Reconcile loopback-only and Mac-as-brain language in existing documents.
+- Keep one authoritative runtime while allowing Mac-hosted speech adapters during the prototype.
 - Define which document owns platform, voice, security and operations decisions.
 - Create architecture decision records only for decisions actually made.
 
-**Exit evidence:** no canonical documents contradict the authority or deployment vocabulary.
+**Exit evidence:** no canonical documents contradict authority, route affinity or deployment vocabulary.
 
 ### Phase 1: Prove the runtime away from the Mac
 
@@ -1242,9 +1241,9 @@ Phases are capability gates, not calendar commitments.
 
 **Exit evidence:** Mac plus a second test client can operate without stealing events, leaking private results or duplicating turns.
 
-### Phase 3: Build an ESP32 reference endpoint
+### Phase 3: Build and validate an ESP32 reference endpoint
 
-Use an off-the-shelf ESP32-S3 audio/display board.
+Use the recovered WonderBoy WB-12 ESP32-S3R8 audio/display body.
 
 Start with:
 
@@ -1252,7 +1251,7 @@ Start with:
 - one microphone/speaker path;
 - Wi-Fi;
 - secure WebSocket audio;
-- server STT and TTS;
+- correlated Swift STT adapter initially and daemon-owned TTS;
 - basic face/LED state;
 - development-only enrollment.
 
@@ -1268,7 +1267,13 @@ Measure:
 - echo and feedback;
 - runtime wake latency in hosted and self-hosted paths.
 
-**Exit evidence:** a complete spoken interaction is reliable under realistic home Wi-Fi, with measured limits.
+**Exit evidence:** button press produces one authoritative turn and targeted text/audio on the toy while Mac SSE and Mac voice remain independently usable.
+
+**Current evidence (July 17, 2026):** the mock body/adapter and real Swift
+FluidAudio/Opus adapter both complete this software path with mTLS pinning,
+private token/tool delivery, targeted captions/audio, playback drain,
+conversation resync, and privacy purge. The recovered WB-12 firmware builds but
+has not been flashed or acoustically measured because the unit is not connected.
 
 ### Phase 4: Production-grade device lifecycle
 
@@ -1446,18 +1451,25 @@ The architecture should remain falsifiable. The current recommendation could cha
 - Users strongly prefer household-shared rather than individual identity. The owner model may need household principals, delegated roles and multiple profiles while retaining one fenced authority.
 - Child-safety obligations make an open-ended companion toy inappropriate for the first hardware product. The physical scope should narrow before weakening safety boundaries.
 
-## 29. Immediate recommended next move
+## 29. Immediate recommended next moves
 
-The next architecture experiment should not be custom firmware or a full SaaS control plane. It should prove the core decentralization premise:
+The platform and physical-body tracks now need different evidence. For platform
+portability, the next experiment should prove the core decentralization premise:
 
 1. Make the current runtime compile and operate on Ubuntu x86_64.
 2. Package one personal runtime as a supported standalone deployment.
 3. Connect the existing Mac through secure remote mode.
 4. Validate authentication, voice, events, restart, upgrade, backup and restore.
-5. Then replace the single-client event assumptions.
-6. Only then attach an ESP32 reference endpoint.
+5. Replace the remaining single-client event assumptions.
 
 This sequence answers the most important question first: can BoBe live independently of the Mac while remaining the same personal companion?
+
+The BodyLink software seam has already advanced independently through mock and
+real Swift-adapter validation. Its next evidence is narrower: guarded flashing
+of the recovered WB-12, followed by capture, latency, playback, power, thermal,
+reconnection, and recovery measurements. That physical validation does not need
+to wait for Ubuntu packaging, but wake word, camera, broad board support, and
+fleet lifecycle should wait until the PTT profile passes those measurements.
 
 ## 30. Summary
 
@@ -1480,10 +1492,8 @@ The architectural purpose is to let BoBe gain new bodies without losing the qual
 
 - [BoBe Implementation Architecture](architecture.md)
 - [Physical BoBe](physical-bobe.md)
-- [Engine Provider Notes](../ENGINE_PROVIDER_NOTES.md)
 - [Rust Guidelines](RUST_GUIDELINES.md)
 - [Updating OTA](UpdatingOTA.md)
-- [Code Signing](CODE_SIGNING.md)
 
 ### Device and IoT references
 

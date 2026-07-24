@@ -11,11 +11,14 @@ struct OverlayView: View {
     @State var store: BobeStore
     @State var themeStore: ThemeStore
     @State var isChatVisible = false
+    @State var isRecentConversationVisible = false
     @State var draftMessage = ""
     @State var lastMessageActivity: Date = .now
     @State var measuredContentSize: CGSize = .zero
     @State var inactivityTimer: Task<Void, Never>?
     @State var resizeTask: Task<Void, Never>?
+    @State var surfaceTransitionInProgress = false
+    @State var surfaceTransitionGeneration = 0
     @State var composerFeedback: String?
 
     /// True while the cursor hovers over the chat surface. Pauses the
@@ -33,11 +36,15 @@ struct OverlayView: View {
     /// full chat opens or the user silences BoBe. Lookups go through
     /// `store.messages` so streaming updates flow through naturally.
     @State var floatingBubbleMessageId: String?
+    @State var floatingBubbleDismissalStyle: AmbientBubbleDismissalStyle = .fade
+    @State var floatingBubbleRecedeProgress: Double = 0
+    @State var floatingBubbleTransitionGeneration = 0
+    @State var floatingBubbleTransitionInProgress = false
+    @State var floatingBubbleInteractionActive = false
 
-    /// Pending auto-dismiss of the floating bubble. Set when BoBe stops
-    /// being audible — gives the user ~1.2s to finish reading the reply
-    /// after the audio fades, then quietly clears the bubble so the
-    /// avatar returns to its resting state. See `OverlayBehavior`.
+    /// Pending auto-dismiss of the floating bubble. Scheduled only after
+    /// streaming and audible speech finish, using a content-aware reading
+    /// interval before the avatar returns to its resting state.
     @State var floatingBubbleAutoDismissTask: Task<Void, Never>?
 
     /// True while the cursor is hovering anywhere in the avatar area
@@ -55,6 +62,10 @@ struct OverlayView: View {
     }
 
     var body: some View {
+        self.lifecycleObservedOverlay
+    }
+
+    private var baseOverlay: some View {
         VStack(spacing: 0) {
             Spacer()
 
@@ -80,6 +91,10 @@ struct OverlayView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .environment(\.theme, self.themeStore.currentTheme)
+    }
+
+    private var conversationObservedOverlay: some View {
+        self.baseOverlay
         .task {
             if SetupWindowManager.shared.consumeOpenChatAfterOnboarding() {
                 await Task.yield()
@@ -90,7 +105,20 @@ struct OverlayView: View {
             self.handleMessagesChange(oldCount: oldCount, newCount: newCount)
             self.scheduleResizeWindow()
         }
+        .onChange(of: self.store.messages.last?.content) { _, _ in
+            self.scheduleResizeWindow()
+        }
+        .onChange(of: self.store.latestLiveBobeMessageId) { _, messageId in
+            self.handleLiveBobeMessageChange(messageId)
+        }
         .onChange(of: self.store.toolExecutions.count) { _, _ in
+            self.scheduleResizeWindow()
+        }
+        .onChange(of: self.store.failedSendRecoveries.count) { _, recoveryCount in
+            if recoveryCount > 0, !self.isChatVisible {
+                self.isRecentConversationVisible = false
+                self.setChatVisible(true)
+            }
             self.scheduleResizeWindow()
         }
         .onChange(of: self.store.composerBlockReason) { _, newReason in
@@ -105,6 +133,10 @@ struct OverlayView: View {
                 self.composerFeedback = nil
             }
         }
+    }
+
+    private var activityObservedOverlay: some View {
+        self.conversationObservedOverlay
         .onChange(of: self.store.stateType) { _, newState in
             // First-ever transition into "capturing" (mic open) → show the
             // voice coachmark once, then mark it seen so it never returns
@@ -130,25 +162,55 @@ struct OverlayView: View {
             OverlayMotionRuntime.reduceMotion = new
         }
         .onChange(of: self.isTtsAudible) { _, audible in
-            // BoBe just stopped talking → start the post-speech grace
-            // period before clearing the floating bubble. Gives the user
-            // time to read the last sentence and dismiss it manually.
-            // BoBe just started talking → cancel any pending dismiss so
-            // the bubble stays put for the whole utterance.
             if audible {
                 self.cancelFloatingBubbleAutoDismiss()
-            } else if self.floatingBubbleMessage != nil {
-                self.scheduleFloatingBubbleAutoDismiss(after: 1.2)
+            } else {
+                self.scheduleFloatingBubbleAutoDismissIfReady()
             }
         }
-        .onChange(of: self.floatingBubbleMessage?.id) { _, newId in
-            // A fresh bubble arrived while a dismiss was scheduled —
-            // cancel the timer so the new message gets its own full
-            // window starting when BoBe stops talking again.
-            if newId != nil {
+        .onChange(of: VoicePipeline.shared.state) { _, state in
+            if state == .thinking || state == .speaking {
                 self.cancelFloatingBubbleAutoDismiss()
+            } else {
+                self.scheduleFloatingBubbleAutoDismissIfReady()
             }
         }
+    }
+
+    private var bubbleObservedOverlay: some View {
+        self.activityObservedOverlay
+        .onChange(of: self.floatingBubbleMessage?.id) { _, newId in
+            if newId == nil {
+                self.cancelFloatingBubbleAutoDismiss()
+            } else {
+                self.scheduleFloatingBubbleAutoDismissIfReady()
+            }
+        }
+        .onChange(of: self.floatingBubbleMessage?.isStreaming) { _, streaming in
+            if streaming == false {
+                self.scheduleFloatingBubbleAutoDismissIfReady()
+            }
+        }
+        .onChange(of: self.avatarAreaHovered) { _, hovered in
+            self.handleFloatingBubbleInteractionChange(
+                hovered || self.floatingBubbleInteractionActive
+            )
+        }
+        .onChange(of: self.floatingBubbleInteractionActive) { _, active in
+            self.handleFloatingBubbleInteractionChange(active || self.avatarAreaHovered)
+        }
+        .onChange(of: self.isRecentConversationVisible) { _, visible in
+            if visible {
+                self.cancelFloatingBubbleAutoDismiss()
+            } else {
+                self.scheduleFloatingBubbleAutoDismissIfReady()
+            }
+            self.scheduleResizeWindow()
+        }
+    }
+
+    private var lifecycleObservedOverlay: some View {
+        self.bubbleObservedOverlay
         .onAppear {
             self.scheduleResizeWindow()
             self.startInactivityTimer()
@@ -156,21 +218,27 @@ struct OverlayView: View {
         .onDisappear {
             self.inactivityTimer?.cancel()
             self.resizeTask?.cancel()
+            self.surfaceTransitionInProgress = false
+            self.floatingBubbleTransitionInProgress = false
             self.cancelFloatingBubbleAutoDismiss()
         }
     }
 
     // MARK: - Derived State
 
+    var ambientConversationMessages: [ChatMessage] {
+        self.store.messages.filter(\.belongsInConversationTrace)
+    }
+
     var hasUnreadMessages: Bool {
-        !self.store.messages.isEmpty && !self.isChatVisible
+        !self.ambientConversationMessages.isEmpty && !self.isChatVisible
     }
 
     /// The message currently shown in the floating bubble, looked up live so
-    /// streaming content updates flow through. Returns `nil` when the chat
-    /// is open, the message is silenced, or the stored id no longer exists.
+    /// streaming content updates flow through. Returns `nil` while recent
+    /// history is expanded, when silenced, or when the id no longer exists.
     var floatingBubbleMessage: ChatMessage? {
-        guard !self.isChatVisible,
+        guard !self.isRecentConversationVisible,
               !self.store.proactiveSilenced,
               let id = self.floatingBubbleMessageId
         else { return nil }
@@ -217,27 +285,20 @@ struct OverlayView: View {
         if let tool = self.store.runningTools.first {
             return L10n.tr("overlay.status.using_tool_format", tool.toolName)
         }
-        // Daemon-supplied progress label wins over generic "Thinking..." when present.
-        if let label = self.store.indicatorMessage,
-           !label.isEmpty,
-           self.store.stateType == .thinking || self.store.stateType == .speaking {
-            return label
-        }
         return nil
     }
 
     /// Single source of truth for what the AvatarStatusBubble above the
     /// avatar should show right now. Strict priority order — only the
     /// highest-priority active mode renders; everything else is hidden.
-    /// Returns `.hidden` whenever the chat surface is open (the chat
-    /// itself owns the messaging duty in that mode, so a parallel bubble
-    /// is duplication that looks broken).
+    /// Returns `.hidden` while recent history is explicitly expanded so the
+    /// latest reply is never duplicated in two places.
     ///
     /// Daemon-disconnect errors are NOT emitted here — `errorBannerSection`
     /// owns them (it has the actionable Restart button). Routing them
     /// through both surfaces caused double-rendering when chat was closed.
     var bubbleMode: AvatarStatusBubble.Mode {
-        if self.isChatVisible {
+        if self.isRecentConversationVisible {
             return .hidden
         }
         // Live STT supersedes BoBe status — the user is mid-utterance and
@@ -262,10 +323,10 @@ struct OverlayView: View {
             return .status(kind: .starting, body: nil)
         }
         if let tool = self.store.runningTools.first {
-            return .status(kind: .toolRunning(name: tool.toolName), body: self.store.indicatorMessage)
+            return .status(kind: .toolRunning(name: tool.toolName), body: nil)
         }
         if self.store.isThinking {
-            return .status(kind: .thinking, body: self.store.indicatorMessage)
+            return .status(kind: .thinking, body: nil)
         }
         if self.store.isCaptureInProgress {
             return .status(kind: .capturing, body: nil)
@@ -289,6 +350,20 @@ struct OverlayView: View {
     var isTtsAudible: Bool {
         let voice = VoicePipeline.shared
         return voice.state == .speaking || voice.isTtsAudible
+    }
+
+    var isVoiceResponseInProgress: Bool {
+        let state = VoicePipeline.shared.state
+        return state == .thinking || state == .speaking || state == .cancelling
+    }
+
+    var requiresWideAmbientWindow: Bool {
+        self.floatingBubbleMessage != nil
+            || (VoicePipeline.shared.showPartialCaption
+                && !VoicePipeline.shared.partialTranscript.isEmpty)
+            || self.store.softWarning != nil
+            || self.store.context.daemonError
+            || self.store.errorMessage != nil
     }
 
     /// True when the mic satellite should be visible. Pure hover — the
@@ -330,11 +405,14 @@ struct OverlayView: View {
     }
 
     var chatViewportFloorHeight: CGFloat {
+        guard self.isRecentConversationVisible else { return 0 }
         // Read the cached flag from BobeContext — derived once per state
         // mutation in `BobeStore.updateState`. Previous version walked
         // `messages` O(N) on every body re-eval, which was wasted work
         // during streaming where the overlay re-evaluates often.
-        self.store.context.hasBobeMessage ? WindowSizes.heightChatViewportMin : 0
+        return self.store.context.hasDisplayableBobeMessage
+            ? WindowSizes.heightChatViewportMin
+            : 0
     }
 }
 

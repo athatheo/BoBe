@@ -5,6 +5,14 @@ import Testing
 struct UIFoundationTests {
     @Test
     @MainActor
+    func modelChangeClearsUnsupportedReasoning() {
+        #expect(EnginePanel.retainedReasoningEffort("high", supported: ["low", "medium"]) == "")
+        #expect(EnginePanel.retainedReasoningEffort("medium", supported: ["low", "medium"]) == "medium")
+        #expect(EnginePanel.retainedReasoningEffort(nil, supported: ["low"]) == "")
+    }
+
+    @Test
+    @MainActor
     func settingsWindowUsesProductiveInitialSize() {
         let size = SettingsWindowManager.initialSize(
             for: .init(x: 0, y: 0, width: 1512, height: 945)
@@ -49,5 +57,50 @@ struct UIFoundationTests {
         coordinator.cancelTransition()
         #expect(!transitioned)
         #expect(coordinator.isDirty)
+    }
+
+    @Test
+    func ambientMessageDwellHasNoReadingTimeCap() {
+        let short = AmbientMessageTiming.dwellDuration(for: "Okay.")
+        let medium = AmbientMessageTiming.dwellDuration(
+            for: "I found the issue and updated the relevant settings. The complete explanation remains available so you can read it without rushing."
+        )
+        let long = AmbientMessageTiming.dwellDuration(for: String(repeating: "word ", count: 200))
+
+        #expect(short == AmbientMessageTiming.minimumDwellSeconds)
+        #expect(medium > short)
+        #expect(long > medium)
+    }
+
+    @Test
+    func onlyBriefProactiveMessagesAutoDismiss() {
+        let requested = ChatMessage(
+            sender: .bobe,
+            content: "Requested answer",
+            responseOrigin: .userInitiated
+        )
+        let proactive = ChatMessage(
+            sender: .bobe,
+            content: "A brief proactive note",
+            responseOrigin: .proactive
+        )
+        let longProactive = ChatMessage(
+            sender: .bobe,
+            content: String(repeating: "word ", count: 61),
+            responseOrigin: .proactive
+        )
+
+        #expect(!AmbientMessageTiming.shouldAutoDismiss(requested))
+        #expect(AmbientMessageTiming.shouldAutoDismiss(proactive))
+        #expect(!AmbientMessageTiming.shouldAutoDismiss(longProactive))
+    }
+
+    @Test
+    func emptyAssistantPlaceholderDoesNotCreateConversationTrace() {
+        let placeholder = ChatMessage(sender: .bobe, content: "")
+        let streaming = ChatMessage(sender: .bobe, content: "", isStreaming: true)
+
+        #expect(!placeholder.belongsInConversationTrace)
+        #expect(streaming.belongsInConversationTrace)
     }
 }

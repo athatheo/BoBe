@@ -235,7 +235,7 @@ mod tests {
     fn user_prompt_event() -> HookEvent {
         HookEvent::UserPromptSubmitted {
             input: UserPromptSubmittedInput {
-                timestamp: 0,
+                timestamp: 0.0,
                 session_id: "test-session".into(),
                 working_directory: PathBuf::from("/tmp"),
                 prompt: "hello".into(),

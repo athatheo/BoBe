@@ -41,9 +41,9 @@ struct BobeMenuBarScene: Scene {
 
     // MARK: - Bar icon
 
-    /// Brand glyph (template PNG) plus a state-tinted activity dot. The
-    /// template adapts to light/dark automatically; the dot pops a brand
-    /// accent so the user spots BoBe's mood from across the screen.
+    /// Native face symbol plus a state-tinted activity dot. SF Symbols
+    /// supplies the optical weight and alignment expected in the menu bar,
+    /// while the dot preserves BoBe's at-a-glance activity signal.
     @ViewBuilder
     private var barIcon: some View {
         // Inactive states render with no overlay so the menu bar reads
@@ -51,14 +51,14 @@ struct BobeMenuBarScene: Scene {
         // palette matches the old `TrayManager.color(for:)`.
         let dotColor = Self.barDotColor(for: self.store.stateType)
         ZStack(alignment: .bottomTrailing) {
-            Self.brandImage
-                .resizable()
-                .renderingMode(.template)
+            Image(systemName: "face.smiling")
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 16, weight: .medium))
                 .frame(width: 18, height: 18)
             if let dotColor {
                 Circle()
                     .fill(dotColor)
-                    .frame(width: 6, height: 6)
+                    .frame(width: 5, height: 5)
                     .overlay(
                         Circle().stroke(Color(.windowBackgroundColor), lineWidth: 1)
                     )
@@ -67,27 +67,6 @@ struct BobeMenuBarScene: Scene {
         }
         .accessibilityLabel(L10n.tr("tray.status.accessibility"))
     }
-
-    /// SwiftUI Image of the brand glyph, resolved from the bundled PNG.
-    /// We don't put it in `.xcassets` because we don't have an asset
-    /// catalog wired for non-app-icon images today, and adding one is
-    /// more churn than this single image deserves. `isTemplate = true`
-    /// makes it auto-adapt to the menu-bar's light/dark theme.
-    ///
-    /// Loads via `Bundle.appResources.image(forResource:)` rather than
-    /// `NSImage(contentsOf:)` so AppKit can match the `@2x` sibling
-    /// (`trayIconTemplate@2x.png`) we ship alongside the base PNG. The
-    /// `contentsOf:` form picks exactly one file path and ignores
-    /// resolution variants — Retina displays got a blurry upscale of
-    /// the 1x asset until this was fixed.
-    private static let brandImage: Image = {
-        if let nsImage = Bundle.appResources.image(forResource: NSImage.Name("trayIconTemplate")) {
-            nsImage.isTemplate = true
-            return Image(nsImage: nsImage)
-        }
-        // Fallback only fires if the bundled PNG is missing.
-        return Image(systemName: "brain.head.profile")
-    }()
 
     private static func barDotColor(for state: BobeStateType) -> Color? {
         // Idle / loading / shutting-down → no dot (clean brand glyph).

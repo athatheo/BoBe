@@ -274,10 +274,15 @@ impl RuntimeSession {
         );
     }
 
-    pub(crate) async fn handle_user_message(&self, content: &str, message_id: &str) {
+    pub(crate) async fn handle_user_message(
+        &self,
+        content: &str,
+        message_id: &str,
+        assistant_turn_id: crate::models::ids::ConversationTurnId,
+    ) -> bool {
         self.message_handler
-            .handle_message(content, message_id)
-            .await;
+            .handle_message(content, message_id, assistant_turn_id)
+            .await
     }
 
     /// Voice variant: text-delta observer runs in addition to SSE.
@@ -286,14 +291,24 @@ impl RuntimeSession {
         &self,
         content: &str,
         message_id: &str,
+        assistant_turn_id: crate::models::ids::ConversationTurnId,
+        delivery: crate::runtime::response_streamer::StreamDelivery,
         on_text_delta: F,
-    ) where
+    ) -> bool
+    where
         F: FnMut(String) -> Fut + Send,
         Fut: Future<Output = ()> + Send,
     {
         self.message_handler
-            .handle_message_with_observer(content, message_id, true, on_text_delta)
-            .await;
+            .handle_message_with_observer(
+                content,
+                message_id,
+                assistant_turn_id,
+                true,
+                delivery,
+                on_text_delta,
+            )
+            .await
     }
 
     pub(crate) fn try_begin_user_message(&self) -> Result<UserMessageGuard, &'static str> {
@@ -317,6 +332,24 @@ impl RuntimeSession {
         Ok(guard)
     }
 
+    pub(crate) fn try_begin_privacy_purge(&self) -> Result<UserMessageGuard, &'static str> {
+        self.turn_admission
+            .try_admit(TurnSource::Maintenance)
+            .ok_or("Cannot purge data while a turn is active")
+    }
+
+    pub(crate) fn try_begin_personal_data_access(&self) -> Result<UserMessageGuard, &'static str> {
+        self.turn_admission
+            .try_admit(TurnSource::Maintenance)
+            .ok_or("Personal data is busy with another operation")
+    }
+
+    pub(crate) fn try_begin_consolidation(&self) -> Result<UserMessageGuard, &'static str> {
+        self.turn_admission
+            .try_admit(TurnSource::Consolidation)
+            .ok_or("another turn or privacy operation is active")
+    }
+
     pub(crate) fn get_status(&self) -> RuntimeStatus {
         let indicator = self.event_queue.current_indicator();
         RuntimeStatus {
@@ -325,6 +358,21 @@ impl RuntimeSession {
             accepting_user_messages: indicator == IndicatorType::Idle
                 && self.turn_admission.is_idle(),
         }
+    }
+
+    pub(crate) async fn current_conversation(
+        &self,
+        limit: i64,
+    ) -> Result<
+        Option<(
+            crate::models::conversation::Conversation,
+            Vec<crate::models::conversation::ConversationTurn>,
+        )>,
+        crate::error::AppError,
+    > {
+        self.conversation
+            .get_latest_readable_conversation(limit)
+            .await
     }
 
     fn push_error_event(&self, trigger: &str, message: &str) {

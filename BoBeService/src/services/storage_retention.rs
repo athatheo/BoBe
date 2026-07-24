@@ -84,6 +84,21 @@ async fn prune_closed_conversations(pool: &SqlitePool, config: &Config) -> Resul
             .execute(&mut *transaction)
             .await?;
     }
+    sqlx::query(
+        "INSERT OR IGNORE INTO message_request_tombstones (request_id) \
+         SELECT request_id FROM message_requests \
+         WHERE created_at < ?1 AND status IN ('completed', 'failed')",
+    )
+    .bind(cutoff)
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "DELETE FROM message_requests WHERE created_at < ?1 \
+         AND status IN ('completed', 'failed')",
+    )
+    .bind(cutoff)
+    .execute(&mut *transaction)
+    .await?;
     transaction.commit().await?;
     Ok(candidate_ids.len() as u64)
 }
@@ -209,6 +224,46 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn pruning_preserves_executable_jobs_and_tombstones_terminal_requests() {
+        let pool = test_pool().await;
+        let old = Utc::now() - Duration::days(365);
+        for status in ["queued", "running", "completed", "failed"] {
+            sqlx::query(
+                "INSERT INTO message_requests \
+                 (request_id, content_sha256, content, status, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            )
+            .bind(uuid::Uuid::new_v4())
+            .bind(vec![0_u8; 32])
+            .bind(status)
+            .bind(status)
+            .bind(old)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let mut config = Config::default();
+        config.conversation.closed_retention_days = 30;
+
+        prune_closed_conversations(&pool, &config).await.unwrap();
+
+        let remaining: Vec<(String,)> =
+            sqlx::query_as("SELECT status FROM message_requests ORDER BY status")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            remaining,
+            vec![("queued".to_owned(),), ("running".to_owned(),)]
+        );
+        let tombstones: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM message_request_tombstones")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(tombstones, 2);
     }
 
     #[test]

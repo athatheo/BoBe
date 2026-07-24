@@ -21,9 +21,6 @@
 "overlay.avatar.state.speaking" = "μιλά";
 "overlay.avatar.state.thinking" = "σκέφτεται";
 "overlay.avatar.state.wants_to_speak" = "θέλει να μιλήσει";
-"overlay.chat.action.collapse" = "σύμπτυξη";
-"overlay.chat.action.read_more" = "περισσότερα…";
-"overlay.chat.hidden_messages_format" = "+%d κρυφά μηνύματα";
 "overlay.chat.pending_suffix" = " · αποστολή…";
 "overlay.chat.sender.bobe" = "BoBe";
 "overlay.chat.sender.you" = "εσύ";
@@ -148,7 +145,6 @@
 "settings.mcp.error.empty_json" = "Το JSON του MCP δεν πρέπει να είναι κενό.";
 "settings.mcp.loading" = "Φόρτωση ρύθμισης MCP...";
 "settings.mcp.status.validation_passed_format" = "Η επικύρωση πέτυχε (%d servers).";
-"settings.mcp.title" = "Ρύθμιση MCP";
 "settings.memories.loading" = "Φόρτωση μνημών...";
 "settings.memory.action.reload" = "Reload";
 "settings.memory.action.reset_default" = "Reset to default";
@@ -162,17 +158,6 @@
 "settings.privacy.danger.action.deleting" = "Διαγραφή...";
 "settings.privacy.danger.confirm_prompt_format" = "Πληκτρολόγησε %@ για επιβεβαίωση";
 "settings.privacy.danger.description" = "Διαγράφει όλους τους στόχους, τις μνήμες, τις μη-προεπιλεγμένες ψυχές, τα μη-προεπιλεγμένα προφίλ χρήστη και τις ρυθμίσεις MCP servers από αυτή τη συσκευή.";
-"settings.privacy.danger.error.goal_format" = "στόχος %@";
-"settings.privacy.danger.error.goals" = "στόχοι";
-"settings.privacy.danger.error.mcp" = "MCP";
-"settings.privacy.danger.error.memory" = "memory";
-"settings.privacy.danger.error.profile_format" = "προφίλ %@";
-"settings.privacy.danger.error.profiles" = "προφίλ";
-"settings.privacy.danger.error.soul_format" = "ψυχή %@";
-"settings.privacy.danger.error.souls" = "ψυχές";
-"settings.privacy.danger.status.more_suffix" = ", ...";
-"settings.privacy.danger.status.partial_format" = "Η διαγραφή ολοκληρώθηκε με προβλήματα: %@%@";
-"settings.privacy.danger.status.success" = "Όλα τα τοπικά δεδομένα διαγράφηκαν.";
 "settings.privacy.danger.title" = "Επικίνδυνη ζώνη";
 "settings.privacy.storage.description" = "Το BoBe αποθηκεύει δεδομένα τοπικά σε αυτό το Mac. Ψυχές, στόχοι, μνήμες, προφίλ χρήστη και ρυθμίσεις εκτέλεσης παραμένουν στη συσκευή.";
 "settings.privacy.storage.included.list" = "• Ψυχές και στόχοι\n• Μνήμες και παρατηρήσεις\n• Προφίλ χρήστη και ρυθμίσεις\n• Μεταδεδομένα τοπικών μοντέλων";
@@ -186,7 +171,6 @@
 "settings.shared.restart_banner.dismiss" = "Got it";
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ ενεργό";
-"settings.shared.toggle.enabled" = "Ενεργό";
 "settings.souls.delete.accessibility" = "Διαγραφή ψυχής";
 "settings.souls.empty.description" = "Δημιούργησε μία για να ορίσεις την προσωπικότητα του BoBe";
 "settings.souls.empty.select" = "Επιλέξτε μια ψυχή για επεξεργασία";
@@ -270,7 +254,6 @@
 "setup.local.cancel" = "Cancel";
 "setup.local.retry" = "Try again";
 "settings.category.engine" = "Engine";
-"settings.engine.title" = "Engine";
 "settings.engine.description" = "Pick where BoBe's AI runs and which models it uses for each kind of work.";
 "settings.engine.loading" = "Loading engine settings…";
 "settings.engine.mode.title" = "Where AI runs";
@@ -350,7 +333,6 @@
 /* TODO translate */ "setup.cloud_auth.error.generic" = "BoBe couldn't check your sign-in. Try again in a moment.";
 /* TODO translate */ "app.service_error.summary" = "BoBe couldn't start her backend. This is usually a temporary glitch.";
 /* TODO translate */ "app.service_error.persistent_summary" = "BoBe's backend keeps failing to start. If retrying doesn't help, try reinstalling BoBe from the original DMG.";
-/* TODO translate */ "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
 /* TODO translate */ "settings.window.search.enable_expert" = "Enable Expert mode";
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";

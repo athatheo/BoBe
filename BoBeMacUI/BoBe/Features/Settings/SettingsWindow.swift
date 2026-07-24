@@ -44,14 +44,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .expert: "wrench.and.screwdriver.fill"
         }
     }
-
-    /// Categories hidden until Expert mode is on. None today — Expert
-    /// itself lives under PREFERENCES so it's always reachable. The
-    /// former Advanced panel was folded into the panels its toggles
-    /// actually belonged to (MCP, Behavior).
-    var requiresExpertMode: Bool {
-        false
-    }
 }
 
 enum SettingsCategoryGroup: String, CaseIterable {
@@ -89,9 +81,7 @@ struct SettingsWindow: View {
     @State private var selectedCategory: SettingsCategory?
     @State private var searchQuery = ""
     @State private var editCoordinator = SettingsEditCoordinator.shared
-    @State private var expertMode = ExpertMode.shared
     private let themeStore = ThemeStore.shared
-    private let store = BobeStore.shared
 
     init(initialCategory: SettingsCategory? = nil) {
         self.initialCategory = initialCategory
@@ -129,7 +119,6 @@ struct SettingsWindow: View {
         .environment(ExpertMode.shared)
         .environment(ThemeStore.shared)
         .environment(VoicePipeline.shared)
-        .environment(VoiceTtsPreference.shared)
         .environment(\.theme, self.theme)
         .preferredColorScheme(self.theme.isDark ? .dark : .light)
         .background(self.theme.colors.background)
@@ -236,34 +225,13 @@ struct SettingsWindow: View {
                     }
                 }
                 if self.allVisibleCategories.isEmpty {
-                    if !self.expertModeGatedMatches.isEmpty, !self.expertMode.isEnabled {
-                        // The query matched at least one Expert-only category
-                        // while Expert mode is off. Don't leave the user in a
-                        // dead-end — explain it and offer the unlock.
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(L10n.tr("settings.window.search.expert_gated"))
-                                .font(.system(size: 11))
-                                .foregroundStyle(self.theme.colors.textMuted)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button(L10n.tr("settings.window.search.enable_expert")) {
-                                self.expertMode.setEnabled(true)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
+                    Text(String(format: L10n.tr("settings.window.search.no_results"), self.searchQuery))
+                        .font(.system(size: 11))
+                        .foregroundStyle(self.theme.colors.textMuted)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 12)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                    } else {
-                        Text(String(format: L10n.tr("settings.window.search.no_results"), self.searchQuery))
-                            .font(.system(size: 11))
-                            .foregroundStyle(self.theme.colors.textMuted)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 12)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                    }
                 }
             }
             .listStyle(.sidebar)
@@ -278,24 +246,9 @@ struct SettingsWindow: View {
         SettingsCategoryGroup.allCases.flatMap { self.visibleCategories(in: $0) }
     }
 
-    /// Categories whose label matches the current query but that are hidden
-    /// because Expert mode is off. Used to surface an "Enable Expert mode"
-    /// affordance instead of an empty-state dead-end when the user is
-    /// hunting for something like "Advanced" without the flag on.
-    private var expertModeGatedMatches: [SettingsCategory] {
-        let query = self.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return [] }
-        return SettingsCategory.allCases.filter { category in
-            category.requiresExpertMode && category.label.lowercased().contains(query)
-        }
-    }
-
     private func visibleCategories(in group: SettingsCategoryGroup) -> [SettingsCategory] {
         let query = self.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return group.categories.filter { category in
-            if category.requiresExpertMode, !self.expertMode.isEnabled {
-                return false
-            }
             guard !query.isEmpty else { return true }
             return category.label.lowercased().contains(query)
         }

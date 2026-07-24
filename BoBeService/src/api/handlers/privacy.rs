@@ -13,13 +13,14 @@ use crate::mcp::config::{self as mcp_config, McpConfigFile};
 pub(crate) struct PrivacyPurgeResponse {
     message: &'static str,
     deleted: Deleted,
-    retained: [&'static str; 3],
+    retained: [&'static str; 4],
 }
 
 #[derive(Serialize)]
 struct Deleted {
     conversations: u64,
     turns: u64,
+    message_requests: u64,
     custom_souls: u64,
     custom_profiles: u64,
     goals: usize,
@@ -29,25 +30,47 @@ struct Deleted {
 pub(crate) async fn purge(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<PrivacyPurgeResponse>, AppError> {
-    if state
-        .runtime
-        .in_flight_text_turns
-        .load(std::sync::atomic::Ordering::Acquire)
-        != 0
-        || state
-            .voice
-            .voice_turn_active
-            .load(std::sync::atomic::Ordering::Acquire)
-    {
-        return Err(AppError::Conflict(
-            "Cannot purge data while a turn is active".into(),
-        ));
-    }
+    tokio::time::timeout(
+        crate::constants::privacy::PURGE_DEADLINE,
+        purge_inner(state),
+    )
+    .await
+    .map_err(|_| {
+        AppError::Internal(
+            "Privacy purge timed out; some data may already be deleted. Retry to finish.".into(),
+        )
+    })?
+}
 
-    state.runtime.workers.purge_sessions().await?;
+async fn purge_inner(state: Arc<AppState>) -> Result<Json<PrivacyPurgeResponse>, AppError> {
+    let _purge_guard = state
+        .runtime
+        .runtime_session
+        .try_begin_privacy_purge()
+        .map_err(|message| AppError::Conflict(message.into()))?;
+
+    // Erase authoritative local context before the potentially slow remote
+    // session purge. If the request times out, no later maintenance cycle can
+    // re-upload the personal memory or goals that the user asked to delete.
+    state
+        .runtime
+        .memory_file
+        .replace_all(crate::copilot::memory_file::DEFAULT_BODY.into())
+        .await?;
+    let goals = state.services.goals_service.delete_all().await?;
 
     let mut transaction = state.infra.db.begin().await?;
     let turns = sqlx::query("DELETE FROM conversation_turns")
+        .execute(&mut *transaction)
+        .await?
+        .rows_affected();
+    sqlx::query(
+        "INSERT OR IGNORE INTO message_request_tombstones (request_id) \
+         SELECT request_id FROM message_requests",
+    )
+    .execute(&mut *transaction)
+    .await?;
+    let message_requests = sqlx::query("DELETE FROM message_requests")
         .execute(&mut *transaction)
         .await?
         .rows_affected();
@@ -68,22 +91,17 @@ pub(crate) async fn purge(
         .rows_affected();
     transaction.commit().await?;
 
-    state
-        .runtime
-        .memory_file
-        .replace_all(crate::copilot::memory_file::DEFAULT_BODY.into())
-        .await?;
-    let goals = state.services.goals_service.delete_all().await?;
-
-    let mcp_secrets = purge_mcp(&state).await?;
     let data_root = std::path::PathBuf::from(&state.config().data_dir);
     crate::util::durable_fs::durable_remove_dir_all(&data_root.join("tool-output")).await?;
+    state.runtime.workers.purge_sessions().await?;
+    let mcp_secrets = purge_mcp(&state).await?;
 
     Ok(Json(PrivacyPurgeResponse {
         message: "Personal data deleted; operational data retained",
         deleted: Deleted {
             conversations,
             turns,
+            message_requests,
             custom_souls,
             custom_profiles,
             goals,
@@ -93,6 +111,7 @@ pub(crate) async fn purge(
             "settings and API credentials",
             "installed models and runtimes",
             "Copilot login",
+            "content-free request replay guards",
         ],
     }))
 }
@@ -104,7 +123,7 @@ async fn purge_mcp(state: &AppState) -> Result<usize, AppError> {
         std::path::Path::new(&config.data_dir),
         config.mcp.config_file.as_deref(),
     )?;
-    let previous = mcp_config::load_mcp_config_file(&path).unwrap_or(McpConfigFile {
+    let previous = mcp_config::load_mcp_config_file(&path).unwrap_or_else(|_| McpConfigFile {
         mcp_servers: std::collections::HashMap::new(),
     });
     let mut accounts = HashSet::new();

@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::voice::context::VoiceContext;
-use crate::voice::run_text_turn::run_text_turn;
+use crate::voice::run_text_turn::{VoiceTurnAdmission, run_text_turn};
 use crate::voice::session::{SessionVoiceConfig, TurnInFlight, VoiceSession};
 
 /// Drops with a warning when there's no session, the session is muted,
@@ -108,5 +108,13 @@ async fn run_mode_b_turn(
 ) {
     drop(language); // span field only
     let trimmed = text.trim();
-    run_text_turn(trimmed, &turn_id, &ctx, voice_cfg, playback_complete).await;
+    run_text_turn(
+        trimmed,
+        &turn_id,
+        &ctx,
+        voice_cfg,
+        playback_complete,
+        VoiceTurnAdmission::Acquire,
+    )
+    .await;
 }

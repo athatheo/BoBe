@@ -145,10 +145,11 @@ pub(crate) fn parse(input: &str) -> Result<GoalDoc, GoalParseError> {
     for raw_line in input.lines() {
         let line = raw_line.trim_end();
 
-        if let Some(rest) = line.strip_prefix("# ") {
-            if title.is_none() {
-                title = Some(rest.trim().to_string());
-            }
+        if title.is_none()
+            && current.is_none()
+            && let Some(rest) = line.strip_prefix("# ")
+        {
+            title = Some(rest.trim().to_string());
             continue;
         }
 
@@ -330,6 +331,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_preserves_top_level_heading_inside_section_body() {
+        let id = GoalId::new();
+        let md = format!(
+            "# Practice piano\n\
+             \n\
+             **ID**: {id}\n\
+             **Status**: active\n\
+             **Priority**: 1\n\
+             \n\
+             ## Summary\n\
+             Keep this line.\n\
+             # This is body text from a manually edited file\n"
+        );
+
+        let doc = parse(&md).unwrap();
+        assert_eq!(
+            doc.summary,
+            "Keep this line.\n# This is body text from a manually edited file"
+        );
+    }
+
+    #[test]
     fn parse_preserves_extra_sections() {
         let id = GoalId::new();
         let md = format!(
@@ -359,13 +382,13 @@ mod tests {
     #[test]
     fn parse_rejects_missing_id() {
         let md = "# Goal\n\n**Status**: active\n";
-        assert!(matches!(parse(md), Err(GoalParseError::MissingId)));
+        std::assert_matches!(parse(md), Err(GoalParseError::MissingId));
     }
 
     #[test]
     fn parse_rejects_missing_title() {
         let md = format!("**ID**: {}\n**Status**: active\n", GoalId::new());
-        assert!(matches!(parse(&md), Err(GoalParseError::MissingTitle)));
+        std::assert_matches!(parse(&md), Err(GoalParseError::MissingTitle));
     }
 
     #[test]

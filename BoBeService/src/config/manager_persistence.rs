@@ -23,7 +23,7 @@ pub(crate) fn persist(
             }
         }
     } else {
-        "# BoBe configuration\nconfig_version = 1\n".to_string()
+        "# BoBe configuration\n".to_string()
     };
 
     let mut doc: toml_edit::DocumentMut = match existing.parse() {
@@ -33,6 +33,7 @@ pub(crate) fn persist(
             return false;
         }
     };
+    doc.remove("config_version");
 
     for (dotted_key, value) in changes {
         set_toml_value(&mut doc, dotted_key, value);
@@ -74,28 +75,17 @@ fn set_toml_value(doc: &mut toml_edit::DocumentMut, dotted_key: &str, value: &se
 fn json_to_toml_item(value: &serde_json::Value) -> toml_edit::Item {
     match value {
         serde_json::Value::Bool(b) => toml_edit::value(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                toml_edit::value(i)
-            } else if let Some(f) = n.as_f64() {
-                toml_edit::value(f)
-            } else {
-                toml_edit::value(n.to_string())
-            }
-        }
+        serde_json::Value::Number(n) if let Some(i) = n.as_i64() => toml_edit::value(i),
+        serde_json::Value::Number(n) if let Some(f) = n.as_f64() => toml_edit::value(f),
+        serde_json::Value::Number(n) => toml_edit::value(n.to_string()),
         serde_json::Value::String(s) => toml_edit::value(s.as_str()),
         serde_json::Value::Array(arr) => {
             let mut toml_arr = toml_edit::Array::new();
             for item in arr {
                 match item {
                     serde_json::Value::String(s) => toml_arr.push(s.as_str()),
-                    serde_json::Value::Number(n) => {
-                        if let Some(i) = n.as_i64() {
-                            toml_arr.push(i);
-                        } else if let Some(f) = n.as_f64() {
-                            toml_arr.push(f);
-                        }
-                    }
+                    serde_json::Value::Number(n) if let Some(i) = n.as_i64() => toml_arr.push(i),
+                    serde_json::Value::Number(n) if let Some(f) = n.as_f64() => toml_arr.push(f),
                     serde_json::Value::Bool(b) => toml_arr.push(*b),
                     _ => {}
                 }
@@ -103,5 +93,31 @@ fn json_to_toml_item(value: &serde_json::Value) -> toml_edit::Item {
             toml_edit::value(toml_arr)
         }
         serde_json::Value::Null | serde_json::Value::Object(_) => toml_edit::value(""),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "tests panic on fixture failures")]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::persist;
+
+    #[test]
+    fn persistence_removes_unused_legacy_config_version() {
+        let root =
+            std::env::temp_dir().join(format!("bobe-config-version-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("create test config directory");
+        std::fs::write(
+            root.join("config.toml"),
+            "config_version = 1\n[voice]\nenabled = true\n",
+        )
+        .expect("write test config");
+
+        assert!(persist(&root, &BTreeMap::new()));
+        let saved = std::fs::read_to_string(root.join("config.toml")).expect("read saved config");
+        assert!(!saved.contains("config_version"));
+        assert!(saved.contains("[voice]"));
+        assert!(std::fs::remove_dir_all(root).is_ok());
     }
 }

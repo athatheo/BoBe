@@ -537,16 +537,6 @@ public final class VoicePipeline {
         await self.sendClient(.transcriptFinal(turnId: turnId, text: trimmed))
     }
 
-    func flushPendingPartialForServer() async {
-        self.partialSendTask?.cancel()
-        self.partialSendTask = nil
-        guard let text = self.pendingPartialForServer,
-              let turnId = self.pendingTurnId
-        else { return }
-        self.pendingPartialForServer = nil
-        await self.sendClient(.transcriptPartial(turnId: turnId, text: text))
-    }
-
     public func connect(daemonBaseURL: URL) {
         self.lastError = nil
 
@@ -575,9 +565,7 @@ public final class VoicePipeline {
         // subprotocol. Daemon also accepts unversioned upgrades, so this is
         // forward-only — old daemons just ignore the offered protocol.
         var request = URLRequest(url: wsURL)
-        if let token = DaemonConfig.endpoint.bearerToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        DaemonConfig.endpoint.authorize(&request)
         request.setValue(VoiceWire.subprotocolV1, forHTTPHeaderField: "Sec-WebSocket-Protocol")
         let newTask = self.urlSession.webSocketTask(with: request)
         self.task = newTask

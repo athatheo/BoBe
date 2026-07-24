@@ -131,7 +131,7 @@ struct VoicePanel: View {
                     description: L10n.tr("settings.voice.persona.description")
                 ) {
                     BobeMenuPicker(
-                        selection: self.store.binding(\.voicePersona, fallback: "af_bella"),
+                        selection: self.store.binding(\.voicePersona, fallback: VoiceWire.defaultPersona),
                         options: KokoroVoices.allSlots,
                         label: KokoroVoices.displayName(for:),
                         width: 240
@@ -224,12 +224,12 @@ struct VoicePanel: View {
                     purpose: L10n.tr("settings.voice.model.tts.purpose"),
                     sizeHint: L10n.tr("settings.voice.model.tts.size"),
                     location: self.expertMode.isEnabled
-                        ? "~/.bobe/models/kokoro-multi-lang-v1_0/"
+                        ? "~/.bobe/models/\(VoiceWire.kokoroModelDir)/"
                         : nil,
                     status: self.kokoroStatus,
                     daemonProgress: self.installStatus?.models.first(where: { $0.kind == VoiceWire.modelKindTts }),
                     onInstall: { await self.installSingle(daemon: true) },
-                    onUninstall: { await self.uninstall(path: "~/.bobe/models/kokoro-multi-lang-v1_0/") }
+                    onUninstall: { await self.uninstall(path: "~/.bobe/models/\(VoiceWire.kokoroModelDir)/") }
                 )
 
                 // Client-side STT — English (FluidAudio Parakeet EOU).

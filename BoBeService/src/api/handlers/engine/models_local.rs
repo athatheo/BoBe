@@ -3,9 +3,8 @@
 
 use std::time::Duration;
 
-use serde::Deserialize;
-
 use crate::error::AppError;
+use crate::services::ollama::manager::{InstalledModelDetails, fetch_installed_models};
 
 use super::{ModelInfo, ModelsNotice};
 
@@ -37,39 +36,10 @@ async fn list_local_models(
     client: &reqwest::Client,
     base_url: Option<&str>,
 ) -> Result<Vec<ModelInfo>, AppError> {
-    // Ollama's `/api/tags` lives on the root, not the `/v1` OpenAI-compat prefix.
-    let root = base_url.map_or_else(
-        || crate::constants::DEFAULT_OLLAMA_BASE_URL.to_string(),
-        |u| u.trim_end_matches('/').trim_end_matches("/v1").to_string(),
-    );
+    let provider_url = base_url.unwrap_or(crate::constants::DEFAULT_OLLAMA_BASE_URL);
+    let models = fetch_installed_models(client, provider_url, Duration::from_secs(3)).await?;
 
-    let url = format!("{root}/api/tags");
-    // 3s per-request timeout overrides the shared client's default for this
-    // call only — Ollama not running needs to surface fast.
-    let resp = client
-        .get(&url)
-        .timeout(Duration::from_secs(3))
-        .send()
-        .await
-        .map_err(|e| {
-            // Surface "not running" as 503 so UI can render "Ollama not running" instead of a 500.
-            AppError::ServiceUnavailable(format!("list_local_models: {e}"))
-        })?;
-
-    if !resp.status().is_success() {
-        return Err(AppError::ServiceUnavailable(format!(
-            "list_local_models: ollama returned {}",
-            resp.status()
-        )));
-    }
-
-    let parsed: OllamaTagsResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("list_local_models: parse: {e}")))?;
-
-    Ok(parsed
-        .models
+    Ok(models
         .into_iter()
         .map(|m| {
             let vision = guess_vision(m.details.as_ref());
@@ -88,7 +58,7 @@ async fn list_local_models(
 }
 
 /// UX hint only; the Copilot CLI rejects vision calls to non-vision models.
-fn guess_vision(details: Option<&OllamaTagDetails>) -> bool {
+fn guess_vision(details: Option<&InstalledModelDetails>) -> bool {
     let Some(d) = details else { return false };
     let is_vision = |s: &str| {
         let lower = s.to_lowercase();
@@ -98,25 +68,4 @@ fn guess_vision(details: Option<&OllamaTagDetails>) -> bool {
             || lower.contains("multimodal")
     };
     d.families.iter().any(|f| is_vision(f)) || d.family.as_deref().is_some_and(is_vision)
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaTagsResponse {
-    #[serde(default)]
-    models: Vec<OllamaTag>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaTag {
-    name: String,
-    #[serde(default)]
-    details: Option<OllamaTagDetails>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaTagDetails {
-    #[serde(default)]
-    families: Vec<String>,
-    #[serde(default)]
-    family: Option<String>,
 }

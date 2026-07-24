@@ -33,10 +33,12 @@ extension EnginePanel {
                 self.store.update { current in
                     // Empty string is the clear sentinel; daemon normalizes "" back to None.
                     current[keyPath: keyPath] = (newValue == "—") ? "" : newValue
-                    // Clear stale reasoning if the new model doesn't support it.
-                    if let m = availableModels.first(where: { $0.id == newValue }), !m.supportsReasoningEffort {
-                        current[keyPath: reasoningKeyPath] = ""
-                    }
+                    let supported = availableModels
+                        .first(where: { $0.id == newValue })?.supportedReasoningEfforts ?? []
+                    current[keyPath: reasoningKeyPath] = Self.retainedReasoningEffort(
+                        current[keyPath: reasoningKeyPath],
+                        supported: supported
+                    )
                 }
             }
         )
@@ -56,6 +58,13 @@ extension EnginePanel {
                 self.reasoningRow(model: model, keyPath: reasoningKeyPath)
             }
         }
+    }
+
+    static func retainedReasoningEffort(_ current: String?, supported: [String]) -> String {
+        guard let current, !current.isEmpty, supported.contains(current) else {
+            return ""
+        }
+        return current
     }
 
     @ViewBuilder

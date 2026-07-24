@@ -113,7 +113,7 @@ actor FluidAudioStt: VoiceSttEngine {
             try await task.value
         } catch {
             self.loadTask = nil
-            self.stopCallbackForwarding()
+            await self.stopCallbackForwarding()
             throw error
         }
     }
@@ -140,14 +140,7 @@ actor FluidAudioStt: VoiceSttEngine {
         self.savedOnPartial = onPartial
         self.savedOnEou = onEou
         let callbackContinuation = self.startCallbackForwarding()
-        await mgr.setPartialCallback { [weak self] text in
-            guard self != nil else { return }
-            callbackContinuation.yield(.partial(text))
-        }
-        await mgr.setEouCallback { [weak self] text in
-            guard self != nil else { return }
-            callbackContinuation.yield(.endOfUtterance(text))
-        }
+        await self.installCallbacks(on: mgr, continuation: callbackContinuation)
         try await mgr.loadModels(
             progressHandler: { onProgress(voiceSttProgress($0)) }
         )
@@ -191,21 +184,34 @@ actor FluidAudioStt: VoiceSttEngine {
     /// which fires the `onEou` callback supplied at load time).
     func finish() async throws -> String {
         guard let mgr = self.manager else { return "" }
-        return try await mgr.finish()
+        let transcript = try await mgr.finish()
+        await withCheckedContinuation { continuation in
+            guard let callbackContinuation = self.callbackContinuation,
+                  self.callbackTask != nil
+            else {
+                continuation.resume()
+                return
+            }
+            callbackContinuation.yield(.barrier(continuation))
+        }
+        return transcript
     }
 
     /// Reset the decoder + buffer between turns. Keeps models loaded.
     func reset() async throws {
         guard let mgr = self.manager else { return }
+        await self.stopCallbackForwarding()
         await mgr.reset()
         await self.commitLayer.reset()
+        let callbackContinuation = self.startCallbackForwarding()
+        await self.installCallbacks(on: mgr, continuation: callbackContinuation)
     }
 
     /// Tear down — release model memory. Cannot be reused without a fresh
     /// `loadModels` call.
     func cleanup() async {
         await self.cancelLoading()
-        self.stopCallbackForwarding()
+        await self.stopCallbackForwarding()
         guard let mgr = self.manager else { return }
         await mgr.cleanup()
         self.manager = nil
@@ -213,7 +219,6 @@ actor FluidAudioStt: VoiceSttEngine {
     }
 
     private func startCallbackForwarding() -> AsyncStream<VoiceSttCallbackEvent>.Continuation {
-        self.stopCallbackForwarding()
         let (stream, continuation) = AsyncStream.makeStream(
             of: VoiceSttCallbackEvent.self,
             bufferingPolicy: .bufferingNewest(16)
@@ -227,17 +232,37 @@ actor FluidAudioStt: VoiceSttEngine {
                     await self.handleRawPartial(text)
                 case let .endOfUtterance(text):
                     await self.handleRawEou(text)
+                case let .barrier(continuation):
+                    continuation.resume()
                 }
             }
         }
         return continuation
     }
 
-    private func stopCallbackForwarding() {
+    private func installCallbacks(
+        on manager: StreamingEouAsrManager,
+        continuation: AsyncStream<VoiceSttCallbackEvent>.Continuation
+    ) async {
+        await manager.setPartialCallback { [weak self] text in
+            guard self != nil else { return }
+            continuation.yield(.partial(text))
+        }
+        await manager.setEouCallback { [weak self] text in
+            guard self != nil else { return }
+            continuation.yield(.endOfUtterance(text))
+        }
+    }
+
+    private func stopCallbackForwarding() async {
         self.callbackContinuation?.finish()
         self.callbackContinuation = nil
-        self.callbackTask?.cancel()
+        let callbackTask = self.callbackTask
         self.callbackTask = nil
+        callbackTask?.cancel()
+        // Do not expose the next turn until a callback already in the consumer
+        // has returned; cancellation alone does not stop an in-flight callback.
+        await callbackTask?.value
     }
 }
 

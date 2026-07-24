@@ -1,4 +1,4 @@
-//! `/auth/copilot/login` endpoints — in-app driver for the bundled
+//! `/auth/copilot/login` endpoints — in-app driver for the installed
 //! `copilot login` CLI's device flow.
 //!
 //!   POST  /auth/copilot/login/start    — kick off (conflict if in flight)
@@ -28,8 +28,7 @@ use crate::error::AppError;
 pub(crate) async fn start_login(
     State(state): State<Arc<AppState>>,
 ) -> Result<StatusCode, AppError> {
-    // Start the SDK first so extraction and integrity validation run before
-    // the login process is launched.
+    // Start the SDK first so CLI resolution completes before login launches.
     let _client = state
         .runtime
         .workers
@@ -40,8 +39,8 @@ pub(crate) async fn start_login(
             AppError::Internal(format!("copilot_login.start: client start failed: {e}"))
         })?;
 
-    let cli_path = github_copilot_sdk::install_bundled_cli().ok_or_else(|| {
-        AppError::Internal("copilot_login.start: bundled CLI path unavailable".to_string())
+    let cli_path = crate::copilot::client::installed_cli_path().ok_or_else(|| {
+        AppError::Internal("copilot_login.start: Copilot CLI path unavailable".to_string())
     })?;
 
     state.auth.copilot_login.start(cli_path).await?;

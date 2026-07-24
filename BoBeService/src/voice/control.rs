@@ -24,7 +24,7 @@ pub(crate) async fn handle_control_text(
     ctx: &VoiceContext,
     session: &mut Option<VoiceSession>,
 ) -> bool {
-    let out_tx = &ctx.out_tx;
+    let output = &ctx.output;
     let voice_defaults = &ctx.voice_defaults;
     let parsed: Result<ClientMessage, _> = serde_json::from_str(text);
     match parsed {
@@ -48,7 +48,7 @@ pub(crate) async fn handle_control_text(
             );
             if playback_rate != TTS_OUTPUT_SAMPLE_RATE {
                 send_error(
-                    out_tx,
+                    output,
                     "rate_mismatch",
                     &format!("expected playback_rate={TTS_OUTPUT_SAMPLE_RATE}"),
                 )
@@ -59,7 +59,7 @@ pub(crate) async fn handle_control_text(
                 SessionVoiceConfig::new(voice_id, speed, tts_backend.as_deref(), voice_defaults);
             if !cfg.client_tts && !ctx.engines.supports_server_tts() {
                 send_error(
-                    out_tx,
+                    output,
                     "engines_unavailable",
                     "Kokoro is not installed; select client Supertonic or install Kokoro",
                 )
@@ -79,14 +79,14 @@ pub(crate) async fn handle_control_text(
             }
             *session = Some(s);
             send_json(
-                out_tx,
+                output,
                 &ServerMessage::HelloAck {
                     voice_pack,
                     playback_rate: TTS_OUTPUT_SAMPLE_RATE,
                 },
             )
             .await;
-            send_state(out_tx, VoicePhase::Listening, &initial_turn).await;
+            send_state(output, VoicePhase::Listening, &initial_turn).await;
             true
         }
         Ok(ClientMessage::TtsPlaybackStarted {
@@ -145,7 +145,7 @@ pub(crate) async fn handle_control_text(
                 && !s.muted
             {
                 let turn_id = new_turn_id(true);
-                send_state(out_tx, VoicePhase::Listening, &turn_id).await;
+                send_state(output, VoicePhase::Listening, &turn_id).await;
             }
             true
         }
@@ -176,7 +176,7 @@ pub(crate) async fn handle_control_text(
         }
         Err(e) => {
             warn!(error = %e, "voice.invalid_json");
-            send_error(out_tx, "invalid_json", &format!("{e}")).await;
+            send_error(output, "invalid_json", &format!("{e}")).await;
             true
         }
     }
@@ -215,14 +215,14 @@ pub(crate) async fn handle_control_action(
     ctx: &VoiceContext,
     session: &mut Option<VoiceSession>,
 ) {
-    let out_tx = &ctx.out_tx;
+    let output = &ctx.output;
     match action {
         ControlAction::Abort => {
             info!("voice.control.abort");
             if let Some(s) = session.as_mut() {
                 abort_active_turn(s, ctx, 0, "control_abort").await;
                 s.last_partial_text.clear();
-                send_state(out_tx, VoicePhase::Idle, &s.session_id).await;
+                send_state(output, VoicePhase::Idle, &s.session_id).await;
             }
         }
         ControlAction::Mute => {
@@ -243,7 +243,7 @@ pub(crate) async fn handle_control_action(
                 abort_active_turn(s, ctx, 0, "control_reset").await;
                 s.last_partial_text.clear();
                 s.muted = false;
-                send_state(out_tx, VoicePhase::Listening, &s.session_id).await;
+                send_state(output, VoicePhase::Listening, &s.session_id).await;
             }
         }
     }

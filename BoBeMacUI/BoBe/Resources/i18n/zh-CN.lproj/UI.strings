@@ -21,9 +21,6 @@
 "overlay.avatar.state.speaking" = "说话中";
 "overlay.avatar.state.thinking" = "思考中";
 "overlay.avatar.state.wants_to_speak" = "想说点什么";
-"overlay.chat.action.collapse" = "收起";
-"overlay.chat.action.read_more" = "更多…";
-"overlay.chat.hidden_messages_format" = "+%d 条隐藏消息";
 "overlay.chat.pending_suffix" = " · 发送中…";
 "overlay.chat.sender.bobe" = "BoBe";
 "overlay.chat.sender.you" = "你";
@@ -148,7 +145,6 @@
 "settings.mcp.error.empty_json" = "MCP JSON 不能为空。";
 "settings.mcp.loading" = "正在加载 MCP 配置...";
 "settings.mcp.status.validation_passed_format" = "验证通过（%d 个服务器）。";
-"settings.mcp.title" = "MCP 配置";
 "settings.memories.loading" = "正在加载记忆...";
 "settings.memory.action.reload" = "Reload";
 "settings.memory.action.reset_default" = "Reset to default";
@@ -162,17 +158,6 @@
 "settings.privacy.danger.action.deleting" = "删除中...";
 "settings.privacy.danger.confirm_prompt_format" = "请输入 %@ 确认";
 "settings.privacy.danger.description" = "从此设备删除所有目标、记忆、非默认 souls、非默认用户档案以及 MCP 服务器配置。";
-"settings.privacy.danger.error.goal_format" = "目标 %@";
-"settings.privacy.danger.error.goals" = "目标";
-"settings.privacy.danger.error.mcp" = "mcp";
-"settings.privacy.danger.error.memory" = "memory";
-"settings.privacy.danger.error.profile_format" = "档案 %@";
-"settings.privacy.danger.error.profiles" = "档案";
-"settings.privacy.danger.error.soul_format" = "soul %@";
-"settings.privacy.danger.error.souls" = "souls";
-"settings.privacy.danger.status.more_suffix" = "，...";
-"settings.privacy.danger.status.partial_format" = "删除完成，但部分操作失败：%@%@";
-"settings.privacy.danger.status.success" = "所有本地数据已清除。";
 "settings.privacy.danger.title" = "危险区域";
 "settings.privacy.storage.description" = "BoBe 的数据存储在这台 Mac 本地。Soul、目标、记忆、用户档案和各项设置都保存在设备上。";
 "settings.privacy.storage.included.list" = "• Souls 与目标\n• 记忆与观察记录\n• 用户档案与设置\n• 本地模型元数据";
@@ -186,7 +171,6 @@
 "settings.shared.restart_banner.dismiss" = "Got it";
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ 已开启";
-"settings.shared.toggle.enabled" = "已开启";
 "settings.souls.delete.accessibility" = "删除 soul";
 "settings.souls.empty.description" = "创建一个来定义 BoBe 的人格";
 "settings.souls.empty.select" = "选择一个 soul 进行编辑";
@@ -270,7 +254,6 @@
 "setup.local.cancel" = "Cancel";
 "setup.local.retry" = "Try again";
 "settings.category.engine" = "Engine";
-"settings.engine.title" = "Engine";
 "settings.engine.description" = "Pick where BoBe's AI runs and which models it uses for each kind of work.";
 "settings.engine.loading" = "Loading engine settings…";
 "settings.engine.mode.title" = "Where AI runs";
@@ -350,7 +333,6 @@
 /* TODO translate */ "setup.cloud_auth.error.generic" = "BoBe couldn't check your sign-in. Try again in a moment.";
 /* TODO translate */ "app.service_error.summary" = "BoBe couldn't start her backend. This is usually a temporary glitch.";
 /* TODO translate */ "app.service_error.persistent_summary" = "BoBe's backend keeps failing to start. If retrying doesn't help, try reinstalling BoBe from the original DMG.";
-/* TODO translate */ "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
 /* TODO translate */ "settings.window.search.enable_expert" = "Enable Expert mode";
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";

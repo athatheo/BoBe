@@ -14,13 +14,14 @@ use crate::copilot::types::{ChatPrompt, JobInput};
 use crate::db::SqliteCooldownRepo;
 use crate::error::AppError;
 use crate::models::conversation::Conversation;
+use crate::models::ids::{ConversationTurnId, message_id_for_turn};
 use crate::runtime::behavior_context::BehaviorContext;
 use crate::runtime::conversation_service::ConversationService;
 use crate::runtime::response_streamer::stream_chat_delta_response;
 use crate::runtime::state::Decision;
 use crate::util::atomic_flag_guard::AtomicFlagGuard;
 use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::factories::conversation_closed_event;
+use crate::util::sse::factories::{conversation_closed_event, error_event};
 use crate::util::sse::indicator_guard::IndicatorGuard;
 use crate::util::sse::types::IndicatorType;
 
@@ -29,6 +30,50 @@ const PROACTIVE_TRIGGER_PROMPT: &str = "[bobe.proactive_check] \
      Based on the memory.md context and recent conversation, decide whether to \
      produce a short proactive message. If a message would not add value right \
      now, reply with an empty message — no apology, no preamble.";
+
+struct ProactiveStreamGuard {
+    conversation: Arc<ConversationService>,
+    conversation_id: crate::models::ids::ConversationId,
+    armed: bool,
+}
+
+impl ProactiveStreamGuard {
+    fn new(
+        conversation: Arc<ConversationService>,
+        conversation_id: crate::models::ids::ConversationId,
+    ) -> Self {
+        Self {
+            conversation,
+            conversation_id,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ProactiveStreamGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        let conversation = Arc::clone(&self.conversation);
+        let conversation_id = self.conversation_id;
+        // Drop cannot await. Settle the draft in one bounded task so visible
+        // partial text survives cancellation as an incomplete turn.
+        tokio::spawn(async move {
+            if let Err(error) = conversation
+                .settle_interrupted_proactive_stream(conversation_id)
+                .await
+            {
+                warn!(%error, "proactive_generator.cancel_cleanup_failed");
+            }
+        });
+    }
+}
 
 fn inactivity_timeout_elapsed(
     now: chrono::DateTime<Utc>,
@@ -97,24 +142,19 @@ impl ProactiveGenerator {
             return Decision::Idle;
         };
         let (target, _previous_summary) = self.ensure_conversation(auto_close_minutes).await;
-        let target = match self
+        let (target_conversation, assistant_turn_id) = match self
             .conversation
             .begin_proactive_stream(target.as_ref())
             .await
         {
-            Ok(target) => Some(target),
+            Ok(started) => started,
             Err(e) => {
                 error!(error = %e, "proactive_generator.begin_stream_failed");
-                target
+                return Decision::Idle;
             }
         };
 
-        let Some(target_conversation) = target else {
-            warn!("proactive_generator.missing_target_conversation");
-            return Decision::Idle;
-        };
-
-        self.generate_response(&target_conversation, context_summary)
+        self.generate_response(&target_conversation, assistant_turn_id, context_summary)
             .await
     }
 
@@ -167,8 +207,11 @@ impl ProactiveGenerator {
     async fn generate_response(
         &self,
         target_conversation: &Conversation,
+        assistant_turn_id: ConversationTurnId,
         context_summary: Option<String>,
     ) -> Decision {
+        let mut stream_guard =
+            ProactiveStreamGuard::new(Arc::clone(&self.conversation), target_conversation.id);
         self.event_queue.set_indicator(IndicatorType::Streaming);
         // RAII: covers normal completion, error return, AND mid-flight
         // task abort (e.g., shutdown). Without this guard a panic or
@@ -176,7 +219,7 @@ impl ProactiveGenerator {
         // would leave the indicator stuck Streaming and reject every
         // subsequent turn. Mirror of the message_handler.rs pattern.
         let _indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
-        let msg_id = crate::models::ids::new_message_id();
+        let msg_id = message_id_for_turn(assistant_turn_id);
         let conversation_id = target_conversation.id;
 
         let prompt_text = match context_summary.as_deref() {
@@ -193,19 +236,53 @@ impl ProactiveGenerator {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "proactive_generator.chat_failed");
-                self.conversation.discard_proactive_stream(conversation_id);
+                let cleanup = self
+                    .conversation
+                    .discard_proactive_stream(conversation_id)
+                    .await;
+                if let Err(cleanup_error) = cleanup {
+                    warn!(
+                        error = %cleanup_error,
+                        "proactive_generator.discard_failed"
+                    );
+                } else {
+                    stream_guard.disarm();
+                }
                 return Decision::Idle;
             }
         };
 
         let decision = if result.full_response.trim().is_empty() {
-            self.conversation.discard_proactive_stream(conversation_id);
+            let cleanup = self
+                .conversation
+                .discard_proactive_stream(conversation_id)
+                .await;
+            if let Err(error) = cleanup {
+                warn!(%error, "proactive_generator.discard_failed");
+            } else {
+                stream_guard.disarm();
+            }
             Decision::Idle
         } else {
-            self.persist_proactive_response(&result, target_conversation)
+            let persisted = self
+                .persist_proactive_response(&result, target_conversation)
                 .await;
-            if result.success {
+            if persisted {
+                stream_guard.disarm();
+            }
+            if result.success && persisted {
+                result.emit_terminal(
+                    &self.event_queue,
+                    crate::runtime::response_streamer::StreamDelivery::LegacySse,
+                );
                 self.record_engagement().await;
+            } else if result.success {
+                self.event_queue.push(error_event(
+                    &msg_id,
+                    "RESPONSE_PERSIST_FAILED",
+                    "BoBe could not save this proactive response. It may not survive a restart.",
+                    true,
+                ));
             }
             Decision::Engage
         };
@@ -233,30 +310,29 @@ impl ProactiveGenerator {
             .map_err(|e| AppError::Internal(format!("chat_worker.send: {e}")))?;
         info!(msg_id, "proactive_generator.stream_start");
         let conversation = Arc::clone(&self.conversation);
-        Ok(
-            stream_chat_delta_response(
-                chat_stream,
-                &self.event_queue,
-                Some(msg_id),
-                move |delta| {
-                    let conversation = Arc::clone(&conversation);
-                    async move {
-                        conversation.push_proactive_stream_delta(conversation_id, &delta);
-                    }
-                },
-            )
-            .await,
+        Ok(stream_chat_delta_response(
+            chat_stream,
+            &self.event_queue,
+            Some(msg_id),
+            crate::runtime::response_streamer::StreamDelivery::LegacySse,
+            move |delta| {
+                let conversation = Arc::clone(&conversation);
+                async move {
+                    conversation.push_proactive_stream_delta(conversation_id, &delta);
+                }
+            },
         )
+        .await)
     }
 
     async fn persist_proactive_response(
         &self,
         result: &crate::runtime::response_streamer::StreamResult,
         target: &Conversation,
-    ) {
+    ) -> bool {
         match self
             .conversation
-            .finalize_proactive_stream(target.id, &result.full_response)
+            .finalize_proactive_stream(target.id, &result.full_response, result.success)
             .await
         {
             Ok(Some(_)) => {
@@ -267,14 +343,19 @@ impl ProactiveGenerator {
                     first_token_ms = ?result.first_token_ms.map(|v| v as u64),
                     "proactive_generator.complete"
                 );
+                true
             }
             Ok(None) => {
                 warn!(
                     conversation_id = %target.id,
                     "proactive_generator.turn_finalize_skipped"
                 );
+                false
             }
-            Err(e) => error!(error = %e, "proactive_generator.conversation_failed"),
+            Err(e) => {
+                error!(error = %e, "proactive_generator.conversation_failed");
+                false
+            }
         }
     }
 
@@ -367,7 +448,12 @@ impl ProactiveGenerator {
 
 #[cfg(test)]
 mod tests {
-    use super::inactivity_timeout_elapsed;
+    use std::sync::Arc;
+    use std::time::Duration as StdDuration;
+
+    use super::{ProactiveStreamGuard, inactivity_timeout_elapsed};
+    use crate::db::{SqliteConversationRepo, test_helpers::in_memory_pool};
+    use crate::runtime::conversation_service::ConversationService;
     use chrono::{Duration, Utc};
 
     #[test]
@@ -398,5 +484,33 @@ mod tests {
             now + Duration::seconds(1),
             30
         ));
+    }
+
+    #[tokio::test]
+    async fn dropped_stream_guard_discards_draft_and_empty_placeholder() {
+        let repo = Arc::new(SqliteConversationRepo::new(in_memory_pool().await));
+        let conversation = Arc::new(ConversationService::new(Arc::clone(&repo)));
+        let result = conversation.begin_proactive_stream(None).await;
+        let Ok((pending, _)) = result else {
+            panic!("proactive stream should start");
+        };
+
+        drop(ProactiveStreamGuard::new(
+            Arc::clone(&conversation),
+            pending.id,
+        ));
+
+        let deleted = tokio::time::timeout(StdDuration::from_secs(1), async {
+            loop {
+                match repo.get_by_id(pending.id).await {
+                    Ok(None) => return true,
+                    Ok(Some(_)) => tokio::task::yield_now().await,
+                    Err(_) => return false,
+                }
+            }
+        })
+        .await
+        .unwrap_or(false);
+        assert!(deleted);
     }
 }

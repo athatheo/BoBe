@@ -13,6 +13,7 @@ use crate::error::AppError;
 use crate::models::ids::GoalId;
 use crate::models::types::GoalStatus;
 use crate::services::goals::goal_md::GoalDoc;
+use crate::services::goals::goals_service::GoalPatch;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GoalResponse {
@@ -140,16 +141,7 @@ pub(crate) async fn create_goal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GoalCreateRequest>,
 ) -> Result<(StatusCode, Json<GoalResponse>), AppError> {
-    if body.title.trim().is_empty() {
-        return Err(AppError::Validation("title must not be empty".into()));
-    }
-    if body.priority > 5 {
-        return Err(AppError::Validation(
-            "priority must be 0-5 (5 = highest)".into(),
-        ));
-    }
-
-    let mut doc = GoalDoc::new(body.title.trim(), body.summary);
+    let mut doc = GoalDoc::new(body.title, body.summary);
     doc.priority = body.priority;
     doc.why_it_matters = body.why_it_matters;
 
@@ -162,25 +154,23 @@ pub(crate) async fn update_goal(
     Path(goal_id): Path<GoalId>,
     Json(body): Json<GoalUpdateRequest>,
 ) -> Result<Json<GoalResponse>, AppError> {
-    if let Some(p) = body.priority
-        && p > 5
-    {
-        return Err(AppError::Validation(
-            "priority must be 0-5 (5 = highest)".into(),
-        ));
-    }
-
     let updated = state
         .services
         .goals_service
         .update(
             goal_id,
-            body.title,
-            body.status,
-            body.priority,
-            body.summary,
-            body.why_it_matters,
-            body.notes,
+            GoalPatch {
+                title: body.title,
+                status: body.status,
+                priority: body.priority,
+                summary: body.summary,
+                why_it_matters: body.why_it_matters,
+                how_working_on_it: None,
+                patterns_observed: None,
+                attitude_feelings: None,
+                open_questions: None,
+                notes: body.notes,
+            },
         )
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Goal {goal_id} not found")))?;

@@ -227,13 +227,6 @@ final class SettingsStore {
         }
     }
 
-    /// Daemon-reported restart-required fields appended after a successful
-    /// persist. Called by panels that need to know which specific fields
-    /// were applied (BehaviorPanel renders the banner; others can ignore).
-    func registerDaemonRestartFields(_ fields: [String]) {
-        self.restartFields.formUnion(fields)
-    }
-
     /// Clear the restart-required set when the user dismisses the banner.
     func clearRestartFields() {
         self.restartFields.removeAll()
@@ -282,21 +275,6 @@ final class SettingsStore {
         )
     }
 
-    /// Convenience for `Double`-backed fields a panel renders as `Int` (e.g.
-    /// `goalCheckIntervalSeconds`). Rounds on read, casts on write.
-    func intBinding(
-        _ keyPath: WritableKeyPath<DaemonSettings, Double>,
-        fallback: @autoclosure @escaping () -> Int,
-        touched: String? = nil
-    ) -> Binding<Int> {
-        Binding(
-            get: { Int((self.settings?[keyPath: keyPath] ?? Double(fallback())).rounded()) },
-            set: { [self] newValue in
-                self.update(touched: touched) { $0[keyPath: keyPath] = Double(newValue) }
-            }
-        )
-    }
-
     func durationMinutesBinding(
         _ keyPath: WritableKeyPath<DaemonSettings, Double>,
         fallbackSeconds: @autoclosure @escaping () -> Int,
@@ -326,13 +304,5 @@ final class SettingsStore {
     /// owned by the debouncer and runs to completion regardless.
     func cancelToast() {
         self.debouncer.cancelToast()
-    }
-
-    /// Clear the saved/error chrome without persisting. Used when a panel
-    /// wants to refresh from the daemon without surfacing the previous
-    /// toast on re-appear.
-    func clearChrome() {
-        self.savedMessage = nil
-        self.error = nil
     }
 }

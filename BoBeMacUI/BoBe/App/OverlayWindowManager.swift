@@ -86,6 +86,13 @@ final class OverlayWindowManager: NSObject, NSWindowDelegate {
             x: newX, y: newY,
             width: clampedWidth, height: clampedHeight
         )
+        guard abs(newFrame.width - currentFrame.width) > 0.5
+            || abs(newFrame.height - currentFrame.height) > 0.5
+            || abs(newFrame.origin.x - currentFrame.origin.x) > 0.5
+            || abs(newFrame.origin.y - currentFrame.origin.y) > 0.5
+        else {
+            return
+        }
         panel.setFrame(newFrame, display: true, animate: false)
     }
 

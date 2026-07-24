@@ -21,9 +21,6 @@
 "overlay.avatar.state.speaking" = "falando";
 "overlay.avatar.state.thinking" = "pensando";
 "overlay.avatar.state.wants_to_speak" = "quer falar";
-"overlay.chat.action.collapse" = "recolher";
-"overlay.chat.action.read_more" = "mais…";
-"overlay.chat.hidden_messages_format" = "+%d mensagens ocultas";
 "overlay.chat.pending_suffix" = " · enviando…";
 "overlay.chat.sender.bobe" = "BoBe";
 "overlay.chat.sender.you" = "você";
@@ -148,7 +145,6 @@
 "settings.mcp.error.empty_json" = "O JSON do MCP não pode estar vazio.";
 "settings.mcp.loading" = "Carregando configuração do MCP...";
 "settings.mcp.status.validation_passed_format" = "Validação concluída (%d servidor(es)).";
-"settings.mcp.title" = "Configuração do MCP";
 "settings.memories.loading" = "Carregando memórias...";
 "settings.memory.action.reload" = "Reload";
 "settings.memory.action.reset_default" = "Reset to default";
@@ -162,17 +158,6 @@
 "settings.privacy.danger.action.deleting" = "Excluindo...";
 "settings.privacy.danger.confirm_prompt_format" = "Digite %@ para confirmar";
 "settings.privacy.danger.description" = "Exclua todas as metas, memórias, souls não padrão, perfis de usuário não padrão e configurações de servidores MCP deste dispositivo.";
-"settings.privacy.danger.error.goal_format" = "meta %@";
-"settings.privacy.danger.error.goals" = "metas";
-"settings.privacy.danger.error.mcp" = "mcp";
-"settings.privacy.danger.error.memory" = "memory";
-"settings.privacy.danger.error.profile_format" = "perfil %@";
-"settings.privacy.danger.error.profiles" = "perfis";
-"settings.privacy.danger.error.soul_format" = "soul %@";
-"settings.privacy.danger.error.souls" = "souls";
-"settings.privacy.danger.status.more_suffix" = ", ...";
-"settings.privacy.danger.status.partial_format" = "Exclusão concluída com problemas: %@%@";
-"settings.privacy.danger.status.success" = "Todos os dados locais foram excluídos.";
 "settings.privacy.danger.title" = "Zona de perigo";
 "settings.privacy.storage.description" = "O BoBe armazena dados localmente neste Mac. Souls, metas, memórias, perfil de usuário e ajustes de execução permanecem no dispositivo.";
 "settings.privacy.storage.included.list" = "• Souls e metas\n• Memórias e observações\n• Perfil de usuário e ajustes\n• Metadados de modelos locais";
@@ -186,7 +171,6 @@
 "settings.shared.restart_banner.dismiss" = "Got it";
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ ativado";
-"settings.shared.toggle.enabled" = "Ativado";
 "settings.souls.delete.accessibility" = "Excluir soul";
 "settings.souls.empty.description" = "Crie uma para definir a personalidade do BoBe";
 "settings.souls.empty.select" = "Selecione uma soul para editar";
@@ -270,7 +254,6 @@
 "setup.local.cancel" = "Cancel";
 "setup.local.retry" = "Try again";
 "settings.category.engine" = "Engine";
-"settings.engine.title" = "Engine";
 "settings.engine.description" = "Pick where BoBe's AI runs and which models it uses for each kind of work.";
 "settings.engine.loading" = "Loading engine settings…";
 "settings.engine.mode.title" = "Where AI runs";
@@ -350,7 +333,6 @@
 /* TODO translate */ "setup.cloud_auth.error.generic" = "BoBe couldn't check your sign-in. Try again in a moment.";
 /* TODO translate */ "app.service_error.summary" = "BoBe couldn't start her backend. This is usually a temporary glitch.";
 /* TODO translate */ "app.service_error.persistent_summary" = "BoBe's backend keeps failing to start. If retrying doesn't help, try reinstalling BoBe from the original DMG.";
-/* TODO translate */ "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
 /* TODO translate */ "settings.window.search.enable_expert" = "Enable Expert mode";
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";

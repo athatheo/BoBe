@@ -22,8 +22,31 @@ use crate::voice::telemetry::HIST_LLM_TTFT_MS;
 const STALL_THRESHOLD: Duration = Duration::from_millis(800);
 const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StreamDelivery {
+    LegacySse,
+    LegacySseWithLiveObserver,
+    EndpointOnly,
+}
+
+impl StreamDelivery {
+    pub(crate) const fn emits_legacy_sse(self) -> bool {
+        matches!(self, Self::LegacySse | Self::LegacySseWithLiveObserver)
+    }
+
+    pub(crate) const fn is_endpoint_only(self) -> bool {
+        matches!(self, Self::EndpointOnly)
+    }
+
+    pub(crate) const fn has_irreversible_observer(self) -> bool {
+        matches!(self, Self::LegacySseWithLiveObserver | Self::EndpointOnly)
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct StreamResult {
+    message_id: String,
+    sequence: usize,
     pub(crate) full_response: String,
     pub(crate) chunk_count: usize,
     pub(crate) duration_ms: f64,
@@ -32,6 +55,16 @@ pub(crate) struct StreamResult {
 }
 
 impl StreamResult {
+    pub(crate) fn emit_terminal(&self, event_queue: &EventQueue, delivery: StreamDelivery) {
+        if delivery.emits_legacy_sse() {
+            event_queue.push(end_of_turn_event(
+                &self.message_id,
+                self.sequence,
+                &self.full_response,
+            ));
+        }
+    }
+
     /// Chunks-per-second for completion logs; `0.0` when duration is zero
     /// (an empty stream — the divide-by-zero guard).
     pub(crate) fn chunks_per_sec(&self) -> f64 {
@@ -72,13 +105,7 @@ impl StreamAccumulator {
         self.success = false;
     }
 
-    fn finish(self, event_queue: &EventQueue) -> StreamResult {
-        event_queue.push(end_of_turn_event(
-            &self.msg_id,
-            self.sequence,
-            &self.full_response,
-        ));
-
+    fn finish(self) -> StreamResult {
         let duration_ms = self.start_time.elapsed().as_secs_f64() * MILLIS_PER_SECOND;
         let first_token_ms = self
             .first_token_time
@@ -88,6 +115,8 @@ impl StreamAccumulator {
         }
 
         StreamResult {
+            message_id: self.msg_id,
+            sequence: self.sequence,
             full_response: self.full_response,
             chunk_count: self.sequence,
             duration_ms,
@@ -101,6 +130,7 @@ pub(crate) async fn stream_chat_delta_response<F, Fut>(
     mut stream: Pin<Box<dyn Stream<Item = ChatDelta> + Send>>,
     event_queue: &EventQueue,
     msg_id: Option<&str>,
+    delivery: StreamDelivery,
     mut on_text_delta: F,
 ) -> StreamResult
 where
@@ -122,12 +152,14 @@ where
                     timeout_ms = STREAM_IDLE_TIMEOUT.as_millis() as u64,
                     "stream_chat_delta.idle_timeout"
                 );
-                event_queue.push(error_event(
-                    state.msg_id(),
-                    "CHAT_STREAM_TIMEOUT",
-                    "Assistant stream stopped responding",
-                    true,
-                ));
+                if delivery.emits_legacy_sse() {
+                    event_queue.push(error_event(
+                        state.msg_id(),
+                        "CHAT_STREAM_TIMEOUT",
+                        "Assistant stream stopped responding",
+                        true,
+                    ));
+                }
                 break;
             }
         };
@@ -157,12 +189,14 @@ where
 
                     state.full_response.push_str(&text);
                     on_text_delta(text.clone()).await;
-                    event_queue.push(text_delta_event(
-                        state.msg_id(),
-                        &text,
-                        state.sequence,
-                        false,
-                    ));
+                    if delivery.emits_legacy_sse() {
+                        event_queue.push(text_delta_event(
+                            state.msg_id(),
+                            &text,
+                            state.sequence,
+                            false,
+                        ));
+                    }
                     state.sequence += 1;
                 }
             }
@@ -181,57 +215,80 @@ where
                         state.first_token_time = Some(Instant::now());
                     }
                     on_text_delta(content.clone()).await;
-                    event_queue.push(text_delta_event(
-                        state.msg_id(),
-                        &content,
-                        state.sequence,
-                        false,
-                    ));
+                    if delivery.emits_legacy_sse() {
+                        event_queue.push(text_delta_event(
+                            state.msg_id(),
+                            &content,
+                            state.sequence,
+                            false,
+                        ));
+                    }
                     state.full_response = content;
                     state.sequence += 1;
                 } else if content != state.full_response {
                     if let Some(missing) = content.strip_prefix(&state.full_response) {
                         if !missing.is_empty() {
                             on_text_delta(missing.to_owned()).await;
-                            event_queue.push(text_delta_event(
-                                state.msg_id(),
-                                missing,
-                                state.sequence,
-                                false,
-                            ));
+                            if delivery.emits_legacy_sse() {
+                                event_queue.push(text_delta_event(
+                                    state.msg_id(),
+                                    missing,
+                                    state.sequence,
+                                    false,
+                                ));
+                            }
                             state.sequence += 1;
                         }
+                        state.full_response = content;
                     } else {
                         warn!(
                             accumulated_bytes = state.full_response.len(),
                             final_bytes = content.len(),
                             "stream_chat_delta.final_content_diverged"
                         );
+                        if delivery.has_irreversible_observer() {
+                            state.mark_failed();
+                            if delivery.emits_legacy_sse() {
+                                event_queue.push(error_event(
+                                    state.msg_id(),
+                                    "RESPONSE_DIVERGED",
+                                    "The assistant response changed after delivery began",
+                                    true,
+                                ));
+                            }
+                        } else {
+                            // Text-only clients can safely converge on the
+                            // authoritative terminal response.
+                            state.full_response = content;
+                        }
                     }
-                    // The terminal event is authoritative for persistence even
-                    // when a lagged subscription dropped or rewrote deltas.
-                    state.full_response = content;
                 }
             }
             ChatDelta::ToolStart { id, name } => {
                 info!(tool = %name, "tool_call.start");
-                event_queue.push(tool_call_start_event(state.msg_id(), &name, &id));
+                if delivery.emits_legacy_sse() {
+                    event_queue.push(tool_call_start_event(state.msg_id(), &name, &id));
+                }
             }
             ChatDelta::ToolComplete { id, name, success } => {
                 info!(tool = %name, success, "tool_call.complete");
-                event_queue.push(tool_call_complete_event(
-                    state.msg_id(),
-                    &name,
-                    &id,
-                    Some(success),
-                    None,
-                    None,
-                ));
+                if delivery.emits_legacy_sse() {
+                    event_queue.push(tool_call_complete_event(
+                        state.msg_id(),
+                        &name,
+                        &id,
+                        Some(success),
+                        None,
+                        None,
+                    ));
+                }
             }
             ChatDelta::Error(msg) => {
                 state.mark_failed();
                 error!(error = %msg, chunks = state.sequence, "stream_chat_delta.error");
-                event_queue.push(error_event(state.msg_id(), "CHAT_ERROR", &msg, true));
+                if delivery.emits_legacy_sse() {
+                    event_queue.push(error_event(state.msg_id(), "CHAT_ERROR", &msg, true));
+                }
             }
             ChatDelta::Done => {
                 debug!(chunks = state.sequence, "stream_chat_delta.done");
@@ -240,7 +297,7 @@ where
         }
     }
 
-    state.finish(event_queue)
+    state.finish()
 }
 
 #[cfg(test)]
@@ -271,6 +328,7 @@ mod tests {
             Box::pin(stream::iter(events)),
             &queue,
             Some("msg"),
+            StreamDelivery::LegacySse,
             move |delta| {
                 let observed = Arc::clone(&observed_for_callback);
                 async move {
@@ -284,6 +342,7 @@ mod tests {
         .await;
 
         assert_eq!(result.full_response, "Hello");
+        result.emit_terminal(&queue, StreamDelivery::LegacySse);
         let terminal = queue.clear().pop().expect("terminal event should exist");
         assert_eq!(terminal.payload["done"], true);
         assert_eq!(terminal.payload["delta"], "Hello");
@@ -293,6 +352,60 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             "Hello"
         );
+    }
+
+    #[tokio::test]
+    async fn endpoint_stream_fails_when_terminal_content_rewrites_observed_text() {
+        let events = vec![
+            ChatDelta::MessageDelta("Wrong answer.".into()),
+            ChatDelta::MessageComplete {
+                content: "Correct answer.".into(),
+                output_tokens: Some(2),
+            },
+            ChatDelta::Done,
+        ];
+        let queue = EventQueue::new(16);
+
+        let result = stream_chat_delta_response(
+            Box::pin(stream::iter(events)),
+            &queue,
+            Some("msg"),
+            StreamDelivery::EndpointOnly,
+            |_| async {},
+        )
+        .await;
+
+        assert_eq!(result.full_response, "Wrong answer.");
+        assert!(!result.success);
+    }
+
+    #[tokio::test]
+    async fn legacy_sse_voice_observer_fails_on_terminal_rewrite() {
+        let events = vec![
+            ChatDelta::MessageDelta("Spoken answer.".into()),
+            ChatDelta::MessageComplete {
+                content: "Persisted answer.".into(),
+                output_tokens: Some(2),
+            },
+            ChatDelta::Done,
+        ];
+        let queue = EventQueue::new(16);
+
+        let result = stream_chat_delta_response(
+            Box::pin(stream::iter(events)),
+            &queue,
+            Some("msg"),
+            StreamDelivery::LegacySseWithLiveObserver,
+            |_| async {},
+        )
+        .await;
+
+        assert_eq!(result.full_response, "Spoken answer.");
+        assert!(!result.success);
+        let events = queue.clear();
+        assert!(events.iter().any(|event| {
+            event.payload["code"] == "RESPONSE_DIVERGED" && event.payload["recoverable"] == true
+        }));
     }
 
     #[tokio::test]
@@ -308,10 +421,12 @@ mod tests {
             Box::pin(stream::iter(events)),
             &queue,
             Some("msg"),
+            StreamDelivery::LegacySse,
             |_| async {},
         )
         .await;
 
+        result.emit_terminal(&queue, StreamDelivery::LegacySse);
         let queued = queue.clear();
         assert_eq!(queued.len(), 1);
         assert_eq!(queued[0].payload["done"], true);
@@ -335,10 +450,87 @@ mod tests {
             Box::pin(stream::iter(events)),
             &queue,
             Some("msg"),
+            StreamDelivery::LegacySse,
             |_| async {},
         )
         .await;
 
         assert_eq!(result.full_response, "final");
+    }
+
+    #[tokio::test]
+    async fn endpoint_only_delivery_never_enters_legacy_sse_queue() {
+        let events = vec![
+            ChatDelta::MessageDelta("private".into()),
+            ChatDelta::ToolStart {
+                id: "tool-1".into(),
+                name: "read_file".into(),
+            },
+            ChatDelta::ToolComplete {
+                id: "tool-1".into(),
+                name: "read_file".into(),
+                success: true,
+            },
+            ChatDelta::Done,
+        ];
+        let queue = EventQueue::new(16);
+
+        let result = stream_chat_delta_response(
+            Box::pin(stream::iter(events)),
+            &queue,
+            Some("body-turn"),
+            StreamDelivery::EndpointOnly,
+            |_| async {},
+        )
+        .await;
+
+        assert_eq!(result.full_response, "private");
+        result.emit_terminal(&queue, StreamDelivery::EndpointOnly);
+        assert!(queue.clear().is_empty());
+    }
+
+    #[tokio::test]
+    async fn endpoint_only_failure_is_preserved_without_leaking_error_content() {
+        let events = vec![ChatDelta::Error("private failure".into()), ChatDelta::Done];
+        let queue = EventQueue::new(16);
+
+        let result = stream_chat_delta_response(
+            Box::pin(stream::iter(events)),
+            &queue,
+            Some("body-turn"),
+            StreamDelivery::EndpointOnly,
+            |_| async {},
+        )
+        .await;
+
+        assert!(!result.success);
+        assert!(queue.clear().is_empty());
+    }
+
+    #[tokio::test]
+    async fn caller_controls_terminal_publication() {
+        let events = vec![ChatDelta::MessageDelta("durable".into()), ChatDelta::Done];
+        let queue = EventQueue::new(16);
+
+        let result = stream_chat_delta_response(
+            Box::pin(stream::iter(events)),
+            &queue,
+            Some("msg"),
+            StreamDelivery::LegacySse,
+            |_| async {},
+        )
+        .await;
+
+        assert!(
+            queue
+                .clear()
+                .iter()
+                .all(|event| event.payload["done"] == false)
+        );
+
+        result.emit_terminal(&queue, StreamDelivery::LegacySse);
+        let terminal = queue.clear().pop().expect("terminal event should exist");
+        assert_eq!(terminal.payload["done"], true);
+        assert_eq!(terminal.payload["delta"], "durable");
     }
 }

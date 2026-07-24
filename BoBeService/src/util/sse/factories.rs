@@ -2,7 +2,7 @@ use serde_json::json;
 
 use super::types::{EventType, IndicatorType, StreamBundle};
 
-pub(crate) fn indicator_event(indicator: IndicatorType, _message: Option<&str>) -> StreamBundle {
+pub(crate) fn indicator_event(indicator: IndicatorType) -> StreamBundle {
     StreamBundle::now(
         EventType::Indicator,
         String::new(),
@@ -132,5 +132,14 @@ pub(crate) fn conversation_closed_event(
             "reason": reason,
             "turn_count": turn_count,
         }),
+    )
+}
+
+pub(crate) fn conversation_changed_event(conversation_id: &str) -> StreamBundle {
+    StreamBundle::now(
+        EventType::ConversationChanged,
+        String::new(),
+        "conversation_changed".to_owned(),
+        json!({ "conversation_id": conversation_id }),
     )
 }

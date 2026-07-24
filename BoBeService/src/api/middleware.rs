@@ -3,13 +3,65 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::body::Body;
-use axum::http::{HeaderValue, Request, StatusCode, header};
+use axum::extract::State;
+use axum::http::{HeaderValue, Method, Request, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::constants::MILLIS_PER_SECOND;
+use crate::{app_state::AppState, error::AppError};
+
+pub(crate) async fn personal_data_exclusion(
+    State(state): State<Arc<AppState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Result<Response, AppError> {
+    if !is_personal_data_mutation(request.method(), request.uri().path()) {
+        return Ok(next.run(request).await);
+    }
+    let _guard = state
+        .runtime
+        .runtime_session
+        .try_begin_personal_data_access()
+        .map_err(|message| AppError::Conflict(message.into()))?;
+    Ok(next.run(request).await)
+}
+
+fn is_personal_data_mutation(method: &Method, path: &str) -> bool {
+    *method != Method::GET
+        && [
+            "/goals",
+            "/memory",
+            "/souls",
+            "/user-profiles",
+            "/tools/mcp/config",
+        ]
+        .iter()
+        .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
+}
+
+#[cfg(test)]
+mod personal_data_tests {
+    use super::*;
+
+    #[test]
+    fn gates_personal_mutations_but_not_reads_or_operational_settings() {
+        assert!(is_personal_data_mutation(&Method::PUT, "/memory"));
+        assert!(is_personal_data_mutation(
+            &Method::DELETE,
+            "/goals/00000000-0000-0000-0000-000000000000"
+        ));
+        assert!(is_personal_data_mutation(
+            &Method::POST,
+            "/tools/mcp/config/validate"
+        ));
+        assert!(!is_personal_data_mutation(&Method::GET, "/memory"));
+        assert!(!is_personal_data_mutation(&Method::PATCH, "/settings"));
+        assert!(!is_personal_data_mutation(&Method::POST, "/message"));
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct AllowedHosts {

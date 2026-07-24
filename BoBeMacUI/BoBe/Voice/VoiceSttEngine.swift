@@ -34,6 +34,7 @@ protocol VoiceSttEngine: Sendable {
 enum VoiceSttCallbackEvent: Sendable {
     case partial(String)
     case endOfUtterance(String)
+    case barrier(CheckedContinuation<Void, Never>)
 }
 
 struct VoiceSttLoadProgress: Sendable, Equatable {

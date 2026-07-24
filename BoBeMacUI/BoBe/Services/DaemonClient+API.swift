@@ -30,7 +30,11 @@ extension DaemonClient {
     }
 
     func purgePersonalData() async throws -> PrivacyPurgeResponse {
-        try await fetch("/privacy/data", method: "DELETE")
+        try await fetch(
+            "/privacy/data",
+            method: "DELETE",
+            requestTimeout: PrivacyWire.purgeRequestTimeoutSeconds
+        )
     }
 
     // MARK: Settings
@@ -50,6 +54,10 @@ extension DaemonClient {
         try await fetch("/status")
     }
 
+    func getCurrentConversation() async throws -> ConversationSnapshotResponse {
+        try await fetch("/conversation/current")
+    }
+
     // MARK: Engine + auth + models
 
     func getAuthStatus() async throws -> AuthStatusResponse {
@@ -58,8 +66,8 @@ extension DaemonClient {
 
     /// `engine == nil` uses daemon's current `Config.engine`. Local returns 503 if Ollama is down.
     func listModels(engine: String? = nil) async throws -> ListModelsResponse {
-        let suffix = engine.map { "?engine=\($0)" } ?? ""
-        return try await fetch("/models\(suffix)")
+        let queryItems = engine.map { [URLQueryItem(name: "engine", value: $0)] } ?? []
+        return try await fetch("/models", queryItems: queryItems)
     }
 
     // MARK: Local runtime install
@@ -85,7 +93,7 @@ extension DaemonClient {
         while !Task.isCancelled {
             let url = self.endpointURL("local-runtime/status")
             var request = URLRequest(url: url)
-            self.authorize(&request)
+            DaemonConfig.endpoint.authorize(&request)
             request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             request.timeoutInterval = 0
 
@@ -147,7 +155,7 @@ extension DaemonClient {
 
     // MARK: Copilot login (cloud-auth device flow)
 
-    /// Kicks off the bundled CLI's device flow. Returns 202; the device
+    /// Kicks off the installed CLI's device flow. Returns 202; the device
     /// code and URL stream via `streamCopilotLogin()`.
     func startCopilotLogin() async throws {
         try await self.fetchVoid("/auth/copilot/login/start", method: "POST")
@@ -167,7 +175,7 @@ extension DaemonClient {
     ) async throws {
         let url = self.endpointURL("auth/copilot/login/events")
         var request = URLRequest(url: url)
-        self.authorize(&request)
+        DaemonConfig.endpoint.authorize(&request)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 0
 

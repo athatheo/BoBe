@@ -14,7 +14,13 @@ use crate::voice::engines::VoiceEnginesSnapshot;
 /// Build a `VoiceEnginesSnapshot` from the models currently on disk.
 /// Includes async TTS filler-library synthesis when TTS loads.
 pub(super) async fn build_voice_engines_snapshot() -> VoiceEnginesSnapshot {
-    let tts = load_tts();
+    let tts = match tokio::task::spawn_blocking(load_tts).await {
+        Ok(tts) => tts,
+        Err(error) => {
+            warn!(%error, "voice.tts_load_join_failed");
+            None
+        }
+    };
     let filler_library = match tts.as_ref() {
         Some(tts_engine) => Some(Arc::new(
             crate::voice::filler_library::FillerLibrary::render(Arc::clone(tts_engine)).await,

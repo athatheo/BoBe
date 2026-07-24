@@ -8,5 +8,6 @@ pub(crate) mod registry;
 mod registry_session_factory;
 pub(crate) mod session_store;
 pub(crate) mod skills;
+pub(crate) mod tools;
 pub(crate) mod types;
 pub(crate) mod workers;

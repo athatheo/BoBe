@@ -17,12 +17,14 @@ final class ToolExecutionController {
     }
 
     func process(_ payload: AnyCodablePayload) {
-        if let start = try? payload.decode(as: ToolCallStartPayload.self), start.status == "start" {
+        if let start = try? payload.decode(as: ToolCallStartPayload.self),
+           start.status == ToolCallStatusWire.start {
             self.handleStart(start)
             return
         }
 
-        if let complete = try? payload.decode(as: ToolCallCompletePayload.self), complete.status == "complete" {
+        if let complete = try? payload.decode(as: ToolCallCompletePayload.self),
+           complete.status == ToolCallStatusWire.complete {
             self.handleComplete(complete)
         }
     }

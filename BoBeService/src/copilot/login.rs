@@ -1,5 +1,5 @@
 //! In-process driver for `copilot login` (GitHub's official Copilot CLI
-//! device-flow). The daemon spawns the bundled CLI under a pseudo-TTY
+//! device-flow). The daemon spawns the installed CLI under a pseudo-TTY
 //! (macOS `script -q /dev/null …`) because the Node CLI suppresses output
 //! when `process.stdout.isTTY` is false, parses the device code + URL
 //! from stdout, and broadcasts phase updates to one or more SSE consumers.
@@ -101,10 +101,9 @@ impl LoginCoordinator {
     /// one if none exists. Conflict if a session is in-flight in any
     /// non-terminal phase.
     ///
-    /// `cli_path` comes from the SDK's `embeddedcli::path()` and must
-    /// point at an already-extracted binary. Caller is responsible for
-    /// `Client::start()` (which extracts the bundle) running once first;
-    /// the `/auth/status` route does that on app boot.
+    /// `cli_path` is the helper path already resolved for the SDK client.
+    /// The caller starts the client first so external and embedded-fallback
+    /// resolution follows the same lifecycle.
     pub(crate) async fn start(
         self: &Arc<Self>,
         cli_path: PathBuf,
@@ -179,6 +178,8 @@ async fn run_login(
         .arg("-q")
         .arg("/dev/null")
         .arg(&cli_path)
+        // The signed app helper is immutable; updates arrive with BoBe/Sparkle.
+        .arg("--no-auto-update")
         .arg("login")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

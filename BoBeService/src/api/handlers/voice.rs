@@ -17,18 +17,20 @@ use tracing::{debug, error, info, warn};
 
 use crate::api::middleware::AllowedOrigins;
 use crate::app_state::AppState;
+use crate::runtime::response_streamer::StreamDelivery;
 use crate::voice::context::VoiceContext;
 use crate::voice::control::handle_control_text;
 use crate::voice::engines::VoiceEngines;
+use crate::voice::output::{VoiceOutput, VoiceOutputFrame};
 use crate::voice::protocol_helpers::close_with_error;
 use crate::voice::session::{VoiceDefaults, VoiceSession};
-use crate::voice::sinks::SinkGuard;
 
 const OUTBOUND_CHANNEL_CAPACITY: usize = 64;
 /// Server Ping cadence; auto-Pong from the client doubles as freshness.
 const KEEPALIVE_PING_INTERVAL: Duration = Duration::from_secs(25);
 /// Recv-side close window; auto-Pongs land inside it for any live client.
 const KEEPALIVE_STALE_TIMEOUT: Duration = Duration::from_mins(1);
+const WS_SEND_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Drop-on-panic clears the flag so a crashed handler doesn't lock the slot.
 struct VoiceWsPermit(Arc<AtomicBool>);
@@ -67,23 +69,21 @@ struct SessionTeardown {
     keepalive: tokio::task::JoinHandle<()>,
     session: Option<VoiceSession>,
     writer: tokio::task::JoinHandle<()>,
-    sink_guard: SinkGuard,
     ctx: VoiceContext,
-    out_tx: mpsc::Sender<Message>,
+    output: VoiceOutput,
 }
 
 /// Bounded drain; kokoro_task isn't cancellation-aware until synth returns,
 /// so without this the ws_permit leaks for 5-15s. Clean drains take <10ms.
 const WRITER_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
-async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
+async fn teardown_session(td: SessionTeardown) {
     let SessionTeardown {
         keepalive,
         mut session,
         writer,
-        sink_guard,
         ctx,
-        out_tx,
+        output,
     } = td;
 
     // Abort eagerly to suppress a final stray Ping post-disconnect.
@@ -98,17 +98,9 @@ async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
         info!(session = %s.session_id, "voice.disconnect");
     }
 
-    // Sync clear so writer.await sees all senders gone; SinkGuard::drop is panic fallback only.
-    state
-        .voice
-        .voice_sink
-        .uninstall_if_current(sink_guard.generation)
-        .await;
-    drop(sink_guard);
-
-    // Order matters: ctx holds an out_tx clone; drop it first or writer hangs.
+    // Order matters: ctx holds an output clone; drop it first or writer hangs.
     drop(ctx);
-    drop(out_tx);
+    drop(output);
 
     let mut writer = writer;
     match tokio::time::timeout(WRITER_DRAIN_TIMEOUT, &mut writer).await {
@@ -133,11 +125,25 @@ async fn teardown_session(state: &Arc<AppState>, td: SessionTeardown) {
 /// Sole owner of `ws_tx`; everyone else posts via cloned `out_tx`. Exits on all-senders-dropped.
 fn spawn_writer(
     mut ws_tx: futures::stream::SplitSink<WebSocket, Message>,
-    mut out_rx: mpsc::Receiver<Message>,
+    mut out_rx: mpsc::Receiver<VoiceOutputFrame>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        while let Some(msg) = out_rx.recv().await {
-            if ws_tx.send(msg).await.is_err() {
+        while let Some(frame) = out_rx.recv().await {
+            let msg = match frame {
+                VoiceOutputFrame::Control(control) => {
+                    let Ok(text) = serde_json::to_string(&control) else {
+                        error!("voice.control_encode_failed");
+                        continue;
+                    };
+                    Message::Text(text.into())
+                }
+                VoiceOutputFrame::Audio(bytes) => Message::Binary(bytes.into()),
+                VoiceOutputFrame::Ping => Message::Ping(Vec::new().into()),
+            };
+            if !matches!(
+                tokio::time::timeout(WS_SEND_TIMEOUT, ws_tx.send(msg)).await,
+                Ok(Ok(()))
+            ) {
                 break;
             }
         }
@@ -146,14 +152,14 @@ fn spawn_writer(
 }
 
 /// 25s Pings; recv `KEEPALIVE_STALE_TIMEOUT` catches dead clients via missing Pongs.
-fn spawn_keepalive(out_tx: mpsc::Sender<Message>) -> tokio::task::JoinHandle<()> {
+fn spawn_keepalive(output: VoiceOutput) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(KEEPALIVE_PING_INTERVAL);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         ticker.tick().await; // skip the immediate first tick
         loop {
             ticker.tick().await;
-            if out_tx.send(Message::Ping(Vec::new().into())).await.is_err() {
+            if !output.ping().await {
                 break;
             }
         }
@@ -208,16 +214,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     };
 
     let (ws_tx, mut rx) = socket.split();
-    let (out_tx, out_rx) = mpsc::channel::<Message>(OUTBOUND_CHANNEL_CAPACITY);
+    let (output, out_rx) = VoiceOutput::channel(OUTBOUND_CHANNEL_CAPACITY);
 
     let writer = spawn_writer(ws_tx, out_rx);
-    let keepalive = spawn_keepalive(out_tx.clone());
+    let keepalive = spawn_keepalive(output.clone());
 
     let mut session: Option<VoiceSession> = None;
     let runtime_session = Arc::clone(&state.runtime.runtime_session);
-
-    // Install WS sink; SinkGuard::drop on scope-exit makes mid-turn hook fires no-op.
-    let sink_guard = state.voice.voice_sink.install(out_tx.clone()).await;
 
     // CRITICAL: reset shared engines on WS-accept so prior session state
     // doesn't leak forward. The streaming Zipformer + Silero engines are
@@ -232,11 +235,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let (turn_completion_tx, mut turn_completion_rx) = mpsc::channel::<()>(8);
 
     let ctx = VoiceContext {
-        out_tx: out_tx.clone(),
+        output: output.clone(),
         runtime_session: Arc::clone(&runtime_session),
         engines: engines.clone(),
         voice_defaults: voice_defaults.clone(),
         voice_turn_active: Arc::clone(&state.voice.voice_turn_active),
+        voice_sink: Arc::clone(&state.voice.voice_sink),
+        delivery: StreamDelivery::LegacySseWithLiveObserver,
+        send_server_tts_text: false,
         turn_completion_tx,
     };
 
@@ -296,16 +302,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    teardown_session(
-        &state,
-        SessionTeardown {
-            keepalive,
-            session,
-            writer,
-            sink_guard,
-            ctx,
-            out_tx,
-        },
-    )
+    teardown_session(SessionTeardown {
+        keepalive,
+        session,
+        writer,
+        ctx,
+        output,
+    })
     .await;
 }

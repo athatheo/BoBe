@@ -2,11 +2,9 @@
 * @athatheo @johnkozaris
 
 # Release control plane — extra scrutiny
-.github/workflows/ @athatheo @johnkozaris
 justfile @athatheo @johnkozaris
 .gitignore @athatheo @johnkozaris
 docs/UpdatingOTA.md @athatheo @johnkozaris
-docs/CODE_SIGNING.md @athatheo @johnkozaris
 
 # macOS app signing and packaging
 BoBeMacUI/entitlements.plist @athatheo @johnkozaris
@@ -20,5 +18,5 @@ BoBeService/Cargo.lock @athatheo @johnkozaris
 
 # Security-sensitive code
 BoBeService/src/secrets.rs @athatheo @johnkozaris
-BoBeService/src/tools/mcp/security.rs @athatheo @johnkozaris
+BoBeService/src/mcp/security.rs @athatheo @johnkozaris
 SECURITY.md @athatheo @johnkozaris

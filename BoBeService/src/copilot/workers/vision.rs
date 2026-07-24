@@ -68,17 +68,13 @@ impl VisionWorker {
         })
     }
 
-    #[allow(
-        deprecated,
-        reason = "privacy purge must erase SDK session state, not merely disconnect"
-    )]
-    pub(crate) async fn destroy(&self) -> Result<(), WorkerError> {
-        self.session.destroy().await?;
+    pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
+        self.session.disconnect().await?;
         Ok(())
     }
 
-    pub(crate) async fn shutdown(&self) -> Result<(), WorkerError> {
-        self.session.disconnect().await?;
+    pub(crate) async fn abort(&self) -> Result<(), WorkerError> {
+        self.session.abort().await?;
         Ok(())
     }
 }

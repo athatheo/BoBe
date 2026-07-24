@@ -7,6 +7,8 @@ pub(crate) enum TurnSource {
     Capture,
     Goal,
     Checkin,
+    Consolidation,
+    Maintenance,
 }
 pub(crate) struct TurnAdmission {
     occupied: Arc<AtomicBool>,
@@ -32,6 +34,8 @@ mod tests {
     fn sources_share_permit() {
         let a = TurnAdmission::new();
         let p = a.try_admit(TurnSource::Goal).unwrap();
+        assert!(a.try_admit(TurnSource::Consolidation).is_none());
+        assert!(a.try_admit(TurnSource::Maintenance).is_none());
         assert!(a.try_admit(TurnSource::User).is_none());
         drop(p);
         assert!(a.try_admit(TurnSource::Capture).is_some());

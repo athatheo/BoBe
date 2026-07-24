@@ -1,8 +1,10 @@
 use clap::{Parser, Subcommand};
 use secrecy::ExposeSecret;
+use std::sync::Arc;
 
 mod api;
 mod app_state;
+mod body;
 mod bootstrap;
 mod config;
 mod constants;
@@ -71,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
             validate_server_security(&config)?;
             let shutdown = tokio_util::sync::CancellationToken::new();
             let state = bootstrap::run(config.clone()).await?;
+            api::handlers::conversation::recover_message_requests(&state).await?;
             let app = api::router::build_router(std::sync::Arc::clone(&state), shutdown.clone());
 
             let mut tasks = spawn_background_tasks(&state, &shutdown);
@@ -214,6 +217,7 @@ fn spawn_background_tasks(
         let scheduler = runtime::consolidation::ConsolidationScheduler::new(
             std::sync::Arc::clone(&state.runtime.workers),
             std::sync::Arc::clone(&state.runtime.memory_file),
+            std::sync::Arc::clone(&state.runtime.runtime_session),
         );
         let token = shutdown.clone();
         set.spawn(async move {
@@ -236,6 +240,22 @@ fn spawn_background_tasks(
             }
             "storage_retention"
         });
+    }
+
+    {
+        let body_config = state.config().body.clone();
+        if body_config.enabled {
+            let gateway = Arc::clone(&state.body.gateway);
+            let status_gateway = Arc::clone(&gateway);
+            let token = shutdown.clone();
+            set.spawn(async move {
+                if let Err(error) = body::server::run(gateway, body_config, token).await {
+                    status_gateway.mark_failed();
+                    tracing::error!(%error, "body.gateway_failed");
+                }
+                "body_gateway"
+            });
+        }
     }
 
     set

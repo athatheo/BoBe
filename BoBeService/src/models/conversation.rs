@@ -66,6 +66,7 @@ pub(crate) struct ConversationTurn {
     pub(crate) id: ConversationTurnId,
     pub(crate) role: TurnRole,
     pub(crate) content: String,
+    pub(crate) is_complete: bool,
     pub(crate) conversation_id: ConversationId,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
@@ -82,11 +83,22 @@ impl ConversationTurn {
         role: TurnRole,
         content: String,
     ) -> Self {
+        Self::new_with_completion(id, conversation_id, role, content, true)
+    }
+
+    pub(crate) fn new_with_completion(
+        id: ConversationTurnId,
+        conversation_id: ConversationId,
+        role: TurnRole,
+        content: String,
+        is_complete: bool,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id,
             role,
             content,
+            is_complete,
             conversation_id,
             created_at: now,
             updated_at: now,
@@ -100,6 +112,11 @@ impl ConversationTurn {
 
     pub(crate) fn replace_content(&mut self, content: String) {
         self.content = content;
+        self.updated_at = Utc::now();
+    }
+
+    pub(crate) fn set_complete(&mut self, is_complete: bool) {
+        self.is_complete = is_complete;
         self.updated_at = Utc::now();
     }
 }

@@ -33,7 +33,7 @@ impl EventQueue {
         }
         queue.push_back(event);
         drop(queue);
-        self.notify.notify_waiters();
+        self.notify.notify_one();
     }
 
     pub(crate) async fn pop(&self) -> StreamBundle {
@@ -53,7 +53,7 @@ impl EventQueue {
         let mut queue = lock_or_recover(&self.inner, "event_queue.inner");
         queue.push_front(event);
         drop(queue);
-        self.notify.notify_waiters();
+        self.notify.notify_one();
     }
 
     pub(crate) fn current_indicator(&self) -> IndicatorType {
@@ -66,8 +66,14 @@ impl EventQueue {
             return;
         }
         *cur = indicator;
-        drop(cur);
-        self.push(indicator_event(indicator, None));
+        // Keep the indicator lock through enqueue so reconnect replay cannot
+        // append an older snapshot after this newer state.
+        self.push(indicator_event(indicator));
+    }
+
+    pub(crate) fn replay_current_indicator(&self) {
+        let cur = lock_or_recover(&self.current_indicator, "event_queue.current_indicator");
+        self.push(indicator_event(*cur));
     }
 
     pub(crate) fn clear(&self) -> Vec<StreamBundle> {

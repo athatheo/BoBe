@@ -16,7 +16,7 @@ struct StopButton: View {
             Button(action: self.pipeline.interrupt) {
                 ZStack {
                     Circle()
-                        .fill(self.theme.colors.tertiary.opacity(0.85))
+                        .fill(self.theme.colors.tertiary)
                         .frame(width: 36, height: 36)
                     Image(systemName: "stop.fill")
                         .font(.system(size: 12, weight: .bold))

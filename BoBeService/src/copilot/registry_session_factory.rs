@@ -6,7 +6,7 @@
 use github_copilot_sdk::rpc::ModeSetRequest;
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::session_events::SessionMode;
-use github_copilot_sdk::types::ProviderConfig;
+use github_copilot_sdk::types::{ProviderConfig, SetModelOptions};
 
 use crate::config::EngineConfig;
 use crate::constants::DEFAULT_OLLAMA_V1_URL as DEFAULT_LOCAL_BASE_URL;
@@ -18,11 +18,16 @@ use super::types::WorkerClass;
 pub(super) fn session_extras_for_class(
     cfg: &EngineConfig,
     class: WorkerClass,
-) -> (Option<String>, Option<ProviderConfig>) {
+) -> (Option<String>, Option<ProviderConfig>, Option<String>) {
     let model = match class {
         WorkerClass::Chat => cfg.provider_chat_model.clone(),
         WorkerClass::Vision => cfg.provider_vision_model.clone(),
         WorkerClass::Goals | WorkerClass::Consolidate => cfg.provider_batch_model.clone(),
+    };
+    let reasoning = match class {
+        WorkerClass::Chat => cfg.provider_chat_reasoning.clone(),
+        WorkerClass::Vision => cfg.provider_vision_reasoning.clone(),
+        WorkerClass::Goals | WorkerClass::Consolidate => cfg.provider_batch_reasoning.clone(),
     };
 
     let provider = if cfg.engine == crate::models::engine_kind::EngineKind::Local {
@@ -39,7 +44,7 @@ pub(super) fn session_extras_for_class(
         None
     };
 
-    (model, provider)
+    (model, provider, reasoning)
 }
 
 pub(super) fn log_shutdown(class: &str, result: Result<(), WorkerError>) {
@@ -85,5 +90,77 @@ pub(super) async fn apply_runtime_mode(
                 )))
             }
         }
+    }
+}
+
+pub(super) async fn apply_reasoning_effort(
+    session: &Session,
+    class: WorkerClass,
+    model: Option<&str>,
+    reasoning_effort: Option<&str>,
+) -> Result<(), AppError> {
+    if class == WorkerClass::Chat {
+        return Ok(());
+    }
+    let Some(reasoning_effort) = reasoning_effort else {
+        return Ok(());
+    };
+    let Some(model) = model else {
+        tracing::warn!(
+            class = %class.name(),
+            reasoning_effort,
+            "reasoning override ignored because the SDK selected the model"
+        );
+        return Ok(());
+    };
+    if let Err(error) = session
+        .set_model(
+            model,
+            Some(SetModelOptions::default().with_reasoning_effort(reasoning_effort)),
+        )
+        .await
+    {
+        tracing::warn!(
+            class = %class.name(),
+            model,
+            reasoning_effort,
+            err = %error,
+            "reasoning override unsupported; continuing with model default"
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_extras_select_per_class_reasoning() {
+        let config = EngineConfig {
+            provider_chat_reasoning: Some("high".into()),
+            provider_batch_reasoning: Some("low".into()),
+            provider_vision_reasoning: Some("medium".into()),
+            ..EngineConfig::default()
+        };
+
+        assert_eq!(
+            session_extras_for_class(&config, WorkerClass::Chat)
+                .2
+                .as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            session_extras_for_class(&config, WorkerClass::Goals)
+                .2
+                .as_deref(),
+            Some("low")
+        );
+        assert_eq!(
+            session_extras_for_class(&config, WorkerClass::Vision)
+                .2
+                .as_deref(),
+            Some("medium")
+        );
     }
 }

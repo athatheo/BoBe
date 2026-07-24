@@ -16,15 +16,6 @@ enum DaemonError: Error, LocalizedError {
         case let .operationFailed(message): message
         }
     }
-
-    /// Machine-readable error code from the daemon envelope (e.g.
-    /// `AUTH_REQUIRED`, `NO_ENTITLEMENTS`). `nil` for non-HTTP errors or
-    /// when the daemon didn't supply one. Callers branch on this to render
-    /// CTAs instead of raw status strings.
-    var daemonCode: String? {
-        if case let .httpError(_, _, code) = self { return code }
-        return nil
-    }
 }
 
 /// Type-erased `Encodable` wrapper for request bodies whose concrete type

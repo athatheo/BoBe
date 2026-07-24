@@ -21,9 +21,6 @@
 "overlay.avatar.state.speaking" = "話し中";
 "overlay.avatar.state.thinking" = "思考中";
 "overlay.avatar.state.wants_to_speak" = "話したいことがあります";
-"overlay.chat.action.collapse" = "折りたたむ";
-"overlay.chat.action.read_more" = "続き…";
-"overlay.chat.hidden_messages_format" = "+%d 件の非表示メッセージ";
 "overlay.chat.pending_suffix" = " · 送信中…";
 "overlay.chat.sender.bobe" = "BoBe";
 "overlay.chat.sender.you" = "あなた";
@@ -148,7 +145,6 @@
 "settings.mcp.error.empty_json" = "MCP JSONは空にできません。";
 "settings.mcp.loading" = "MCP設定を読み込み中...";
 "settings.mcp.status.validation_passed_format" = "検証に成功しました（%d サーバー）。";
-"settings.mcp.title" = "MCP設定";
 "settings.memories.loading" = "メモリを読み込み中...";
 "settings.memory.action.reload" = "Reload";
 "settings.memory.action.reset_default" = "Reset to default";
@@ -162,17 +158,6 @@
 "settings.privacy.danger.action.deleting" = "削除中...";
 "settings.privacy.danger.confirm_prompt_format" = "確認のため %@ と入力してください";
 "settings.privacy.danger.description" = "このデバイスから、すべてのゴール、メモリ、既定以外のソウル、既定以外のユーザープロファイル、MCPサーバー設定を削除します。";
-"settings.privacy.danger.error.goal_format" = "ゴール %@";
-"settings.privacy.danger.error.goals" = "ゴール";
-"settings.privacy.danger.error.mcp" = "MCP";
-"settings.privacy.danger.error.memory" = "memory";
-"settings.privacy.danger.error.profile_format" = "プロファイル %@";
-"settings.privacy.danger.error.profiles" = "プロファイル";
-"settings.privacy.danger.error.soul_format" = "ソウル %@";
-"settings.privacy.danger.error.souls" = "ソウル";
-"settings.privacy.danger.status.more_suffix" = ", ...";
-"settings.privacy.danger.status.partial_format" = "削除は完了しましたが問題があります: %@%@";
-"settings.privacy.danger.status.success" = "ローカルデータをすべて削除しました。";
 "settings.privacy.danger.title" = "危険ゾーン";
 "settings.privacy.storage.description" = "BoBeはこのMacにデータをローカル保存します。ソウル、ゴール、メモリ、ユーザープロファイル、実行時設定は端末内に保持されます。";
 "settings.privacy.storage.included.list" = "• ソウルとゴール\n• メモリと観察\n• ユーザープロファイルと設定\n• ローカルモデルのメタデータ";
@@ -186,7 +171,6 @@
 "settings.shared.restart_banner.dismiss" = "Got it";
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ が有効";
-"settings.shared.toggle.enabled" = "有効";
 "settings.souls.delete.accessibility" = "ソウルを削除";
 "settings.souls.empty.description" = "作成してBoBeの個性を定義しましょう";
 "settings.souls.empty.select" = "編集するソウルを選択";
@@ -270,7 +254,6 @@
 "setup.local.cancel" = "Cancel";
 "setup.local.retry" = "Try again";
 "settings.category.engine" = "Engine";
-"settings.engine.title" = "Engine";
 "settings.engine.description" = "Pick where BoBe's AI runs and which models it uses for each kind of work.";
 "settings.engine.loading" = "Loading engine settings…";
 "settings.engine.mode.title" = "Where AI runs";
@@ -350,7 +333,6 @@
 /* TODO translate */ "setup.cloud_auth.error.generic" = "BoBe couldn't check your sign-in. Try again in a moment.";
 /* TODO translate */ "app.service_error.summary" = "BoBe couldn't start her backend. This is usually a temporary glitch.";
 /* TODO translate */ "app.service_error.persistent_summary" = "BoBe's backend keeps failing to start. If retrying doesn't help, try reinstalling BoBe from the original DMG.";
-/* TODO translate */ "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
 /* TODO translate */ "settings.window.search.enable_expert" = "Enable Expert mode";
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";

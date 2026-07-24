@@ -13,6 +13,7 @@ pub(crate) mod install_artifacts;
 pub(crate) mod install_extract;
 pub(crate) mod install_service;
 pub(crate) mod opus;
+pub(crate) mod output;
 pub(crate) mod protocol_helpers;
 pub(crate) mod run_text_turn;
 pub(crate) mod sentence_pipeline;

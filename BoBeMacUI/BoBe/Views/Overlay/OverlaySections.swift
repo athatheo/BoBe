@@ -27,6 +27,7 @@ extension OverlayView {
     @ViewBuilder
     var conversationEndingSection: some View {
         if self.isChatVisible, self.store.conversationEnding {
+            let theme = self.themeStore.currentTheme
             HStack(spacing: 6) {
                 Image(systemName: "moon.fill")
                     .font(.system(size: 9))
@@ -34,9 +35,18 @@ extension OverlayView {
                     .bobeTextStyle(.overlayStatus)
                 Spacer()
             }
-            .foregroundStyle(self.themeStore.currentTheme.colors.textMuted)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
+            .foregroundStyle(theme.colors.textMuted)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(theme.colors.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(theme.colors.border, lineWidth: 1)
+            )
+            .padding(.horizontal, 12)
             .transition(self.overlaySectionTransition)
         }
     }
@@ -44,6 +54,7 @@ extension OverlayView {
     @ViewBuilder
     var softWarningSection: some View {
         if let warning = self.store.softWarning {
+            let theme = self.themeStore.currentTheme
             HStack(spacing: 6) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 10))
@@ -60,16 +71,16 @@ extension OverlayView {
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.tr("overlay.input.close.accessibility"))
             }
-            .foregroundStyle(self.themeStore.currentTheme.colors.tertiary)
+            .foregroundStyle(theme.colors.tertiary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(self.themeStore.currentTheme.colors.tertiary.opacity(0.12))
+                    .fill(theme.colors.surface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(self.themeStore.currentTheme.colors.tertiary.opacity(0.4), lineWidth: 1)
+                    .stroke(theme.colors.tertiary.opacity(0.7), lineWidth: 1)
             )
             .padding(.horizontal, 12)
             .transition(self.overlaySectionTransition)
@@ -78,9 +89,11 @@ extension OverlayView {
 
     @ViewBuilder
     var chatHistorySection: some View {
-        if self.isChatVisible, !self.store.messages.isEmpty {
+        if self.isChatVisible,
+           self.isRecentConversationVisible,
+           !self.ambientConversationMessages.isEmpty {
             ChatStack(
-                messages: self.store.messages,
+                messages: self.ambientConversationMessages,
                 maxViewportHeight: self.chatViewportMaxHeight
             )
             .padding(.horizontal, 12)
@@ -120,6 +133,9 @@ extension OverlayView {
                         text: self.$draftMessage,
                         onSend: self.handleSendMessage,
                         onClose: { self.closeChat(userInitiated: true) },
+                        showsHistory: self.isRecentConversationVisible,
+                        canShowHistory: !self.ambientConversationMessages.isEmpty,
+                        onToggleHistory: self.toggleRecentConversation,
                         feedbackMessage: self.composerFeedback,
                         isBusy: self.store.composerBlockReason != nil
                     )
@@ -141,7 +157,9 @@ extension OverlayView {
     @ViewBuilder
     var errorBannerSection: some View {
         if self.store.context.daemonError {
-            let bannerColor = self.themeStore.currentTheme.colors.background
+            let theme = self.themeStore.currentTheme
+            let bannerColor = theme.colors.background
+            let errorColor = theme.colors.error
             HStack(spacing: 8) {
                 Image(systemName: "bolt.slash.fill")
                     .font(.system(size: 11))
@@ -155,22 +173,24 @@ extension OverlayView {
                     }
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(errorColor)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(bannerColor.opacity(0.2))
+                        .fill(bannerColor)
                 )
                 .accessibilityLabel(L10n.tr("overlay.error.daemon_restart.accessibility"))
             }
             .foregroundStyle(bannerColor)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
+            .background(RoundedRectangle(cornerRadius: 8).fill(errorColor))
             .padding(.horizontal, 12)
             .transition(self.overlaySectionTransition)
         } else if let error = self.store.errorMessage {
-            let bannerColor = self.themeStore.currentTheme.colors.background
+            let theme = self.themeStore.currentTheme
+            let bannerColor = theme.colors.background
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10))
@@ -190,7 +210,7 @@ extension OverlayView {
             .foregroundStyle(bannerColor)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(.red.opacity(0.85)))
+            .background(RoundedRectangle(cornerRadius: 8).fill(theme.colors.error))
             .padding(.horizontal, 12)
             .transition(self.overlaySectionTransition)
         }
@@ -218,26 +238,7 @@ extension OverlayView {
         .onHover { isHovering in
             self.avatarAreaHovered = isHovering
         }
-        // Single .animation keyed off a composite token instead of three
-        // stacked `.animation(value:)` modifiers. With the stack, only the
-        // last modifier wins on any single render pass — when two source
-        // values changed in the same pass (e.g. silence toggle dismisses
-        // the floating bubble), the bubble id change effectively got the
-        // wrong animation. Composite-token keying lets one transaction
-        // cover all three transitions.
-        .animation(
-            OverlayMotionRuntime.reduceMotion ? nil : .easeOut(duration: 0.2),
-            value: self.avatarAnimationToken
-        )
         .zIndex(3)
-    }
-
-    /// Composite identity for the avatar section's animation modifier.
-    /// Any change to one of the three drivers re-evaluates the string and
-    /// triggers the animation exactly once for that frame.
-    private var avatarAnimationToken: String {
-        let bubbleId = self.floatingBubbleMessage?.id ?? "·"
-        return "\(bubbleId)|\(self.store.proactiveSilenced)|\(self.isChatVisible)"
     }
 
     /// Content above the avatar. Hosts either the voice coachmark (a
@@ -252,11 +253,14 @@ extension OverlayView {
         } else {
             AvatarStatusBubble(
                 mode: self.bubbleMode,
-                onOpenChat: { self.openChatManually() },
+                onOpenAnswer: { self.openCurrentAnswer() },
                 onToggleSilence: { self.toggleProactiveSilence() },
                 onDismiss: { self.dismissFloatingBubble() },
                 isSilenced: self.store.proactiveSilenced,
-                isTtsAudible: self.isTtsAudible
+                isTtsAudible: self.isTtsAudible,
+                dismissalStyle: self.floatingBubbleDismissalStyle,
+                recedeProgress: self.floatingBubbleRecedeProgress,
+                onInteractionChanged: { self.floatingBubbleInteractionActive = $0 }
             )
         }
     }
@@ -288,7 +292,7 @@ extension OverlayView {
         // Chat-open: leave headroom for the StatusLabel above the
         // avatar head. Chat-closed: bubble owns status — drop the
         // headroom so the bubble nestles tight against the avatar.
-        let topInset: CGFloat = self.isChatVisible ? 18 : 4
+        let topInset: CGFloat = 4
         let leadingPad: CGFloat = 16
         let clusterHeight = AvatarMetrics.columnHeight + topInset
 
@@ -298,8 +302,8 @@ extension OverlayView {
             hasMessage: self.hasUnreadMessages,
             showInput: self.isChatVisible,
             statusOverride: self.statusTextOverride,
-            showStatusLabel: self.isChatVisible,
-            bubbleShowingMessage: !self.isChatVisible && self.floatingBubbleMessage != nil
+            showStatusLabel: false,
+            bubbleShowingMessage: self.floatingBubbleMessage != nil
         )
         .overlay(alignment: .topLeading) {
             // Card-local coordinate space for the satellite offsets.
@@ -327,7 +331,7 @@ extension OverlayView {
                 height: AvatarMetrics.cardSize,
                 alignment: .topLeading
             )
-            .padding(.top, self.isChatVisible ? 16 : 0)
+            .padding(.top, 0)
         }
         .padding(.top, topInset)
         .padding(.leading, leadingPad)
@@ -356,22 +360,36 @@ struct FailedSendRecoveryBanner: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.arrow.trianglehead.counterclockwise")
+            Image(
+                systemName: self.recovery.canRetry
+                    ? "exclamationmark.arrow.trianglehead.counterclockwise"
+                    : "exclamationmark.triangle"
+            )
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(self.theme.colors.primary)
                 .padding(.top, 2)
 
-            Text(self.recovery.content)
-                .bobeTextStyle(.chatBody)
-                .foregroundStyle(self.theme.colors.text)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(self.recovery.content)
+                    .bobeTextStyle(.chatBody)
+                    .foregroundStyle(self.theme.colors.text)
+                    .lineLimit(2)
+                if let failureMessage = recovery.failureMessage {
+                    Text(failureMessage)
+                        .bobeTextStyle(.rowMeta)
+                        .foregroundStyle(self.theme.colors.textMuted)
+                        .lineLimit(3)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button(L10n.tr("app.common.retry"), action: self.onRetry)
-                .bobeTextStyle(.rowMeta)
-                .buttonStyle(.plain)
-                .foregroundStyle(self.theme.colors.primary)
+            if self.recovery.canRetry {
+                Button(L10n.tr("app.common.retry"), action: self.onRetry)
+                    .bobeTextStyle(.rowMeta)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(self.theme.colors.primary)
+            }
 
             Button(action: self.onDismiss) {
                 Image(systemName: "xmark")

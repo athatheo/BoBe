@@ -11,6 +11,7 @@ enum EventType: String, Codable, Sendable {
     case error
     case heartbeat
     case conversationClosed = "conversation_closed"
+    case conversationChanged = "conversation_changed"
     case unknown
 
     init(from decoder: Decoder) throws {
@@ -34,10 +35,8 @@ struct StreamBundle: Codable, Sendable {
     }
 }
 
-/// `progress` is sent by the daemon but never displayed today.
 struct IndicatorPayload: Codable, Sendable {
     let indicator: IndicatorType
-    let message: String?
 }
 
 /// On `done`, `delta` is the authoritative full assistant response rather
@@ -101,6 +100,14 @@ struct ConversationClosedPayload: Codable, Sendable {
         case conversationId = "conversation_id"
         case reason
         case turnCount = "turn_count"
+    }
+}
+
+struct ConversationChangedPayload: Codable, Sendable {
+    let conversationId: String
+
+    enum CodingKeys: String, CodingKey {
+        case conversationId = "conversation_id"
     }
 }
 

@@ -54,12 +54,27 @@ impl PermissionHandler for BobeHandler {
 
 impl BobeHandler {
     fn permission_allowed(&self, data: &PermissionRequestData) -> bool {
-        if matches!(
-            data.kind,
-            Some(PermissionRequestKind::Mcp | PermissionRequestKind::CustomTool)
-        ) && requested_tool_name(data).is_some_and(|tool| self.excluded_tools.contains(tool))
-        {
-            return false;
+        match data.kind {
+            Some(PermissionRequestKind::CustomTool) => {
+                let Some(tool) = requested_tool_name(data) else {
+                    return false;
+                };
+                return self.class == WorkerClass::Chat
+                    && super::tools::CHAT_DOMAIN_TOOL_NAMES.contains(&tool)
+                    && !self.excluded_tools.contains(tool);
+            }
+            Some(PermissionRequestKind::Mcp) => {
+                return requested_tool_name(data)
+                    .is_some_and(|tool| !self.excluded_tools.contains(tool));
+            }
+            None => {
+                return requested_tool_name(data).is_some_and(|tool| {
+                    self.class == WorkerClass::Chat
+                        && super::tools::CHAT_DOMAIN_TOOL_NAMES.contains(&tool)
+                        && !self.excluded_tools.contains(tool)
+                });
+            }
+            _ => {}
         }
 
         matches!(
@@ -67,8 +82,6 @@ impl BobeHandler {
             Some(
                 PermissionRequestKind::Read
                     | PermissionRequestKind::Url
-                    | PermissionRequestKind::Mcp
-                    | PermissionRequestKind::CustomTool
                     | PermissionRequestKind::Memory
                     | PermissionRequestKind::Hook
             )
@@ -107,12 +120,13 @@ mod tests {
     }
 
     #[test]
-    fn allows_read_only_and_explicit_integrations() {
+    fn allows_read_only_permissions() {
         let handler = BobeHandler::new(WorkerClass::Chat, &[]);
         for kind in [
             PermissionRequestKind::Read,
-            PermissionRequestKind::Mcp,
-            PermissionRequestKind::CustomTool,
+            PermissionRequestKind::Url,
+            PermissionRequestKind::Memory,
+            PermissionRequestKind::Hook,
         ] {
             assert!(handler.permission_allowed(&request(Some(kind), None)));
         }
@@ -128,6 +142,27 @@ mod tests {
         assert!(handler.permission_allowed(&request(
             Some(PermissionRequestKind::Mcp),
             Some("get_issue")
+        )));
+    }
+
+    #[test]
+    fn custom_tools_require_known_chat_domain_tool_name() {
+        let chat = BobeHandler::new(WorkerClass::Chat, &[]);
+        assert!(chat.permission_allowed(&request(
+            Some(PermissionRequestKind::CustomTool),
+            Some(super::super::tools::MEMORY_APPEND)
+        )));
+        assert!(!chat.permission_allowed(&request(
+            Some(PermissionRequestKind::CustomTool),
+            Some("arbitrary_custom_tool")
+        )));
+        assert!(!chat.permission_allowed(&request(Some(PermissionRequestKind::CustomTool), None)));
+        assert!(chat.permission_allowed(&request(None, Some(super::super::tools::MEMORY_APPEND))));
+
+        let batch = BobeHandler::new(WorkerClass::Goals, &[]);
+        assert!(!batch.permission_allowed(&request(
+            Some(PermissionRequestKind::CustomTool),
+            Some(super::super::tools::GOAL_CREATE)
         )));
     }
 }

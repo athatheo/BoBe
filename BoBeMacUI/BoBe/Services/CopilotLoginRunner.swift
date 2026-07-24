@@ -8,7 +8,7 @@ import os
 /// the SSE-consuming Task. SwiftUI views read `runner.state` and call
 /// `start()` / `cancel()` / `openVerificationURL()` / `copyCode()`.
 ///
-/// Auth ownership note: the **bundled `copilot` CLI** drives the device
+/// Auth ownership note: the **signed `copilot` helper** drives the device
 /// flow against GitHub's own approved OAuth client; BoBe never sees the
 /// token. Treat this class as a thin remote-control surface for that CLI.
 @MainActor

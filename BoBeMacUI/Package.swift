@@ -9,7 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.4"),
-        .package(url: "https://github.com/gonzalezreal/textual", from: "0.5.0"),
+        .package(url: "https://github.com/gonzalezreal/textual", exact: "0.5.0"),
         // FluidAudio — Apple Silicon ANE Parakeet/Nemotron ASR + Silero VAD.
         // Mode B client-side speech recognition.
         // Exact pin: FluidAudio is pre-1.0 and minor releases remove APIs.

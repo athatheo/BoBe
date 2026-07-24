@@ -1,0 +1,8 @@
+{
+  "name": "bobe-bodylink-sim",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ws": "8.21.1"
+  }
+}

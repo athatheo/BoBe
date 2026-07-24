@@ -20,7 +20,7 @@ pub(crate) async fn stream_events(
 
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
 
-    let conn_id_inner = conn_id.clone();
+    let conn_id_inner = conn_id;
     let cm = Arc::clone(&connection_manager);
     tokio::spawn(async move {
         loop {
@@ -43,8 +43,6 @@ pub(crate) async fn stream_events(
                     );
                     break;
                 }
-                cm.track_indicator(&bundle).await;
-
                 let sse_data = match serde_json::to_string(&bundle) {
                     Ok(json) => json,
                     Err(e) => {

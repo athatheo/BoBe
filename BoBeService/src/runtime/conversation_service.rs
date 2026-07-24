@@ -70,7 +70,7 @@ impl ConversationService {
     pub(crate) async fn begin_proactive_stream(
         &self,
         preferred_conversation: Option<&Conversation>,
-    ) -> Result<Conversation, AppError> {
+    ) -> Result<(Conversation, ConversationTurnId), AppError> {
         let _guard = self.lifecycle_lock.lock().await;
 
         let conversation = if let Some(preferred) = preferred_conversation {
@@ -82,12 +82,14 @@ impl ConversationService {
             self.open_or_create_pending_locked().await?
         };
 
-        let turn = ConversationTurn::new_with_id(
+        let turn = ConversationTurn::new_with_completion(
             ConversationTurnId::new(),
             conversation.id,
             TurnRole::Assistant,
             String::new(),
+            false,
         );
+        let turn_id = turn.id;
         let replaced = self.streaming_assistant_turns.insert(
             conversation.id,
             StreamingAssistantTurn {
@@ -102,7 +104,7 @@ impl ConversationService {
             );
         }
 
-        Ok(conversation)
+        Ok((conversation, turn_id))
     }
 
     pub(crate) fn push_proactive_stream_delta(&self, conversation_id: ConversationId, delta: &str) {
@@ -119,6 +121,7 @@ impl ConversationService {
         &self,
         conversation_id: ConversationId,
         final_content: &str,
+        is_complete: bool,
     ) -> Result<Option<ConversationTurn>, AppError> {
         let _guard = self.lifecycle_lock.lock().await;
         let Some((_, mut draft)) = self.streaming_assistant_turns.remove(&conversation_id) else {
@@ -126,21 +129,55 @@ impl ConversationService {
         };
 
         draft.turn.replace_content(final_content.to_owned());
+        draft.turn.set_complete(is_complete);
         if draft.turn.content.is_empty() {
             return Ok(None);
         }
 
         if draft.persisted {
             self.repo
-                .update_turn_content(draft.turn.id, &draft.turn.content)
+                .update_turn_content_and_completion(
+                    draft.turn.id,
+                    &draft.turn.content,
+                    draft.turn.is_complete,
+                )
                 .await
         } else {
             self.repo.add_turn(&draft.turn).await.map(Some)
         }
     }
 
-    pub(crate) fn discard_proactive_stream(&self, conversation_id: ConversationId) {
+    pub(crate) async fn discard_proactive_stream(
+        &self,
+        conversation_id: ConversationId,
+    ) -> Result<(), AppError> {
+        let _guard = self.lifecycle_lock.lock().await;
         self.streaming_assistant_turns.remove(&conversation_id);
+        self.repo.delete_if_empty_pending(conversation_id).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn settle_interrupted_proactive_stream(
+        &self,
+        conversation_id: ConversationId,
+    ) -> Result<(), AppError> {
+        let _guard = self.lifecycle_lock.lock().await;
+        let Some((_, mut draft)) = self.streaming_assistant_turns.remove(&conversation_id) else {
+            return Ok(());
+        };
+        if draft.turn.content.is_empty() {
+            self.repo.delete_if_empty_pending(conversation_id).await?;
+            return Ok(());
+        }
+        draft.turn.set_complete(false);
+        if draft.persisted {
+            self.repo
+                .update_turn_content_and_completion(draft.turn.id, &draft.turn.content, false)
+                .await?;
+        } else {
+            self.repo.add_turn(&draft.turn).await?;
+        }
+        Ok(())
     }
 
     async fn open_or_create_pending_locked(&self) -> Result<Conversation, AppError> {
@@ -171,7 +208,7 @@ impl ConversationService {
 
         if persisted {
             self.repo
-                .update_turn_content(turn.id, &turn.content)
+                .update_turn_content_and_completion(turn.id, &turn.content, turn.is_complete)
                 .await?;
         } else {
             self.repo.add_turn(&turn).await?;
@@ -268,21 +305,29 @@ impl ConversationService {
     pub(crate) async fn get_last_closed_conversation(
         &self,
     ) -> Result<Option<Conversation>, AppError> {
-        self.repo.get_last_closed().await
+        self.repo.get_last_closed_with_turns().await
     }
 
-    pub(crate) async fn add_turn(
+    pub(crate) async fn add_turn_with_id(
         &self,
+        turn_id: ConversationTurnId,
         conversation_id: ConversationId,
         role: TurnRole,
         content: &str,
+        is_complete: bool,
     ) -> Result<Option<ConversationTurn>, AppError> {
         let conversation = self.repo.get_by_id(conversation_id).await?;
         if conversation.is_none() {
             return Ok(None);
         }
 
-        let turn = ConversationTurn::new(conversation_id, role, content.to_owned());
+        let turn = ConversationTurn::new_with_completion(
+            turn_id,
+            conversation_id,
+            role,
+            content.to_owned(),
+            is_complete,
+        );
         let saved = self.repo.add_turn(&turn).await?;
 
         info!(
@@ -295,15 +340,33 @@ impl ConversationService {
         Ok(Some(saved))
     }
 
-    pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
-        self.repo.get_pending_or_active().await
+    pub(crate) async fn get_latest_readable_conversation(
+        &self,
+        limit: i64,
+    ) -> Result<Option<(Conversation, Vec<ConversationTurn>)>, AppError> {
+        if let Some(open) = self.repo.get_pending_or_active().await? {
+            let turns = self.repo.get_recent_turns(open.id, limit).await?;
+            if !turns.is_empty() {
+                return Ok(Some((open, turns)));
+            }
+
+            if let Some(closed) = self.repo.get_last_closed_with_turns().await? {
+                let turns = self.repo.get_recent_turns(closed.id, limit).await?;
+                return Ok(Some((closed, turns)));
+            }
+
+            return Ok(Some((open, turns)));
+        }
+
+        let Some(closed) = self.repo.get_last_closed_with_turns().await? else {
+            return Ok(None);
+        };
+        let turns = self.repo.get_recent_turns(closed.id, limit).await?;
+        Ok(Some((closed, turns)))
     }
 
-    pub(crate) async fn get_conversation(
-        &self,
-        conversation_id: ConversationId,
-    ) -> Result<Option<Conversation>, AppError> {
-        self.repo.get_by_id(conversation_id).await
+    pub(crate) async fn get_pending_or_active(&self) -> Result<Option<Conversation>, AppError> {
+        self.repo.get_pending_or_active().await
     }
 
     pub(crate) async fn get_conversation_turns(
@@ -318,5 +381,191 @@ impl ConversationService {
 impl std::fmt::Debug for ConversationService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConversationService").finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::db::test_helpers::in_memory_pool;
+
+    #[tokio::test]
+    async fn latest_readable_conversation_falls_back_from_empty_pending_to_closed() {
+        let repo = Arc::new(SqliteConversationRepo::new(in_memory_pool().await));
+        let closed = repo
+            .save(&Conversation::new_active())
+            .await
+            .expect("save active conversation");
+        let answer =
+            ConversationTurn::new(closed.id, TurnRole::Assistant, "Durable answer".to_owned());
+        repo.add_turn(&answer).await.expect("save answer");
+        repo.update_state(closed.id, ConversationState::Closed, None)
+            .await
+            .expect("close conversation");
+        let empty_closed = repo
+            .save(&Conversation::new_active())
+            .await
+            .expect("save empty active conversation");
+        repo.update_state(empty_closed.id, ConversationState::Closed, None)
+            .await
+            .expect("close empty conversation");
+        repo.save(&Conversation::new_pending())
+            .await
+            .expect("save empty pending conversation");
+        let service = ConversationService::new(repo);
+
+        let (conversation, turns) = service
+            .get_latest_readable_conversation(200)
+            .await
+            .expect("load latest readable conversation")
+            .expect("conversation exists");
+
+        assert_eq!(conversation.id, closed.id);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].content, "Durable answer");
+    }
+
+    #[tokio::test]
+    async fn discarding_proactive_stream_removes_empty_pending_placeholder() {
+        let repo = Arc::new(SqliteConversationRepo::new(in_memory_pool().await));
+        let service = ConversationService::new(Arc::clone(&repo));
+        let (pending, _) = service
+            .begin_proactive_stream(None)
+            .await
+            .expect("begin proactive stream");
+
+        service
+            .discard_proactive_stream(pending.id)
+            .await
+            .expect("discard proactive stream");
+
+        assert!(
+            repo.get_by_id(pending.id)
+                .await
+                .expect("load pending conversation")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn discarding_proactive_stream_preserves_populated_conversation() {
+        let repo = Arc::new(SqliteConversationRepo::new(in_memory_pool().await));
+        let pending = repo
+            .save(&Conversation::new_pending())
+            .await
+            .expect("save pending conversation");
+        let user_turn = ConversationTurn::new(pending.id, TurnRole::User, "Hello".to_owned());
+        repo.add_turn(&user_turn).await.expect("save user turn");
+        let service = ConversationService::new(Arc::clone(&repo));
+        service
+            .begin_proactive_stream(Some(&pending))
+            .await
+            .expect("begin proactive stream");
+
+        service
+            .discard_proactive_stream(pending.id)
+            .await
+            .expect("discard proactive stream");
+
+        assert!(
+            repo.get_by_id(pending.id)
+                .await
+                .expect("load pending conversation")
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelled_proactive_draft_is_persisted_as_interrupted() {
+        let repo = Arc::new(SqliteConversationRepo::new(in_memory_pool().await));
+        let service = ConversationService::new(Arc::clone(&repo));
+        let (pending, _) = service
+            .begin_proactive_stream(None)
+            .await
+            .expect("begin proactive stream");
+        service.push_proactive_stream_delta(pending.id, "cancelled partial");
+
+        service
+            .settle_interrupted_proactive_stream(pending.id)
+            .await
+            .expect("settle interrupted proactive stream");
+        service
+            .append_user_turn_or_create_active("real user turn")
+            .await
+            .expect("append user turn");
+
+        let turns = repo
+            .get_turns(pending.id, 10)
+            .await
+            .expect("load conversation turns");
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[0].role, TurnRole::Assistant);
+        assert_eq!(turns[0].content, "cancelled partial");
+        assert!(!turns[0].is_complete);
+        assert_eq!(turns[1].role, TurnRole::User);
+        assert_eq!(turns[1].content, "real user turn");
+    }
+
+    #[tokio::test]
+    async fn persisted_proactive_draft_stays_incomplete_until_finalized() {
+        let repo = Arc::new(SqliteConversationRepo::new(in_memory_pool().await));
+        let service = ConversationService::new(Arc::clone(&repo));
+        let (pending, _) = service
+            .begin_proactive_stream(None)
+            .await
+            .expect("begin proactive stream");
+        service.push_proactive_stream_delta(pending.id, "partial");
+
+        service
+            .sync_streaming_assistant_turn_locked(pending.id)
+            .await
+            .expect("persist draft");
+        let draft = repo
+            .get_turns(pending.id, 10)
+            .await
+            .expect("load draft")
+            .pop()
+            .expect("draft exists");
+        assert!(!draft.is_complete);
+
+        let finalized = service
+            .finalize_proactive_stream(pending.id, "complete answer", true)
+            .await
+            .expect("finalize")
+            .expect("turn exists");
+        assert!(finalized.is_complete);
+        assert_eq!(finalized.content, "complete answer");
+    }
+
+    #[tokio::test]
+    async fn latest_readable_conversation_prefers_populated_open_conversation() {
+        let repo = Arc::new(SqliteConversationRepo::new(in_memory_pool().await));
+        let closed = repo
+            .save(&Conversation::new_active())
+            .await
+            .expect("save old conversation");
+        repo.update_state(closed.id, ConversationState::Closed, None)
+            .await
+            .expect("close old conversation");
+
+        let open = repo
+            .save(&Conversation::new_active())
+            .await
+            .expect("save open conversation");
+        let user_turn = ConversationTurn::new(open.id, TurnRole::User, "Current".to_owned());
+        repo.add_turn(&user_turn).await.expect("save current turn");
+        let service = ConversationService::new(repo);
+
+        let (conversation, turns) = service
+            .get_latest_readable_conversation(200)
+            .await
+            .expect("load latest readable conversation")
+            .expect("conversation exists");
+
+        assert_eq!(conversation.id, open.id);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].content, "Current");
     }
 }

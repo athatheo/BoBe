@@ -1,20 +1,20 @@
 # BoBe Implementation Architecture
 
-> **Status:** Descriptive architecture of the current working tree as of July 15, 2026  
+> **Status:** Descriptive architecture of the current working tree as of July 17, 2026
 > **Scope:** Implemented behavior, current dependencies, deployment paths, and known limitations  
 > **Future direction:** See [BoBe Platform Architecture](platform-architecture.md)  
-> **Specialist specifications:** [Physical BoBe](physical-bobe.md), [Rust Guidelines](RUST_GUIDELINES.md), [Engine Provider Notes](../ENGINE_PROVIDER_NOTES.md)
+> **Specialist specifications:** [Physical BoBe](physical-bobe.md), [Rust Guidelines](RUST_GUIDELINES.md)
 
 ## 1. Purpose and authority
 
-This document explains how BoBe is implemented today. It is deliberately descriptive: a capability appears here as implemented only when the current source tree contains it. Planned mobile applications, ESP32 firmware, hosted control-plane services, and production Ubuntu packaging are not described as existing features.
+This document explains how BoBe is implemented today. It is deliberately descriptive: a capability appears here as implemented only when the current source tree contains it, or when an explicitly identified external repository implements the other side of a tested protocol seam. Planned mobile applications, hosted control-plane services, and production Ubuntu packaging are not described as existing features.
 
 Source code and tests remain authoritative if this document drifts. Related documents retain narrower ownership:
 
-- [Physical BoBe](physical-bobe.md) owns detailed voice, endpoint, hardware, and embodiment design.
-- [Engine Provider Notes](../ENGINE_PROVIDER_NOTES.md) records the Copilot SDK pivot and provider decisions.
+- [Platform Architecture](platform-architecture.md) owns future multi-surface authority and deployment direction.
+- [Physical BoBe](physical-bobe.md) owns the detailed Mac-hub voice and embodiment design, including the implemented BodyLink software slice and the unvalidated physical-hardware roadmap. It remains subordinate to the platform direction where they conflict.
 - [Rust Guidelines](RUST_GUIDELINES.md) defines normative Rust structure and coding rules.
-- [Updating OTA](UpdatingOTA.md) and [Code Signing](CODE_SIGNING.md) own release commands and credentials.
+- [Updating OTA](UpdatingOTA.md) owns release, signing, notarization, and update operations.
 
 ## 2. System summary
 
@@ -22,7 +22,8 @@ BoBe is currently a native macOS application backed by a Rust daemon.
 
 - **`bobe-daemon`** is the authority for BoBe-owned application state and agent execution. It owns conversations, goals, memories, profiles, souls, runtime policy, proactive triggers, Copilot sessions, most tools, server-side TTS, persistence, and the HTTP/SSE/WebSocket API.
 - **`BoBe.app`** is the native presentation and device-integration layer. It owns the transparent overlay, settings and setup windows, tray/menu integration, microphone capture, client speech recognition and endpointing, playback, local permissions, and local daemon process supervision.
-- **GitHub Copilot SDK and CLI** provide the agent session runtime. The Rust SDK controls a separate bundled Copilot CLI process through JSON-RPC over standard input/output.
+- **BodyLink V1**, disabled by default, gives one enrolled physical endpoint a certificate-bound PTT audio/text path into the same daemon authority. The external WB-12 firmware implements the device side; the app hosts a scoped speech adapter but does not own turns or routing.
+- **GitHub Copilot SDK and CLI** provide the agent session runtime. Stable Rust SDK 1.0.7 controls its pinned, separately signed CLI helper through JSON-RPC over standard input/output.
 - **SQLite and files under the daemon data root** persist BoBe-owned state. External Copilot session state is not fully contained in that database; BoBe persists worker session identifiers used to reconnect to the external runtime.
 
 ```text
@@ -51,7 +52,7 @@ BoBe is currently a native macOS application backed by a Rust daemon.
        SQLite + Markdown/files       GitHub Copilot SDK
        config + secret store         JSON-RPC over stdio
                                             │
-                                      bundled Copilot CLI
+                                       signed Copilot CLI
                                             │
                                   model providers and MCP servers
 ```
@@ -101,10 +102,10 @@ Remote transport support is implemented, but the repository does not yet provide
 | macOS 15+ Apple Silicon application bundle | Implemented and validated by the current product build path |
 | Bundled Rust daemon on macOS | Implemented and exercised with the app |
 | macOS client connected to a configured HTTPS daemon | Implemented transport and lifecycle mode |
-| Ubuntu x86_64 daemon | Required future compatibility target, not yet demonstrated by Linux compilation and end-to-end CI |
+| Ubuntu x86_64 daemon | Compatibility target; standalone packaging and end-to-end deployment remain unproven |
 | iPhone/iPad application | Not present |
 | Android application | Not present |
-| ESP32 firmware | Not present; physical endpoint design is documented separately |
+| ESP32 firmware | External `espBobeToy` firmware implements the tested BodyLink minor-1 seam; all build profiles pass, but the WB-12 has not been flashed |
 | Hosted account/control plane | Not present |
 
 Parts of the Rust code are structurally portable, including Tokio, Axum, SQLite, rustls, and the Unix file secret store. Other parts remain Apple-specific. Screen capture currently uses macOS frameworks and commands such as CoreGraphics, `screencapture`, and `osascript`. Ubuntu support therefore requires real platform isolation rather than merely producing an x86_64 binary.
@@ -119,14 +120,14 @@ BoBeService/
     app_state.rs            process-scoped dependency graph
     bootstrap/              composition root
     api/                    router, middleware, handlers
-    runtime/                sessions, turns, triggers, learners, prompts
+    body/                   scoped BodyLink gateway, routes, media, and adapter IPC
+    runtime/                sessions, turns, triggers and learners
     copilot/                SDK client, workers, hooks, tools, memory/session files
     models/                 domain models
     db/                     SQLite repositories and schema
     services/               domain and operational services
     voice/ and speech/      spoken-turn protocol and server TTS
-    config/                 startup configuration
-    config_manager/         persisted runtime configuration and hot swapping
+    config/                 startup config, persistence and hot swapping
     mcp/                    MCP configuration and validation
     util/                   SSE, networking, capture, text and other utilities
     secrets.rs              platform secret stores
@@ -135,10 +136,11 @@ BoBeMacUI/
   Package.swift             Swift 6, macOS 15 executable package
   BoBe/
     App/                     app delegate, scenes, NSPanel/windows, managers
-    DTOs/ and Models/        wire and UI/domain representations
+    DTOs/ and Stores/        wire contracts and UI/domain state
     Services/                daemon process and network clients
     Stores/                  observable application and theme state
     Voice/                   capture, STT/VAD/EOU, playback and voice protocol
+    BodyLink/                correlated FluidAudio/Opus speech adapter
     Views/                   overlay and setup UI
     Features/Settings/       settings design system, panels and editors
     Utilities/               localization and bundle helpers
@@ -221,7 +223,16 @@ The Axum router exposes groups for:
 - local runtime/model installation;
 - diagnostics and metrics-related behavior.
 
-`POST /message` accepts a typed user message, creates a server message identifier, starts the turn asynchronously, and returns the identifier. Incremental output is delivered separately through the main event stream.
+`POST /message` accepts typed content plus a client-generated `request_id`.
+The request ID deterministically owns the server message identifier and a
+local durable job (`queued`, `running`, `completed`, or `failed`). Queued work
+is recoverable after restart. Running work is never replayed after a crash
+because tools may already have produced side effects; the client instead gets
+an explicit unsafe-replay state. Retrying active or completed work returns the
+same message identifier rather than executing tools twice. Incremental output
+is delivered separately through the main event stream. Routine retention and
+privacy purge erase request content but retain content-free UUID tombstones, so
+an old network retry cannot reopen tool side effects.
 
 Short-lived HTTP routes receive a 30-second timeout. Long-lived routes, including the main event stream, voice WebSocket, local-runtime status stream, and Copilot login event stream, are deliberately excluded from that timeout.
 
@@ -264,12 +275,46 @@ The current protocol intentionally does not accept microphone audio from the cli
 
 Only one voice WebSocket is active process-wide. A second connection receives a busy response. The selected TTS path is frozen for the lifetime of a voice session so that a settings change cannot change the backend under active playback.
 
-### 6.4 Middleware and exposure controls
+### 6.4 Physical-body status
+
+The current tree contains an opt-in BodyLink V1 vertical slice:
+
+- a dedicated WSS `/body/v1` listener with CA validation and exact enrolled
+  client-certificate pinning;
+- daemon-issued body session, connection generation, request, lease, turn, and
+  media-stream correlation;
+- one expiring physical voice lease participating in the existing shared turn
+  admission gate;
+- endpoint-only LLM/token/tool delivery, targeted text/face/audio output, and
+  playback credit plus played-sample drain;
+- a bearer-authenticated loopback `/body/adapter` socket;
+- a Swift `BodySpeechAdapter` that performs FluidAudio STT and Opus-to-PCM
+  conversion only—it does not open `/voice/stream`, mint turn IDs, or own
+  routing;
+- a non-content `conversation_changed` SSE signal plus
+  `/conversation/current` snapshot so the Mac converges on persisted final
+  turns without receiving private body deltas or tool activity.
+
+BodyLink is disabled by default and currently supports one explicitly enrolled,
+certificate-pinned WB-12 identity. Mock-adapter and real-Swift-adapter smokes
+exercise the full daemon/agent/TTS path. The recovered physical unit has not
+yet been flashed because it is not connected; product enrollment/revocation UI,
+fleet OTA, multiple enrolled certificates, wake word, and camera remain future
+work. See [Platform Architecture](platform-architecture.md) and
+[Physical BoBe](physical-bobe.md).
+
+The speech adapter has a persistent adapter-only mode with no visible windows,
+so body turns do not depend on overlay, settings, store, or main voice-session
+state. It is still packaged in the `BoBe` executable and must be launched and
+supervised separately when the main app is absent. The daemon and firmware
+alone cannot currently perform FluidAudio STT or Apple Opus decoding.
+
+### 6.5 Middleware and exposure controls
 
 The router uses distinct controls with different scopes:
 
 - **Host validation** rejects unapproved Host headers.
-- **Bearer authentication**, when configured, uses constant-time comparison.
+- **Bearer authentication**, when configured, compares tokens in constant time.
 - **HTTP CORS** permits an exact configured list of local origins for browser-style requests.
 - **Request tracing/logging** records transport activity.
 - **Concurrency limiting** caps active requests.
@@ -343,17 +388,32 @@ Nightly consolidation is separate. `ConsolidationScheduler` does not acquire the
 
 ### 8.1 Process topology
 
-BoBe pins `github-copilot-sdk` with its `bundled-cli` feature. The SDK:
+BoBe pins `github-copilot-sdk` and ships the matching Copilot CLI as a
+separately signed executable under `Contents/Helpers`. The SDK build script
+downloads the pinned asset, verifies its published SHA-256, and extracts it
+into project-local staging. App assembly copies that executable into the
+bundle, and the Swift launcher passes its absolute path through
+`COPILOT_CLI_PATH`. The SDK then:
 
-1. contains or locates a verified Copilot CLI binary;
-2. extracts and validates it when required;
-3. starts a child process;
-4. communicates through JSON-RPC over standard input/output;
-5. exposes SDK `Client` and `Session` abstractions to the daemon.
+1. starts the explicitly selected helper process;
+2. communicates through JSON-RPC over standard input/output;
+3. exposes `Client` and `Session` abstractions to the daemon.
+
+The Cargo `bundled-copilot-cli` feature remains a self-contained fallback for
+direct Cargo consumers, but normal debug/release recipes do not embed the
+compressed CLI archive in `bobe-daemon`.
+
+Staging records both the `Cargo.lock` hash and the extracted helper hash.
+`just build-backend` removes and re-extracts a helper when either hash drifts,
+then checks the GitHub Developer ID before use. The SDK server and both login
+paths pass `--no-auto-update`; Copilot CLI updates therefore arrive only with a
+new BoBe/Sparkle release and cannot rewrite the signed app bundle.
 
 BoBe creates one shared SDK client and separate logical sessions/workers for different responsibilities. Worker session identifiers are persisted so the runtime can recover continuity where supported.
 
-This architecture is a desktop/server process architecture. The bundled child executable and login flow are material runtime dependencies, not implementation details that can be assumed to work inside a mobile application sandbox.
+This architecture is a desktop/server process architecture. The signed helper
+and login flow are material runtime dependencies, not implementation details
+that can be assumed to work inside a mobile application sandbox.
 
 ### 8.2 Worker responsibilities
 
@@ -365,20 +425,23 @@ The `copilot/` subsystem contains the principal agent boundary:
 - hooks and permissions;
 - session persistence;
 - memory-file integration;
+- typed daemon-owned memory and goal tools;
 - skills/tool construction;
 - MCP integration;
 - typed SDK/event adapters.
 
-Workers share BoBe's domain context but use different session roles and lifecycle rules. Detailed provider choices and the migration away from the previous generic LLM-provider abstraction are recorded in [Engine Provider Notes](../ENGINE_PROVIDER_NOTES.md).
+Workers share BoBe's domain context but use different session roles and lifecycle rules. Provider selection is deliberately narrow: GitHub Copilot cloud or local Ollama.
 
 ### 8.3 Tool boundary
 
 Tools execute through BoBe-controlled adapters and Copilot SDK hooks. Tool access includes application data and, when configured, MCP capabilities. The current permission behavior is:
 
-- shell, file-write, unknown and absent permission kinds are denied;
+- shell, arbitrary file-write, unknown and absent permission kinds are denied;
 - read, URL, memory and hook requests are approved;
 - read approval does not currently enforce a daemon-side canonical-path or approved-root check;
-- MCP and custom-tool requests are approved once unless their reported tool name is in the configured exclusion set;
+- custom tools require the Chat worker and one of the exact `bobe_memory_append`/`bobe_goal_*` names;
+- MCP requests require a reported tool name and are approved unless that name is in the configured exclusion set;
+- memory appends and goal creation/updates execute through daemon services, validation and atomic storage rather than arbitrary paths;
 - MCP command and environment definitions are validated against blocklists and injection constraints;
 - secret references are resolved by the daemon rather than exposed through ordinary DTOs.
 
@@ -388,15 +451,16 @@ This is not an interactive approval boundary for every consequential MCP or cust
 
 ### 9.1 Data root
 
-Most file-backed daemon paths derive from `BOBE_DATA_DIR`. The default is under the user's BoBe directory, but documentation and code must not assume every deployment literally uses `~/.bobe`.
+File-backed daemon paths derive from `BOBE_DATA_DIR`. The default is under the user's BoBe directory, but documentation and code must not assume every deployment literally uses `~/.bobe`.
 
-The SQLite location is configured independently. Its compiled default remains `sqlite:~/.bobe/data/bobrust.db`; changing only `BOBE_DATA_DIR` does not move the database. A deployment that relocates all persistent state must also set the database URL, such as through `BOBE_DATABASE__URL` or persisted configuration.
+When no explicit database URL is configured, SQLite is derived from the resolved data root as `sqlite:<data_dir>/data/bobrust.db`. `BOBE_DATABASE__URL` remains an independent explicit override.
 
 ### 9.2 State ownership
 
 | State | Current storage | Authority and notes |
 |---|---|---|
 | Conversations and messages | SQLite | Daemon-owned application history |
+| Message request jobs and replay guards | SQLite | Content-bearing jobs are bounded; content-free request UUID tombstones preserve at-most-once side effects |
 | Cooldowns | SQLite | Runtime scheduling state |
 | Souls and user profiles | SQLite | Personal companion/domain state |
 | Goals | Markdown files under the data root | File-backed, human-readable goal model |
@@ -412,6 +476,8 @@ The SQLite location is configured independently. Its compiled default remains `s
 | Swift speech models | FluidAudio-managed cache | Client-side STT/VAD/experimental TTS artifacts |
 
 There is not yet a documented, validated whole-runtime backup and restore procedure. A complete restore must account for database/files, secret re-provisioning, model caches or redownloads, and external Copilot session behavior.
+
+`DELETE /privacy/data` acquires the shared turn-admission permit, blocking new text, voice and proactive turns for the full operation. It disconnects live workers and deletes every current, historical or hard-reload-retired SDK session referenced by BoBe before removing local IDs. SDK deletion is concurrent and deadline-bounded; on failure a retirement ledger preserves IDs so the purge can be retried instead of falsely reporting success. The purge deletes message content, digests and job status while retaining only content-free request UUID replay guards.
 
 ### 9.3 Configuration layering
 
@@ -488,7 +554,7 @@ This split is intentional: SwiftUI owns view composition, while AppKit owns beha
 
 `BobeStore` is the primary observable application state. `ThemeStore` owns theme state. `DaemonClient` wraps REST calls and the main SSE connection; voice networking is managed by the voice pipeline.
 
-The Swift client manually mirrors daemon DTOs and event contracts. Some constants have drift checks, but there is no generated OpenAPI or schema-driven client. Cross-language protocol changes therefore require coordinated Rust and Swift updates.
+The Swift client manually mirrors daemon DTOs and event contracts. Cross-language constants and voice protocol variants are checked by the local validation lane, but there is no generated OpenAPI or schema-driven client. DTO changes still require coordinated Rust and Swift updates.
 
 ### 11.4 Settings and setup
 
@@ -520,7 +586,7 @@ Provider and MCP secrets remain daemon-side. The secret-store implementation abs
 
 ### 12.4 File and command boundary
 
-Copilot shell and file-write permission requests are currently denied. Read requests are approved without daemon-side path confinement, so the implementation must not yet be described as enforcing approved roots for all reads. MCP command and environment configuration receives separate blocklist and injection validation. A hosted design requires stronger filesystem, process, credential and per-operation tool isolation than the current personal daemon.
+Copilot shell and arbitrary file-write permission requests are denied. Read requests are approved without daemon-side path confinement, so the implementation must not yet be described as enforcing approved roots for all reads. Exact allowlisted memory and goal tools are the only agent mutation path. MCP command and environment configuration receives separate blocklist and injection validation. A hosted design requires stronger filesystem, process, credential and per-operation tool isolation than the current personal daemon.
 
 ### 12.5 Voice and capture privacy
 
@@ -537,13 +603,14 @@ just build
 just clean
 just check
 just test
+just profile-startup
 just release 1.0.0
-NOTARIZE_APPLE_ID=... NOTARIZE_TEAM_ID=... NOTARIZE_PASSWORD=... just ship 1.0.0
+NOTARIZE_KEYCHAIN_PROFILE=bobe-notary just ship 1.0.0
 ```
 
-`just check` is the broad verification lane: formatting, Clippy, Rust and Swift tests, audits and builds. Rust uses edition 2024, MSRV 1.94, `unsafe_code = "deny"`, and pedantic Clippy with documented targeted exceptions.
+`just check` is the broad verification lane: formatting, Clippy, Rust and Swift tests, audits and builds. Rust uses edition 2024, MSRV 1.97.1, `unsafe_code = "deny"`, and pedantic Clippy with documented targeted exceptions.
 
-The current release artifact is the signed/notarized macOS application and its bundled daemon. Sparkle publication, signing and notarization are documented in [Updating OTA](UpdatingOTA.md) and [Code Signing](CODE_SIGNING.md).
+The current release artifact is the signed/notarized macOS application and its bundled daemon. Sparkle publication, signing and notarization are documented in [Updating OTA](UpdatingOTA.md).
 
 The repository does not yet operate independent release channels for:
 
@@ -572,10 +639,13 @@ These are facts about the present implementation, not criticisms of the intended
 12. mDNS advertisement exists, but the macOS client does not implement remote discovery/provisioning UI.
 13. There is no resumable event cursor or snapshot/replay contract.
 14. There is no validated daemon backup/restore procedure.
-15. Ubuntu x86_64 is not yet compiled and exercised as a first-class CI product target.
+15. Ubuntu x86_64 is a compatibility target, but no continuously validated or packaged standalone deployment exists.
 16. macOS capture dependencies prevent claiming that the current daemon source is already platform-neutral.
 17. The Copilot SDK depends on a child CLI process and desktop/server authentication assumptions.
 18. No mobile application, device firmware, hosted control plane or fleet service exists in this repository.
+19. BodyLink is an opt-in, one-enrolled-device PTT vertical slice; product enrollment, multi-device certificate registry, fleet lifecycle, and physical hardware validation remain incomplete.
+20. The BodyLink speech adapter can run without visible UI, but it remains packaged in the app executable and has no independent installation or supervision path.
+21. English UI copy is complete; non-English localization catalogs are partial and intentionally fall back to English for missing keys.
 
 ## 15. Architectural invariants already worth preserving
 
@@ -594,8 +664,6 @@ Even before the future platform design is implemented, several current propertie
 
 - [BoBe Platform Architecture](platform-architecture.md) — proposed hosted, self-hosted, mobile and physical-device evolution.
 - [Physical BoBe](physical-bobe.md) — voice, embodiment, room satellites and hardware detail.
-- [Engine Provider Notes](../ENGINE_PROVIDER_NOTES.md) — Copilot SDK/provider architecture and history.
 - [Rust Guidelines](RUST_GUIDELINES.md) — normative Rust design and implementation rules.
-- [Updating OTA](UpdatingOTA.md) — macOS release automation.
-- [Code Signing](CODE_SIGNING.md) — signing and notarization.
+- [Updating OTA](UpdatingOTA.md) — macOS release, signing, notarization, and update automation.
 - [Security Policy](../SECURITY.md) — vulnerability reporting and security summary.

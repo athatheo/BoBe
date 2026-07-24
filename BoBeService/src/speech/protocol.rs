@@ -255,25 +255,25 @@ mod tests {
             "partial_text":"please stop now"
         }"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
-        assert!(matches!(
+        std::assert_matches!(
             parsed,
             ClientMessage::BargeIn {
                 partial_text: Some(ref text),
                 ..
             } if text == "please stop now"
-        ));
+        );
     }
 
     #[test]
     fn control_abort_deserialize() {
         let raw = r#"{"type":"control","action":"abort"}"#;
         let parsed: ClientMessage = serde_json::from_str(raw).unwrap();
-        assert!(matches!(
+        std::assert_matches!(
             parsed,
             ClientMessage::Control {
                 action: ControlAction::Abort
             }
-        ));
+        );
     }
 
     #[test]

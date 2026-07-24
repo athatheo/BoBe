@@ -43,6 +43,11 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
     // Existing skill files are never overwritten.
     crate::copilot::skills::ensure_skills(&data_root).await;
     let mcp = load_mcp_servers_for_sdk(&config);
+    let goal_file_store =
+        crate::services::goals::file_store::GoalFileStore::new(data_root.join("goals"));
+    let goals_service = Arc::new(crate::services::goals::goals_service::GoalsService::new(
+        goal_file_store,
+    ));
     // Shared by AppState (consumed by voice.rs) and WorkerRegistry (BobeHooks).
     let voice_turn_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
     // Engines aren't concurrent-feed safe; CAS in voice.rs admits one at a time.
@@ -75,6 +80,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         crate::copilot::registry::WorkerRegistry::new(
             Arc::clone(&infra.config_arc),
             Arc::clone(&memory_file),
+            Arc::clone(&goals_service),
             data_dir,
             mcp.servers,
             mcp.excluded_tools,
@@ -84,7 +90,7 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         )
     };
 
-    let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers)).await;
+    let wired = wiring::wire(&config, &infra, &repos, Arc::clone(&workers), goals_service).await;
 
     // Hard reload only when SDK env changes (engine/provider/offline); model
     // changes go soft to preserve chat context. Defers up to 30s mid-voice
@@ -196,6 +202,19 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
         }))
     };
 
+    let body_gateway = crate::body::gateway::BodyGateway::new(
+        config.body.controller_epoch,
+        config.body.enrolled_device_id.clone(),
+        config.body.enabled,
+        crate::body::gateway::BodyRuntime {
+            config: Arc::clone(&infra.config_arc),
+            runtime_session: Arc::clone(&wired.runtime_session),
+            voice_engines: Arc::clone(&voice_engines),
+            voice_turn_active: Arc::clone(&voice_turn_active),
+            voice_sink: Arc::clone(&voice_sink),
+        },
+    );
+
     let state = Arc::new(AppState {
         infra: Arc::new(crate::app_state::Infrastructure {
             db: pool,
@@ -229,6 +248,9 @@ pub(crate) async fn run(config: Config) -> Result<Arc<AppState>, AppError> {
             ollama_install,
         }),
         auth: Arc::new(crate::app_state::AuthContext { copilot_login }),
+        body: Arc::new(crate::app_state::BodyContext {
+            gateway: body_gateway,
+        }),
     });
 
     // Cold-start prewarm: the first chat message was paying for `Client::start`

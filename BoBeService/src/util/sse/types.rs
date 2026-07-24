@@ -10,6 +10,7 @@ pub(crate) enum EventType {
     Error,
     Heartbeat,
     ConversationClosed,
+    ConversationChanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,7 +29,7 @@ impl IndicatorType {
     /// "SCREAMING_SNAKE_CASE")]` attr on the enum so the one remaining
     /// manual-string caller (`factories::indicator_event` populating
     /// `StreamBundle.description`) agrees with what serde emits and what
-    /// `BoBeMacUI/BoBe/Models/AppState.swift::IndicatorType` decodes.
+    /// `BoBeMacUI/BoBe/Stores/BobeStoreState.swift::IndicatorType` decodes.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Idle => "IDLE",

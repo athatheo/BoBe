@@ -194,6 +194,16 @@ actor BackendService {
         var env = ProcessInfo.processInfo.environment
         env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
         env["BOBE_DATA_DIR"] = self.dataDir.path
+        guard let copilotCLIPath = Self.resolveCopilotCLIPath(
+            environment: env,
+            bundleURL: Bundle.main.bundleURL,
+            isExecutableFile: { FileManager.default.isExecutableFile(atPath: $0) }
+        ) else {
+            self.transition(to: .fatal)
+            self.lastError = "Copilot CLI helper is missing. Try reinstalling BoBe."
+            throw BackendServiceError.spawnFailed("Copilot CLI helper not found")
+        }
+        env["COPILOT_CLI_PATH"] = copilotCLIPath
         proc.environment = env
 
         let outPipe = Pipe()
@@ -222,7 +232,7 @@ actor BackendService {
             if self.isPortInUse(DaemonConfig.defaultPort) {
                 self.lastError =
                     "Port \(DaemonConfig.defaultPort) is already in use by another application. "
-                        + "Close the conflicting app or set BOBE_PORT to a different port."
+                        + "Close the conflicting application, then relaunch BoBe."
                 throw BackendServiceError.healthCheckFailed
             }
         }
@@ -456,6 +466,26 @@ actor BackendService {
     }
 
     // MARK: - Binary Discovery
+
+    nonisolated static func resolveCopilotCLIPath(
+        environment: [String: String],
+        bundleURL: URL,
+        isExecutableFile: (String) -> Bool
+    ) -> String? {
+        let helperPath = bundleURL
+            .appendingPathComponent("Contents/Helpers/copilot", isDirectory: false)
+            .path
+        if isExecutableFile(helperPath) {
+            return helperPath
+        }
+
+        if let configuredPath = environment["COPILOT_CLI_PATH"],
+           !configuredPath.isEmpty,
+           isExecutableFile(configuredPath) {
+            return configuredPath
+        }
+        return nil
+    }
 
     private func findBinaryPath() -> String? {
         if let execURL = Bundle.main.executableURL {

@@ -15,7 +15,8 @@ use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::state::Decision;
 use crate::util::capture::ScreenCapture;
 use crate::util::sse::event_queue::EventQueue;
-use crate::util::sse::factories::{indicator_event, trigger_error_event};
+use crate::util::sse::factories::trigger_error_event;
+use crate::util::sse::indicator_guard::IndicatorGuard;
 use crate::util::sse::types::IndicatorType;
 
 use crate::runtime::turn_admission::{TurnAdmission, TurnSource};
@@ -123,6 +124,7 @@ impl CaptureTrigger {
             debug!("capture_trigger.skipped_user_message_in_flight");
             return Decision::Idle;
         };
+        let _indicator_guard = IndicatorGuard::new(Arc::clone(&self.event_queue));
 
         let Some(description) = self.run_capture_cycle().await else {
             return Decision::Idle;
@@ -139,13 +141,11 @@ impl CaptureTrigger {
                 cooldown_type = %cooldown.cooldown_type,
                 "capture_trigger.cooldown_active"
             );
-            self.event_queue
-                .push(indicator_event(IndicatorType::Idle, None));
+            self.event_queue.set_indicator(IndicatorType::Idle);
             return Decision::Idle;
         }
 
-        self.event_queue
-            .push(indicator_event(IndicatorType::Thinking, None));
+        self.event_queue.set_indicator(IndicatorType::Thinking);
         let decision = self
             .generator
             .generate_proactive_response(
@@ -153,8 +153,7 @@ impl CaptureTrigger {
                 Some(description),
             )
             .await;
-        self.event_queue
-            .push(indicator_event(IndicatorType::Idle, None));
+        self.event_queue.set_indicator(IndicatorType::Idle);
         decision
     }
 
@@ -167,20 +166,16 @@ impl CaptureTrigger {
         let cycle_num = self.context_count + 1;
         info!(cycle = cycle_num, "capture_trigger.cycle_start");
 
-        self.event_queue
-            .push(indicator_event(IndicatorType::ScreenCapture, None));
+        self.event_queue.set_indicator(IndicatorType::ScreenCapture);
         let capture_result = match self.screen_capture.capture_screen().await {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, cycle = cycle_num, "capture_trigger.screenshot_failed");
-                self.event_queue
-                    .push(indicator_event(IndicatorType::Idle, None));
+                self.event_queue.set_indicator(IndicatorType::Idle);
                 return None;
             }
         };
-
-        self.event_queue
-            .push(indicator_event(IndicatorType::Thinking, None));
+        self.event_queue.set_indicator(IndicatorType::Thinking);
         let result = self
             .capture_learner
             .learn(
@@ -188,21 +183,20 @@ impl CaptureTrigger {
                 capture_result.active_window.as_deref(),
             )
             .await;
-        self.event_queue
-            .push(indicator_event(IndicatorType::Idle, None));
+        self.event_queue.set_indicator(IndicatorType::Idle);
 
         match result {
-            Ok(description) if !description.is_empty() => {
-                self.context_count += 1;
+            Ok(description) => {
                 self.announce_vision_recovered();
-                debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
-                Some(description)
-            }
-            Ok(_) => {
-                // Empty description = uninformative screen, not a failure.
-                self.announce_vision_recovered();
-                debug!(cycle = cycle_num, "capture_trigger.empty_description");
-                None
+                if description.is_empty() {
+                    // Empty description = uninformative screen, not a failure.
+                    debug!(cycle = cycle_num, "capture_trigger.empty_description");
+                    None
+                } else {
+                    self.context_count += 1;
+                    debug!(cycle = cycle_num, "capture_trigger.cycle_complete");
+                    Some(description)
+                }
             }
             Err(e) => {
                 self.vision_failure_count += 1;

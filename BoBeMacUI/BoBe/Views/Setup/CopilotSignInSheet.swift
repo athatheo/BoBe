@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Native sheet that drives the daemon's `/auth/copilot/login` device flow.
 /// Replaces the previous osascript→Terminal handoff so the user never
-/// leaves BoBe. The bundled CLI still owns the OAuth flow; this view is
+/// leaves BoBe. The installed CLI still owns the OAuth flow; this view is
 /// just a remote control on top of it.
 ///
 /// Lifecycle: callers present the sheet with `.sheet(isPresented: …)`, the

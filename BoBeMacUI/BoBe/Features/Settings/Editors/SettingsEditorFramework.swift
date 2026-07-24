@@ -73,14 +73,6 @@ struct SettingsEditorState<SelectionID: Hashable>: Equatable {
         self.selectedId != nil
     }
 
-    var canSave: Bool {
-        self.isDirty && !self.isSaving
-    }
-
-    var hasError: Bool {
-        !(self.errorMessage?.isEmpty ?? true)
-    }
-
     mutating func select(_ id: SelectionID?) {
         self.selectedId = id
         self.isDirty = false

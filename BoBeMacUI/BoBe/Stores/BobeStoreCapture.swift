@@ -63,7 +63,7 @@ extension BobeStore {
             self.isReconnecting = false
             self.hasConnectedOnce = true
             self.synchronizeCaptureStartup()
-            self.synchronizeStatus()
+            self.synchronizeStatusAndConversation()
             return
         }
 
@@ -72,11 +72,13 @@ extension BobeStore {
     }
 
     /// Without this, mid-turn SSE reconnects let the composer re-enable too early and 409.
-    private func synchronizeStatus() {
+    private func synchronizeStatusAndConversation() {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            var replacingActiveStream = false
             do {
                 let status = try await self.client.getStatus()
+                replacingActiveStream = status.indicatorType == .idle
                 self.updateState { ctx in
                     ctx.acceptingUserMessages = status.acceptingUserMessages
                     let indicator = status.indicatorType
@@ -87,6 +89,9 @@ extension BobeStore {
             } catch {
                 bobeStoreLogger.warning("Status sync skipped: \(error.localizedDescription)")
             }
+            await self.reloadCanonicalConversation(
+                replacingActiveStream: replacingActiveStream
+            )
         }
     }
 

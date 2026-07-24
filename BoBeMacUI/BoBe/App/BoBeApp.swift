@@ -77,6 +77,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isQuitting = false
     private var isDuplicateInstance = false
     private var isStartingUp = true
+    private let isBodyAdapterOnly =
+        ProcessInfo.processInfo.environment["BOBE_BODY_ADAPTER_ONLY"] == "1"
 
     override init() {
         self.store = BobeStore.shared
@@ -85,6 +87,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("BoBe starting up")
+
+        if self.isBodyAdapterOnly {
+            NSApp.setActivationPolicy(.prohibited)
+            self.isStartingUp = false
+            guard let configuration = BodyAdapterConfig.load() else {
+                logger.error("Body adapter-only mode has invalid configuration")
+                NSApp.terminate(nil)
+                return
+            }
+            Task {
+                await BodySpeechAdapter.shared.start(configuration: configuration)
+            }
+            return
+        }
 
         self.store.applyPersistedLocale()
 
@@ -145,6 +161,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if self.isDuplicateInstance { return .terminateNow }
         guard !self.isQuitting else { return .terminateNow }
         self.isQuitting = true
+        if self.isBodyAdapterOnly {
+            Task {
+                await BodySpeechAdapter.shared.stop()
+                await MainActor.run {
+                    NSApp.reply(toApplicationShouldTerminate: true)
+                }
+            }
+            return .terminateLater
+        }
 
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(20))
@@ -161,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // VoicePipeline.disconnect() on a half-torn-down store.
             await MainActor.run { SystemPowerObserver.shared.stop() }
 
+            await BodySpeechAdapter.shared.stop()
             self.store.disconnect()
             await BackendService.shared.stop()
 
@@ -189,6 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
+        guard !self.isBodyAdapterOnly else { return }
         guard !self.isQuitting, !self.isStartingUp else { return }
         if SetupWindowManager.shared.isOnboardingCompleted {
             if OverlayWindowManager.shared.panel == nil {
@@ -259,7 +286,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let warning = await BackendService.shared.startupWarning {
             self.store.surfaceWarning(warning)
         }
-
+        if let bodyAdapter = BodyAdapterConfig.load() {
+            await BodySpeechAdapter.shared.start(configuration: bodyAdapter)
+        } else if ProcessInfo.processInfo.environment["BOBE_BODY_ADAPTER"] == "1" {
+            logger.error(
+                "BOBE_BODY_ADAPTER requires a loopback URL and BOBE_BODY__ADAPTER_TOKEN"
+            )
+        }
         if SetupWindowManager.shared.isOnboardingCompleted {
             self.showOverlay()
             self.store.connect()

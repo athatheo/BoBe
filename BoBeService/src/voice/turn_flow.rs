@@ -45,14 +45,14 @@ pub(crate) async fn abort_active_turn(
     join.abort();
     drop(join.await);
     send_json(
-        &ctx.out_tx,
+        &ctx.output,
         &ServerMessage::Truncate {
             turn_id: turn_id.clone(),
             keep_ms,
         },
     )
     .await;
-    send_state(&ctx.out_tx, VoicePhase::Listening, &turn_id).await;
+    send_state(&ctx.output, VoicePhase::Listening, &turn_id).await;
     s.last_partial_text.clear();
 }
 

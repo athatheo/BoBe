@@ -39,7 +39,10 @@ pub(crate) struct VoiceEngines {
 
 impl VoiceEngines {
     pub(crate) fn from_state(state: &AppState) -> Self {
-        let snap = state.voice.voice_engines.load();
+        Self::from_snapshot(&state.voice.voice_engines.load())
+    }
+
+    pub(crate) fn from_snapshot(snap: &VoiceEnginesSnapshot) -> Self {
         Self {
             tts: snap.tts.as_ref().map(Arc::clone),
             fillers: snap.filler_library.as_ref().map(Arc::clone),

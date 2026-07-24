@@ -294,7 +294,7 @@ mod tests {
             .expect("download task should join")
             .expect_err("download should be canceled");
 
-        assert!(matches!(error, AppError::Canceled(_)));
+        std::assert_matches!(error, AppError::Canceled(_));
         assert!(!partial_path.exists());
         assert!(!output_path.exists());
         release_stream.notify_waiters();

@@ -5,7 +5,7 @@
 //!
 //! We avoid the typed `Client::list_models()` because SDK 0.1.0's
 //! `ModelBilling.multiplier` field is non-optional `f64`, while the
-//! bundled CLI (1.0.44) sometimes returns `billing` objects without
+//! Copilot CLI sometimes returns `billing` objects without
 //! `multiplier`. That serde mismatch shows up as `missing field
 //! \`multiplier\`` and would otherwise mask a perfectly good model
 //! list. Deserializing into our own shape — every field optional —

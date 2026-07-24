@@ -5,6 +5,7 @@
 //! `Config` and owns the figment loader. Re-exports the per-domain
 //! types so consumers continue to import `crate::config::Foo` unchanged.
 
+mod body;
 mod engine;
 pub(crate) mod manager;
 mod manager_fields;
@@ -18,6 +19,7 @@ use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
 
+pub(crate) use body::BodyConfig;
 pub(crate) use engine::EngineConfig;
 pub(crate) use mcp::McpConfig;
 pub(crate) use runtime::{
@@ -29,11 +31,10 @@ pub(crate) use voice::{PauseSensitivity, VoiceConfig};
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct Config {
-    pub(crate) config_version: u32,
-
     pub(crate) data_dir: String,
 
     pub(crate) server: ServerConfig,
+    pub(crate) body: BodyConfig,
     pub(crate) database: DatabaseConfig,
     pub(crate) capture: CaptureConfig,
     pub(crate) checkin: CheckinConfig,

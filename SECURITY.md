@@ -30,7 +30,7 @@ The following are in scope:
 
 - **Rust backend** (`src/`) — API handlers, LLM orchestration, tool execution, file access, config/secrets handling
 - **Swift frontend** (`BoBeMacUI/`) — backend communication, credential handling
-- **Build and release pipeline** — CI workflows, code signing, notarization, update distribution
+- **Build and release tooling** — code signing, notarization, packaging, and update distribution
 - **MCP server integration** — command validation, environment handling
 
 The following are out of scope:
@@ -43,9 +43,15 @@ The following are out of scope:
 
 BoBe is designed with the following security properties:
 
-- All network traffic is bound to `127.0.0.1` — the backend is never exposed to the network
-- Host validation middleware on every route
-- API keys are stored in the macOS Keychain and handled in-memory with the `secrecy` crate
-- File tool access uses `canonicalize()` + ancestry checks to prevent path traversal
+- The daemon binds to `127.0.0.1` by default; deliberate remote exposure requires allowed hosts, bearer authentication, and TLS
+- Host validation middleware on every owner-facing HTTP route; the separate
+  BodyLink listeners use mTLS device identity or a scoped loopback adapter token
+- Secrets are stored through the platform secret-store abstraction and handled in-memory with the `secrecy` crate
+- Shell and arbitrary file-write requests are denied; memory and goal mutations use exact allowlisted daemon-owned tools
 - MCP commands are validated against a configurable blocklist
-- CORS is locked to localhost origins
+- CORS defaults to localhost origins and is not treated as authentication
+- The optional BodyLink listener requires both CA validation and an exact
+  enrolled client-certificate leaf match; device identity cannot be supplied
+  by hello JSON alone
+- The loopback Swift body speech-adapter socket uses a separate scoped bearer
+  token and never receives the broad owner-facing daemon credential

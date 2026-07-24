@@ -2,18 +2,25 @@
 name = "bobe"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.94"
+rust-version = "1.97.1"
 license = "MIT"
 authors = ["The BoBe Authors"]
 homepage = "https://www.bobebot.com"
 repository = "https://github.com/athatheo/BoBe"
 publish = false
 
+[features]
+# `just` runtime recipes externalize the CLI into app/helper staging. Keep this
+# default only as a self-contained fallback for direct `cargo build` consumers.
+default = ["bundled-copilot-cli"]
+bundled-copilot-cli = ["github-copilot-sdk/bundled-cli"]
+
 [lints.rust]
 unsafe_code = "deny"
 unreachable_pub = "warn"
 elided_lifetimes_in_paths = "warn"
 let_underscore_drop = "warn"           # Catch silent drops of values with Drop impls
+dead_code_pub_in_binary = "warn"       # Public items in this binary must still be used
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -87,27 +94,29 @@ anyhow = "1.0.103"
 async-stream = "0.3.6"
 arc-swap = "1.9.2"
 async-trait = "0.1.89"
-axum = { version = "0.8.9", features = ["macros", "ws"] }
+axum = { version = "0.8.9", features = ["ws"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
 chrono = { version = "0.4.45", features = ["serde"] }
-clap = { version = "4.6.1", features = ["derive"] }
+clap = { version = "4.6.2", features = ["derive"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
-toml_edit = "0.25.12"
+toml_edit = "0.25.13"
 futures = "0.3.32"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+schemars = "1.2.1"
 secrecy = { version = "0.10", features = ["serde"] }
 # SQLite only. TLS and migration-runner features are intentionally omitted:
-# schema application uses `raw_sql`, while `macros` is needed by model derives.
+# schema application uses `raw_sql`; `derive` provides FromRow/Type without
+# pulling the query-macro backends for MySQL and PostgreSQL.
 sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
     "sqlite",
     "uuid",
     "chrono",
-    "macros",
+    "derive",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.52.3", features = [
+tokio = { version = "1.52.4", features = [
     "fs",
     "io-util",
     "macros",
@@ -128,14 +137,14 @@ tower-http = { version = "0.7.0", features = ["cors", "timeout"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 tracing-appender = "0.2.5"
-uuid = { version = "1.23.4", features = ["v4", "serde"] }
-which = "8.0.4"
+uuid = { version = "1.24.0", features = ["v4", "serde"] }
+which = "8.0.5"
 libc = "0.2.186"
 base64 = "0.22.1"
 rand = "0.10.2"
 mdns-sd = { version = "0.20.1", features = ["async"] }
 dashmap = "6.2.1"
-tower = { version = "0.5.3", features = ["timeout", "limit"] }
+tower = { version = "0.5.3", features = ["limit"] }
 # Streaming HTTP client. Used for two purposes:
 #   1. Querying the user's Ollama install on `:11434` for available
 #      models (`/api/tags`) when `engine == "local"`.
@@ -149,7 +158,7 @@ reqwest = { version = "0.13.4", default-features = false, features = [
     "stream",
     "json",
 ] }
-rustls = { version = "0.23.41", default-features = false, features = [
+rustls = { version = "0.23.42", default-features = false, features = [
     "ring",
     "std",
     "tls12",
@@ -165,12 +174,11 @@ bzip2 = "0.6.1"
 # JSON-RPC over stdio. Spawns + manages the CLI process per Client. We use one
 # shared Client across the daemon and create one Session per worker class.
 #
-# `bundled-cli` embeds a verified Copilot CLI binary and extracts it lazily
-# on first use. SDK 1.0 revalidates cached extraction and repairs partial or
-# quarantined installs automatically.
-# Preview adopted deliberately: 1.0.7 uses deterministic IndexMap-backed
-# model-visible tool/MCP schemas, restoring provider prompt-cache hits.
-github-copilot-sdk = { version = "=1.0.7-preview.1", features = ["bundled-cli"] }
+# SDK 1.0.7 pins and SHA-verifies its matching Copilot CLI asset. BoBe release/debug
+# recipes disable `bundled-cli`, stage the SDK-extracted executable, and ship
+# it as a separately signed app helper. The root fallback feature still embeds
+# it for direct Cargo consumers; clippy/tests skip the download entirely.
+github-copilot-sdk = { version = "=1.0.7", default-features = false, features = ["derive"] }
 # Stable server-side Kokoro rollback backend. Client STT/VAD and experimental
 # Supertonic TTS run in Swift/FluidAudio; sherpa remains until client TTS meets
 # the production benchmark and compatibility gates.
@@ -184,7 +192,7 @@ opusic-c = "1.6.1"
 # Markdown stripping before Kokoro TTS — Kokoro speaks **asterisks** and
 # `backticks` literally otherwise. Used by speech::markdown_strip with
 # precompiled LazyLock regex set.
-regex = "1.13.0"
+regex = "1.13.1"
 # Voice telemetry: LLM TTFT, first-sentence, per-sentence synthesis,
 # transcript-to-first-audio, total-turn latency, barge-in and fillers.
 metrics = "0.24.6"
@@ -194,6 +202,4 @@ sha2 = { version = "0.10.9", default-features = false }
 # macOS-only: Keychain access via the Security framework (Data Protection
 # Keychain). Linux uses a file-based `FileSecretStore` fallback.
 [target.'cfg(target_os = "macos")'.dependencies]
-security-framework-sys = "2.17.0"
-core-foundation = "0.10.1"
-core-foundation-sys = "0.8.7"
+security-framework = { version = "3.7.0", default-features = false, features = ["OSX_10_15"] }

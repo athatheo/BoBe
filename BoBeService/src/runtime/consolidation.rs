@@ -12,22 +12,29 @@ use crate::copilot::memory_file::{MemoryFile, TARGET_MAX_BYTES};
 use crate::copilot::registry::WorkerRegistry;
 use crate::copilot::types::JobInput;
 use crate::error::AppError;
+use crate::runtime::session::RuntimeSession;
 
 const DEFAULT_FIRE_AT: (u32, u32) = (3, 0);
 
 pub(crate) struct ConsolidationScheduler {
     workers: Arc<WorkerRegistry>,
     memory_file: Arc<MemoryFile>,
+    runtime_session: Arc<RuntimeSession>,
     fire_at: NaiveTime,
 }
 
 impl ConsolidationScheduler {
-    pub(crate) fn new(workers: Arc<WorkerRegistry>, memory_file: Arc<MemoryFile>) -> Self {
+    pub(crate) fn new(
+        workers: Arc<WorkerRegistry>,
+        memory_file: Arc<MemoryFile>,
+        runtime_session: Arc<RuntimeSession>,
+    ) -> Self {
         let fire_at = NaiveTime::from_hms_opt(DEFAULT_FIRE_AT.0, DEFAULT_FIRE_AT.1, 0)
             .unwrap_or(NaiveTime::MIN);
         Self {
             workers,
             memory_file,
+            runtime_session,
             fire_at,
         }
     }
@@ -63,6 +70,10 @@ impl ConsolidationScheduler {
 
     /// Optimistic concurrency: reads lock-free, holds writer lock only for verify+commit.
     pub(crate) async fn consolidate_once(&self) -> Result<(), AppError> {
+        let _admission = self
+            .runtime_session
+            .try_begin_consolidation()
+            .map_err(|reason| AppError::Conflict(reason.into()))?;
         let started = Instant::now();
 
         let before = self.memory_file.read().await?;
@@ -155,8 +166,7 @@ fn duration_until_next(fire_at: NaiveTime, now_utc: DateTime<Utc>) -> Duration {
     };
 
     let delta = target.signed_duration_since(now_local);
-    #[allow(clippy::duration_suboptimal_units, reason = "from_days is unstable")]
-    let one_day = Duration::from_secs(60 * 60 * 24);
+    let one_day = Duration::from_hours(24);
     delta.to_std().unwrap_or(one_day)
 }
 

@@ -21,9 +21,6 @@
 "overlay.avatar.state.speaking" = "hablando";
 "overlay.avatar.state.thinking" = "pensando";
 "overlay.avatar.state.wants_to_speak" = "quiere hablar";
-"overlay.chat.action.collapse" = "contraer";
-"overlay.chat.action.read_more" = "más…";
-"overlay.chat.hidden_messages_format" = "+%d mensajes ocultos";
 "overlay.chat.pending_suffix" = " · enviando…";
 "overlay.chat.sender.bobe" = "BoBe";
 "overlay.chat.sender.you" = "tú";
@@ -148,7 +145,6 @@
 "settings.mcp.error.empty_json" = "El JSON de MCP no puede estar vacío.";
 "settings.mcp.loading" = "Cargando configuración de MCP...";
 "settings.mcp.status.validation_passed_format" = "Validación correcta (%d servidores).";
-"settings.mcp.title" = "Configuración de MCP";
 "settings.memories.loading" = "Cargando memorias...";
 "settings.memory.action.reload" = "Reload";
 "settings.memory.action.reset_default" = "Reset to default";
@@ -162,17 +158,6 @@
 "settings.privacy.danger.action.deleting" = "Eliminando...";
 "settings.privacy.danger.confirm_prompt_format" = "Escribe %@ para confirmar";
 "settings.privacy.danger.description" = "Elimina de este dispositivo todos los objetivos, memorias, almas no predeterminadas, perfiles de usuario no predeterminados y configuraciones de servidores MCP.";
-"settings.privacy.danger.error.goal_format" = "objetivo %@";
-"settings.privacy.danger.error.goals" = "objetivos";
-"settings.privacy.danger.error.mcp" = "mcp";
-"settings.privacy.danger.error.memory" = "memory";
-"settings.privacy.danger.error.profile_format" = "perfil %@";
-"settings.privacy.danger.error.profiles" = "perfiles";
-"settings.privacy.danger.error.soul_format" = "alma %@";
-"settings.privacy.danger.error.souls" = "almas";
-"settings.privacy.danger.status.more_suffix" = ", ...";
-"settings.privacy.danger.status.partial_format" = "El borrado se completó con incidencias: %@%@";
-"settings.privacy.danger.status.success" = "Se eliminaron todos los datos locales.";
 "settings.privacy.danger.title" = "Zona peligrosa";
 "settings.privacy.storage.description" = "BoBe almacena los datos localmente en este Mac. Almas, objetivos, memorias, perfil de usuario y ajustes de ejecución se mantienen en el dispositivo.";
 "settings.privacy.storage.included.list" = "• Almas y objetivos\n• Memorias y observaciones\n• Perfil de usuario y ajustes\n• Metadatos de modelos locales";
@@ -186,7 +171,6 @@
 "settings.shared.restart_banner.dismiss" = "Got it";
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ activado";
-"settings.shared.toggle.enabled" = "Activado";
 "settings.souls.delete.accessibility" = "Eliminar alma";
 "settings.souls.empty.description" = "Crea una para definir la personalidad de BoBe";
 "settings.souls.empty.select" = "Selecciona un alma para editar";
@@ -270,7 +254,6 @@
 "setup.local.cancel" = "Cancel";
 "setup.local.retry" = "Try again";
 "settings.category.engine" = "Engine";
-"settings.engine.title" = "Engine";
 "settings.engine.description" = "Pick where BoBe's AI runs and which models it uses for each kind of work.";
 "settings.engine.loading" = "Loading engine settings…";
 "settings.engine.mode.title" = "Where AI runs";
@@ -350,7 +333,6 @@
 /* TODO translate */ "setup.cloud_auth.error.generic" = "BoBe couldn't check your sign-in. Try again in a moment.";
 /* TODO translate */ "app.service_error.summary" = "BoBe couldn't start her backend. This is usually a temporary glitch.";
 /* TODO translate */ "app.service_error.persistent_summary" = "BoBe's backend keeps failing to start. If retrying doesn't help, try reinstalling BoBe from the original DMG.";
-/* TODO translate */ "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
 /* TODO translate */ "settings.window.search.enable_expert" = "Enable Expert mode";
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";

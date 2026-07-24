@@ -11,6 +11,9 @@ pub(crate) enum AppError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
+    #[error("{0}")]
+    RequestReplayUnsafe(String),
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -53,6 +56,7 @@ impl axum::response::IntoResponse for AppError {
         let (status, code) = match &self {
             AppError::Validation(_) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
             AppError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT"),
+            AppError::RequestReplayUnsafe(_) => (StatusCode::CONFLICT, "REQUEST_REPLAY_UNSAFE"),
             AppError::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
             AppError::Database(_) => (StatusCode::SERVICE_UNAVAILABLE, "DATABASE_ERROR"),
             AppError::ServiceUnavailable(_) => {

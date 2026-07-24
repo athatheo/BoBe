@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // Cross-language pairs are locked by check-cross-language-constants.sh.
@@ -14,7 +15,7 @@ enum DaemonEndpoint: Sendable {
               url.scheme?.lowercased() == "https",
               let host = url.host,
               !host.isEmpty,
-              !Self.isLoopback(host),
+              !Self.isLoopbackHost(host),
               url.user == nil,
               url.password == nil,
               url.query == nil,
@@ -47,9 +48,24 @@ enum DaemonEndpoint: Sendable {
         return false
     }
 
-    private static func isLoopback(_ host: String) -> Bool {
+    func authorize(_ request: inout URLRequest) {
+        guard let token = self.bearerToken else { return }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+
+    static func isLoopbackHost(_ host: String) -> Bool {
         let normalized = host.lowercased()
-        return normalized == "localhost" || normalized == "::1" || normalized.hasPrefix("127.")
+        if normalized == "localhost" || normalized == "::1" {
+            return true
+        }
+        var address = in_addr()
+        let parsed = normalized.withCString {
+            inet_pton(AF_INET, $0, &address)
+        }
+        guard parsed == 1 else { return false }
+        return withUnsafeBytes(of: &address) { bytes in
+            bytes.first == 127
+        }
     }
 }
 
@@ -59,6 +75,38 @@ enum DaemonConfig {
     static let defaultPort = 8766
     static let endpoint = DaemonEndpoint.load()
     static let baseURL = endpoint.baseURL.absoluteString
+}
+
+enum PrivacyWire {
+    /// Mirror: Rust `constants::privacy::CLIENT_TIMEOUT_SECS`.
+    static let purgeRequestTimeoutSeconds: TimeInterval = 60
+}
+
+struct BodyAdapterConfiguration: Sendable {
+    let baseURL: URL
+    let bearerToken: String
+}
+
+enum BodyAdapterConfig {
+    static func load(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> BodyAdapterConfiguration? {
+        guard environment["BOBE_BODY_ADAPTER"] == "1" else { return nil }
+        let rawURL = environment["BOBE_BODY_ADAPTER_URL"] ?? "http://127.0.0.1:8768"
+        guard let baseURL = URL(string: rawURL),
+              baseURL.scheme?.lowercased() == "http",
+              baseURL.host.map(DaemonEndpoint.isLoopbackHost) == true,
+              baseURL.user == nil,
+              baseURL.password == nil,
+              baseURL.query == nil,
+              baseURL.fragment == nil,
+              let token = environment["BOBE_BODY__ADAPTER_TOKEN"],
+              !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        return BodyAdapterConfiguration(baseURL: baseURL, bearerToken: token)
+    }
 }
 
 enum OllamaDefaults {
@@ -141,6 +189,7 @@ enum McpServerStatusWire {
 
 enum WindowSizes {
     static let widthCollapsed: CGFloat = 184
+    static let widthComposer: CGFloat = 430
     static let widthExpanded: CGFloat = 540
     static let heightCollapsed: CGFloat = 196
     static let heightAvatar: CGFloat = 180
@@ -148,6 +197,8 @@ enum WindowSizes {
     static let heightExpandedChrome: CGFloat = 56
     static let heightChatViewportMin: CGFloat = 48
     static let heightChatViewportMax: CGFloat = 560
+    static let heightAmbientMessageViewport: CGFloat = 240
+    static let heightAmbientAnswer: CGFloat = 500
     static let heightMax: CGFloat = 900
     static let margin: CGFloat = 16
 }

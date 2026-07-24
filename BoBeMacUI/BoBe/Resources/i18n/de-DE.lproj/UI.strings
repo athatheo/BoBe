@@ -21,9 +21,6 @@
 "overlay.avatar.state.speaking" = "spricht";
 "overlay.avatar.state.thinking" = "denkt";
 "overlay.avatar.state.wants_to_speak" = "möchte sprechen";
-"overlay.chat.action.collapse" = "einklappen";
-"overlay.chat.action.read_more" = "mehr…";
-"overlay.chat.hidden_messages_format" = "+%d ausgeblendete Nachrichten";
 "overlay.chat.pending_suffix" = " · wird gesendet…";
 "overlay.chat.sender.bobe" = "BoBe";
 "overlay.chat.sender.you" = "du";
@@ -148,7 +145,6 @@
 "settings.mcp.error.empty_json" = "MCP-JSON darf nicht leer sein.";
 "settings.mcp.loading" = "MCP-Konfiguration wird geladen...";
 "settings.mcp.status.validation_passed_format" = "Validierung erfolgreich (%d Server).";
-"settings.mcp.title" = "MCP-Konfiguration";
 "settings.memories.loading" = "Erinnerungen werden geladen...";
 "settings.memory.action.reload" = "Reload";
 "settings.memory.action.reset_default" = "Reset to default";
@@ -162,17 +158,6 @@
 "settings.privacy.danger.action.deleting" = "Wird gelöscht...";
 "settings.privacy.danger.confirm_prompt_format" = "Gib %@ zur Bestätigung ein";
 "settings.privacy.danger.description" = "Löscht alle Ziele, Erinnerungen, eigene Souls, eigene Benutzerprofile und MCP-Server-Konfigurationen von diesem Mac.";
-"settings.privacy.danger.error.goal_format" = "Ziel %@";
-"settings.privacy.danger.error.goals" = "Ziele";
-"settings.privacy.danger.error.mcp" = "mcp";
-"settings.privacy.danger.error.memory" = "memory";
-"settings.privacy.danger.error.profile_format" = "Profil %@";
-"settings.privacy.danger.error.profiles" = "Profile";
-"settings.privacy.danger.error.soul_format" = "Soul %@";
-"settings.privacy.danger.error.souls" = "Souls";
-"settings.privacy.danger.status.more_suffix" = ", ...";
-"settings.privacy.danger.status.partial_format" = "Löschen abgeschlossen (mit Fehlern): %@%@";
-"settings.privacy.danger.status.success" = "Alle lokalen Daten wurden gelöscht.";
 "settings.privacy.danger.title" = "Gefahrenbereich";
 "settings.privacy.storage.description" = "BoBe speichert Daten lokal auf diesem Mac. Souls, Ziele, Erinnerungen, Benutzerprofil und Laufzeiteinstellungen bleiben auf dem Mac.";
 "settings.privacy.storage.included.list" = "• Souls und Ziele\n• Erinnerungen und Beobachtungen\n• Benutzerprofil und Einstellungen\n• Metadaten lokaler Modelle";
@@ -186,7 +171,6 @@
 "settings.shared.restart_banner.dismiss" = "Got it";
 "settings.shared.restart_banner.message" = "Some changes apply only after the daemon restarts.";
 "settings.shared.section.enabled_format" = "%@ aktiviert";
-"settings.shared.toggle.enabled" = "Ein";
 "settings.souls.delete.accessibility" = "Soul löschen";
 "settings.souls.empty.description" = "Erstelle eine, um BoBes Persönlichkeit festzulegen";
 "settings.souls.empty.select" = "Wähle eine Soul zum Bearbeiten";
@@ -270,7 +254,6 @@
 "setup.local.cancel" = "Cancel";
 "setup.local.retry" = "Try again";
 "settings.category.engine" = "Engine";
-"settings.engine.title" = "Engine";
 "settings.engine.description" = "Pick where BoBe's AI runs and which models it uses for each kind of work.";
 "settings.engine.loading" = "Loading engine settings…";
 "settings.engine.mode.title" = "Where AI runs";
@@ -350,7 +333,6 @@
 /* TODO translate */ "setup.cloud_auth.error.generic" = "BoBe couldn't check your sign-in. Try again in a moment.";
 /* TODO translate */ "app.service_error.summary" = "BoBe couldn't start her backend. This is usually a temporary glitch.";
 /* TODO translate */ "app.service_error.persistent_summary" = "BoBe's backend keeps failing to start. If retrying doesn't help, try reinstalling BoBe from the original DMG.";
-/* TODO translate */ "settings.window.search.expert_gated" = "That setting lives behind Expert mode. Turn it on to see it.";
 /* TODO translate */ "settings.window.search.enable_expert" = "Enable Expert mode";
 /* TODO translate */ "overlay.input.mic.install_progress.accessibility" = "Voice model download progress";
 /* TODO translate */ "overlay.input.mic.install_progress.value_format" = "%d percent";

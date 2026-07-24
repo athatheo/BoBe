@@ -1,18 +1,43 @@
 import Foundation
 
+struct ConversationSnapshotResponse: Decodable, Sendable {
+    let conversationId: String?
+    let turns: [ConversationSnapshotTurn]
+
+    enum CodingKeys: String, CodingKey {
+        case conversationId = "conversation_id"
+        case turns
+    }
+}
+
+struct ConversationSnapshotTurn: Decodable, Sendable {
+    let id: String
+    let messageId: String
+    let role: String
+    let content: String
+    let isComplete: Bool
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case messageId = "message_id"
+        case role
+        case content
+        case isComplete = "is_complete"
+        case createdAt = "created_at"
+    }
+}
+
 // MARK: - Auth + models DTOs
 
 struct AuthStatusResponse: Codable, Sendable {
-    /// The daemon's `/auth/status` payload also includes `host` and
-    /// `cli_version`, neither of which is surfaced in the UI today, so
-    /// they're omitted from this Codable mirror. JSON decode silently
-    /// ignores unknown fields, so the wire shape can grow without
-    /// breaking this struct.
+    /// The daemon's `/auth/status` payload also includes `host`, which is not
+    /// surfaced in the UI. JSON decoding ignores that extra field.
     let isAuthenticated: Bool
     let authType: String?
     let login: String?
     let statusMessage: String?
-    /// `nil` if the bundled-CLI feature is disabled or not yet extracted.
+    /// `nil` if the daemon cannot resolve an installed CLI helper.
     let cliPath: String?
 
     enum CodingKeys: String, CodingKey {
@@ -181,11 +206,6 @@ struct VoiceInstallSnapshot: Codable, Sendable {
     /// `InstallStatus::Running` variant's wire form.
     var isRunning: Bool {
         self.status == .running
-    }
-
-    /// Convenience for the wizard step's continue button.
-    var isComplete: Bool {
-        self.status == .complete
     }
 
     var isTerminal: Bool {

@@ -1,7 +1,8 @@
 # Physical BoBe: Voice, Embodiment, and Room Satellites
 
-> **Vision snapshot:** July 11, 2026  
-> **Status:** Single authoritative voice and embodiment document  
+> **Vision snapshot:** July 11, 2026
+> **Status:** Detailed Mac-hub voice and embodiment design; BodyLink software slice implemented, physical WB-12 unflashed
+> **Platform authority:** [BoBe Platform Architecture](platform-architecture.md) controls future runtime placement and multi-surface ownership where the documents differ.
 > **Working name:** BoBe Rooms
 
 ## The idea
@@ -14,21 +15,23 @@ the user could choose where BoBe should live:
    speaker, touch controls, and an optional camera.
 3. **In both places** — one companion with several bodies.
 
-The physical device is not another AI agent and does not hold model
-credentials. It is a trusted room satellite: an expressive face, local audio
-front end, wake-word detector, speaker, display, controls, and optional visual
-sensor. The Mac remains the brain that owns identity, memory, models, tools,
-and policy.
+In this prototype topology, the physical device is not another AI agent and
+does not hold model credentials. It is a trusted room satellite: an expressive
+face, local audio front end, wake-word detector, speaker, display, controls,
+and optional visual sensor. The Mac remains the prototype brain that owns
+identity, memory, models, tools, and policy. The broader platform direction may
+move that authority to a hosted or self-hosted personal runtime.
 
 This division is important. An ESP32 can provide excellent deterministic
 real-time I/O, wake-word detection, VAD, acoustic echo cancellation, and a
 small native interface. It cannot run BoBe's general STT, multimodal model,
 Copilot session, memory, or agent loop at acceptable quality.
 
-**Recommendation in one sentence:** prototype the complete experience on an
-M5Stack CoreS3, keep all intelligence and credentials on the Mac, stream
-processed PCM over an authenticated local connection, and treat a custom
-ESP32-P4 design as a later hardware decision rather than a prerequisite.
+**Recommendation in one sentence:** use the recovered WonderBoy WB-12 as the
+first reference body, keep intelligence and credentials in the authoritative
+runtime, start with button-held PCM over authenticated BodyLink, and treat wake
+word, camera, full duplex, Opus and custom ESP32-P4 hardware as later measured
+decisions.
 
 ---
 
@@ -189,7 +192,7 @@ Client to daemon:
 
 { "type": "transcript_partial", "turn_id": "voice_<uuid>", "text": "..." }
 { "type": "transcript_final", "turn_id": "voice_<uuid>", "text": "..." }
-{ "type": "barge_in", "ts_ms": 0, "playback_ms_played": 0 }
+{ "type": "barge_in", "ts_ms": 0, "playback_ms_played": 0, "partial_text": "..." }
 { "type": "playback_ack", "chunk_id": 0, "played_ms": 0 }
 { "type": "wake", "phrase": "hey bobe", "score": 0.9, "ts_ms": 0 }
 { "type": "control", "action": "abort" }
@@ -399,7 +402,7 @@ Why it is strategically good:
   endpoints, and clean local-vs-remote audio ownership.
 - BoBe already owns the difficult product layer that generic satellites lack:
   personality, memory, goals, tools, proactive decisions, and a polished face.
-- A CoreS3 prototype can test the thesis before PCB, enclosure, certification,
+- The existing WB-12 can test the thesis before PCB, enclosure, certification,
   or manufacturing investment.
 
 Why it could still be a bad product:
@@ -419,9 +422,9 @@ Why it could still be a bad product:
 
 The correct bet is therefore staged:
 
-1. perform the endpoint/speech decoupling;
-2. add a simulated satellite;
-3. build one CoreS3 push-to-talk prototype;
+1. retain the completed endpoint/speech decoupling;
+2. retain the completed mock and real-adapter satellite validation;
+3. flash and validate one WB-12 push-to-talk prototype;
 4. use it daily before adding wake word or camera;
 5. prove far-field audio and barge-in;
 6. add a second device to test arbitration;
@@ -435,8 +438,8 @@ The correct bet is therefore staged:
 | Can an ESP32 be the screen/mic/speaker endpoint? | **Proven** |
 | Can speech and agent compute live on a stronger local host? | **Proven and shipped** |
 | Can ESP32 handle wake, AFE, display, Opus/PCM, and state? | **Proven** |
-| Can one host serve several room endpoints? | **Proven generally; BoBe routing remains new work** |
-| Is high-quality far-field barge-in guaranteed on CoreS3? | **No; must be measured** |
+| Can one host route a body turn without creating another agent? | **Proven in the one-body software slice; physical and multi-room arbitration remain unproven** |
+| Is high-quality far-field barge-in guaranteed on the WB-12? | **No; outside the first PTT milestone** |
 | Is an optional still camera technically feasible? | **Proven; product trust remains unproven** |
 | Is custom ESP32-P4 hardware justified now? | **No** |
 | Is a one-device prototype justified? | **Yes** |
@@ -913,7 +916,19 @@ and user configuration already live on the Mac.
 
 ## Hardware direction
 
-### Prototype recommendation: M5Stack CoreS3
+### Current reference prototype: WonderBoy WB-12
+
+The recovered WB-12 is the current reference body: ESP32-S3R8, 8 MB PSRAM,
+16 MB flash, ST7789 240x280 display, one direct-I2S 16 kHz microphone, one
+direct-I2S 24 kHz speaker path, action/volume buttons and no verified touch or
+camera. Its clean-room ESP-IDF 6.0.2 firmware and hardware evidence live in
+`espBobeToy`.
+
+This makes it a better first target than buying a generic board: hardware pins
+and factory behavior are known, PTT maps to the existing action button, and the
+first milestone does not depend on touch, camera, wake word or AEC.
+
+### Earlier generic recommendation: M5Stack CoreS3
 
 The CoreS3 is unusually close to the concept in one purchasable module:
 
@@ -961,7 +976,7 @@ It deliberately offloads full speech processing to a stronger local or cloud
 host. BoBe should learn from its audio and privacy design even though BoBe
 needs a screen and optional camera.
 
-If the CoreS3 cannot meet far-field and full-duplex quality gates, the next
+If the WB-12 cannot meet later far-field and full-duplex quality gates, the next
 prototype should prioritize a dedicated audio DSP or a proven voice front end
 before improving the display.
 
@@ -1094,15 +1109,15 @@ Existing pieces are directly reusable:
 - playback acknowledgements and barge-in semantics already exist;
 - the runtime already prevents overlapping user turns.
 
-Current constraints that must change:
+Implemented boundaries and remaining expansion:
 
 | Current behavior | Physical-device requirement |
 |---|---|
-| `/voice/stream` accepts transcripts, not audio | Swift hub converts satellite audio to transcripts |
-| `voice_ws_active` permits one connected voice WebSocket | Many devices may stay connected; only active turns remain single-flight |
-| `VoiceSink` has one global slot | Route fillers and tool feedback by active endpoint/turn |
-| `VoicePipeline.shared` owns one mic and player | Coordinator owns endpoints; local pipeline becomes one endpoint |
-| Voice final has text only | Multimodal turn can include one or more intentional image attachments |
+| `/voice/stream` accepts transcripts, not audio | Implemented BodyLink uses a separate correlated Swift speech adapter with daemon-issued routes and no second `/voice/stream` |
+| `voice_ws_active` still permits one Mac voice WebSocket | BodyLink uses its own connection boundary and one admission-backed active lease; multi-body connection policy remains future work |
+| `VoiceSink` has one active-turn slot | The admitted turn now installs a generation-guarded endpoint output, so fillers and tool feedback cannot target an idle or superseded route |
+| `VoicePipeline.shared` owns the Mac microphone and player | `BodySpeechAdapter` separately handles body STT and Opus decoding; the local pipeline remains the Mac endpoint |
+| Voice input remains transcript-oriented | BodyLink supplies microphone PCM through the scoped adapter; intentional image input remains future work |
 | Proactivity targets the Mac UI | Select an eligible device using room policy and presence |
 
 Do not bind the existing daemon API to `0.0.0.0`. A new LAN surface must not
@@ -1110,11 +1125,13 @@ weaken host validation, CORS, or the loopback-only REST/SSE contract.
 
 ### Later extraction
 
-If many satellites, headless operation, or process isolation become important,
-extract `SpeechRuntime` and `SatelliteGateway` into a signed Swift/XPC service.
-That service can stay alive independently of the settings/overlay UI while
-retaining Core ML and FluidAudio. This is a later operational improvement, not
-an MVP requirement.
+The current app executable supports a persistent adapter-only mode with no
+visible windows, proving that BodyLink does not depend on overlay or settings
+state. It is not yet an independently installed or supervised component. If
+many satellites, always-on operation after the main app exits, or stronger
+process isolation become important, extract `SpeechRuntime` and
+`SatelliteGateway` into a signed Swift/XPC service. That service can stay alive
+independently while retaining Core ML and FluidAudio.
 
 ---
 
@@ -1124,23 +1141,23 @@ an MVP requirement.
 
 Use one mutually authenticated TLS connection per paired device:
 
-- Bonjour advertises `_bobe-hub._tcp`;
+- Bonjour advertises `_bobe-body-hub._tcp`;
 - device validates the pinned hub CA and expected hub identity;
-- hub validates the device certificate and revocation state;
+- hub validates the client chain and exact configured enrolled leaf;
 - one bounded reader and writer task per connection;
 - heartbeat and monotonic sequence numbers;
-- explicit reconnect/resume, never silent success-shaped fallback.
+- reconnect always performs a fresh hello/welcome and discards media state.
 
-For LAN version one, use PCM rather than Opus:
+The constrained-device link uses PCM:
 
 - microphone: signed 16-bit mono PCM, 16 kHz;
 - playback: signed 16-bit mono PCM, 24 kHz;
 - 20 ms frames;
 - approximately 32 KB/s upstream and 48 KB/s downstream while active.
 
-That bandwidth is trivial on local Wi-Fi and removes codec complexity and
-latency from the microcontroller. Opus can be negotiated later for remote
-links or unusually dense deployments.
+That bandwidth is trivial on local Wi-Fi and removes codec complexity from the
+microcontroller. The daemon still emits its existing Opus TTS internally to
+the loopback Swift adapter, which returns fixed 24 kHz PCM frames.
 
 ### Frame shape
 
@@ -1151,33 +1168,41 @@ fixed header:
 [u8 version]
 [u8 kind]
 [u16 flags]
+[u32 stream_id, big endian]
 [u32 sequence, big endian]
 [u64 monotonic_timestamp_us, big endian]
 [payload]
 ```
 
-Representative control messages:
+The media stream ID is only one part of correlation. The runtime also assigns
+the request, lease, and turn identities carried by control messages. A device
+must never invent an authoritative turn ID.
+
+Representative push-to-talk control messages:
 
 ```jsonc
-{ "type": "device_hello", "device_id": "...", "firmware": "...",
-  "capabilities": ["screen", "touch", "dual_mic", "speaker", "camera"] }
-
-{ "type": "wake_candidate", "wake_id": "...", "snr_db": 18.2,
-  "rms_dbfs": -24.0, "pre_roll_ms": 500 }
-
-{ "type": "capture_start", "turn_id": "...", "sample_rate": 16000 }
-{ "type": "capture_end", "turn_id": "...", "reason": "vad_end" }
-
-{ "type": "vision_offer", "turn_id": "...", "mime": "image/jpeg",
-  "width": 640, "height": 480, "bytes": 42811 }
-
-{ "type": "playback_start", "turn_id": "...", "sample_rate": 24000 }
-{ "type": "playback_ack", "turn_id": "...", "played_samples": 28800 }
-{ "type": "barge_in", "turn_id": "...", "played_samples": 28800 }
-
-{ "type": "scene", "state": "thinking", "expression": "focused",
-  "caption": "Looking at that label..." }
+{ "type": "capture.request", "request_id": "...", "stream_id": 174321,
+  "trigger": "action_button", "codec": "pcm_s16le",
+  "sample_rate_hz": 16000, "channels": 1, "frame_duration_ms": 20 }
+{ "type": "capture.granted", "request_id": "...", "lease_id": "...",
+  "turn_id": "...", "stream_id": 174321, "lease_ttl_ms": 120000 }
+{ "type": "audio.capture.close", "lease_id": "...", "turn_id": "...",
+  "stream_id": 174321, "reason": "button_released" }
+{ "type": "audio.playback.ack", "lease_id": "...", "turn_id": "...",
+  "stream_id": 32012, "played_samples": 28800, "credit_ms": 80 }
+{ "type": "audio.playback.drained", "lease_id": "...", "turn_id": "...",
+  "stream_id": 32012 }
+{ "type": "audio.playback.failed", "lease_id": "...", "turn_id": "...",
+  "stream_id": 32012, "reason": "physical_playback_timeout" }
+{ "type": "face.set", "lease_id": "...", "turn_id": "...",
+  "state_version": 18, "expression": "thinking",
+  "caption": "Working on that...", "ttl_ms": 5000 }
 ```
+
+The granted TTL is the initial watchdog window. Correlated progress advances
+bounded phase deadlines through capture, transcription, generation, decode,
+playback credit, and drain, while a hard ten-minute ceiling prevents a stalled
+body from retaining global turn admission indefinitely.
 
 ### Backpressure and failure
 
@@ -1185,6 +1210,8 @@ Representative control messages:
 - Start with 500 ms input pre-roll and no more than 500 ms queued network
   audio.
 - A sequence gap is observable telemetry.
+- `audio.playback.drained` means physical output completed; timeout and abort
+  paths must report `audio.playback.failed`, never success.
 - If a queue overruns, abort the turn and surface "Network too slow"; do not
   continue with silently corrupted speech.
 - Camera transfers have an explicit byte ceiling and one-frame default.
@@ -1468,23 +1495,34 @@ file maps, and completed milestone tables are not.
 
 ### Phase 0 — protocol and UX simulator
 
-- Add an in-app simulated satellite endpoint.
+- Add simulated endpoints before host integration or hardware flashing.
 - Exercise setup, routing, scenes, disconnects, camera consent, and multiple
   devices without hardware.
-- Define metrics and protocol traces before firmware exists.
+- Define metrics and protocol traces before the firmware is connected to BoBe.
 
 **Exit:** the product behavior is understandable with two simulated rooms.
 
-### Phase 1 — CoreS3 push-to-talk
+**Status:** complete for authoritative turn routing, stale-route rejection,
+targeted output, private-stream isolation, playback credit, and canonical
+conversation resync. Setup, camera-consent, and multi-room policy simulations
+remain outside the first PTT slice.
 
-- ESP-IDF firmware, native display, touch-to-talk.
+### Phase 1 — WB-12 push-to-talk
+
+- ESP-IDF firmware, native display, hold-to-talk action button.
 - TLS transport and manual pairing.
-- 16 kHz PCM to Mac, transcript to existing daemon.
-- 24 kHz PCM response to device.
+- 16 kHz PCM to a scoped gateway and correlated Mac speech adapter.
+- Daemon-issued turn through the existing agent loop, then targeted text and
+  24 kHz PCM back to the initiating device.
 - No wake word and no camera in the first vertical slice.
 
 **Exit:** a complete turn is reliable for hours and the satellite adds less
 than 50 ms P95 transport overhead.
+
+**Software status:** complete through both a mock adapter and the real Swift
+FluidAudio/Opus adapter. Physical flashing, audio quality, transport latency,
+power, and long-duration reliability remain unmeasured because the WB-12 is not
+currently connected.
 
 ### Phase 2 — full-duplex voice
 

@@ -31,30 +31,52 @@ enum MessageSender: String, Sendable {
     case bobe
 }
 
+enum AssistantResponseOrigin: Sendable, Equatable {
+    case userInitiated
+    case proactive
+}
+
 struct FailedSendRecovery: Identifiable, Sendable {
     let id: String
     let content: String
+    let requestId: UUID
+    let canRetry: Bool
+    let failureMessage: String?
 }
 
-struct ChatMessage: Identifiable, Sendable {
+struct ChatMessage: Identifiable, Sendable, Equatable {
     let id: String
     let sender: MessageSender
     var content: String
     var isStreaming: Bool
     var isPending: Bool
+    var isComplete: Bool
+    var responseOrigin: AssistantResponseOrigin?
+
+    var hasVisibleContent: Bool {
+        !self.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var belongsInConversationTrace: Bool {
+        self.hasVisibleContent || self.isStreaming || self.isPending
+    }
 
     init(
         id: String = UUID().uuidString,
         sender: MessageSender,
         content: String,
         isStreaming: Bool = false,
-        isPending: Bool = false
+        isPending: Bool = false,
+        isComplete: Bool = true,
+        responseOrigin: AssistantResponseOrigin? = nil
     ) {
         self.id = id
         self.sender = sender
         self.content = content
         self.isStreaming = isStreaming
         self.isPending = isPending
+        self.isComplete = isComplete
+        self.responseOrigin = responseOrigin
     }
 }
 
@@ -95,18 +117,17 @@ struct BobeContext: Sendable {
     var errorMessage: String?
     /// Recoverable trigger errors (vision breaker, capture timeout) — tertiary tint.
     var softWarning: String?
-    var indicatorMessage: String?
     /// Defaults to `true` so the composer is enabled until daemon says otherwise.
     var acceptingUserMessages = true
     /// `true` during the 3s pre-clear window after `conversation_closed`.
     var conversationEnding = false
     var currentMessage = ""
     var messages: [ChatMessage] = []
-    /// Derived: `true` iff `messages.contains { $0.sender == .bobe }`.
+    /// Derived: `true` iff the trace contains visible or in-flight BoBe content.
     /// Maintained inside `BobeStore.updateState` so callers (e.g. the
     /// overlay's `chatViewportFloorHeight`) can read it in O(1) per body
     /// eval instead of walking the array.
-    var hasBobeMessage: Bool = false
+    var hasDisplayableBobeMessage = false
     var failedSendRecoveries: [FailedSendRecovery] = []
     var capturePermissionMissing = false
     var toolExecutions: [ToolExecution] = []

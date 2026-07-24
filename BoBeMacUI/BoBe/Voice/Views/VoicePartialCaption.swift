@@ -23,7 +23,7 @@ struct VoicePartialCaption: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(self.theme.colors.surface.opacity(0.9))
+                    .fill(self.theme.colors.surface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(self.theme.colors.primary.opacity(0.4), lineWidth: 1)

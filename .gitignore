@@ -1,5 +1,6 @@
 # Rust build artifacts (covers root and BoBeService/)
 **/target/
+**/node_modules/
 
 # SwiftPM build cache
 **/.build/
@@ -8,12 +9,16 @@
 *.xcuserstate
 xcuserdata/
 *.xcworkspace/
+*.xcodeproj/
 
 # macOS
 **/.DS_Store
 
 # Build output
 build/
+
+# Project-local developer tools
+.tools/
 
 # Git worktrees
 .worktrees/

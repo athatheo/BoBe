@@ -1,17 +1,15 @@
 import Foundation
 
-/// Terminal.app handoff for the bundled `copilot` CLI's device-flow prompt
-/// (interactive flow can't be replicated inside the app process). Living
-/// in Services/ — orchestration, not view code.
+/// Expert-mode Terminal fallback for the installed CLI's device flow.
+/// Normal sign-in stays inside BoBe through the daemon-owned PTY flow.
 enum CopilotSignIn {
     static func openLogin(cliPath: String?) {
-        let command: String
-        if let cliPath {
-            let escaped = cliPath.replacingOccurrences(of: "'", with: "'\\''")
-            command = "'\(escaped)'"
-        } else {
-            command = "copilot"
-        }
+        let resolvedPath = cliPath ?? BackendService.resolveCopilotCLIPath(
+            environment: ProcessInfo.processInfo.environment,
+            bundleURL: Bundle.main.bundleURL,
+            isExecutableFile: { FileManager.default.isExecutableFile(atPath: $0) }
+        )
+        let command = self.loginCommand(cliPath: resolvedPath)
         let script = """
         tell application "Terminal"
             activate
@@ -22,5 +20,16 @@ enum CopilotSignIn {
         process.launchPath = "/usr/bin/osascript"
         process.arguments = ["-e", script]
         try? process.run()
+    }
+
+    static func loginCommand(cliPath: String?) -> String {
+        let executable: String
+        if let cliPath {
+            let escaped = cliPath.replacingOccurrences(of: "'", with: "'\\''")
+            executable = "'\(escaped)'"
+        } else {
+            executable = "copilot"
+        }
+        return "\(executable) --no-auto-update login"
     }
 }

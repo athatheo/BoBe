@@ -7,8 +7,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/athatheo/BoBe/actions/workflows/ci.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/athatheo/BoBe/actions/workflows/release.yml"><img src="https://github.com/athatheo/BoBe/actions/workflows/release.yml/badge.svg?event=workflow_dispatch" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey?logo=apple" alt="macOS 15+">
   <img src="https://img.shields.io/badge/arch-Apple%20Silicon-orange" alt="Apple Silicon">
@@ -18,18 +16,18 @@
 
 BoBe lives on your desktop as a transparent overlay. It watches what you're working on, builds memories over time, tracks your goals, and reaches out when it thinks it can help — like a thoughtful colleague who actually pays attention.
 
-Everything runs locally by default. Your data never leaves your machine unless you choose a cloud LLM provider.
+BoBe owns its data and runtime locally by default. You choose whether inference uses your GitHub Copilot subscription or a local Ollama model; only the context needed for a cloud answer leaves the Mac.
 
 ## What BoBe Does
 
 | | |
 |---|---|
 | **Observes your work** | Periodic screen captures analyzed by a vision model to understand context |
-| **Remembers you** | Short-term and long-term memory from conversations and observations |
-| **Tracks your goals** | Extracts goals from conversation, persists them, references them proactively |
+| **Remembers you** | Maintains a local memory document; the agent can append durable facts through a bounded daemon tool |
+| **Tracks your goals** | Keeps human-readable goals, creates them after confirmation, and uses active goals proactively |
 | **Reaches out proactively** | A decision engine evaluates when help is valuable — not a chatbot waiting for input |
 | **Respects your flow** | Cooldown logic and engagement awareness prevent interruptions |
-| **Uses tools** | File access, memory search, and extensible [MCP](https://modelcontextprotocol.io/) server integration |
+| **Uses tools** | Read-only file access plus extensible [MCP](https://modelcontextprotocol.io/) server integration |
 | **Customizable personality** | Soul documents shape how BoBe communicates |
 
 ## Supported Platforms
@@ -37,9 +35,9 @@ Everything runs locally by default. Your data never leaves your machine unless y
 | Platform | Architecture | Minimum Version | Status |
 |----------|-------------|-----------------|--------|
 | macOS    | Apple Silicon (arm64) | macOS 15 Sequoia | ✅ Supported |
-| Windows  | x86_64 / arm64 | — | 🚧 TBD |
+| Ubuntu daemon | x86_64 | — | 🧭 Compatibility target; no packaged release or continuous validation |
 
-> **Note:** Linux and iOS are not currently planned.
+Mobile and physical-device surfaces are future platform directions, not shipped applications. See [docs/platform-architecture.md](docs/platform-architecture.md).
 
 ## Quick Start
 
@@ -51,31 +49,31 @@ Download the latest `BoBe.dmg` from the [Releases](https://github.com/athatheo/B
 
 ```bash
 git clone https://github.com/athatheo/BoBe.git
-cd Bobe
+cd BoBe
 just run
 ```
 
-> Requires macOS 15+, Rust 1.94+, Xcode 16+, and [just](https://github.com/casey/just). See [CONTRIBUTING.md](CONTRIBUTING.md) for full prerequisites.
+> Requires macOS 15+, Rust 1.97.1+, Xcode 16+, and [just](https://github.com/casey/just). See [CONTRIBUTING.md](CONTRIBUTING.md) for full prerequisites.
 
 ### First Launch
 
-On first launch, BoBe's setup wizard walks you through:
+On first launch, BoBe's eight-stage setup wizard walks you through:
 
-1. **Choose your AI** — local (Ollama, runs on your Mac) or cloud (OpenAI / Azure)
-2. **Local setup** — BoBe downloads and manages a local Ollama installation + models automatically
-3. **Cloud setup** — paste your API key and pick a model
-4. **Screen awareness** (optional) — grant Screen Recording permission so BoBe can observe what you're working on
+1. **Choose your AI** — GitHub Copilot cloud or local Ollama
+2. **Authenticate or install** — sign in through BoBe's signed Copilot CLI helper, or let BoBe install Ollama and models
+3. **Personalize** — tell BoBe your name and optionally create a first goal
+4. **Choose proactivity** — tune how often BoBe observes and reaches out
+5. **Grant permissions** — screen awareness is optional
+6. **Prepare voice** — install the speech models used by the Mac
 
 After setup, BoBe appears as a floating overlay on your desktop with a menu bar icon.
 
 ### LLM Providers
 
-| Provider | Description |
-|----------|-------------|
-| **[Ollama](https://ollama.ai)** | Recommended for local inference. BoBe manages the Ollama installation for you. |
-| **OpenAI** | Cloud inference (GPT-5 family). Requires an API key. |
-| **Azure OpenAI** | Enterprise cloud inference. Requires endpoint, key, and deployment name. |
-| **llama.cpp** | Direct local inference without Ollama. |
+| Engine | Description |
+|--------|-------------|
+| **GitHub Copilot** | Cloud inference using the user's Copilot subscription and CLI authentication. |
+| **[Ollama](https://ollama.ai)** | Local inference. BoBe can install the runtime and selected models. |
 
 ## Configuration
 
@@ -84,22 +82,22 @@ All settings are configurable through BoBe's settings panel (click the menu bar 
 Environment variable overrides are available for advanced use:
 
 ```bash
-BOBE_LLM__BACKEND=openai
+BOBE_ENGINE__ENGINE=local
 BOBE_CAPTURE__ENABLED=false
 BOBE_CAPTURE__INTERVAL_SECONDS=30
 ```
 
-Data is stored at `~/.bobe/` — SQLite database, configuration, goals, and MCP server config.
+Data is stored under `~/.bobe/` by default. Set `BOBE_DATA_DIR` to relocate the canonical data root; `BOBE_DATABASE__URL` remains available as an explicit SQLite override.
 
 ## Security
 
-BoBe handles sensitive data including screen captures and API keys. See [SECURITY.md](SECURITY.md) for our vulnerability reporting policy.
+BoBe handles sensitive data including screen captures, personal context, and integration secrets. See [SECURITY.md](SECURITY.md) for our vulnerability reporting policy.
 
 Key security properties:
 
-- **Localhost only** — all endpoints bind to `127.0.0.1`, never exposed to the network
-- **API keys** stored in macOS Keychain, handled in-memory with the `secrecy` crate
-- **File tools** use path canonicalization + ancestry checks
+- **Loopback by default** — the daemon binds to `127.0.0.1` unless remote mode is deliberately configured
+- **Secrets** stored in macOS Keychain and handled in-memory with the `secrecy` crate
+- **Arbitrary file writes and shell commands** are denied; memory/goal mutations use bounded daemon-owned tools
 - **MCP commands** validated against a configurable blocklist
 - **CORS** locked to localhost origins
 - **Remote/reverse-proxy access** must configure an API bearer token and TLS certificate/key; adding a public allowed host without both is rejected at startup, including when the daemon itself binds to loopback behind a proxy

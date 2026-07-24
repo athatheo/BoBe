@@ -1,5 +1,7 @@
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use github_copilot_sdk::{Client, ClientMode, ClientOptions};
@@ -8,6 +10,22 @@ use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::error::AppError;
+
+const CLIENT_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+
+pub(crate) fn installed_cli_path() -> Option<PathBuf> {
+    if let Some(configured) = std::env::var_os("COPILOT_CLI_PATH") {
+        let path = PathBuf::from(configured);
+        if path.is_file() {
+            return Some(path);
+        }
+        warn!(
+            path = %path.display(),
+            "COPILOT_CLI_PATH does not point to a file; trying embedded fallback"
+        );
+    }
+    github_copilot_sdk::install_bundled_cli()
+}
 
 pub(crate) struct ClientHandle {
     inner: Mutex<Option<Arc<Client>>>,
@@ -43,10 +61,28 @@ impl ClientHandle {
             guard.take()
         };
         if let Some(client) = taken {
-            match client.stop().await {
-                Ok(()) => info!("copilot client stopped"),
-                Err(e) => warn!(err = %e, "copilot client stop failed"),
+            match tokio::time::timeout(CLIENT_STOP_TIMEOUT, client.stop()).await {
+                Ok(Ok(())) => info!("copilot client stopped"),
+                Ok(Err(e)) => warn!(err = %e, "copilot client stop completed with errors"),
+                Err(_) => {
+                    warn!(
+                        timeout_ms = CLIENT_STOP_TIMEOUT.as_millis() as u64,
+                        "copilot client stop timed out; forcing shutdown"
+                    );
+                    client.force_stop();
+                }
             }
+        }
+    }
+
+    pub(crate) async fn force_stop(&self) {
+        let taken = {
+            let mut guard = self.inner.lock().await;
+            guard.take()
+        };
+        if let Some(client) = taken {
+            client.force_stop();
+            warn!("copilot client force-stopped");
         }
     }
 }

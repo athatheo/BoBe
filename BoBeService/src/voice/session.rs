@@ -51,10 +51,14 @@ pub(crate) struct VoiceDefaults {
 impl VoiceDefaults {
     pub(crate) fn from_state(state: &AppState) -> Self {
         let cfg = state.config();
+        Self::from_config(&cfg)
+    }
+
+    pub(crate) fn from_config(config: &crate::config::Config) -> Self {
         Self {
-            enabled: cfg.voice.enabled,
-            persona: cfg.voice.persona.clone(),
-            speed: cfg.voice.speed,
+            enabled: config.voice.enabled,
+            persona: config.voice.persona.clone(),
+            speed: config.voice.speed,
         }
     }
 }

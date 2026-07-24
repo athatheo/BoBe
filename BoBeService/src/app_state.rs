@@ -84,12 +84,17 @@ pub(crate) struct AuthContext {
     pub(crate) copilot_login: Arc<crate::copilot::login::LoginCoordinator>,
 }
 
+pub(crate) struct BodyContext {
+    pub(crate) gateway: Arc<crate::body::gateway::BodyGateway>,
+}
+
 pub(crate) struct AppState {
     pub(crate) infra: Arc<Infrastructure>,
     pub(crate) runtime: Arc<RuntimeContext>,
     pub(crate) voice: Arc<VoiceContext>,
     pub(crate) services: Arc<DomainServices>,
     pub(crate) auth: Arc<AuthContext>,
+    pub(crate) body: Arc<BodyContext>,
 }
 
 impl AppState {

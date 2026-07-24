@@ -40,11 +40,12 @@ struct MemoriesEditor: View {
     }
 
     private var byteLabel: String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        formatter.allowedUnits = [.useKB, .useMB]
-        let used = formatter.string(fromByteCount: Int64(self.text.utf8.count))
-        let target = formatter.string(fromByteCount: Int64(memoryTargetMaxBytes))
+        let style = ByteCountFormatStyle(
+            style: .file,
+            allowedUnits: [.kb, .mb]
+        )
+        let used = self.text.utf8.count.formatted(style)
+        let target = memoryTargetMaxBytes.formatted(style)
         return L10n.tr("settings.memory.bytes_format", used, target)
     }
 

@@ -187,13 +187,23 @@ struct SettingsUpdateResponse: Codable, Sendable {
 
 struct SendMessageRequest: Codable, Sendable {
     let content: String
+    let requestId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case requestId = "request_id"
+    }
 }
 
 struct SendMessageResponse: Codable, Sendable {
     let messageId: String
+    let requestStatus: String
+    let replayed: Bool
 
     enum CodingKeys: String, CodingKey {
         case messageId = "message_id"
+        case requestStatus = "request_status"
+        case replayed
     }
 }
 

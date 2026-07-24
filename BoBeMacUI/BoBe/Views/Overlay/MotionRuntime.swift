@@ -10,6 +10,8 @@ enum OverlayMotionPrimitive {
 }
 
 enum OverlayMotionRuntime {
+    static let chatTransitionSeconds: TimeInterval = 0.16
+
     @MainActor static var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
     @MainActor static var shouldAnimate: Bool {
@@ -22,8 +24,10 @@ enum OverlayMotionRuntime {
         switch primitive {
         case .breathing:
             return .easeInOut(duration: 2.8)
-        case .chatTransition, .indicatorTransition:
-            return .spring(duration: 0.32, bounce: 0.14)
+        case .chatTransition:
+            return .easeOut(duration: self.chatTransitionSeconds)
+        case .indicatorTransition:
+            return .easeOut(duration: 0.18)
         case .badgePulse:
             return .easeInOut(duration: 2.0)
         case .statusLabelTransition:

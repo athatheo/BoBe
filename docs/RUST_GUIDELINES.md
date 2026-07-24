@@ -109,7 +109,7 @@ Binary crate — nothing is exported externally.
 
 - All cross-module items **MUST** use `pub(crate)`, never bare `pub`
 - `pub(super)` for module subtree sharing
-- `unreachable_pub` lint enforced in `Cargo.toml`
+- `unreachable_pub` and `dead_code_pub_in_binary` lints enforced in `Cargo.toml`
 
 ## Dead Code Detection
 
@@ -134,29 +134,22 @@ Handlers should be thin: extract → delegate → respond. Exception for config/
 
 ## Clippy Lints
 
-The project currently enables `clippy::pedantic` and `clippy::all` as warnings with justified allows (see `Cargo.toml`). The following additional lints are recommended but not yet configured:
+The project enables `clippy::pedantic` and `clippy::all` as warnings with justified allows (see `Cargo.toml`). It also enables the following targeted restriction lints:
 
 ```toml
-# Panic prevention (not yet enabled)
 unwrap_used = "warn"
 expect_used = "warn"
-panic = "warn"
-indexing_slicing = "warn"
-
-# Debug leftovers (not yet enabled)
 dbg_macro = "warn"
 todo = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
-
-# Arithmetic safety (not yet enabled)
-arithmetic_side_effects = "warn"
-
-# Clarity (not yet enabled)
 clone_on_ref_ptr = "warn"
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+exit = "warn"
 ```
 
-Note: casting lints (`cast_possible_truncation`, `cast_sign_loss`, `cast_possible_wrap`) are explicitly allowed in `Cargo.toml` — all cast sites have been audited.
+Release builds enable integer overflow checks. Casting lints (`cast_possible_truncation`, `cast_sign_loss`, `cast_possible_wrap`) are explicitly allowed in `Cargo.toml`; all cast sites have been audited.
 
 ---
 

@@ -67,45 +67,40 @@ impl FillerLibrary {
         self.inner.get(&kind).map(Arc::clone)
     }
 
-    /// Synthesize every `FillerKind` variant in parallel using the provided
-    /// TTS engine. Failures are non-fatal — the missing kind is omitted and
-    /// callers fall through to silence for that intent. spawn_blocking runs
-    /// each synth on the blocking pool; for 7 short phrases on a system
-    /// without per-engine locking this drops bootstrap delay from ~2-5s
-    /// (sequential) to roughly the longest single phrase.
+    /// Synthesize every filler in one blocking job. The Kokoro engine
+    /// serializes access internally, so spawning one blocking task per phrase
+    /// only occupies extra pool workers while they wait on the same mutex.
     pub(crate) async fn render(tts: Arc<dyn TtsEngine>) -> Self {
         const VOICE: &str = crate::constants::voice_wire::DEFAULT_PERSONA;
         let sample_rate = tts.sample_rate();
-        let kinds = FillerKind::all();
-        let futs = kinds.iter().map(|kind| {
-            let tts_clone = Arc::clone(&tts);
-            let phrase = kind.phrase();
-            let k = *kind;
-            async move {
-                let result =
-                    tokio::task::spawn_blocking(move || tts_clone.synthesize(phrase, VOICE, 1.0))
-                        .await;
-                (k, phrase, result)
-            }
-        });
-        let results = futures::future::join_all(futs).await;
+        let results = tokio::task::spawn_blocking(move || {
+            FillerKind::all()
+                .iter()
+                .map(|kind| (*kind, tts.synthesize(kind.phrase(), VOICE, 1.0)))
+                .collect::<Vec<_>>()
+        })
+        .await;
         let mut inner = HashMap::new();
-        for (kind, _phrase, result) in results {
-            match result {
-                Ok(Ok(pcm)) => {
-                    info!(
-                        kind = ?kind,
-                        samples = pcm.len(),
-                        "voice.filler_rendered"
-                    );
-                    inner.insert(kind, Arc::new(pcm));
+        match results {
+            Ok(results) => {
+                for (kind, result) in results {
+                    match result {
+                        Ok(pcm) => {
+                            info!(
+                                kind = ?kind,
+                                samples = pcm.len(),
+                                "voice.filler_rendered"
+                            );
+                            inner.insert(kind, Arc::new(pcm));
+                        }
+                        Err(error) => {
+                            warn!(kind = ?kind, %error, "voice.filler_synth_failed");
+                        }
+                    }
                 }
-                Ok(Err(e)) => {
-                    warn!(kind = ?kind, error = %e, "voice.filler_synth_failed");
-                }
-                Err(e) => {
-                    warn!(kind = ?kind, error = %e, "voice.filler_synth_join_failed");
-                }
+            }
+            Err(error) => {
+                warn!(%error, "voice.filler_synth_join_failed");
             }
         }
         Self { inner, sample_rate }

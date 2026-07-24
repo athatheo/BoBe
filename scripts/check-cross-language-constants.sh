@@ -14,6 +14,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUST="$ROOT/BoBeService/src/constants.rs"
 SWIFT_CONST="$ROOT/BoBeMacUI/BoBe/App/Constants.swift"
+SMOKE_SCRIPT="$ROOT/scripts/smoke-copilot-tools.sh"
+PROFILE_SCRIPT="$ROOT/scripts/profile-daemon-startup.sh"
 
 fail=0
 
@@ -29,6 +31,16 @@ expect_match() {
 rust_port=$(grep -E 'DEFAULT_DAEMON_PORT: u16 =' "$RUST" | sed -E 's/.*= ([0-9]+);.*/\1/')
 swift_port=$(grep -E 'static let defaultPort = ' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
 expect_match "daemon port" "$rust_port" "$swift_port"
+
+# Privacy purge client/probe timeout. The daemon owns shorter internal and
+# route deadlines; every caller must allow the canonical response margin.
+rust_privacy_timeout=$(grep -E 'CLIENT_TIMEOUT_SECS: u64 =' "$RUST" | sed -E 's/.*= ([0-9]+);.*/\1/')
+swift_privacy_timeout=$(grep -E 'purgeRequestTimeoutSeconds: TimeInterval =' "$SWIFT_CONST" | sed -E 's/.*= ([0-9]+).*/\1/')
+smoke_privacy_timeout=$(grep -E '^PRIVACY_TIMEOUT_SECS=' "$SMOKE_SCRIPT" | sed -E 's/.*=([0-9]+)/\1/')
+profile_privacy_timeout=$(grep -E '^PRIVACY_TIMEOUT_SECS=' "$PROFILE_SCRIPT" | sed -E 's/.*=([0-9]+)/\1/')
+expect_match "privacy purge Swift timeout" "$rust_privacy_timeout" "$swift_privacy_timeout"
+expect_match "privacy purge smoke timeout" "$rust_privacy_timeout" "$smoke_privacy_timeout"
+expect_match "privacy purge profile timeout" "$rust_privacy_timeout" "$profile_privacy_timeout"
 
 # DEFAULT_OLLAMA_BASE_URL
 rust_ollama_base=$(grep -E 'DEFAULT_OLLAMA_BASE_URL:' "$RUST" | sed -E 's/.*= "([^"]+)";.*/\1/')
@@ -145,10 +157,12 @@ pascal_to_snake() {
 }
 
 rust_enum_variants() {
+    local file="$1"
+    local enum_name="$2"
     # Slice the enum body and grep top-level variant identifiers (4-space
     # indent, capital first letter). Skips nested struct fields which are
     # 8-space indented and lowercase.
-    awk "/pub\\(crate\\) enum $1 \\{/,/^}/" "$RUST_PROTO" \
+    awk "/pub\\(crate\\) enum $enum_name \\{/,/^}/" "$file" \
         | grep -oE '^    [A-Z][a-zA-Z0-9]+' \
         | sed -E 's/^    //' \
         | pascal_to_snake \
@@ -165,7 +179,7 @@ diff_sets() {
 }
 
 # VoicePhase (4 variants)
-rust_phase=$(rust_enum_variants VoicePhase)
+rust_phase=$(rust_enum_variants "$RUST_PROTO" VoicePhase)
 swift_phase=$(awk '/enum VoicePhaseWire: String, Codable \{/,/^}/' "$SWIFT_PROTO" \
     | grep -oE 'case [a-z][a-zA-Z0-9]+' \
     | sed -E 's/case //' \
@@ -174,19 +188,51 @@ diff_sets "VoicePhase" "$rust_phase" "$swift_phase"
 
 # ClientMessage (7 variants). Swift encoder hand-writes the type literal
 # as `try c.encode("foo", forKey: .type)` — extract those strings.
-rust_client=$(rust_enum_variants ClientMessage)
+rust_client=$(rust_enum_variants "$RUST_PROTO" ClientMessage)
 swift_client=$(grep -oE 'c\.encode\("[a-z_]+", forKey: \.type\)' "$SWIFT_PROTO" \
     | sed -E 's/.*"([a-z_]+)".*/\1/' \
     | sort -u)
 diff_sets "ClientMessage" "$rust_client" "$swift_client"
 
 # ServerMessage (6 variants). Swift decoder switch arms are `case "foo":`
-rust_server=$(rust_enum_variants ServerMessage)
+rust_server=$(rust_enum_variants "$RUST_PROTO" ServerMessage)
 swift_server=$(awk '/enum ServerVoiceMessage: Decodable \{/,/^    \}/' "$SWIFT_PROTO" \
     | grep -oE 'case "[a-z_]+":' \
     | sed -E 's/case "([a-z_]+)":/\1/' \
     | sort -u)
 diff_sets "ServerMessage" "$rust_server" "$swift_server"
+
+# Main SSE event and indicator discriminators. Swift keeps an `unknown`
+# compatibility case that has no daemon counterpart, so exclude it.
+RUST_SSE="$ROOT/BoBeService/src/util/sse/types.rs"
+SWIFT_SSE="$ROOT/BoBeMacUI/BoBe/DTOs/APITypes.swift"
+SWIFT_STATE="$ROOT/BoBeMacUI/BoBe/Stores/BobeStoreState.swift"
+
+rust_events=$(rust_enum_variants "$RUST_SSE" EventType)
+swift_events=$(
+    awk '/enum EventType: String, Codable, Sendable \{/,/^}/' "$SWIFT_SSE" \
+        | sed -nE 's/^[[:space:]]*case ([a-zA-Z0-9_]+)( = "([^"]+)")?$/\1|\3/p' \
+        | while IFS='|' read -r name wire; do
+            [[ "$name" == "unknown" ]] && continue
+            if [[ -n "$wire" ]]; then
+                printf '%s\n' "$wire"
+            else
+                printf '%s\n' "$name" | pascal_to_snake
+            fi
+        done \
+        | sort -u
+)
+diff_sets "SSE EventType" "$rust_events" "$swift_events"
+
+rust_indicators=$(rust_enum_variants "$RUST_SSE" IndicatorType | tr '[:lower:]' '[:upper:]')
+swift_indicators=$(
+    awk '/enum IndicatorType: String, Codable, Sendable, Equatable \{/,/^}/' "$SWIFT_STATE" \
+        | grep -oE '"[A-Z_]+"' \
+        | tr -d '"' \
+        | grep -v '^UNKNOWN$' \
+        | sort -u
+)
+diff_sets "SSE IndicatorType" "$rust_indicators" "$swift_indicators"
 
 # TTS binary frame header: 8B BE u64 chunk_id + 1B flags + N opus.
 # Rust speech/protocol.rs defines the three; Swift Voice/VoiceProtocol.swift

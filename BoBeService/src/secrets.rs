@@ -62,51 +62,19 @@ pub(crate) fn read_secret(account: &str) -> Option<String> {
 
 #[cfg(target_os = "macos")]
 mod macos {
-    #![allow(unsafe_code)]
-
-    use core_foundation::base::TCFType;
-    use core_foundation::boolean::CFBoolean;
-    use core_foundation::data::CFData;
-    use core_foundation::dictionary::CFMutableDictionary;
-    use core_foundation::string::CFString;
-    use security_framework_sys::item::{
-        kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecReturnData,
-        kSecValueData,
-    };
-    use security_framework_sys::keychain_item::{
-        SecItemAdd, SecItemCopyMatching, SecItemDelete, SecItemUpdate,
+    use security_framework::passwords::{
+        PasswordOptions, delete_generic_password_options, generic_password,
+        set_generic_password_options,
     };
     use tracing::{info, warn};
 
-    // SAFETY: well-known Security framework symbol (macOS 10.15+); not always
-    // exported by `security_framework_sys`, so we declare it locally.
-    unsafe extern "C" {
-        static kSecUseDataProtectionKeychain: core_foundation_sys::string::CFStringRef;
-    }
-
     const SERVICE_NAME: &str = "com.bobe.app";
+    const ERR_SEC_ITEM_NOT_FOUND: i32 = -25_300;
 
-    fn base_query(account: &str) -> CFMutableDictionary {
-        let mut query = CFMutableDictionary::new();
-        // SAFETY: Security framework constants + CFString values live long enough for the dict.
-        unsafe {
-            query.set(kSecClass.cast(), kSecClassGenericPassword.cast());
-            query.set(
-                kSecAttrService.cast(),
-                CFString::new(SERVICE_NAME).as_CFTypeRef(),
-            );
-            query.set(
-                kSecAttrAccount.cast(),
-                CFString::new(account).as_CFTypeRef(),
-            );
-            // Use Data Protection Keychain: app-private, code-signing-gated,
-            // no prompt for the owning signed app.
-            query.set(
-                kSecUseDataProtectionKeychain.cast(),
-                CFBoolean::true_value().as_CFTypeRef(),
-            );
-        }
-        query
+    fn password_options(account: &str) -> PasswordOptions {
+        let mut options = PasswordOptions::new_generic_password(SERVICE_NAME, account);
+        options.use_protected_keychain();
+        options
     }
 
     pub(super) fn store_secret(account: &str, value: &str) -> Result<(), super::SecretError> {
@@ -115,83 +83,40 @@ mod macos {
             return Ok(());
         }
 
-        let query = base_query(account);
-        let value_data = CFData::from_buffer(value.as_bytes());
-        let mut attributes = CFMutableDictionary::new();
-        // SAFETY: Security framework constants + CFData remain alive for the call.
-        unsafe {
-            attributes.set(kSecValueData.cast(), value_data.as_CFTypeRef());
-        }
-        // Updating first preserves the old secret if the operation fails.
-        // SAFETY: both dictionaries contain valid Security framework keys and live through the call.
-        let update_status = unsafe {
-            SecItemUpdate(
-                query.as_concrete_TypeRef(),
-                attributes.as_concrete_TypeRef(),
-            )
-        };
-        let status = if update_status == -25300 {
-            let mut add_query = base_query(account);
-            // SAFETY: the query and value data remain valid through SecItemAdd.
-            unsafe {
-                add_query.set(kSecValueData.cast(), value_data.as_CFTypeRef());
-                SecItemAdd(add_query.as_concrete_TypeRef(), std::ptr::null_mut())
-            }
-        } else {
-            update_status
-        };
-
-        if status == 0 {
-            info!(account, "secrets.stored");
-            Ok(())
-        } else {
-            warn!(account, status, "secrets.store_failed");
-            Err(super::SecretError::Backend(format!(
-                "Failed to store secret '{account}': OSStatus {status}"
-            )))
-        }
+        set_generic_password_options(value.as_bytes(), password_options(account)).map_err(
+            |error| {
+                warn!(account, status = error.code(), "secrets.store_failed");
+                super::SecretError::Backend(format!("Failed to store secret '{account}': {error}"))
+            },
+        )?;
+        info!(account, "secrets.stored");
+        Ok(())
     }
 
     pub(super) fn read_secret(account: &str) -> Option<String> {
-        let mut query = base_query(account);
-        // SAFETY: kSecReturnData is a valid Security framework key; CFBoolean is a singleton.
-        unsafe {
-            query.set(
-                kSecReturnData.cast(),
-                CFBoolean::true_value().as_CFTypeRef(),
-            );
+        match generic_password(password_options(account)) {
+            Ok(data) => match String::from_utf8(data) {
+                Ok(secret) => Some(secret),
+                Err(error) => {
+                    warn!(account, %error, "secrets.read_invalid_utf8");
+                    None
+                }
+            },
+            Err(error) if error.code() == ERR_SEC_ITEM_NOT_FOUND => None,
+            Err(error) => {
+                warn!(account, status = error.code(), %error, "secrets.read_failed");
+                None
+            }
         }
-
-        let mut result: core_foundation::base::CFTypeRef = std::ptr::null();
-        // SAFETY: valid query + pointer to local CFTypeRef that will receive the match.
-        let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &raw mut result) };
-
-        if status == -25300 {
-            return None;
-        }
-        if status != 0 {
-            warn!(account, status, "secrets.read_failed");
-            return None;
-        }
-        if result.is_null() {
-            return None;
-        }
-        // SAFETY: success + non-null → Create Rule → we own and must release.
-        let data = unsafe { CFData::wrap_under_create_rule(result.cast()) };
-        String::from_utf8(data.bytes().to_vec()).ok()
     }
 
     pub(super) fn delete_secret(account: &str) -> Result<(), super::SecretError> {
-        let query = base_query(account);
-        // SAFETY: valid query dict from base_query.
-        let status = unsafe { SecItemDelete(query.as_concrete_TypeRef()) };
-
-        if status == 0 || status == -25300 {
-            Ok(())
-        } else {
-            Err(super::SecretError::Backend(format!(
-                "Failed to delete secret '{account}': OSStatus {status}"
-            )))
+        match delete_generic_password_options(password_options(account)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
+            Err(error) => Err(super::SecretError::Backend(format!(
+                "Failed to delete secret '{account}': {error}"
+            ))),
         }
     }
 
@@ -353,7 +278,7 @@ pub(crate) mod file {
         fn missing_file_loads_empty() {
             let path = tmpfile();
             // Constructor must not panic on a missing file.
-            let store = FileSecretStore::at_path(path.clone());
+            let store = FileSecretStore::at_path(path);
             assert!(store.read("anything").is_none());
         }
 

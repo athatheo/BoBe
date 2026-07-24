@@ -59,7 +59,7 @@ struct AvatarStatusBubble: View {
     }
 
     let mode: Mode
-    let onOpenChat: () -> Void
+    let onOpenAnswer: () -> Void
     let onToggleSilence: () -> Void
     /// Dismiss the currently-displayed BoBe message bubble. Only wired
     /// for the `.bobeMessage` mode — status pills and live STT auto-clear
@@ -70,12 +70,34 @@ struct AvatarStatusBubble: View {
     /// streaming). The silence button only appears in that window — there's
     /// nothing meaningful to silence when BoBe isn't talking.
     let isTtsAudible: Bool
+    let dismissalStyle: AmbientBubbleDismissalStyle
+    let recedeProgress: Double
+    let onInteractionChanged: (Bool) -> Void
 
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
+    @State private var messageContentHeight: CGFloat = 20
+    @State private var messageScrolledToBottom = false
+    @FocusState private var focusedAction: BubbleAction?
+    @AccessibilityFocusState private var accessibilityFocus: BubbleAccessibilityTarget?
 
-    private static let maxLines = 8
     private static let maxWidth: CGFloat = 340
+    private static let transcriptBottomAnchor = "ambient-transcript-bottom"
+
+    private enum BubbleAction: Hashable {
+        case openAnswer
+        case silence
+        case dismiss
+    }
+
+    private enum BubbleAccessibilityTarget: Hashable {
+        case sender
+        case message
+        case openAnswer
+        case silence
+        case dismiss
+    }
 
     var body: some View {
         Group {
@@ -113,17 +135,25 @@ struct AvatarStatusBubble: View {
             }
         }
         .frame(maxWidth: Self.maxWidth, alignment: .trailing)
-        .transition(.asymmetric(
-            insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)),
-            removal: .opacity
-        ))
+        .modifier(
+            AmbientBubbleTransition(
+                style: self.reduceMotion ? .fade : self.dismissalStyle,
+                progress: self.recedeProgress
+            )
+        )
+        .transition(.opacity)
+        .onChange(of: self.focusedAction) { _, _ in
+            self.reportInteraction()
+        }
+        .onChange(of: self.accessibilityFocus) { _, _ in
+            self.reportInteraction()
+        }
     }
 
     // MARK: - Compact pill (status / silenced)
 
-    /// Single-line capsule: `[icon] LABEL`. Label types in via
-    /// `TypewriterText` for the typewriter feel. No body text — status
-    /// modes are ambient indicators, the label itself is the message.
+    /// Single-line capsule: `[icon] LABEL`. No body text — status modes
+    /// are ambient indicators, the label itself is the message.
     /// `onTap` makes the whole pill clickable (used by silenced mode
     /// to toggle silence off in one tap).
     @ViewBuilder
@@ -138,12 +168,7 @@ struct AvatarStatusBubble: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(tint)
 
-            TypewriterText(
-                text: label,
-                cursorColor: tint,
-                charDelay: 0.045,
-                showCursor: true
-            )
+            Text(label)
             .bobeTextStyle(.chatSender)
             .tracking(0.6)
             .textCase(.uppercase)
@@ -153,7 +178,7 @@ struct AvatarStatusBubble: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(
-            Capsule().fill(self.theme.colors.background.opacity(0.92))
+            Capsule().fill(self.theme.colors.surface)
         )
         .overlay(
             Capsule().strokeBorder(self.theme.colors.border.opacity(0.6), lineWidth: 0.5)
@@ -178,22 +203,20 @@ struct AvatarStatusBubble: View {
     struct ShellOptions {
         let showSilence: Bool
         let showDismiss: Bool
-        let clickable: Bool
 
-        static let bobeMessage = ShellOptions(showSilence: true, showDismiss: true, clickable: true)
-        static let userTranscribing = ShellOptions(showSilence: false, showDismiss: false, clickable: false)
+        static let bobeMessage = ShellOptions(showSilence: true, showDismiss: true)
+        static let userTranscribing = ShellOptions(showSilence: false, showDismiss: false)
 
         /// Bobe-message variant lets the caller override silence-button
         /// visibility (only shown while TTS is audible). Callsite reads
         /// stay terse with the static + with(silence:) builder pattern.
         func with(silence: Bool) -> ShellOptions {
-            ShellOptions(showSilence: silence, showDismiss: self.showDismiss, clickable: self.clickable)
+            ShellOptions(showSilence: silence, showDismiss: self.showDismiss)
         }
     }
 
-    /// Two-line bubble shell — sender row + body + optional action
-    /// affordances (✕ to dismiss, silence toggle while TTS is audible).
-    /// Sender label types in via `TypewriterText` for the typewriter feel.
+    /// Message bubble shell — sender row + body + optional action
+    /// affordances (dismiss and silence while TTS is audible).
     @ViewBuilder
     private func bubbleShell(
         sender: String,
@@ -203,7 +226,6 @@ struct AvatarStatusBubble: View {
     ) -> some View {
         let showSilence = options.showSilence
         let showDismiss = options.showDismiss
-        let clickable = options.clickable
         // Right-padding reserves room for the action stack so text never
         // collides with the buttons.
         let actionCount = (showDismiss ? 1 : 0) + (showSilence ? 1 : 0)
@@ -211,16 +233,12 @@ struct AvatarStatusBubble: View {
 
         ZStack(alignment: .topTrailing) {
             let inner = VStack(alignment: .leading, spacing: 4) {
-                TypewriterText(
-                    text: sender,
-                    cursorColor: senderTint,
-                    charDelay: 0.04,
-                    showCursor: false
-                )
+                Text(sender)
                 .bobeTextStyle(.chatSender)
                 .tracking(0.8)
                 .textCase(.uppercase)
                 .foregroundStyle(senderTint)
+                .accessibilityFocused(self.$accessibilityFocus, equals: .sender)
 
                 bodyContent()
                     .foregroundStyle(self.theme.colors.text)
@@ -232,7 +250,7 @@ struct AvatarStatusBubble: View {
             .padding(.vertical, 9)
             .frame(maxWidth: Self.maxWidth, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 14).fill(self.theme.colors.background)
+                RoundedRectangle(cornerRadius: 14).fill(self.theme.colors.surface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
@@ -245,14 +263,11 @@ struct AvatarStatusBubble: View {
             )
             .shadow(color: self.theme.colors.text.opacity(0.10), radius: 6, y: 3)
             .contentShape(RoundedRectangle(cornerRadius: 14))
-
-            if clickable {
-                Button(action: self.onOpenChat) { inner }
-                    .buttonStyle(.plain)
-                    .onHover { self.isHovered = $0 }
-            } else {
-                inner.onHover { self.isHovered = $0 }
+            .onHover { hovering in
+                self.isHovered = hovering
+                self.reportInteraction()
             }
+            inner
 
             if actionCount > 0 {
                 HStack(spacing: 4) {
@@ -269,6 +284,8 @@ struct AvatarStatusBubble: View {
                                     ? "overlay.floating_bubble.unsilence"
                                     : "overlay.floating_bubble.silence"
                             ),
+                            focus: .silence,
+                            accessibilityFocus: .silence,
                             action: self.onToggleSilence
                         )
                     }
@@ -277,6 +294,8 @@ struct AvatarStatusBubble: View {
                             systemName: "xmark",
                             tint: self.theme.colors.textMuted,
                             label: L10n.tr("overlay.floating_bubble.dismiss"),
+                            focus: .dismiss,
+                            accessibilityFocus: .dismiss,
                             action: self.onDismiss
                         )
                     }
@@ -293,6 +312,8 @@ struct AvatarStatusBubble: View {
         systemName: String,
         tint: Color,
         label: String,
+        focus: BubbleAction,
+        accessibilityFocus: BubbleAccessibilityTarget,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -301,48 +322,169 @@ struct AvatarStatusBubble: View {
                 .foregroundStyle(tint)
                 .padding(5)
                 .background(
-                    Circle().fill(self.theme.colors.background.opacity(0.6))
+                    Circle().fill(self.theme.colors.background)
                 )
                 .overlay(
                     Circle().strokeBorder(self.theme.colors.border.opacity(0.4), lineWidth: 0.5)
                 )
         }
         .buttonStyle(.plain)
+        .focused(self.$focusedAction, equals: focus)
+        .accessibilityFocused(self.$accessibilityFocus, equals: accessibilityFocus)
         .accessibilityLabel(label)
     }
 
     // MARK: - Body variants
 
     private func messageBody(_ message: ChatMessage) -> some View {
-        // Body types in via `TypewriterText` so the user sees BoBe
-        // "speaking" the words. Append mode keeps the previously-typed
-        // prefix when new tokens stream in (the daemon delivers chunks
-        // of growing text), instead of restarting the type-out each
-        // chunk — that previously read as flashing/jittery.
-        TypewriterText(
-            text: message.content,
-            cursorColor: self.theme.colors.primary,
-            charDelay: 0.018,
-            appendMode: true,
-            showCursor: message.isStreaming
+        let shouldScroll = self.messageContentHeight > WindowSizes.heightAmbientMessageViewport + 1
+        let overflowAffordanceHeight: CGFloat = shouldScroll ? 32 : 0
+        let viewportHeight = min(
+            max(20, self.messageContentHeight),
+            WindowSizes.heightAmbientMessageViewport - overflowAffordanceHeight
         )
-        .bobeTextStyle(.chatBody)
-        .lineLimit(Self.maxLines)
-        .multilineTextAlignment(.leading)
-        .fixedSize(horizontal: false, vertical: true)
+        let fadeStart = max(0, 1 - (14 / max(viewportHeight, 1)))
+        return VStack(alignment: .leading, spacing: 2) {
+            ScrollView(.vertical, showsIndicators: shouldScroll) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .bottom, spacing: 1) {
+                        Text(message.content)
+                            .bobeTextStyle(.chatBody)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if message.isStreaming {
+                            StreamingCursor(color: self.theme.colors.primary)
+                        }
+                    }
+                    if !message.isComplete {
+                        Label(
+                            L10n.tr("overlay.chat.interrupted"),
+                            systemImage: "exclamationmark.circle"
+                        )
+                        .bobeTextStyle(.chatPending)
+                        .foregroundStyle(self.theme.colors.error)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: AmbientMessageContentHeightKey.self,
+                            value: ceil(geometry.size.height)
+                        )
+                    }
+                }
+            }
+            .frame(height: viewportHeight)
+            .scrollDisabled(!shouldScroll)
+            .scrollBounceBehavior(.basedOnSize)
+            .textSelection(.enabled)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.maxY >= geometry.contentSize.height - 1
+            } action: { _, isAtBottom in
+                self.messageScrolledToBottom = isAtBottom
+            }
+            .mask {
+                if shouldScroll, !self.messageScrolledToBottom {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0),
+                            .init(color: .black, location: fadeStart),
+                            .init(color: .clear, location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                } else {
+                    Rectangle().fill(.black)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(message.content)
+            .accessibilityValue(
+                message.isStreaming
+                    ? L10n.tr("overlay.status.thinking")
+                    : message.isComplete
+                        ? ""
+                        : L10n.tr("overlay.chat.interrupted")
+            )
+            .accessibilityFocused(self.$accessibilityFocus, equals: .message)
+
+            if shouldScroll {
+                Button(action: self.onOpenAnswer) {
+                    Label(
+                        L10n.tr("overlay.floating_bubble.open_full_answer"),
+                        systemImage: "arrow.up.left.and.arrow.down.right"
+                    )
+                    .bobeTextStyle(.chatPending)
+                    .foregroundStyle(self.theme.colors.primary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .buttonStyle(.plain)
+                .focused(self.$focusedAction, equals: .openAnswer)
+                .accessibilityFocused(self.$accessibilityFocus, equals: .openAnswer)
+                .frame(maxWidth: .infinity, minHeight: 22, alignment: .trailing)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("overlay.bubble.open-full-answer")
+            }
+        }
+        .onPreferenceChange(AmbientMessageContentHeightKey.self) { height in
+            if height > 0 {
+                self.messageContentHeight = height
+            }
+        }
+        .onChange(of: message.id) { _, _ in
+            self.messageContentHeight = 20
+            self.messageScrolledToBottom = false
+        }
     }
 
     private func transcribingBody(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "ear")
-                .font(.system(size: 10))
-                .foregroundStyle(self.theme.colors.secondary)
-                .padding(.top, 2)
-            Text(text)
-                .bobeTextStyle(.chatBody)
-                .lineLimit(Self.maxLines)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "ear")
+                            .font(.system(size: 10))
+                            .foregroundStyle(self.theme.colors.secondary)
+                            .padding(.top, 2)
+                        Text(text)
+                            .bobeTextStyle(.chatBody)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.transcriptBottomAnchor)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: WindowSizes.heightAmbientMessageViewport)
+            .scrollBounceBehavior(.basedOnSize)
+            .defaultScrollAnchor(.bottom)
+            .onAppear {
+                proxy.scrollTo(Self.transcriptBottomAnchor, anchor: .bottom)
+            }
+            .onChange(of: text) { _, _ in
+                proxy.scrollTo(Self.transcriptBottomAnchor, anchor: .bottom)
+            }
         }
+    }
+
+    private func reportInteraction() {
+        self.onInteractionChanged(
+            self.isHovered || self.focusedAction != nil || self.accessibilityFocus != nil
+        )
+    }
+}
+
+private struct AmbientMessageContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

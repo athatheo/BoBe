@@ -6,8 +6,6 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use super::event_queue::EventQueue;
-use super::factories::indicator_event;
-use super::types::{IndicatorType, StreamBundle};
 
 const STALE_THRESHOLD_SECONDS: i64 = 60;
 
@@ -23,7 +21,6 @@ struct ConnectionState {
     connection_id: Option<String>,
     generation: u64,
     disconnect_time: Option<DateTime<Utc>>,
-    current_indicator: IndicatorType,
 }
 
 impl SseConnectionManager {
@@ -41,7 +38,6 @@ impl SseConnectionManager {
                 connection_id: None,
                 generation: 0,
                 disconnect_time: None,
-                current_indicator: IndicatorType::Idle,
             }),
         }
     }
@@ -53,19 +49,6 @@ impl SseConnectionManager {
     ) {
         *self.on_connect.write().await = Some(on_connect);
         *self.on_disconnect.write().await = Some(on_disconnect);
-    }
-
-    pub(crate) async fn track_indicator(&self, event: &StreamBundle) {
-        if event.event_type != super::types::EventType::Indicator {
-            return;
-        }
-        let Some(value) = event.payload.get("indicator").cloned() else {
-            return;
-        };
-        let Ok(indicator) = serde_json::from_value::<IndicatorType>(value) else {
-            return;
-        };
-        self.state.lock().await.current_indicator = indicator;
     }
 
     pub(crate) async fn connect(&self) -> String {
@@ -95,9 +78,8 @@ impl SseConnectionManager {
                 let mut st = self.state.lock().await;
                 st.disconnect_time = None;
 
-                let indicator = st.current_indicator;
                 drop(st);
-                self.queue.push(indicator_event(indicator, None));
+                self.queue.replay_current_indicator();
 
                 info!(connection_id = %conn_id, "connection_manager.connected");
                 if let Some(cb) = self.on_connect.read().await.as_ref() {
@@ -108,10 +90,9 @@ impl SseConnectionManager {
         }
 
         st.disconnect_time = None;
-        let indicator = st.current_indicator;
         drop(st);
 
-        self.queue.push(indicator_event(indicator, None));
+        self.queue.replay_current_indicator();
         info!(connection_id = %conn_id, "connection_manager.connected");
 
         if let Some(cb) = self.on_connect.read().await.as_ref() {
@@ -150,11 +131,6 @@ impl SseConnectionManager {
         st.connected && st.connection_id.as_deref() == Some(connection_id)
     }
 
-    #[cfg(test)]
-    pub(crate) async fn current_indicator(&self) -> IndicatorType {
-        self.state.lock().await.current_indicator
-    }
-
     async fn trim_stale_events(&self) {
         let events = self.queue.clear();
         let cutoff = Utc::now() - Duration::seconds(STALE_THRESHOLD_SECONDS);
@@ -182,23 +158,18 @@ impl SseConnectionManager {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::util::sse::types::{EventType, StreamBundle};
-    use serde_json::json;
+    use crate::util::sse::types::IndicatorType;
 
     #[tokio::test]
-    async fn track_indicator_accepts_screaming_snake_case() {
+    async fn connect_replays_event_queue_indicator() {
         let queue = Arc::new(EventQueue::new(100));
-        let manager = SseConnectionManager::new(queue, None, None);
-        let bundle = StreamBundle {
-            event_type: EventType::Indicator,
-            message_id: String::new(),
-            timestamp: Utc::now().to_rfc3339(),
-            description: String::new(),
-            payload: json!({ "indicator": "THINKING" }),
-        };
+        queue.set_indicator(IndicatorType::Thinking);
+        queue.clear();
+        let manager = SseConnectionManager::new(Arc::clone(&queue), None, None);
 
-        manager.track_indicator(&bundle).await;
-
-        assert_eq!(manager.current_indicator().await, IndicatorType::Thinking);
+        manager.connect().await;
+        let events = queue.clear();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].payload["indicator"], "THINKING");
     }
 }

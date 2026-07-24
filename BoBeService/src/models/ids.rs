@@ -66,7 +66,19 @@ define_id!(CooldownId);
 /// of the published contract — do not change without coordinating the
 /// client.
 pub(crate) fn new_message_id() -> String {
-    format!("msg_{}", Uuid::new_v4().simple())
+    message_id_for_turn(ConversationTurnId::new())
+}
+
+pub(crate) fn message_id_for_turn(turn_id: ConversationTurnId) -> String {
+    let uuid = Uuid::from(turn_id);
+    format!("msg_{}", uuid.simple())
+}
+
+pub(crate) fn conversation_turn_id_from_wire_id(
+    wire_id: &str,
+) -> Result<ConversationTurnId, uuid::Error> {
+    let uuid_suffix = wire_id.rsplit('_').next().unwrap_or(wire_id);
+    Uuid::parse_str(uuid_suffix).map(ConversationTurnId::from)
 }
 
 /// Wire-format voice-turn id. `voice_` prefix is the published contract
@@ -74,7 +86,9 @@ pub(crate) fn new_message_id() -> String {
 /// `voice_wake_` so log filtering can separate them — pass `true` for
 /// `wake_triggered`.
 pub(crate) fn new_turn_id(wake_triggered: bool) -> String {
-    let suffix = Uuid::new_v4().simple();
+    let turn_id = ConversationTurnId::new();
+    let uuid = Uuid::from(turn_id);
+    let suffix = uuid.simple();
     if wake_triggered {
         format!("voice_wake_{suffix}")
     } else {
@@ -123,5 +137,26 @@ mod tests {
     fn different_id_types_are_incompatible() {
         let _goal = GoalId::new();
         let _soul = SoulId::new();
+    }
+
+    #[test]
+    fn wire_message_id_round_trips_to_conversation_turn_id() {
+        let turn_id = ConversationTurnId::new();
+        let wire_id = message_id_for_turn(turn_id);
+
+        let parsed = conversation_turn_id_from_wire_id(&wire_id).expect("valid message id");
+
+        assert_eq!(parsed, turn_id);
+    }
+
+    #[test]
+    fn voice_wire_id_maps_to_conversation_turn_id() {
+        for wake_triggered in [false, true] {
+            let wire_id = new_turn_id(wake_triggered);
+            let parsed = conversation_turn_id_from_wire_id(&wire_id).expect("valid voice turn id");
+            let uuid = Uuid::from(parsed);
+
+            assert!(wire_id.ends_with(&uuid.simple().to_string()));
+        }
     }
 }

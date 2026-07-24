@@ -295,13 +295,11 @@ struct GoalsEditor: View {
     }
 
     static func relativeDate(_ iso: String) -> String {
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = isoFormatter.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) {
-            let display = DateFormatter()
-            display.dateStyle = .medium
-            display.timeStyle = .none
-            return display.string(from: date)
+        let date =
+            (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(iso))
+                ?? (try? Date.ISO8601FormatStyle().parse(iso))
+        if let date {
+            return date.formatted(date: .abbreviated, time: .omitted)
         }
         return String(iso.prefix(10))
     }

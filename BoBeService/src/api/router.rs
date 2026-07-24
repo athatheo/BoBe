@@ -8,7 +8,8 @@ use tower_http::timeout::TimeoutLayer;
 
 use super::handlers;
 use super::middleware::{
-    AllowedHosts, AllowedOrigins, ApiToken, bearer_auth, host_validation, request_logging,
+    AllowedHosts, AllowedOrigins, ApiToken, bearer_auth, host_validation, personal_data_exclusion,
+    request_logging,
 };
 use crate::app_state::AppState;
 
@@ -61,12 +62,29 @@ pub(crate) fn build_router(
             get(handlers::copilot_login::events),
         );
 
+    // Privacy purge has bounded SDK shutdown/deletion phases that can exceed
+    // the generic REST budget. Its handler owns a shorter deadline so it can
+    // return an actionable retry error before this transport backstop fires.
+    let privacy = Router::new()
+        .route(
+            "/privacy/data",
+            axum::routing::delete(handlers::privacy::purge),
+        )
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::GATEWAY_TIMEOUT,
+            crate::constants::privacy::HTTP_TIMEOUT,
+        ));
+
     // Short-lived JSON/REST endpoints — bounded by a 30s timeout so a
     // misbehaving handler can't lock a worker thread forever.
     let short_lived = Router::new()
         .route("/health", get(handlers::health::health_check))
         .route("/metrics", get(handlers::metrics::metrics))
         .route("/status", get(handlers::health::get_status))
+        .route(
+            "/conversation/current",
+            get(handlers::conversation::current_conversation),
+        )
         .route("/message", post(handlers::conversation::send_message))
         .route("/capture/start", post(handlers::capture::start_capture))
         .route("/capture/stop", post(handlers::capture::stop_capture))
@@ -132,10 +150,6 @@ pub(crate) fn build_router(
             "/settings",
             get(handlers::settings::get_settings).patch(handlers::settings::update_settings),
         )
-        .route(
-            "/privacy/data",
-            axum::routing::delete(handlers::privacy::purge),
-        )
         .route("/auth/status", get(handlers::engine::get_auth_status))
         .route(
             "/auth/copilot/login/start",
@@ -173,6 +187,10 @@ pub(crate) fn build_router(
             "/voice/install/cancel",
             post(handlers::voice_install::cancel),
         )
+        .layer(axum_middleware::from_fn_with_state(
+            Arc::clone(&state),
+            personal_data_exclusion,
+        ))
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::GATEWAY_TIMEOUT,
             std::time::Duration::from_secs(30),
@@ -182,6 +200,7 @@ pub(crate) fn build_router(
     // concurrency limit) to BOTH halves so the long-lived endpoints
     // get the same security treatment as the REST API.
     short_lived
+        .merge(privacy)
         .merge(long_lived)
         .layer(axum::Extension(shutdown))
         .layer(axum::Extension(allowed_origins))

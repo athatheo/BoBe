@@ -12,7 +12,6 @@ use crate::runtime::proactive_generator::ProactiveGenerator;
 use crate::runtime::session::RuntimeSession;
 use crate::runtime::triggers::capture_trigger::CaptureTrigger;
 use crate::runtime::triggers::{CheckinScheduler, CheckinTrigger, GoalTrigger};
-use crate::services::goals::file_store::GoalFileStore;
 use crate::services::goals::goals_service::GoalsService;
 use crate::services::souls_service::SoulsService;
 use crate::services::user_profile_service::UserProfileService;
@@ -56,15 +55,13 @@ pub(crate) async fn wire(
     infra: &Infrastructure,
     repos: &Repositories,
     workers: Arc<crate::copilot::registry::WorkerRegistry>,
+    goals_service: Arc<GoalsService>,
 ) -> Wired {
     let config_arc = &infra.config_arc;
 
     let conversation_service = Arc::new(ConversationService::new(Arc::clone(
         &repos.conversation_repo,
     )));
-
-    let goal_file_store = GoalFileStore::new(std::path::Path::new(&config.data_dir).join("goals"));
-    let goals_service = Arc::new(GoalsService::new(Arc::clone(&goal_file_store)));
 
     let souls_service = Arc::new(SoulsService::new(Arc::clone(&repos.soul_repo)));
     let user_profile_service = Arc::new(UserProfileService::new(Arc::clone(

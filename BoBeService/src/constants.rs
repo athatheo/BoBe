@@ -14,6 +14,19 @@ pub(crate) const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 /// engine = "local".
 pub(crate) const DEFAULT_OLLAMA_V1_URL: &str = "http://127.0.0.1:11434/v1";
 
+/// Privacy purge uses nested deadlines so the handler can return a useful
+/// retry error before transport or client cancellation hides the result.
+pub(crate) mod privacy {
+    pub(crate) const PURGE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(45);
+    pub(crate) const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(50);
+    /// Mirror: Swift `PrivacyWire.purgeRequestTimeoutSeconds` and local probes.
+    #[allow(
+        dead_code,
+        reason = "drift checkpoint; Swift and shell probes consume the value"
+    )]
+    pub(crate) const CLIENT_TIMEOUT_SECS: u64 = 60;
+}
+
 /// Wire-format engine kinds. Mirror: Swift `EngineKind`. Drift script
 /// `scripts/check-cross-language-constants.sh` reads these by name; the
 /// `models::engine_kind::EngineKind` enum's serde rename produces the
@@ -72,4 +85,16 @@ pub(crate) mod voice_wire {
     /// future `bobe.voice.v2` wire format: the daemon can support both
     /// in parallel and pick per connection.
     pub(crate) const SUBPROTOCOL_V1: &str = "bobe.voice.v1";
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn privacy_timeouts_leave_response_margin() {
+        assert!(super::privacy::PURGE_DEADLINE < super::privacy::HTTP_TIMEOUT);
+        assert!(
+            super::privacy::HTTP_TIMEOUT
+                < std::time::Duration::from_secs(super::privacy::CLIENT_TIMEOUT_SECS)
+        );
+    }
 }

@@ -32,28 +32,15 @@ actor DaemonClient {
     let fetchTimeout: TimeInterval = 10
 
     private var sseTask: Task<Void, Never>?
-    private var eventHandler: ((StreamBundle) -> Void)?
-    private var connectionHandler: ((Bool) -> Void)?
+    private var eventHandler: (@Sendable (StreamBundle) async -> Void)?
+    private var connectionHandler: (@Sendable (Bool) async -> Void)?
     private var reconnectAttempts = 0
     private var isReconnecting = false
 
-    func endpointURL(_ path: String) -> URL {
-        // appendingPathComponent percent-encodes `?` and `&`, which would corrupt query strings.
-        // Split on `?` so the path is appended cleanly and the query is preserved.
+    func endpointURL(_ path: String, queryItems: [URLQueryItem] = []) -> URL {
         let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        let (pathPart, queryPart): (String, String?)
-        if let qIdx = trimmed.firstIndex(of: "?") {
-            pathPart = String(trimmed[..<qIdx])
-            queryPart = String(trimmed[trimmed.index(after: qIdx)...])
-        } else {
-            pathPart = trimmed
-            queryPart = nil
-        }
-        var url = self.baseURL.appendingPathComponent(pathPart)
-        if let queryPart, !queryPart.isEmpty {
-            url = URL(string: "\(url.absoluteString)?\(queryPart)") ?? url
-        }
-        return url
+        let url = self.baseURL.appendingPathComponent(trimmed)
+        return queryItems.isEmpty ? url : url.appending(queryItems: queryItems)
     }
 
     init() {
@@ -75,17 +62,11 @@ actor DaemonClient {
         self.encoder = JSONEncoder()
     }
 
-    func authorize(_ request: inout URLRequest) {
-        if let token = DaemonConfig.endpoint.bearerToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-    }
-
     // MARK: - SSE Connection
 
     func connectSSE(
-        onEvent: @escaping @Sendable (StreamBundle) -> Void,
-        onConnectionChange: @escaping @Sendable (Bool) -> Void
+        onEvent: @escaping @Sendable (StreamBundle) async -> Void,
+        onConnectionChange: @escaping @Sendable (Bool) async -> Void
     ) {
         self.eventHandler = onEvent
         self.connectionHandler = onConnectionChange
@@ -111,7 +92,7 @@ actor DaemonClient {
     private func runSSELoop() async {
         let url = self.endpointURL("events")
         var request = URLRequest(url: url)
-        self.authorize(&request)
+        DaemonConfig.endpoint.authorize(&request)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         // Set explicitly large rather than 0 (which inherits the session
         // default request timeout). The session default of 60s would be
@@ -131,7 +112,7 @@ actor DaemonClient {
 
             logger.info("SSE connected")
             self.reconnectAttempts = 0
-            self.connectionHandler?(true)
+            await self.connectionHandler?(true)
 
             for try await line in bytes.lines {
                 if Task.isCancelled { break }
@@ -140,7 +121,7 @@ actor DaemonClient {
                 guard let data = jsonStr.data(using: .utf8) else { continue }
                 do {
                     let bundle = try decoder.decode(StreamBundle.self, from: data)
-                    self.eventHandler?(bundle)
+                    await self.eventHandler?(bundle)
                 } catch {
                     logger.error("Failed to decode SSE event: \(error.localizedDescription, privacy: .public)")
                 }
@@ -161,7 +142,7 @@ actor DaemonClient {
         self.isReconnecting = true
         defer { isReconnecting = false }
 
-        self.connectionHandler?(false)
+        await self.connectionHandler?(false)
         self.reconnectAttempts += 1
 
         // First attempt is immediate so transient drops are invisible.
@@ -190,13 +171,15 @@ actor DaemonClient {
     private func send(
         _ path: String,
         method: String,
-        body: (any Encodable)?
+        body: (any Encodable)?,
+        queryItems: [URLQueryItem],
+        requestTimeout: TimeInterval?
     ) async throws -> Data {
-        let url = self.endpointURL(path)
+        let url = self.endpointURL(path, queryItems: queryItems)
         var request = URLRequest(url: url)
-        self.authorize(&request)
+        DaemonConfig.endpoint.authorize(&request)
         request.httpMethod = method
-        request.timeoutInterval = self.fetchTimeout
+        request.timeoutInterval = requestTimeout ?? self.fetchTimeout
 
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -231,9 +214,17 @@ actor DaemonClient {
     func fetch<T: Decodable>(
         _ path: String,
         method: String = "GET",
-        body: (any Encodable)? = nil
+        body: (any Encodable)? = nil,
+        queryItems: [URLQueryItem] = [],
+        requestTimeout: TimeInterval? = nil
     ) async throws -> T {
-        let data = try await self.send(path, method: method, body: body)
+        let data = try await self.send(
+            path,
+            method: method,
+            body: body,
+            queryItems: queryItems,
+            requestTimeout: requestTimeout
+        )
         do {
             return try self.decoder.decode(T.self, from: data)
         } catch {
@@ -245,9 +236,17 @@ actor DaemonClient {
     func fetchVoid(
         _ path: String,
         method: String = "POST",
-        body: (any Encodable)? = nil
+        body: (any Encodable)? = nil,
+        queryItems: [URLQueryItem] = [],
+        requestTimeout: TimeInterval? = nil
     ) async throws {
-        _ = try await self.send(path, method: method, body: body)
+        _ = try await self.send(
+            path,
+            method: method,
+            body: body,
+            queryItems: queryItems,
+            requestTimeout: requestTimeout
+        )
     }
 
     private func errorMessage(from data: Data) -> (message: String, code: String?) {
@@ -275,10 +274,15 @@ actor DaemonClient {
 
     // MARK: - Messages
 
-    /// `/message` returns `{message_id}`; the message itself streams via SSE.
+    /// `/message` returns the stable message ID plus replay status; new output
+    /// streams separately through SSE.
     @discardableResult
-    func sendMessage(_ content: String) async throws -> SendMessageResponse {
-        try await self.fetch("/message", method: "POST", body: SendMessageRequest(content: content))
+    func sendMessage(_ content: String, requestId: UUID) async throws -> SendMessageResponse {
+        try await self.fetch(
+            "/message",
+            method: "POST",
+            body: SendMessageRequest(content: content, requestId: requestId)
+        )
     }
 
     // MARK: - Memory (single document)
@@ -299,15 +303,14 @@ actor DaemonClient {
     // MARK: - Goals
 
     func listGoals(status: GoalStatus? = nil, includeArchived: Bool = false) async throws -> GoalListResponse {
-        var query: [String] = []
+        var queryItems: [URLQueryItem] = []
         if let status, status != .unknown {
-            query.append("status=\(status.rawValue)")
+            queryItems.append(URLQueryItem(name: "status", value: status.rawValue))
         }
         if includeArchived {
-            query.append("include_archived=true")
+            queryItems.append(URLQueryItem(name: "include_archived", value: "true"))
         }
-        let suffix = query.isEmpty ? "" : "?" + query.joined(separator: "&")
-        return try await self.fetch("/goals\(suffix)")
+        return try await self.fetch("/goals", queryItems: queryItems)
     }
 
     func createGoal(_ request: GoalCreateRequest) async throws -> Goal {

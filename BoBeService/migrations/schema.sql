@@ -27,11 +27,38 @@ CREATE TABLE IF NOT EXISTS conversation_turns (
     id BLOB PRIMARY KEY NOT NULL,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    is_complete INTEGER NOT NULL DEFAULT 1 CHECK (is_complete IN (0, 1)),
     conversation_id BLOB NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS ix_conversation_turns_conversation_id ON conversation_turns(conversation_id);
+CREATE INDEX IF NOT EXISTS ix_conversation_turns_role_created_at ON conversation_turns(role, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_conversation_turns_conversation_role_created_at
+    ON conversation_turns(conversation_id, role, created_at DESC);
+
+-- Durable idempotency jobs for accepted user turns. `queued` work is safe to
+-- recover after restart; `running` work is never replayed because tools may
+-- already have produced side effects. Routine retention moves terminal IDs to
+-- content-free tombstones rather than reopening them.
+CREATE TABLE IF NOT EXISTS message_requests (
+    request_id BLOB PRIMARY KEY NOT NULL,
+    content_sha256 BLOB NOT NULL,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+    failure_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS ix_message_requests_created_at ON message_requests(created_at);
+CREATE INDEX IF NOT EXISTS ix_message_requests_status_created_at
+    ON message_requests(status, created_at);
+
+CREATE TABLE IF NOT EXISTS message_request_tombstones (
+    request_id BLOB PRIMARY KEY NOT NULL,
+    retired_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
 
 -- Soul documents (personality).
 CREATE TABLE IF NOT EXISTS souls (
