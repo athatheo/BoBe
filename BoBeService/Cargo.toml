@@ -197,7 +197,7 @@ regex = "1.13.1"
 # transcript-to-first-audio, total-turn latency, barge-in and fillers.
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
-sha2 = { version = "0.10.9", default-features = false }
+sha2 = { version = "0.11.0", default-features = false }
 
 # macOS-only: Keychain access via the Security framework (Data Protection
 # Keychain). Linux uses a file-based `FileSecretStore` fallback.
