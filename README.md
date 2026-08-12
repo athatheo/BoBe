@@ -1,3 +1,5 @@
+
+
 <h1 align="center">BoBe</h1>
 
 <p align="center">
@@ -57,7 +59,7 @@ just run
 
 ### First Launch
 
-On first launch, BoBe's eight-stage setup wizard walks you through:
+On first launch, BoBe's six-stage setup wizard walks you through:
 
 1. **Choose your AI** — GitHub Copilot cloud or local Ollama
 2. **Authenticate or install** — sign in through BoBe's signed Copilot CLI helper, or let BoBe install Ollama and models
